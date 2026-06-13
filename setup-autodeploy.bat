@@ -7,7 +7,7 @@ REM  automatically within ~3 minutes. You only run this ONCE.
 REM ============================================================
 
 REM >>> The line below is filled in for you once the repo exists <<<
-set REPO=__REPO_URL__
+set REPO=https://github.com/mssyawish-oss/kitchen-deploy.git
 set SYNC=C:\KitchenDashboard-sync
 
 echo.
