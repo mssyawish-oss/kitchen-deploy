@@ -1,0 +1,7 @@
+# NEVER sync data or secrets — these live only on the server
+kitchen_data.json
+bbq_history.json
+*.log
+.DS_Store
+backup/
+BACKEND-UPDATE-PENDING.txt
