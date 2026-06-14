@@ -1089,12 +1089,16 @@ def _rotcam_bench_count(jpeg):
         return None
 def _rotcam_bench_apply(n):
     if n is None: return                                   # blocked/error → hold, don't touch stock
-    bh=ROTCAM.get("bench_hist",[]); bh.append(n); ROTCAM["bench_hist"]=bh[-3:]
-    if len(bh)>=2 and bh[-1]==bh[-2]:                      # two reads agree → trust it
-        confirmed=bh[-1]; prev=ROTCAM.get("bench_rows")
-        if prev is None: ROTCAM["bench_rows"]=confirmed; return   # first reading = baseline, don't add
-        if confirmed>prev: rot_put_on(confirmed-prev)     # fresh cooked row(s) landed → +birds_per_row each
-        ROTCAM["bench_rows"]=confirmed
+    # PEAK-ON-CLEAR: cooked rows sit on the bench only briefly (they go straight to the warmer), so we
+    # can't wait for two reads to agree. Track the HIGHEST count seen while the bench is occupied; when it
+    # returns to empty, that peak = how many rows passed over the bench → add them. This catches a quick
+    # placement that only shows up for a single read.
+    peak=ROTCAM.get("bench_peak",0)
+    if n>peak: ROTCAM["bench_peak"]=peak=n                 # row(s) appeared → remember the most seen
+    if n==0 and peak>0:                                    # bench cleared → commit what passed through
+        rot_put_on(peak)                                   # +birds_per_row per row
+        ROTCAM["bench_peak"]=0
+    ROTCAM["bench_rows"]=n
 # ===================================================================================
 def _rotcam_read():
     fr=ROTCAM.get("frame")                                   # reuse the live-feed frame if fresh
