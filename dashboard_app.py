@@ -1040,14 +1040,16 @@ def _rotcam_count(jpeg):
 # front), but the bench always shows the cooked row. So: watch the bench; when a fresh row
 # of cooked chickens appears (confirmed over 2 reads) → +birds_per_row to available. The
 # bench clearing (moved to warmer) is ignored — those birds are still available stock.
-_BENCH_BOX=(0.0,0.74,0.78,1.0)   # x1,x2,y1,y2 as fractions of the frame → bottom-left bench strip (generous; bench is on wheels)
-_BENCH_PROMPT=("This is the stainless-steel unloading bench beneath a chicken rotisserie. A 'row' is a group of "
-               "roasted chickens (about 4) placed together when pulled off the spit. How many rows of cooked, "
-               "GOLDEN/BROWN WHOLE CHICKENS are sitting on the bench right now? IMPORTANT: bare steel, metal "
-               "spikes, wire frames/cages, tongs, trays and fryer baskets are NOT chickens — ignore them and "
-               "count ONLY actual roasted chickens. A person may be partly in the way; still count any chicken "
-               "rows you can clearly see on the bench. If the bench is COMPLETELY hidden, reply the single word "
-               "BLOCKED. Otherwise reply ONLY one digit: 0, 1, 2 or 3.")
+_BENCH_BOX=(0.0,1.0,0.78,1.0)   # FULL bottom strip — bench is on wheels & shifts left/right/partial; top kept just below the oven so the bottom shelf isn't counted
+_BENCH_PROMPT=("This is the bottom strip of a rotisserie chicken shop, below the oven. It shows the stainless "
+               "unloading bench, which is on WHEELS and may be shifted left, right, centre, or only partly in "
+               "view. A 'row' is a group of roasted chickens (about 4) placed together when pulled off the spit. "
+               "How many rows of cooked, GOLDEN/BROWN WHOLE CHICKENS are resting on the bench right now? "
+               "IMPORTANT: ignore bare steel, floor tiles, metal spikes, wire frames/cages, tongs, trays, the "
+               "fryer baskets (often on the right), and any PEOPLE (heads, bodies, arms, gloved hands) — count "
+               "ONLY actual roasted chickens sitting on the bench surface, wherever along the strip they are. "
+               "If the bench is rolled out of view or completely blocked, reply the single word BLOCKED. "
+               "Otherwise reply ONLY one digit: 0, 1, 2 or 3.")
 def _rotcam_bench_crop(jpeg):
     try:
         from PIL import Image; import io
