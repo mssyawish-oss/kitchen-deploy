@@ -787,6 +787,66 @@ def api_camera_test():
     import base64
     return jsonify({"ok":True,"preview":"data:image/jpeg;base64,"+base64.b64encode(data).decode()})
 
+# ===== STORE CAMERAS (multi-camera monitoring page) ================================
+def _snap_from(cam):
+    # fetch a single JPEG from any Dahua-style camera via snapshot.cgi (HTTP digest auth)
+    cam=cam or {}
+    ip=str(cam.get("ip","")).strip()
+    if not ip and not (cam.get("url_override") or "").strip(): return None,"No camera address"
+    port=cam.get("port") or 80; ch=cam.get("channel") or 1
+    user=cam.get("user","") or ""; pw=cam.get("pass","") or ""
+    scheme="https" if str(port)=="443" else "http"
+    url=(cam.get("url_override") or "").strip() or ("%s://%s:%s/cgi-bin/snapshot.cgi?channel=%s"%(scheme,ip,port,ch))
+    try:
+        pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,url,user,pw)
+        ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+        opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
+            urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
+        with opener.open(urllib.request.Request(url),timeout=8) as r: data=r.read()
+        if data[:2]==b"\xff\xd8": return data,None
+        return None,"Camera did not return a photo (%d bytes) — check address/login."%len(data)
+    except Exception as e:
+        return None,str(e)
+def _cam_by_id(cid):
+    return next((c for c in (db.get("cameras") or []) if c.get("id")==cid),None)
+@app.route("/api/cameras",methods=["POST"])
+def api_cameras():
+    d=request.get_json(silent=True) or {}; act=d.get("action","save")
+    with data_lock:
+        cams=list(db.get("cameras") or [])
+        if act=="delete":
+            cams=[c for c in cams if c.get("id")!=d.get("id")]
+        else:
+            cid=d.get("id") or _secrets.token_hex(4)
+            existing=next((c for c in cams if c.get("id")==cid),None)
+            pw=d.get("pass")
+            cam={"id":cid,"name":str(d.get("name","Camera"))[:40],"ip":str(d.get("ip","")).strip(),
+                 "port":int(d.get("port") or 80),"channel":int(d.get("channel") or 1),
+                 "user":str(d.get("user","")).strip(),"enabled":bool(d.get("enabled",True)),
+                 "pass":(pw if pw not in (None,"") else (existing or {}).get("pass",""))}
+            if existing: cams=[cam if c.get("id")==cid else c for c in cams]
+            else: cams.append(cam)
+        db["cameras"]=cams; save_data(db)
+    return jsonify({"ok":True,"count":len(db.get("cameras") or [])})
+@app.route("/api/cam/<cid>.jpg")
+def api_cam_snap(cid):
+    cam=_cam_by_id(cid)
+    if not cam: return Response("not found",status=404)
+    data,err=_snap_from(cam)
+    if err: return Response(err,status=503)
+    return Response(data,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+@app.route("/api/cam_test",methods=["POST"])
+def api_cam_test():
+    d=request.get_json(silent=True) or {}
+    if not (d.get("pass") or "") and d.get("id"):     # editing existing & pass left blank → use stored pass
+        ex=_cam_by_id(d["id"]);
+        if ex: d["pass"]=ex.get("pass","")
+    data,err=_snap_from(d)
+    if err: return jsonify({"ok":False,"error":err})
+    import base64 as _b
+    return jsonify({"ok":True,"preview":"data:image/jpeg;base64,"+_b.b64encode(data).decode()})
+# ==================================================================================
+
 @app.route("/api/features",methods=["POST"])
 def api_features():
     d=request.get_json(silent=True) or {}
@@ -1311,7 +1371,8 @@ def test_print():
 @app.route("/api/data")
 def get_db():
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in db.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config")}
+    safe={k:v for k,v in db.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config","cameras")}
+    safe["cameras_public"]=[{k:c.get(k) for k in ("id","name","ip","port","channel","enabled")} for c in (db.get("cameras") or [])]
     cc=db.get("camera_config") or {}
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
