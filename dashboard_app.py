@@ -271,7 +271,7 @@ def _rot_cfg():
 def _rot_reset_if_needed():
     c=_rot_cfg();today=datetime.now().strftime("%Y-%m-%d")
     if ROT_LIVE["day"]!=today:
-        ROT_LIVE.update({"day":today,"available":float(c["open_rows"]*c["bpr"]),"sold_today":0.0,"seen":[]})
+        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0,"seen":[]})   # start the day empty — the camera/bench-watcher builds the count up (no morning auto-add)
 def rot_state():
     with rot_lock:
         _rot_reset_if_needed()
@@ -1047,8 +1047,10 @@ _BENCH_PROMPT=("This is the bottom strip of a rotisserie chicken shop, below the
                "How many rows of cooked, GOLDEN/BROWN WHOLE CHICKENS are resting on the bench right now? "
                "IMPORTANT: ignore bare steel, floor tiles, metal spikes, wire frames/cages, tongs, trays, the "
                "fryer baskets (often on the right), and any PEOPLE (heads, bodies, arms, gloved hands) — count "
-               "ONLY actual roasted chickens sitting on the bench surface, wherever along the strip they are. "
-               "If the bench is rolled out of view or completely blocked, reply the single word BLOCKED. "
+               "ONLY whole, intact, rounded roasted chickens sitting on the bench surface, wherever along the "
+               "strip they are. Do NOT count BUTTERFLIED / flattened / spatchcocked / split-open / halved or "
+               "quartered chickens — those are a different product and must be ignored; count only plump WHOLE "
+               "birds. If the bench is rolled out of view or completely blocked, reply the single word BLOCKED. "
                "Otherwise reply ONLY one digit: 0, 1, 2 or 3.")
 def _rotcam_bench_crop(jpeg):
     try:
