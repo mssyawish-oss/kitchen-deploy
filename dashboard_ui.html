@@ -619,6 +619,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="form-row" id="sc-bbq-row"><div class="label"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> BBQ chickens available</div><input class="input" id="sc-bbq" type="number" step="0.25" style="text-align:center;font-size:22px;"></div>
     <div class="form-row" id="sc-fry-row"><div class="label">Fried chicken pieces available</div><input class="input" id="sc-fry" type="number" style="text-align:center;font-size:22px;"></div>
     <div class="row mt-8"><button class="btn btn-primary" style="flex:1.4;" onclick="submitStockCheck()">Confirm counts</button><button class="btn" onclick="closeModal('stockcheck-modal')">Looks right</button></div>
+    <button class="btn" style="margin-top:10px;font-size:12px;padding:5px 12px;color:var(--muted);" onclick="turnOffStockPrompt()">Turn off these reminders</button>
   </div>
 </div>
 
@@ -1463,6 +1464,12 @@ function openStockCheck(){
   document.getElementById('sc-bbq').value=Math.round((window._lastRotAvail||0)*4)/4;
   document.getElementById('sc-fry').value=Math.round(window._lastFryAvail||0);
   openModal('stockcheck-modal');
+}
+function turnOffStockPrompt(){
+  appData.stock_prompt_enabled=false;   // stops it locally straight away
+  fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stock_prompt_enabled:false})}).catch(()=>{});
+  closeModal('stockcheck-modal');
+  if(typeof _toast==='function')_toast('Stock-check reminders turned off. Re-enable in Settings → Alarms & Prompts.');
 }
 function submitStockCheck(){
   const b=parseFloat(document.getElementById('sc-bbq').value),f=parseInt(document.getElementById('sc-fry').value);
