@@ -8,7 +8,7 @@
 
 $ErrorActionPreference = "SilentlyContinue"
 $repo = "C:\KitchenDashboard-sync"     # local clone of the GitHub repo
-$app  = "C:\Users\me\Downloads\KitchenDashboard-ServerPC-2"   # the live dashboard folder
+$app  = "C:\Users\me\Downloads\KitchenDashboard-ServerPC-2\KitchenDashboard-ServerPC"   # the live dashboard folder (nested)
 $log  = Join-Path $app "autodeploy.log"
 function Log($m){ "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m" | Out-File -Append -FilePath $log }
 
