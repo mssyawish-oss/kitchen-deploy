@@ -971,6 +971,66 @@ def _rotcam_count(jpeg):
             try: return None,"Gemini error: "+e.read().decode()[:140]
             except Exception: pass
         return None,str(e)
+# ===== UNLOADING-BENCH WATCHER =====================================================
+# Cooked rows are ALWAYS placed on the stainless bench (bottom of frame) before going to
+# the warmer. Counting loaded shelves can't catch removals (staff slide rows up + stand in
+# front), but the bench always shows the cooked row. So: watch the bench; when a fresh row
+# of cooked chickens appears (confirmed over 2 reads) → +birds_per_row to available. The
+# bench clearing (moved to warmer) is ignored — those birds are still available stock.
+_BENCH_BOX=(0.0,0.74,0.78,1.0)   # x1,x2,y1,y2 as fractions of the frame → bottom-left bench strip (generous; bench is on wheels)
+_BENCH_PROMPT=("This is the stainless-steel unloading bench beneath a chicken rotisserie. A 'row' is a group of "
+               "roasted chickens (about 4) placed together when pulled off the spit. How many rows of cooked, "
+               "GOLDEN/BROWN WHOLE CHICKENS are sitting on the bench right now? IMPORTANT: bare steel, metal "
+               "spikes, wire frames/cages, tongs, trays and fryer baskets are NOT chickens — ignore them and "
+               "count ONLY actual roasted chickens. A person may be partly in the way; still count any chicken "
+               "rows you can clearly see on the bench. If the bench is COMPLETELY hidden, reply the single word "
+               "BLOCKED. Otherwise reply ONLY one digit: 0, 1, 2 or 3.")
+def _rotcam_bench_crop(jpeg):
+    try:
+        from PIL import Image; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        x1,x2,y1,y2=_BENCH_BOX
+        c=im.crop((int(W*x1),int(H*y1),int(W*x2),int(H*y2)))
+        if c.width>720: c=c.resize((720,max(1,int(c.height*720/c.width))))
+        out=io.BytesIO(); c.save(out,"JPEG",quality=78); return out.getvalue()
+    except Exception:
+        return None
+def _rotcam_bench_count(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key: return None
+    crop=_rotcam_bench_crop(jpeg)
+    if crop is None: return None
+    _gem_count_call()
+    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(crop).decode()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":32}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_BENCH_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":__import__("base64").b64encode(crop).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        cand=(data.get("candidates") or [{}])[0]
+        parts=((cand.get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
+        if not txt: return None
+        if "block" in txt.lower() and not re.search(r"\d",txt): return None   # bench fully hidden → skip
+        m=re.search(r"\d",txt)
+        if not m: return None
+        return max(0,min(3,int(m.group())))
+    except Exception:
+        return None
+def _rotcam_bench_apply(n):
+    if n is None: return                                   # blocked/error → hold, don't touch stock
+    bh=ROTCAM.get("bench_hist",[]); bh.append(n); ROTCAM["bench_hist"]=bh[-3:]
+    if len(bh)>=2 and bh[-1]==bh[-2]:                      # two reads agree → trust it
+        confirmed=bh[-1]; prev=ROTCAM.get("bench_rows")
+        if prev is None: ROTCAM["bench_rows"]=confirmed; return   # first reading = baseline, don't add
+        if confirmed>prev: rot_put_on(confirmed-prev)     # fresh cooked row(s) landed → +birds_per_row each
+        ROTCAM["bench_rows"]=confirmed
+# ===================================================================================
 def _rotcam_read():
     fr=ROTCAM.get("frame")                                   # reuse the live-feed frame if fresh
     if fr and (time.time()-ROTCAM.get("frame_ts",0))<8:      # (avoids a 2nd camera connection)
@@ -989,7 +1049,7 @@ def _rotcam_apply(rows):
         if len(h)>=2 and h[-1]==h[-2]:
             confirmed=h[-1]; prev=ROTCAM["cooking"]
             if confirmed!=prev:
-                if confirmed<prev: rot_put_on(prev-confirmed)
+                if confirmed<prev and not _rotcam_cfg().get("bench_enabled",True): rot_put_on(prev-confirmed)
                 ROTCAM["cooking"]=confirmed
         return
     # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then act on shelves
@@ -1000,7 +1060,7 @@ def _rotcam_apply(rows):
         if confirmed!=prev:
             if prev and len(prev)==6:
                 came_off=sum(1 for i in range(6) if prev[i]=="1" and confirmed[i]=="0")
-                if came_off>0: rot_put_on(came_off)   # cooked rows came off → add to available (×birds per row)
+                if came_off>0 and not _rotcam_cfg().get("bench_enabled",True): rot_put_on(came_off)   # only when bench-watcher OFF (else the bench handles +available)
             ROTCAM["cooking_pat"]=confirmed
             ROTCAM["cooking"]=confirmed.count("1")
 def _hm_to_min(s,d):
@@ -1022,7 +1082,11 @@ def rotcam_loop():
                     ROTCAM["error"]=err
                     if "429" in err or "quota" in err.lower():
                         time.sleep(900); continue   # quota/rate limit hit → wait 15 min before retrying, don't hammer
-                else: ROTCAM["error"]=""; _rotcam_apply(rows)
+                else:
+                    ROTCAM["error"]=""; _rotcam_apply(rows)
+                    if jpeg and cfg.get("bench_enabled",True):   # watch the unloading bench → +stock when a cooked row lands
+                        try: _rotcam_bench_apply(_rotcam_bench_count(jpeg))
+                        except Exception: pass
             except Exception as e: ROTCAM["error"]=str(e)
         time.sleep(iv)
 
@@ -1034,7 +1098,7 @@ def api_rotcam_config():
     if "interval" in d:
         try: cfg["interval"]=max(10,int(d["interval"]))
         except Exception: pass
-    for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled"):
+    for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled"):
         if bk in d: cfg[bk]=bool(d[bk])
     with data_lock: db["rotcam_config"]=cfg; save_data(db)
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled") and cfg.get("gemini_key") and _rotcam_rtsp())})
@@ -1048,6 +1112,10 @@ def api_rotcam_test():
     elif jpeg:
         import base64 as _b
         out["preview"]="data:image/jpeg;base64,"+_b.b64encode(jpeg).decode()
+    if jpeg:                                                          # also read + show the unloading bench (for tuning)
+        try: out["bench_rows"]=_rotcam_bench_count(jpeg)
+        except Exception: out["bench_rows"]=None
+        if ROTCAM.get("bench_comp"): out["bench_preview"]=ROTCAM["bench_comp"]
     return jsonify(out)
 
 # --- live feed: one persistent ffmpeg pulls MJPEG and keeps the latest frame ready, so
