@@ -1072,26 +1072,34 @@ def _hm_to_min(s,d):
 def rotcam_loop():
     while True:
         cfg=_rotcam_cfg()
-        try: iv=max(10,int(cfg.get("interval",120) or 120))
+        try: iv=max(10,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display)
         except Exception: iv=120
+        try: bench_iv=max(4,int(cfg.get("bench_interval",6) or 6))     # bench cadence (faster → catches each row as it lands)
+        except Exception: bench_iv=6
         nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
         a=_hm_to_min(cfg.get("active_start"),595)   # default 09:55
         b=_hm_to_min(cfg.get("active_end"),1200)    # default 20:00
         open_now=a<=mins<b   # only count during the active window → controls cost
         if cfg.get("enabled") and open_now and (cfg.get("gemini_key") or "").strip() and _rotcam_rtsp():
             try:
-                rows,jpeg,err=_rotcam_read()
-                if err:
-                    ROTCAM["error"]=err
-                    if "429" in err or "quota" in err.lower():
-                        time.sleep(900); continue   # quota/rate limit hit → wait 15 min before retrying, don't hammer
-                else:
-                    ROTCAM["error"]=""; _rotcam_apply(rows)
-                    if jpeg and cfg.get("bench_enabled",True):   # watch the unloading bench → +stock when a cooked row lands
+                jpeg=ROTCAM.get("frame")                                # reuse the live-feed frame if fresh, else grab one
+                if not (jpeg and (time.time()-ROTCAM.get("frame_ts",0))<8):
+                    jpeg,gerr=_rotcam_grab()
+                    if gerr:
+                        ROTCAM["error"]=gerr; jpeg=None
+                        if "429" in gerr or "quota" in gerr.lower(): time.sleep(900); continue
+                if jpeg:
+                    ROTCAM["error"]=""
+                    if cfg.get("bench_enabled",True):                   # BENCH (fast) → drives available stock
                         try: _rotcam_bench_apply(_rotcam_bench_count(jpeg))
                         except Exception: pass
+                    if time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count on its slower cadence
+                        ROTCAM["last_shelf_ts"]=time.time()
+                        rows,cerr=_rotcam_count(jpeg)
+                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(900); continue
+                        if not cerr: _rotcam_apply(rows)
             except Exception as e: ROTCAM["error"]=str(e)
-        time.sleep(iv)
+        time.sleep(bench_iv)
 
 @app.route("/api/rotcam_config",methods=["POST"])
 def api_rotcam_config():
@@ -1100,6 +1108,9 @@ def api_rotcam_config():
         if k in d: cfg[k]=str(d[k]).strip()
     if "interval" in d:
         try: cfg["interval"]=max(10,int(d["interval"]))
+        except Exception: pass
+    if "bench_interval" in d:
+        try: cfg["bench_interval"]=max(4,int(d["bench_interval"]))
         except Exception: pass
     for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled"):
         if bk in d: cfg[bk]=bool(d[bk])
