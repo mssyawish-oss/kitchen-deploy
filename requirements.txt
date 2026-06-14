@@ -1,0 +1,6 @@
+flask
+bleak
+certifi
+pypdf
+pillow
+soco

@@ -521,6 +521,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div class="topbar-title">Bruno's Chicken Shop</div>
     </div>
     <div class="top-bar-right">
+      <button class="tb-ic" id="music-btn" onclick="openMusic()" title="Music"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
       <button class="tb-ic" id="silence-all-btn" onclick="silenceAll()" title="Silence all alarms" style="color:var(--amber);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
       <div id="clock" class="tb-clock"></div>
       <div id="user-badge" style="display:none;"></div>
@@ -620,6 +621,27 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="form-row" id="sc-fry-row"><div class="label">Fried chicken pieces available</div><input class="input" id="sc-fry" type="number" style="text-align:center;font-size:22px;"></div>
     <div class="row mt-8"><button class="btn btn-primary" style="flex:1.4;" onclick="submitStockCheck()">Confirm counts</button><button class="btn" onclick="closeModal('stockcheck-modal')">Looks right</button></div>
     <button class="btn" style="margin-top:10px;font-size:12px;padding:5px 12px;color:var(--muted);" onclick="turnOffStockPrompt()">Turn off these reminders</button>
+  </div>
+</div>
+
+<!-- Music (Sonos) modal -->
+<div class="modal-overlay" id="music-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header"><div class="modal-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> MUSIC</div><button class="modal-close" onclick="closeMusic()">Close</button></div>
+    <div id="music-status" style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:8px;">Connecting…</div>
+    <div id="music-now" style="text-align:center;margin-bottom:14px;min-height:20px;"></div>
+    <div class="row" style="justify-content:center;gap:16px;margin-bottom:14px;">
+      <button class="btn" style="padding:10px 16px;" onclick="sonosCmd('previous')" title="Previous"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4"/><rect x="5" y="4" width="2.5" height="16"/></svg></button>
+      <button class="btn btn-primary" id="music-playpause" style="padding:10px 24px;" onclick="sonosPlayPause()" title="Play/Pause"></button>
+      <button class="btn" style="padding:10px 16px;" onclick="sonosCmd('next')" title="Next"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20"/><rect x="16.5" y="4" width="2.5" height="16"/></svg></button>
+    </div>
+    <div class="row" style="justify-content:center;gap:12px;align-items:center;margin-bottom:14px;">
+      <button class="btn" onclick="sonosCmd('vol_down')">Vol &minus;</button>
+      <span id="music-vol" style="font-family:var(--font-mono);min-width:44px;text-align:center;font-size:16px;"></span>
+      <button class="btn" onclick="sonosCmd('vol_up')">Vol +</button>
+    </div>
+    <div class="label">Favourites</div>
+    <div id="music-favs" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;"></div>
   </div>
 </div>
 
@@ -1471,6 +1493,27 @@ function turnOffStockPrompt(){
   closeModal('stockcheck-modal');
   if(typeof _toast==='function')_toast('Stock-check reminders turned off. Re-enable in Settings → Alarms & Prompts.');
 }
+// ===== Sonos music control =====
+let _musicTimer=null,_musicPlaying=false;
+function _mEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function openMusic(){openModal('music-modal');refreshMusic();if(_musicTimer)clearInterval(_musicTimer);_musicTimer=setInterval(()=>{const m=document.getElementById('music-modal');if(m&&m.classList.contains('open'))refreshMusic();else{clearInterval(_musicTimer);_musicTimer=null;}},5000);}
+function closeMusic(){if(_musicTimer){clearInterval(_musicTimer);_musicTimer=null;}closeModal('music-modal');}
+function refreshMusic(){fetch('/api/sonos/status').then(r=>r.json()).then(d=>{
+  const st=document.getElementById('music-status'),now=document.getElementById('music-now'),vol=document.getElementById('music-vol'),favs=document.getElementById('music-favs'),pp=document.getElementById('music-playpause');
+  if(!pp)return;
+  const playSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg>';
+  const pauseSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.5" height="16"/><rect x="13.5" y="4" width="4.5" height="16"/></svg>';
+  if(!d.ok){st.textContent=d.error||'No Sonos found';now.innerHTML='';vol.textContent='';favs.innerHTML='';pp.innerHTML=playSvg;return;}
+  st.textContent='';
+  _musicPlaying=(d.state==='PLAYING');
+  pp.innerHTML=_musicPlaying?pauseSvg:playSvg;
+  now.innerHTML=d.title?('<div style="font-weight:700;font-size:15px;">'+_mEsc(d.title)+'</div>'+(d.artist?'<div style="color:var(--muted);font-size:13px;">'+_mEsc(d.artist)+'</div>':'')):'<div style="color:var(--muted);">Nothing playing</div>';
+  vol.textContent=(d.volume!=null?d.volume:'—');
+  favs.innerHTML=(d.favorites&&d.favorites.length)?d.favorites.map((f,i)=>'<button class="btn" style="text-align:left;justify-content:flex-start;" onclick="sonosFav('+i+')">'+_mEsc(f)+'</button>').join(''):'<div style="color:var(--muted);font-size:12px;">No favourites found — add some in the Sonos app.</div>';
+}).catch(()=>{const st=document.getElementById('music-status');if(st)st.textContent='Could not reach the music system.';});}
+function sonosCmd(a){fetch('/api/sonos/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(()=>setTimeout(refreshMusic,600));}
+function sonosPlayPause(){sonosCmd(_musicPlaying?'pause':'play');}
+function sonosFav(i){const st=document.getElementById('music-status');if(st)st.textContent='Loading…';fetch('/api/sonos/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'play_favorite',index:i})}).then(()=>setTimeout(refreshMusic,900));}
 function submitStockCheck(){
   const b=parseFloat(document.getElementById('sc-bbq').value),f=parseInt(document.getElementById('sc-fry').value);
   if(!isNaN(b)){_rotSig='';fetch('/api/rot_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:b})});}

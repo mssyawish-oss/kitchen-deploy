@@ -1512,6 +1512,85 @@ def test_email_route():
         return jsonify({"ok":True})
     except Exception as e: return jsonify({"ok":False,"error":str(e)})
 
+# ===== SONOS music control (local LAN, via the SoCo library) =======================
+_SONOS={"dev":None}
+def _sonos_coordinator():
+    try:
+        import soco
+    except Exception:
+        return None,"Sonos library not installed (run: pip install soco, then restart)"
+    d=_SONOS.get("dev")
+    if d is not None:
+        try: _=d.player_name            # touch it — if it errors, re-discover
+        except Exception: d=None
+    if d is None:
+        ip=(db.get("sonos_ip") or "").strip()
+        if ip:
+            try: cand=soco.SoCo(ip); _=cand.player_name; d=cand
+            except Exception: d=None
+        if d is None:
+            try: d=soco.discovery.any_soco()
+            except Exception: d=None
+        if d is not None:
+            _SONOS["dev"]=d
+            try:
+                with data_lock: db["sonos_ip"]=d.ip_address; save_data(db)
+            except Exception: pass
+    if d is None: return None,"No Sonos found on the network"
+    try: return d.group.coordinator, None      # control the whole group together
+    except Exception: return d, None
+@app.route("/api/sonos/status")
+def api_sonos_status():
+    c,err=_sonos_coordinator()
+    if err: return jsonify({"ok":False,"error":err})
+    out={"ok":True}
+    try:
+        ti=c.get_current_track_info() or {}
+        out["title"]=ti.get("title") or ""; out["artist"]=ti.get("artist") or ""
+        out["album_art"]=ti.get("album_art") or ""
+    except Exception: pass
+    try: out["state"]=(c.get_current_transport_info() or {}).get("current_transport_state","")
+    except Exception: out["state"]=""
+    try: out["volume"]=c.group.volume
+    except Exception:
+        try: out["volume"]=c.volume
+        except Exception: out["volume"]=None
+    try: out["favorites"]=[f.title for f in c.music_library.get_sonos_favorites()]
+    except Exception: out["favorites"]=[]
+    return jsonify(out)
+@app.route("/api/sonos/cmd",methods=["POST"])
+def api_sonos_cmd():
+    c,err=_sonos_coordinator()
+    if err: return jsonify({"ok":False,"error":err})
+    d=request.get_json(silent=True) or {}; a=str(d.get("action",""))
+    def setvol(v):
+        try: c.group.volume=max(0,min(100,int(v)))
+        except Exception: c.volume=max(0,min(100,int(v)))
+    def getvol():
+        try: return c.group.volume
+        except Exception: return c.volume
+    try:
+        if a=="play": c.play()
+        elif a=="pause": c.pause()
+        elif a=="next": c.next()
+        elif a=="previous": c.previous()
+        elif a=="vol_up": setvol(getvol()+5)
+        elif a=="vol_down": setvol(getvol()-5)
+        elif a=="set_volume": setvol(d.get("volume",30))
+        elif a=="play_favorite":
+            favs=c.music_library.get_sonos_favorites()
+            i=int(d.get("index",0))
+            if 0<=i<len(favs):
+                fav=favs[i]
+                meta=getattr(fav,"resource_meta_data","") or ""
+                c.play_uri(uri=fav.reference.get_uri(), meta=meta)
+                c.play()
+        else: return jsonify({"ok":False,"error":"unknown action"})
+        return jsonify({"ok":True})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+# ==================================================================================
+
 if __name__=="__main__":
     import webbrowser
     print("="*55)
