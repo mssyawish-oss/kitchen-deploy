@@ -793,6 +793,9 @@ def api_features():
     with data_lock:
         for k in ("stock_alarm_enabled","probe_alarm_enabled","stock_prompt_enabled"):
             if k in d: db[k]=bool(d[k])
+        if "stock_prompt_hours" in d:
+            try: db["stock_prompt_hours"]=max(1,min(8,int(d["stock_prompt_hours"])))
+            except Exception: pass
         save_data(db)
     return jsonify({"ok":True})
 
