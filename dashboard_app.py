@@ -1322,6 +1322,64 @@ def _rotcam_bench_apply(n):
         rot_put_on(peak)                                   # +birds_per_row per row
         ROTCAM["bench_peak"]=0
     ROTCAM["bench_rows"]=n
+# --- DEDICATED SIDE-ANGLE BENCH CAMERA (2nd Tapo) -----------------------------------
+# A second camera mounted to the side keeps the unloading bench in full view wherever it
+# rolls, and can see rows placed side-by-side or stacked. When configured, the bench watcher
+# pulls from THIS camera (whole frame, no crop) instead of cropping the front camera.
+def _bench_rtsp():
+    cfg=_rotcam_cfg()
+    if (cfg.get("bench_rtsp_url") or "").strip(): return cfg["bench_rtsp_url"].strip()
+    ip=(cfg.get("bench_ip") or "").strip()
+    if not ip: return ""
+    user=(cfg.get("bench_user") or "").strip(); pw=(cfg.get("bench_pass") or "").strip()
+    stream=(cfg.get("bench_stream") or "stream1").strip()
+    auth=(urllib.parse.quote(user)+":"+urllib.parse.quote(pw)+"@") if user else ""
+    return "rtsp://%s%s:554/%s"%(auth,ip,stream)
+def _bench_grab():
+    import subprocess
+    url=_bench_rtsp()
+    if not url: return None,"No bench camera configured"
+    try:
+        p=subprocess.run(["ffmpeg","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+                         capture_output=True,timeout=25)
+        if p.returncode!=0 or not p.stdout:
+            return None,"Couldn't read the bench camera (check its RTSP/camera-account login)."
+        return p.stdout,None
+    except FileNotFoundError: return None,"ffmpeg is not installed."
+    except Exception as e: return None,str(e)
+_BENCH_SIDE_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADING BENCH in a rotisserie chicken shop — the bench "
+                    "where cooked chickens are placed straight after coming off the spit. Count how many ROWS of cooked, "
+                    "GOLDEN/BROWN WHOLE roasted chickens are sitting on the bench right now. A 'row' is a group of about 4 whole "
+                    "chickens placed together as they come off one spit. Rows may sit SIDE BY SIDE (2 or 3 across the bench) and "
+                    "are sometimes STACKED (a second layer resting on top of the bottom rows) — count EVERY distinct row you can "
+                    "see, including stacked ones on top. IMPORTANT: ignore bare steel, trays, tongs, wire frames/cages, fryer "
+                    "baskets, and any PEOPLE (heads, bodies, arms, gloved hands). Do NOT count BUTTERFLIED / flattened / "
+                    "spatchcocked / split-open / halved or quartered chickens — count ONLY plump WHOLE birds. If the bench is "
+                    "empty reply 0. If it is completely blocked or out of view reply the single word BLOCKED. Otherwise reply "
+                    "ONLY one digit 0-6 for the number of rows.")
+def _benchcam_count(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None
+    img=_downscale_jpeg(jpeg,720)
+    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(img).decode()
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":32}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_BENCH_SIDE_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":__import__("base64").b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        cand=(data.get("candidates") or [{}])[0]
+        txt="".join(p.get("text","") for p in (((cand.get("content") or {}).get("parts")) or []) if isinstance(p,dict))
+        if not txt: return None
+        if "block" in txt.lower() and not re.search(r"\d",txt): return None
+        m=re.search(r"\d",txt)
+        return max(0,min(6,int(m.group()))) if m else None
+    except Exception: return None
 # ===================================================================================
 def _rotcam_read():
     fr=ROTCAM.get("frame")                                   # reuse the live-feed frame if fresh
@@ -1379,8 +1437,14 @@ def rotcam_loop():
                         if "429" in gerr or "quota" in gerr.lower(): time.sleep(900); continue
                 if jpeg:
                     ROTCAM["error"]=""
-                    if cfg.get("bench_enabled",False):                  # BENCH auto-count — OFF by default (beta; over-counts when the bench rolls in/out of view)
-                        try: _rotcam_bench_apply(_rotcam_bench_count(jpeg))
+                    if cfg.get("bench_enabled",False):                  # BENCH auto-count
+                        try:
+                            if _bench_rtsp():                           # dedicated side-angle bench camera (always sees the bench)
+                                bframe,berr=_bench_grab()
+                                if bframe: _rotcam_bench_apply(_benchcam_count(bframe))
+                                elif berr: ROTCAM["bench_error"]=berr
+                            else:                                       # fallback: crop the bottom of the front camera frame
+                                _rotcam_bench_apply(_rotcam_bench_count(jpeg))
                         except Exception: pass
                     if time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count on its slower cadence
                         ROTCAM["last_shelf_ts"]=time.time()
@@ -1393,7 +1457,8 @@ def rotcam_loop():
 @app.route("/api/rotcam_config",methods=["POST"])
 def api_rotcam_config():
     d=request.get_json(silent=True) or {}; cfg=db.get("rotcam_config",{}) or {}
-    for k in ("ip","user","pass","rtsp_url","stream","gemini_key","model","prompt","active_start","active_end"):
+    for k in ("ip","user","pass","rtsp_url","stream","gemini_key","model","prompt","active_start","active_end",
+              "bench_ip","bench_user","bench_pass","bench_rtsp_url","bench_stream"):
         if k in d: cfg[k]=str(d[k]).strip()
     if "interval" in d:
         try: cfg["interval"]=max(10,int(d["interval"]))
@@ -1415,10 +1480,22 @@ def api_rotcam_test():
     elif jpeg:
         import base64 as _b
         out["preview"]="data:image/jpeg;base64,"+_b.b64encode(jpeg).decode()
-    if jpeg:                                                          # also read + show the unloading bench (for tuning)
+    if jpeg and not _bench_rtsp():                                    # front-crop bench read (only if no dedicated bench cam)
         try: out["bench_rows"]=_rotcam_bench_count(jpeg)
         except Exception: out["bench_rows"]=None
         if ROTCAM.get("bench_comp"): out["bench_preview"]=ROTCAM["bench_comp"]
+    return jsonify(out)
+
+@app.route("/api/benchcam_test",methods=["POST"])
+def api_benchcam_test():
+    if not _bench_rtsp(): return jsonify({"ok":False,"error":"No bench camera configured (add its RTSP/IP first)."})
+    jpeg,err=_bench_grab()
+    if err: return jsonify({"ok":False,"error":err})
+    rows=_benchcam_count(jpeg)
+    out={"ok":True,"bench_rows":rows}
+    if ROTCAM.get("bench_comp"): out["preview"]=ROTCAM["bench_comp"]
+    else:
+        import base64 as _b; out["preview"]="data:image/jpeg;base64,"+_b.b64encode(_downscale_jpeg(jpeg,720)).decode()
     return jsonify(out)
 
 # --- live feed: one persistent ffmpeg pulls MJPEG and keeps the latest frame ready, so
@@ -1610,7 +1687,8 @@ def get_db():
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
     rc=db.get("rotcam_config") or {}
-    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled")}  # no pass/key
+    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream")}  # no pass/key
+    safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
     try: safe["backend_update_pending"]=os.path.exists(PENDING_FILE)
     except Exception: safe["backend_update_pending"]=False
