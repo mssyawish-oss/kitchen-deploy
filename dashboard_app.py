@@ -966,6 +966,7 @@ def api_alarm_settings():
             for b in ("enabled","flash","vibrate"):
                 if b in v: cur[b]=bool(v[b])
             if isinstance(v.get("color"),str): cur["color"]=v["color"][:9]
+            if "sound_preset" in v: cur["sound_preset"]=str(v.get("sound_preset") or "")[:32]
             if "volume" in v:
                 try: cur["volume"]=max(0.0,min(1.0,float(v["volume"])))
                 except Exception: pass

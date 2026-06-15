@@ -982,6 +982,25 @@ function playAlmostTone(v){v=v==null?1:v;playTone(600,'sine',.3,.2*v);setTimeout
 function playReadyTone(v){v=v==null?1:v;playTone(880,'sine',.2,.3*v);setTimeout(()=>playTone(1100,'sine',.2,.3*v),200);setTimeout(()=>playTone(1320,'sine',.4,.3*v),400);}
 function playOverdoneTone(v){v=v==null?1:v;[0,150,300,450,600,750,900,1050].forEach(t=>setTimeout(()=>playTone(1800,'square',.1,.35*v),t));}
 function playChime(v){v=v==null?1:v;playTone(880,'sine',.3,.16*v);setTimeout(()=>playTone(1175,'sine',.45,.16*v),170);}
+// ── built-in tone library (QSR-style alarm sounds, synthesised) ──
+const _TONES={
+ fryer:{name:'Fryer timer (triple beep)',fn:v=>[0,170,340].forEach(t=>setTimeout(()=>playTone(2000,'square',.12,.3*v),t))},
+ uhc:{name:'Tray timer (high triple)',fn:v=>[0,160,320].forEach(t=>setTimeout(()=>playTone(3136,'square',.1,.26*v),t))},
+ microwave:{name:'Microwave (4 beeps)',fn:v=>[0,250,500,750].forEach(t=>setTimeout(()=>playTone(1046,'sine',.16,.28*v),t))},
+ drivethru:{name:'Drive-thru ding-dong',fn:v=>{playTone(988,'sine',.35,.28*v);setTimeout(()=>playTone(740,'sine',.5,.28*v),300);}},
+ doorbell:{name:'Doorbell (two-tone)',fn:v=>{playTone(659,'sine',.4,.3*v);setTimeout(()=>playTone(523,'sine',.6,.3*v),360);}},
+ register:{name:'Register chirp',fn:v=>{playTone(1318,'square',.07,.25*v);setTimeout(()=>playTone(1760,'square',.09,.25*v),90);}},
+ ready:{name:'Order ready (rising)',fn:v=>{playTone(880,'sine',.18,.3*v);setTimeout(()=>playTone(1174,'sine',.18,.3*v),180);setTimeout(()=>playTone(1568,'sine',.32,.3*v),360);}},
+ bell:{name:'Service bell (ding)',fn:v=>{playTone(1568,'sine',.55,.22*v);setTimeout(()=>playTone(2093,'sine',.5,.12*v),18);}},
+ chime:{name:'Soft chime',fn:v=>{playTone(784,'sine',.4,.18*v);setTimeout(()=>playTone(1047,'sine',.5,.16*v),180);}},
+ marimba:{name:'Gentle marimba',fn:v=>{playTone(523,'sine',.18,.3*v);setTimeout(()=>playTone(784,'sine',.18,.28*v),150);setTimeout(()=>playTone(1047,'sine',.3,.24*v),300);}},
+ klaxon:{name:'Klaxon (alternating)',fn:v=>{playTone(440,'sawtooth',.22,.2*v);setTimeout(()=>playTone(587,'sawtooth',.22,.2*v),220);setTimeout(()=>playTone(440,'sawtooth',.22,.2*v),440);}},
+ urgent:{name:'Urgent (rapid beeps)',fn:v=>[0,120,240,360,480].forEach(t=>setTimeout(()=>playTone(2300,'square',.07,.28*v),t))},
+ pager:{name:'Pager buzz',fn:v=>{playTone(1200,'square',.18,.24*v);setTimeout(()=>playTone(1200,'square',.18,.24*v),230);}},
+ sonar:{name:'Sonar ping',fn:v=>playTone(1320,'sine',.6,.26*v)},
+ alert3:{name:'Alert (three tones)',fn:v=>{playTone(1046,'square',.12,.28*v);setTimeout(()=>playTone(1318,'square',.12,.28*v),150);setTimeout(()=>playTone(1568,'square',.2,.28*v),300);}}
+};
+const _TONE_ORDER=['fryer','uhc','microwave','drivethru','doorbell','register','ready','bell','chime','marimba','klaxon','urgent','pager','sonar','alert3'];
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};const _alarmStart={};
 // ── Alarm Center: per-alarm config (sound / volume / interval / flash colour / vibrate / auto-stop) ──
 const _ALARM_DEF={
@@ -1002,10 +1021,11 @@ function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})
   volume:(typeof c.volume==='number')?c.volume:0.85,
   interval:(typeof c.interval==='number')?c.interval:(d.interval||1500),
   autostop:(typeof c.autostop==='number')?c.autostop:0,
-  has_custom:c.has_custom===true, sound_v:c.sound_v||0 };}
+  has_custom:c.has_custom===true, sound_v:c.sound_v||0, sound_preset:c.sound_preset||'' };}
 function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';return 'timer';}
 function _alarmHit(key){const c=_acfg(key);const v=c.volume;
   if(c.has_custom){try{const a=new Audio('/api/alarm_sound/'+key+'?v='+c.sound_v);a.volume=Math.max(0,Math.min(1,v));a.play().catch(()=>{});}catch(e){}}
+  else if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(v);}catch(e){}}
   else _alarmSynth(key,v);
   if(c.vibrate&&navigator.vibrate){try{navigator.vibrate(200);}catch(e){}}}
 function _alarmSynth(key,v){
@@ -1020,7 +1040,7 @@ function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeou
 function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;function loop(){if(!alarms['prod-off'])return;_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},_acfg('prodoff').interval);}loop();}
 function stopAlarm(id){alarms[id]=false;}
 function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];}
-function startProbeAlarm(pid,type){if(!_acfg('probe').enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg('probe');const iv=(typeof((appData.alarm_cfg||{}).probe||{}).interval==='number')?c.interval:(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;if(c.has_custom)_alarmHit('probe');else{if(type==='ready')playReadyTone(c.volume);if(type==='overdone')playOverdoneTone(c.volume);}setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
+function startProbeAlarm(pid,type){if(!_acfg('probe').enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg('probe');const iv=(typeof((appData.alarm_cfg||{}).probe||{}).interval==='number')?c.interval:(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;if(c.has_custom||c.sound_preset)_alarmHit('probe');else{if(type==='ready')playReadyTone(c.volume);if(type==='overdone')playOverdoneTone(c.volume);}setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub){
   if(!_acfg('service').enabled)return;
@@ -1752,9 +1772,10 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>'
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
       +'</div>'
-      +'<div class="ac-sound"><span>Sound:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file':'Built-in tone')+'</span>'
+      +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Default</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">▶</button></div>'
+      +'<div class="ac-sound"><span>Or own file:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file (overrides tone)':'none')+'</span>'
       +'<label class="btn" style="padding:5px 10px;font-size:12px;cursor:pointer;">Upload…<input type="file" accept="audio/*" style="display:none;" onchange="alarmUpload(\''+key+'\',this)"></label>'
-      +(c.has_custom?'<button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmResetSound(\''+key+'\')">Use built-in</button>':'')
+      +(c.has_custom?'<button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmResetSound(\''+key+'\')">Remove file</button>':'')
       +'<span id="asnd-'+key+'" style="font-size:11px;color:var(--muted);"></span></div>'
       +'<div class="ac-btns"><button class="btn btn-primary" onclick="alarmTest(\''+key+'\')">▶ Test</button><button class="btn" onclick="silenceOneAlarm(\''+key+'\')">Silence now</button></div>'
       +'</div>';
@@ -1764,6 +1785,8 @@ function alarmSet(key,field,value){appData.alarm_cfg=appData.alarm_cfg||{};appDa
 function alarmTest(key){_alarmHit(key);const c=_acfg(key);const el=document.getElementById('alarm-flash');if(el&&c.flash){el.style.setProperty('--af-col',c.color);el.classList.add('on');setTimeout(()=>{if(!_activeAlarmKeys().size)el.classList.remove('on');},1700);}}
 function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return;const st=document.getElementById('asnd-'+key);if(st)st.textContent='Uploading…';const fd=new FormData();fd.append('file',f);fetch('/api/alarm_sound/'+key,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=true;appData.alarm_cfg[key].sound_v=d.sound_v;if(st)st.textContent='Saved ✓';renderAlarmCenter();}else{if(st)st.textContent=(d.error||'failed');}}).catch(()=>{if(st)st.textContent='failed';});}
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
+function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
+function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
 function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
