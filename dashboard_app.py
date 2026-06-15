@@ -875,9 +875,24 @@ def api_camera_test():
     return jsonify({"ok":True,"preview":"data:image/jpeg;base64,"+base64.b64encode(data).decode()})
 
 # ===== STORE CAMERAS (multi-camera monitoring page) ================================
+def _rtsp_frame(url):
+    # grab one JPEG from an RTSP camera (TP-Link VIGI / Tapo / ONVIF) via ffmpeg
+    import subprocess
+    try:
+        p=subprocess.run(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+                         capture_output=True,timeout=15)
+        if p.returncode==0 and p.stdout[:2]==b"\xff\xd8": return p.stdout,None
+        err=(p.stderr or b"")[-160:].decode("latin1","ignore").strip()
+        return None,"ffmpeg could not grab a frame (check the RTSP URL / login)"+((" — "+err) if err else "")
+    except FileNotFoundError:
+        return None,"ffmpeg is not installed on the server"
+    except Exception as e:
+        return None,str(e)
 def _snap_from(cam):
-    # fetch a single JPEG from any Dahua-style camera via snapshot.cgi (HTTP digest auth)
+    # fetch a single JPEG: RTSP cameras via ffmpeg, otherwise Dahua-style snapshot.cgi (HTTP digest)
     cam=cam or {}
+    rtsp=(cam.get("rtsp_url") or "").strip()
+    if rtsp: return _rtsp_frame(rtsp)
     base=db.get("camera_config",{}) or {}   # store cams on the same recorder can reuse the saved login
     ip=str(cam.get("ip","")).strip() or str(base.get("ip","")).strip()
     if not ip and not (cam.get("url_override") or "").strip(): return None,"No camera address"
@@ -907,11 +922,12 @@ def api_cameras():
         else:
             cid=d.get("id") or _secrets.token_hex(4)
             existing=next((c for c in cams if c.get("id")==cid),None)
-            pw=d.get("pass")
+            pw=d.get("pass"); rtsp=d.get("rtsp_url")
             cam={"id":cid,"name":str(d.get("name","Camera"))[:40],"ip":str(d.get("ip","")).strip(),
                  "port":int(d.get("port") or 80),"channel":int(d.get("channel") or 1),
                  "user":str(d.get("user","")).strip(),"enabled":bool(d.get("enabled",True)),
-                 "pass":(pw if pw not in (None,"") else (existing or {}).get("pass",""))}
+                 "pass":(pw if pw not in (None,"") else (existing or {}).get("pass","")),
+                 "rtsp_url":(rtsp.strip() if isinstance(rtsp,str) and rtsp.strip() else (existing or {}).get("rtsp_url",""))}
             if existing: cams=[cam if c.get("id")==cid else c for c in cams]
             else: cams.append(cam)
         db["cameras"]=cams; save_data(db)
@@ -957,12 +973,14 @@ def api_restart():
     def _do():
         import subprocess
         time.sleep(0.8)                       # let the HTTP response flush first
+        # If launched by the watchdog batch (start_dashboard.bat sets KDASH_WATCHDOG=1), just exit
+        # cleanly — the loop relaunches us with fresh code. Bulletproof, also recovers from crashes.
+        if os.environ.get("KDASH_WATCHDOG")=="1":
+            os._exit(0)
+        # Otherwise (plain single-run launch) fall back to a detached self-relauncher.
         try:
             script=os.path.join(BASE_DIR,"dashboard_app.py")
             if os.name=="nt":
-                # Windows: os.execv is unreliable here (it can kill the server without relaunching).
-                # Instead spawn a DETACHED helper that waits ~2s for this process to release the port,
-                # then launches a fresh python. The helper survives our exit; then we quit cleanly.
                 DETACHED=0x00000008|0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen('ping -n 3 127.0.0.1 >nul & "%s" "%s"'%(sys.executable,script),
                                  cwd=BASE_DIR,shell=True,creationflags=DETACHED,close_fds=True)
@@ -1582,7 +1600,11 @@ def test_print():
 def get_db():
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
     safe={k:v for k,v in db.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config","cameras")}
-    safe["cameras_public"]=[{k:c.get(k) for k in ("id","name","ip","port","channel","enabled")} for c in (db.get("cameras") or [])]
+    safe["cameras_public"]=[]
+    for c in (db.get("cameras") or []):
+        item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
+        item["has_rtsp"]=bool((c.get("rtsp_url") or "").strip())
+        safe["cameras_public"].append(item)
     cc=db.get("camera_config") or {}
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
