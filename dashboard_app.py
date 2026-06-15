@@ -612,6 +612,75 @@ def _square_proxy(args):
             except Exception: pass
         return {"errors":[{"detail":str(e)}]}
 
+# ===== SOLD-OUT / TURNED-OFF PRODUCTS (Square Catalog) =============================
+def _sq_headers():
+    cfg=db.get("square_config",{}) or {}; token=(cfg.get("access_token") or "").strip()
+    if not token: return None
+    return {"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"}
+def _sq_offline_products():
+    # returns [{id,version,item,variation}] for item-variations marked SOLD OUT at this location
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return None,"Square not configured"
+    out=[]; cursor=None
+    try:
+        for _ in range(25):   # paginate, safety-capped
+            url=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for obj in data.get("objects",[]) or []:
+                if obj.get("type")!="ITEM": continue
+                name=((obj.get("item_data") or {}).get("name")) or "?"
+                for v in (obj.get("item_data") or {}).get("variations",[]) or []:
+                    vd=v.get("item_variation_data") or {}
+                    for ov in vd.get("location_overrides") or []:
+                        if ov.get("location_id")==loc and ov.get("sold_out"):
+                            out.append({"id":v.get("id"),"version":v.get("version"),"item":name,"variation":(vd.get("name") or "")})
+            cursor=data.get("cursor")
+            if not cursor: break
+        return out,None
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return None,"Square error: "+e.read().decode()[:180]
+            except Exception: pass
+        return None,str(e)
+def _sq_enable_variation(vid):
+    # clear SOLD OUT for one variation at this location (turn it back on)
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return False,"Square not configured"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr),timeout=15,context=SSL_CTX) as r:
+            obj=(json.loads(r.read().decode()) or {}).get("object")
+        if not obj: return False,"variation not found"
+        vd=obj.get("item_variation_data") or {}; los=vd.get("location_overrides") or []; found=False
+        for ov in los:
+            if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); found=True
+        if not found: los.append({"location_id":loc,"sold_out":False})
+        vd["location_overrides"]=los; obj["item_variation_data"]=vd
+        body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert-catalog-objects",data=json.dumps(body).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
+        return True,None
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return False,"Square error: "+e.read().decode()[:180]
+            except Exception: pass
+        return False,str(e)
+@app.route("/api/products_offline")
+def api_products_offline():
+    items,err=_sq_offline_products()
+    if err: return jsonify({"ok":False,"error":err})
+    return jsonify({"ok":True,"off":items,"count":len(items)})
+@app.route("/api/product_enable",methods=["POST"])
+def api_product_enable():
+    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
+    if not vid: return jsonify({"ok":False,"error":"no id"})
+    ok,err=_sq_enable_variation(vid)
+    return jsonify({"ok":ok,"error":err})
+# ==================================================================================
+
 # ── Google (Gmail + Drive) via OAuth refresh token, stored in db['google_config'] ──
 #    {client_id, client_secret, refresh_token}. Read-only scopes (gmail.readonly, drive.readonly).
 _g_tok={"access":None,"exp":0}
