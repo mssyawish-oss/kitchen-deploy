@@ -1120,7 +1120,7 @@ def _rotcam_apply(rows):
         if len(h)>=2 and h[-1]==h[-2]:
             confirmed=h[-1]; prev=ROTCAM["cooking"]
             if confirmed!=prev:
-                if confirmed<prev and not _rotcam_cfg().get("bench_enabled",True): rot_put_on(prev-confirmed)
+                if confirmed<prev and False: rot_put_on(prev-confirmed)   # display-only (no auto-add)
                 ROTCAM["cooking"]=confirmed
         return
     # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then act on shelves
@@ -1131,7 +1131,7 @@ def _rotcam_apply(rows):
         if confirmed!=prev:
             if prev and len(prev)==6:
                 came_off=sum(1 for i in range(6) if prev[i]=="1" and confirmed[i]=="0")
-                if came_off>0 and not _rotcam_cfg().get("bench_enabled",True): rot_put_on(came_off)   # only when bench-watcher OFF (else the bench handles +available)
+                if came_off>0 and False: rot_put_on(came_off)   # shelf detection is DISPLAY-ONLY now (never auto-adds stock — that was the original over-count source)
             ROTCAM["cooking_pat"]=confirmed
             ROTCAM["cooking"]=confirmed.count("1")
 def _hm_to_min(s,d):
@@ -1158,7 +1158,7 @@ def rotcam_loop():
                         if "429" in gerr or "quota" in gerr.lower(): time.sleep(900); continue
                 if jpeg:
                     ROTCAM["error"]=""
-                    if cfg.get("bench_enabled",True):                   # BENCH (fast) → drives available stock
+                    if cfg.get("bench_enabled",False):                  # BENCH auto-count — OFF by default (beta; over-counts when the bench rolls in/out of view)
                         try: _rotcam_bench_apply(_rotcam_bench_count(jpeg))
                         except Exception: pass
                     if time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count on its slower cadence
@@ -1385,7 +1385,7 @@ def get_db():
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
     rc=db.get("rotcam_config") or {}
-    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled")}  # no pass/key
+    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled")}  # no pass/key
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
     _ct=ROTCAM.get("calls_today",0); _tt=ROTCAM.get("calls_total",0)
     safe["rotcam_usage"]={"today":_ct,"cost_today":round(_ct*_GEM_COST_PER_CALL,2),"total":_tt,"cost_total":round(_tt*_GEM_COST_PER_CALL,2),"per_call":_GEM_COST_PER_CALL}
