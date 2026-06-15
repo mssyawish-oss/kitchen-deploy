@@ -448,6 +448,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
 .prodoff-on:hover{background:#15803d;}
 .prodoff-on:disabled{opacity:.65;cursor:default;}
+.prodoff-banner.mini{background:none;border:none;padding:0;}
+.prodoff-mini{display:inline-flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;border-radius:999px;padding:7px 15px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;}
+.prodoff-mini .num{background:#ef4444;color:#fff;border-radius:999px;padding:1px 9px;font-weight:800;font-size:13px;}
+.prodoff-mini.flashing{animation:prodoff-pulse 1.1s ease-in-out infinite;}
 #alarm-flash{position:fixed;inset:0;pointer-events:none;z-index:540;opacity:0;box-shadow:inset 0 0 0 7px var(--af-col,#ef4444),inset 0 0 70px 14px var(--af-col,#ef4444);}
 #alarm-flash.on{animation:af-pulse 1.1s ease-in-out infinite;}
 @keyframes af-pulse{0%,100%{opacity:0;}50%{opacity:.5;}}
@@ -982,25 +986,34 @@ function playAlmostTone(v){v=v==null?1:v;playTone(600,'sine',.3,.2*v);setTimeout
 function playReadyTone(v){v=v==null?1:v;playTone(880,'sine',.2,.3*v);setTimeout(()=>playTone(1100,'sine',.2,.3*v),200);setTimeout(()=>playTone(1320,'sine',.4,.3*v),400);}
 function playOverdoneTone(v){v=v==null?1:v;[0,150,300,450,600,750,900,1050].forEach(t=>setTimeout(()=>playTone(1800,'square',.1,.35*v),t));}
 function playChime(v){v=v==null?1:v;playTone(880,'sine',.3,.16*v);setTimeout(()=>playTone(1175,'sine',.45,.16*v),170);}
-// ── built-in tone library (QSR-style alarm sounds, synthesised) ──
+// ── richer synth engine so tones sound like real devices, not flat beeps ──
+function _ac(){return getCtx();}
+function _voice(freq,type,t0,dur,peak){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.start(t);o.stop(t+dur+.03);}
+// struck bell/ding — inharmonic metal partials with long ring-out (real ding, not a beep)
+function _bell(freq,t0,dur,v){[[1,1,1],[2.76,.55,.85],[5.4,.38,.6],[8.9,.22,.4]].forEach(p=>_voice(freq*p[0],'sine',t0,dur*p[2],v*.45*p[1]));}
+// buzzer — sawtooth gated by a square LFO (the harsh oven/dryer/buzz-in "bzzt")
+function _buzz(freq,t0,dur,v,rate){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.value=freq;o.connect(g);g.connect(c.destination);if(rate){const lfo=c.createOscillator(),lg=c.createGain();lfo.type='square';lfo.frequency.value=rate;lg.gain.value=v*.16;lfo.connect(lg);lg.connect(g.gain);g.gain.value=v*.18;lfo.start(t);lfo.stop(t+dur);}else{g.gain.setValueAtTime(v*.3,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);}o.start(t);o.stop(t+dur+.02);}
+// warble — two tones swung back and forth (alarm clock / klaxon)
+function _warble(f1,f2,t0,dur,v,rate){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain(),lfo=c.createOscillator(),lg=c.createGain();o.type='square';o.frequency.value=(f1+f2)/2;lfo.type='square';lfo.frequency.value=rate;lg.gain.value=(f2-f1)/2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=v*.2;o.connect(g);g.connect(c.destination);o.start(t);lfo.start(t);o.stop(t+dur);lfo.stop(t+dur);}
+// ── built-in tone library (real-world device sounds) ──
 const _TONES={
- fryer:{name:'Fryer timer (triple beep)',fn:v=>[0,170,340].forEach(t=>setTimeout(()=>playTone(2000,'square',.12,.3*v),t))},
- uhc:{name:'Tray timer (high triple)',fn:v=>[0,160,320].forEach(t=>setTimeout(()=>playTone(3136,'square',.1,.26*v),t))},
- microwave:{name:'Microwave (4 beeps)',fn:v=>[0,250,500,750].forEach(t=>setTimeout(()=>playTone(1046,'sine',.16,.28*v),t))},
- drivethru:{name:'Drive-thru ding-dong',fn:v=>{playTone(988,'sine',.35,.28*v);setTimeout(()=>playTone(740,'sine',.5,.28*v),300);}},
- doorbell:{name:'Doorbell (two-tone)',fn:v=>{playTone(659,'sine',.4,.3*v);setTimeout(()=>playTone(523,'sine',.6,.3*v),360);}},
- register:{name:'Register chirp',fn:v=>{playTone(1318,'square',.07,.25*v);setTimeout(()=>playTone(1760,'square',.09,.25*v),90);}},
- ready:{name:'Order ready (rising)',fn:v=>{playTone(880,'sine',.18,.3*v);setTimeout(()=>playTone(1174,'sine',.18,.3*v),180);setTimeout(()=>playTone(1568,'sine',.32,.3*v),360);}},
- bell:{name:'Service bell (ding)',fn:v=>{playTone(1568,'sine',.55,.22*v);setTimeout(()=>playTone(2093,'sine',.5,.12*v),18);}},
- chime:{name:'Soft chime',fn:v=>{playTone(784,'sine',.4,.18*v);setTimeout(()=>playTone(1047,'sine',.5,.16*v),180);}},
- marimba:{name:'Gentle marimba',fn:v=>{playTone(523,'sine',.18,.3*v);setTimeout(()=>playTone(784,'sine',.18,.28*v),150);setTimeout(()=>playTone(1047,'sine',.3,.24*v),300);}},
- klaxon:{name:'Klaxon (alternating)',fn:v=>{playTone(440,'sawtooth',.22,.2*v);setTimeout(()=>playTone(587,'sawtooth',.22,.2*v),220);setTimeout(()=>playTone(440,'sawtooth',.22,.2*v),440);}},
- urgent:{name:'Urgent (rapid beeps)',fn:v=>[0,120,240,360,480].forEach(t=>setTimeout(()=>playTone(2300,'square',.07,.28*v),t))},
- pager:{name:'Pager buzz',fn:v=>{playTone(1200,'square',.18,.24*v);setTimeout(()=>playTone(1200,'square',.18,.24*v),230);}},
- sonar:{name:'Sonar ping',fn:v=>playTone(1320,'sine',.6,.26*v)},
- alert3:{name:'Alert (three tones)',fn:v=>{playTone(1046,'square',.12,.28*v);setTimeout(()=>playTone(1318,'square',.12,.28*v),150);setTimeout(()=>playTone(1568,'square',.2,.28*v),300);}}
+ bell:{name:'Counter bell (ding)',fn:v=>_bell(1318,0,1.6,v)},
+ ready:{name:'Order-up (double ding)',fn:v=>{_bell(1318,0,1.2,v);_bell(1760,.16,1.5,v);}},
+ doorbell:{name:'Door chime (bing-bong)',fn:v=>{_bell(659,0,1.1,v);_bell(523,.42,1.6,v);}},
+ microwave:{name:'Microwave done',fn:v=>[0,.28,.56].forEach(t=>_voice(2000,'sine',t,.18,v*.3))},
+ fryer:{name:'Fryer / UHC timer',fn:v=>[0,.2,.4].forEach(t=>_buzz(1900,t,.13,v,0))},
+ ovenbuzz:{name:'Oven buzzer',fn:v=>_buzz(150,0,.85,v,15)},
+ dryer:{name:'Dryer buzzer (long)',fn:v=>_buzz(210,0,1.15,v,9)},
+ alarmclock:{name:'Alarm clock',fn:v=>_warble(820,1040,0,.95,v,9)},
+ klaxon:{name:'Klaxon',fn:v=>_warble(370,520,0,1.0,v,5)},
+ marimba:{name:'Marimba (gentle)',fn:v=>{_voice(523,'sine',0,.26,v*.4);_voice(784,'sine',.13,.26,v*.36);_voice(1047,'sine',.26,.42,v*.3);}},
+ chime:{name:'Soft chime',fn:v=>{_bell(784,0,1.1,v*.7);_bell(1047,.18,1.4,v*.7);}},
+ pager:{name:'Guest pager',fn:v=>[0,.26,.52].forEach(t=>_buzz(1000,t,.18,v,30))},
+ register:{name:'Register beep',fn:v=>_voice(1760,'square',0,.12,v*.28)},
+ urgent:{name:'Urgent alert',fn:v=>[0,.16,.32,.48].forEach(t=>_voice(2300,'square',t,.1,v*.28))},
+ sonar:{name:'Sonar ping',fn:v=>_voice(1320,'sine',0,.7,v*.3)}
 };
-const _TONE_ORDER=['fryer','uhc','microwave','drivethru','doorbell','register','ready','bell','chime','marimba','klaxon','urgent','pager','sonar','alert3'];
+const _TONE_ORDER=['bell','ready','doorbell','microwave','fryer','ovenbuzz','dryer','alarmclock','klaxon','marimba','chime','pager','register','urgent','sonar'];
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};const _alarmStart={};
 // ── Alarm Center: per-alarm config (sound / volume / interval / flash colour / vibrate / auto-stop) ──
 const _ALARM_DEF={
@@ -1644,15 +1657,26 @@ function checkProductsOff(){
       const tag=p.kind==='modifier'?'<span class="prodoff-tag">ADD-ON</span>':((p.variation&&p.variation.toLowerCase()!=='regular')?'<span class="prodoff-tag">'+_mEsc(p.variation)+'</span>':'');
       return '<div class="prodoff-row" data-id="'+p.id+'"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div><button class="prodoff-on" onclick="enableProduct(\''+p.id+'\',this)">Turn on</button></div>';
     }).join('');
-    b.style.display='block';b.classList.toggle('flashing',alarmOn);
-    b.innerHTML='<div class="prodoff-head">'
-      +'<svg style="width:24px;height:24px;color:#ef6e6e;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
-      +'<div style="flex:1;min-width:0;"><div class="prodoff-title">'+d.off.length+' product'+(d.off.length>1?'s':'')+' still switched off</div><div class="prodoff-sub">These won\'t sell until turned back on.</div></div>'
-      +(alarmOn?'<button class="prodoff-silence" onclick="silenceProductsOff()">Silence</button>':'')
-      +'</div>'+rows;
+    b.style.display='block';
+    const minimised=_prodOffMin&&_prodOffMinDay===today;   // minimise lasts the day; expands again each morning
+    if(minimised){
+      b.classList.add('mini');b.classList.remove('flashing');
+      b.innerHTML='<div class="prodoff-mini flashing" onclick="prodOffExpand()" title="tap to view"><span class="num">'+d.off.length+'</span> product'+(d.off.length>1?'s':'')+' switched off &middot; tap to view</div>';
+    }else{
+      b.classList.remove('mini');b.classList.toggle('flashing',alarmOn);
+      b.innerHTML='<div class="prodoff-head">'
+        +'<svg style="width:24px;height:24px;color:#ef6e6e;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+        +'<div style="flex:1;min-width:0;"><div class="prodoff-title">'+d.off.length+' product'+(d.off.length>1?'s':'')+' still switched off</div><div class="prodoff-sub">These won\'t sell until turned back on.</div></div>'
+        +(alarmOn?'<button class="prodoff-silence" onclick="silenceProductsOff()">Silence</button>':'')
+        +'<button class="prodoff-silence" onclick="prodOffMinimise()" title="shrink">&minus;</button>'
+        +'</div>'+rows;
+    }
     if(alarmOn){startProdAlarm();}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
   }).catch(()=>{});
 }
+let _prodOffMin=false,_prodOffMinDay=null;
+function prodOffMinimise(){_prodOffMin=true;_prodOffMinDay=new Date().toISOString().slice(0,10);checkProductsOff();}
+function prodOffExpand(){_prodOffMin=false;checkProductsOff();}
 function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
 function enableProduct(id,el){if(el){el.disabled=true;el.textContent='Turning on…';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(el){if(d.ok){el.textContent='✓ On';const row=el.closest('.prodoff-row');if(row)row.style.opacity='.45';}else{el.disabled=false;el.textContent='Try again';}}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.disabled=false;el.textContent='Try again';}});}
 function checkStockPrompt(){
