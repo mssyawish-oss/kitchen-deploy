@@ -955,9 +955,22 @@ def api_restart():
         if os.path.exists(PENDING_FILE): os.remove(PENDING_FILE)
     except Exception: pass
     def _do():
+        import subprocess
         time.sleep(0.8)                       # let the HTTP response flush first
-        try: os.execv(sys.executable,[sys.executable]+sys.argv)   # re-launch self with the fresh code
-        except Exception: os._exit(0)
+        try:
+            script=os.path.join(BASE_DIR,"dashboard_app.py")
+            if os.name=="nt":
+                # Windows: os.execv is unreliable here (it can kill the server without relaunching).
+                # Instead spawn a DETACHED helper that waits ~2s for this process to release the port,
+                # then launches a fresh python. The helper survives our exit; then we quit cleanly.
+                DETACHED=0x00000008|0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                subprocess.Popen('ping -n 3 127.0.0.1 >nul & "%s" "%s"'%(sys.executable,script),
+                                 cwd=BASE_DIR,shell=True,creationflags=DETACHED,close_fds=True)
+                time.sleep(0.4); os._exit(0)
+            else:
+                os.execv(sys.executable,[sys.executable,script])
+        except Exception:
+            os._exit(0)
     threading.Thread(target=_do,daemon=True).start()
     return jsonify({"ok":True})
 
