@@ -244,6 +244,13 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .row{display:flex;align-items:center;gap:8px;}
 .row-between{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .section-title{font-size:12px;font-weight:800;color:var(--text);font-family:var(--font-body);letter-spacing:.1em;text-transform:uppercase;margin:16px 0 8px;}
+.section-title.sec-head{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin:8px 0 0;text-transform:none;letter-spacing:.01em;font-size:13.5px;transition:border-color .15s,background .15s;}
+.section-title.sec-head:hover{border-color:var(--amber);background:var(--surface);}
+.section-title.sec-head .chev{margin-left:auto;color:var(--muted);transition:transform .2s;font-size:13px;}
+.section-title.sec-head.collapsed .chev{transform:rotate(-90deg);}
+.section-title.sec-head .sec-h-txt{font-weight:800;}
+#settings-modal .modal>.section-title.sec-head+*{margin-top:6px;}
+.set-body{padding:2px 2px 14px;}
 .form-row{margin-bottom:12px;}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(5,7,10,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:16px;}
 .modal-overlay.open{display:flex;}
@@ -712,7 +719,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 
 <!-- Settings modal -->
 <div class="modal-overlay" id="settings-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:940px;padding:20px 22px;">
     <div class="modal-header"><div class="modal-title">SETTINGS</div><button class="modal-close" onclick="closeModal('settings-modal')">Close</button></div>
     <div id="settings-tabbar" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;position:sticky;top:0;background:inherit;z-index:2;">
       <button class="set-tab on" data-g="General" onclick="showSettingsTab('General')">General</button>
@@ -1690,18 +1697,40 @@ function removeJob(i){appData.quiet_jobs.splice(i,1);saveAppData();renderJobsAdm
 async function checkSquareActivity(){try{const r=await fetch('/api/square_activity'),d=await r.json();const ind=document.getElementById('busy-indicator');if(!d.configured){document.getElementById('busy-label').textContent='Square not connected';ind.className='busy-indicator quiet';document.getElementById('busy-sub').textContent='Add your Square token in ⚙ Settings.';document.getElementById('jobs-badge').className='nav-badge';return;}document.getElementById('busy-label').textContent=d.busy?'BUSY — Keep serving!':'QUIET — Complete a job!';ind.className='busy-indicator '+(d.busy?'busy':'quiet');document.getElementById('busy-sub').textContent=d.error?('Square error: '+d.error):(d.sales_last_30min+' sale(s) in last 30 min');document.getElementById('jobs-badge').className='nav-badge'+(d.busy?'':' show');}catch(e){}}
 
 // SETTINGS
+let _curSetTab='General';
+function _setSlug(t){return (t||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'sec';}
+const _setCollapsed=(()=>{try{return new Set(JSON.parse(localStorage.getItem('setCollapsed_v2')||'null')||[]);}catch(e){return new Set();}})();
+let _setSeeded=false;try{_setSeeded=localStorage.getItem('setCollapsed_v2')!=null;}catch(e){}
 function setupSettingsTabs(){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
   const grpOf=t=>{t=(t||'').toLowerCase();
     if(t.includes('square')||t.includes('cook log')||t.includes('sales feed'))return 'Sales';
-    if(t.includes('probe')||t.includes('rotisserie')||t.includes('hand-out'))return 'Kitchen';
+    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out'))return 'Kitchen';
     if(t.includes('task photos')||t.includes('recent task')||t.includes('store camera'))return 'Camera';
     if(t.includes('staff'))return 'Staff';
     return 'General';};
-  let cur='General';
-  [...modal.children].forEach(el=>{if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;if(el.classList.contains('section-title'))cur=grpOf(el.textContent);el.dataset.grp=cur;});}
-function showSettingsTab(g){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
-  [...modal.children].forEach(el=>{if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;el.style.display=(el.dataset.grp===g)?'':'none';});
-  document.querySelectorAll('#settings-tabbar .set-tab').forEach(t=>t.classList.toggle('on',t.dataset.g===g));modal.scrollTop=0;}
+  let cur='General',sec='';const slugs=[];
+  [...modal.children].forEach(el=>{
+    if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;
+    if(el.classList.contains('section-title')){
+      cur=grpOf(el.textContent);sec=_setSlug(el.textContent);slugs.push(sec);
+      if(!el.classList.contains('sec-head')){const txt=el.textContent;el.classList.add('sec-head');el.innerHTML='<span class="sec-h-txt"></span><span class="chev">&#9662;</span>';el.querySelector('.sec-h-txt').textContent=txt;el.dataset.sec=sec;el.onclick=function(){toggleSettingsSection(sec);};}
+    }
+    el.dataset.grp=cur;el.dataset.sec=sec;
+  });
+  if(!_setSeeded){slugs.forEach(s=>_setCollapsed.add(s));_setSeeded=true;try{localStorage.setItem('setCollapsed_v2',JSON.stringify([..._setCollapsed]));}catch(e){}}
+  [...modal.querySelectorAll('.sec-head')].forEach(h=>h.classList.toggle('collapsed',_setCollapsed.has(h.dataset.sec)));}
+function _applySettingsVis(){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
+  [...modal.children].forEach(el=>{if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;
+    const inTab=(el.dataset.grp===_curSetTab);
+    if(el.classList.contains('sec-head')){el.style.display=inTab?'':'none';return;}
+    const s=el.dataset.sec;el.style.display=(inTab&&(!s||!_setCollapsed.has(s)))?'':'none';});}
+function showSettingsTab(g){_curSetTab=g;const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
+  document.querySelectorAll('#settings-tabbar .set-tab').forEach(t=>t.classList.toggle('on',t.dataset.g===g));
+  _applySettingsVis();modal.scrollTop=0;}
+function toggleSettingsSection(sec){if(_setCollapsed.has(sec))_setCollapsed.delete(sec);else _setCollapsed.add(sec);
+  try{localStorage.setItem('setCollapsed_v2',JSON.stringify([..._setCollapsed]));}catch(e){}
+  const modal=document.querySelector('#settings-modal .modal');if(modal){const h=[...modal.querySelectorAll('.sec-head')].find(x=>x.dataset.sec===sec);if(h)h.classList.toggle('collapsed',_setCollapsed.has(sec));}
+  _applySettingsVis();}
 function openSettingsModal(){if(!gateUnlocked('settings')){requirePin('Manager Code','Settings needs a Manager or Admin PIN',u=>{sectionUnlockedAt['settings']=Date.now();_openSettingsModal();},SETTINGS_ROLES);return;}_openSettingsModal();}
 function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-prompt',appData.stock_prompt_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function saveFeatures(){const body={stock_prompt_enabled:document.getElementById('ft-stock-prompt').checked,stock_prompt_hours:parseInt((document.getElementById('ft-stock-prompt-hrs')||{}).value||'1')};const s=document.getElementById('ft-status');s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';s.style.color=d.ok?'var(--green)':'var(--red)';loadAppData();});}
