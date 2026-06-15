@@ -878,10 +878,11 @@ def api_camera_test():
 def _snap_from(cam):
     # fetch a single JPEG from any Dahua-style camera via snapshot.cgi (HTTP digest auth)
     cam=cam or {}
-    ip=str(cam.get("ip","")).strip()
+    base=db.get("camera_config",{}) or {}   # store cams on the same recorder can reuse the saved login
+    ip=str(cam.get("ip","")).strip() or str(base.get("ip","")).strip()
     if not ip and not (cam.get("url_override") or "").strip(): return None,"No camera address"
-    port=cam.get("port") or 80; ch=cam.get("channel") or 1
-    user=cam.get("user","") or ""; pw=cam.get("pass","") or ""
+    port=cam.get("port") or base.get("port") or 80; ch=cam.get("channel") or 1
+    user=(cam.get("user","") or "") or (base.get("user","") or ""); pw=(cam.get("pass","") or "") or (base.get("pass","") or "")
     scheme="https" if str(port)=="443" else "http"
     url=(cam.get("url_override") or "").strip() or ("%s://%s:%s/cgi-bin/snapshot.cgi?channel=%s"%(scheme,ip,port,ch))
     try:
