@@ -922,12 +922,13 @@ def api_cameras():
         else:
             cid=d.get("id") or _secrets.token_hex(4)
             existing=next((c for c in cams if c.get("id")==cid),None)
-            pw=d.get("pass"); rtsp=d.get("rtsp_url")
+            pw=d.get("pass"); rtsp=d.get("rtsp_url"); ovr=d.get("url_override")
             cam={"id":cid,"name":str(d.get("name","Camera"))[:40],"ip":str(d.get("ip","")).strip(),
                  "port":int(d.get("port") or 80),"channel":int(d.get("channel") or 1),
                  "user":str(d.get("user","")).strip(),"enabled":bool(d.get("enabled",True)),
                  "pass":(pw if pw not in (None,"") else (existing or {}).get("pass","")),
-                 "rtsp_url":(rtsp.strip() if isinstance(rtsp,str) and rtsp.strip() else (existing or {}).get("rtsp_url",""))}
+                 "rtsp_url":(rtsp.strip() if isinstance(rtsp,str) and rtsp.strip() else (existing or {}).get("rtsp_url","")),
+                 "url_override":(ovr.strip() if isinstance(ovr,str) and ovr.strip() else (existing or {}).get("url_override",""))}
             if existing: cams=[cam if c.get("id")==cid else c for c in cams]
             else: cams.append(cam)
         db["cameras"]=cams; save_data(db)
