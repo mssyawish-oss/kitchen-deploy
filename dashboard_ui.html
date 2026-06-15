@@ -1713,7 +1713,7 @@ function setupSettingsTabs(){const modal=document.querySelector('#settings-modal
     if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;
     if(el.classList.contains('section-title')){
       cur=grpOf(el.textContent);sec=_setSlug(el.textContent);slugs.push(sec);
-      if(!el.classList.contains('sec-head')){const txt=el.textContent;el.classList.add('sec-head');el.innerHTML='<span class="sec-h-txt"></span><span class="chev">&#9662;</span>';el.querySelector('.sec-h-txt').textContent=txt;el.dataset.sec=sec;el.onclick=function(){toggleSettingsSection(sec);};}
+      if(!el.classList.contains('sec-head')){const txt=el.textContent;const thisSec=sec;el.classList.add('sec-head');el.innerHTML='<span class="sec-h-txt"></span><span class="chev">&#9662;</span>';el.querySelector('.sec-h-txt').textContent=txt;el.dataset.sec=sec;el.onclick=function(){toggleSettingsSection(thisSec);};}
     }
     el.dataset.grp=cur;el.dataset.sec=sec;
   });
