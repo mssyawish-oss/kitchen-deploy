@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, socket, smtplib, time, urllib.request, urllib.parse, ssl, re
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, re
 from datetime import datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -947,6 +947,20 @@ def api_features():
         save_data(db)
     return jsonify({"ok":True})
 
+# ===== REMOTE RESTART (apply downloaded backend updates without touching the PC) =====
+PENDING_FILE=os.path.join(BASE_DIR,"BACKEND-UPDATE-PENDING.txt")
+@app.route("/api/restart",methods=["POST"])
+def api_restart():
+    try:
+        if os.path.exists(PENDING_FILE): os.remove(PENDING_FILE)
+    except Exception: pass
+    def _do():
+        time.sleep(0.8)                       # let the HTTP response flush first
+        try: os.execv(sys.executable,[sys.executable]+sys.argv)   # re-launch self with the fresh code
+        except Exception: os._exit(0)
+    threading.Thread(target=_do,daemon=True).start()
+    return jsonify({"ok":True})
+
 # ===== ALARM CENTER — per-alarm settings + uploadable custom sounds =====
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
@@ -1562,6 +1576,8 @@ def get_db():
     rc=db.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled")}  # no pass/key
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
+    try: safe["backend_update_pending"]=os.path.exists(PENDING_FILE)
+    except Exception: safe["backend_update_pending"]=False
     _ct=ROTCAM.get("calls_today",0); _tt=ROTCAM.get("calls_total",0)
     safe["rotcam_usage"]={"today":_ct,"cost_today":round(_ct*_GEM_COST_PER_CALL,2),"total":_tt,"cost_total":round(_tt*_GEM_COST_PER_CALL,2),"per_call":_GEM_COST_PER_CALL}
     return jsonify(safe)

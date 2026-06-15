@@ -454,6 +454,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .prodoff-mini.flashing{animation:prodoff-pulse 1.1s ease-in-out infinite;}
 #alarm-flash{position:fixed;inset:0;pointer-events:none;z-index:540;opacity:0;box-shadow:inset 0 0 0 7px var(--af-col,#ef4444),inset 0 0 70px 14px var(--af-col,#ef4444);}
 #alarm-flash.on{animation:af-pulse 1.1s ease-in-out infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 @keyframes af-pulse{0%,100%{opacity:0;}50%{opacity:.5;}}
 .alarm-card{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 13px;margin-bottom:10px;}
 .alarm-card.off{opacity:.6;}
@@ -573,6 +574,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   </div>
   <div class="page-area">
     <div class="page active" id="page-probes">
+      <div id="update-banner" style="display:none;align-items:center;gap:10px;background:#10261c;border:1px solid #1f7a4d;border-radius:12px;padding:11px 14px;margin-bottom:10px;">
+        <span style="font-size:18px;">↻</span>
+        <div style="flex:1;min-width:0;"><div style="font-weight:800;color:#fff;font-size:14px;">An update is ready</div><div style="font-size:12px;color:#86efac;">Tap restart to apply it (screen reconnects automatically).</div></div>
+        <button class="btn btn-primary" onclick="restartDashboard()">Restart now</button>
+      </div>
       <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
@@ -732,6 +738,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="set-tab" data-g="Camera" onclick="showSettingsTab('Camera')">Camera</button>
       <button class="set-tab" data-g="Staff" onclick="showSettingsTab('Staff')">Staff</button>
     </div>
+    <div class="section-title">System</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Restart the dashboard to apply a downloaded update — no need to touch the server PC. The screen reconnects on its own in about 10–15 seconds.</div>
+    <button class="btn btn-primary" style="width:100%;" onclick="restartDashboard()">↻ Restart dashboard now</button>
+    <div id="restart-status" style="font-size:12px;margin-top:6px;color:var(--muted);min-height:14px;"></div>
     <div class="section-title">Email Config</div>
     <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--blue);line-height:1.6;">Google Workspace: myaccount.google.com &#8594; Security &#8594; App passwords &#8594; create one &#8594; paste 16-char password below.</div>
     <div class="form-row"><div class="label">From Email</div><input class="input" id="cfg-email" type="email" placeholder="orders@yourbusiness.com.au"></div>
@@ -1680,6 +1690,15 @@ let _prodOffMin=false,_prodOffMinDay=null;
 function prodOffMinimise(){_prodOffMin=true;_prodOffMinDay=new Date().toISOString().slice(0,10);checkProductsOff();}
 function prodOffExpand(){_prodOffMin=false;checkProductsOff();}
 function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
+// ── Remote restart (apply backend updates from the dash) ──
+function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
+function restartDashboard(){if(!confirm('Restart the dashboard now?\n\nThe screen will go offline for about 10–15 seconds and come back on its own.'))return;
+  const s=document.getElementById('restart-status');if(s){s.textContent='Restarting…';s.style.color='var(--muted)';}
+  _showRestartOverlay();
+  fetch('/api/restart',{method:'POST'}).catch(()=>{});
+  setTimeout(_pollBackUp,4500);}
+function _showRestartOverlay(){let o=document.getElementById('restart-ov');if(!o){o=document.createElement('div');o.id='restart-ov';o.style.cssText='position:fixed;inset:0;z-index:700;background:rgba(5,7,10,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;text-align:center;padding:24px;';document.body.appendChild(o);}o.innerHTML='<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#f0a93a;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:17px;font-weight:700;">Restarting the dashboard…</div><div style="font-size:13px;color:#9aa3b2;">This page reloads automatically when it\'s back online.</div>';o.style.display='flex';}
+function _pollBackUp(){fetch('/api/data',{cache:'no-store'}).then(r=>{if(r.ok)location.reload();else throw 0;}).catch(()=>setTimeout(_pollBackUp,2000));}
 function enableProduct(id,el){if(el){el.disabled=true;el.textContent='Turning on…';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(el){if(d.ok){el.textContent='✓ On';const row=el.closest('.prodoff-row');if(row)row.style.opacity='.45';}else{el.disabled=false;el.textContent='Try again';}}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.disabled=false;el.textContent='Try again';}});}
 function checkStockPrompt(){
   if(appData.stock_prompt_enabled===false)return;   // turned off in settings
@@ -1912,6 +1931,7 @@ async function init(){
   setInterval(checkAllReminders,20000);checkAllReminders();
   setInterval(checkStockPrompt,30000);
   checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
+  checkUpdateBanner();setInterval(()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();},60000);   // show 'update ready' banner
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();
