@@ -987,14 +987,14 @@ function playReadyTone(v){v=v==null?1:v;playTone(880,'sine',.2,.3*v);setTimeout(
 function playOverdoneTone(v){v=v==null?1:v;[0,150,300,450,600,750,900,1050].forEach(t=>setTimeout(()=>playTone(1800,'square',.1,.35*v),t));}
 function playChime(v){v=v==null?1:v;playTone(880,'sine',.3,.16*v);setTimeout(()=>playTone(1175,'sine',.45,.16*v),170);}
 // ── richer synth engine so tones sound like real devices, not flat beeps ──
-function _ac(){return getCtx();}
-function _voice(freq,type,t0,dur,peak){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.start(t);o.stop(t+dur+.03);}
+function _actx(){return getCtx();}
+function _voice(freq,type,t0,dur,peak){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.start(t);o.stop(t+dur+.03);}
 // struck bell/ding — inharmonic metal partials with long ring-out (real ding, not a beep)
 function _bell(freq,t0,dur,v){[[1,1,1],[2.76,.55,.85],[5.4,.38,.6],[8.9,.22,.4]].forEach(p=>_voice(freq*p[0],'sine',t0,dur*p[2],v*.45*p[1]));}
 // buzzer — sawtooth gated by a square LFO (the harsh oven/dryer/buzz-in "bzzt")
-function _buzz(freq,t0,dur,v,rate){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.value=freq;o.connect(g);g.connect(c.destination);if(rate){const lfo=c.createOscillator(),lg=c.createGain();lfo.type='square';lfo.frequency.value=rate;lg.gain.value=v*.16;lfo.connect(lg);lg.connect(g.gain);g.gain.value=v*.18;lfo.start(t);lfo.stop(t+dur);}else{g.gain.setValueAtTime(v*.3,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);}o.start(t);o.stop(t+dur+.02);}
+function _buzz(freq,t0,dur,v,rate){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.value=freq;o.connect(g);g.connect(c.destination);if(rate){const lfo=c.createOscillator(),lg=c.createGain();lfo.type='square';lfo.frequency.value=rate;lg.gain.value=v*.16;lfo.connect(lg);lg.connect(g.gain);g.gain.value=v*.18;lfo.start(t);lfo.stop(t+dur);}else{g.gain.setValueAtTime(v*.3,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);}o.start(t);o.stop(t+dur+.02);}
 // warble — two tones swung back and forth (alarm clock / klaxon)
-function _warble(f1,f2,t0,dur,v,rate){const c=_ac();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain(),lfo=c.createOscillator(),lg=c.createGain();o.type='square';o.frequency.value=(f1+f2)/2;lfo.type='square';lfo.frequency.value=rate;lg.gain.value=(f2-f1)/2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=v*.2;o.connect(g);g.connect(c.destination);o.start(t);lfo.start(t);o.stop(t+dur);lfo.stop(t+dur);}
+function _warble(f1,f2,t0,dur,v,rate){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain(),lfo=c.createOscillator(),lg=c.createGain();o.type='square';o.frequency.value=(f1+f2)/2;lfo.type='square';lfo.frequency.value=rate;lg.gain.value=(f2-f1)/2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=v*.2;o.connect(g);g.connect(c.destination);o.start(t);lfo.start(t);o.stop(t+dur);lfo.stop(t+dur);}
 // ── built-in tone library (real-world device sounds) ──
 const _TONES={
  bell:{name:'Counter bell (ding)',fn:v=>_bell(1318,0,1.6,v)},
