@@ -427,11 +427,20 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 #page-probes .gauge{width:min(80px,11vh);margin:0 auto;}
 #page-probes #rot-live .rl-card{padding:11px;gap:8px;}
 /* ---- Products-off warning banner ---- */
-.prodoff-banner{display:flex;align-items:flex-start;gap:12px;background:linear-gradient(180deg,#3a0a0a,#1f0909);border:1px solid #ef4444;border-left:4px solid #ef4444;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
-.prodoff-banner.flashing{animation:prodoff-pulse 1.1s infinite;}
-@keyframes prodoff-pulse{0%,100%{border-color:#ef4444;box-shadow:none;}50%{border-color:#ff9a9a;box-shadow:0 0 18px rgba(239,68,68,.55);}}
-.prodoff-chip{display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;margin:3px 5px 3px 0;padding:4px 10px;font-size:12px;cursor:pointer;}
-.prodoff-chip:hover{background:rgba(255,255,255,.2);}
+.prodoff-banner{display:block;background:#221317;border:1px solid #5b2330;border-radius:14px;padding:14px 16px;margin-bottom:12px;}
+.prodoff-banner.flashing{animation:prodoff-pulse 1.6s ease-in-out infinite;}
+@keyframes prodoff-pulse{0%,100%{box-shadow:0 0 0 rgba(239,68,68,0);border-color:#5b2330;}50%{box-shadow:0 0 22px rgba(239,68,68,.45);border-color:#ef6e6e;}}
+.prodoff-head{display:flex;align-items:center;gap:11px;margin-bottom:10px;}
+.prodoff-title{font-weight:800;color:#fff;font-size:15px;line-height:1.25;}
+.prodoff-sub{font-size:12px;color:#e7a7a7;margin-top:1px;}
+.prodoff-silence{flex-shrink:0;align-self:flex-start;background:transparent;border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;}
+.prodoff-silence:hover{background:rgba(255,255,255,.1);}
+.prodoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;margin-top:7px;transition:opacity .3s;}
+.prodoff-name{font-size:14px;color:#fff;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prodoff-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;color:#d8ccff;background:rgba(124,92,255,.2);border-radius:5px;padding:1px 6px;margin-left:7px;vertical-align:middle;}
+.prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
+.prodoff-on:hover{background:#15803d;}
+.prodoff-on:disabled{opacity:.65;cursor:default;}
 /* ---- Cameras page ---- */
 .cam-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
 .cam-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);cursor:pointer;}
@@ -950,6 +959,9 @@ function playOverdoneTone(){[0,150,300,450,600,750,900,1050].forEach(t=>setTimeo
 function playChime(){playTone(880,'sine',.3,.16);setTimeout(()=>playTone(1175,'sine',.45,.16),170);}
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};
 function playAlarm(id){if(alarms[id])return;alarms[id]=true;function b(){if(!alarms[id])return;playTone(960,'square',.25,.25);setTimeout(()=>{if(alarms[id])b();},600);}b();}
+// soft, friendly recurring chime for the "products still off" warning (gentle bell, not a buzzer)
+function playProdChime(){playTone(784,'sine',.45,.16);setTimeout(()=>playTone(988,'sine',.5,.16),230);setTimeout(()=>playTone(1319,'sine',.6,.13),470);}
+function startProdAlarm(){if(alarms['prod-off'])return;alarms['prod-off']=true;function loop(){if(!alarms['prod-off'])return;playProdChime();setTimeout(()=>{if(alarms['prod-off'])loop();},3600);}loop();}
 function stopAlarm(id){alarms[id]=false;}
 function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];}
 function startProbeAlarm(pid,type){if(appData.probe_alarm_enabled===false)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid],iv=type==='overdone'?1800:2800;function loop(){if(probeToken[pid]!==tok)return;if(type==='ready')playReadyTone();if(type==='overdone')playOverdoneTone();setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
@@ -1541,16 +1553,21 @@ function checkProductsOff(){
     const now=new Date(),mins=now.getHours()*60+now.getMinutes(),today=now.toISOString().slice(0,10);
     const afterOpen=mins>=(9*60+55);                    // from 9:55am
     const alarmOn=afterOpen&&(_prodOffSilenced!==today);
-    const chips=d.off.map(p=>{let lbl=p.item;if(p.kind==='modifier'){lbl+=' (add-on)';}else if(p.variation&&p.variation.toLowerCase()!=='regular'){lbl+=' · '+p.variation;}return '<span class="prodoff-chip" onclick="enableProduct(\''+p.id+'\',this)" title="tap to switch back on">'+_mEsc(lbl)+' &times;</span>';}).join('');
-    b.style.display='flex';b.classList.toggle('flashing',alarmOn);
-    b.innerHTML='<svg style="width:22px;height:22px;color:#ef4444;flex-shrink:0;margin-top:2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
-      +'<div style="flex:1;min-width:0;"><div style="font-weight:800;color:#fff;font-size:14px;">'+d.off.length+' PRODUCT'+(d.off.length>1?'S':'')+' STILL TURNED OFF</div><div style="font-size:11px;color:#fca5a5;margin:2px 0 6px;">Tap one to switch it back on.</div>'+chips+'</div>'
-      +(alarmOn?'<button class="btn" style="flex-shrink:0;align-self:center;" onclick="silenceProductsOff()">Silence</button>':'');
-    if(alarmOn){if(typeof playAlarm==='function')playAlarm('prod-off');}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
+    const rows=d.off.map(p=>{
+      const tag=p.kind==='modifier'?'<span class="prodoff-tag">ADD-ON</span>':((p.variation&&p.variation.toLowerCase()!=='regular')?'<span class="prodoff-tag">'+_mEsc(p.variation)+'</span>':'');
+      return '<div class="prodoff-row" data-id="'+p.id+'"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div><button class="prodoff-on" onclick="enableProduct(\''+p.id+'\',this)">Turn on</button></div>';
+    }).join('');
+    b.style.display='block';b.classList.toggle('flashing',alarmOn);
+    b.innerHTML='<div class="prodoff-head">'
+      +'<svg style="width:24px;height:24px;color:#ef6e6e;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+      +'<div style="flex:1;min-width:0;"><div class="prodoff-title">'+d.off.length+' product'+(d.off.length>1?'s':'')+' still switched off</div><div class="prodoff-sub">These won\'t sell until turned back on.</div></div>'
+      +(alarmOn?'<button class="prodoff-silence" onclick="silenceProductsOff()">Silence</button>':'')
+      +'</div>'+rows;
+    if(alarmOn){startProdAlarm();}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
   }).catch(()=>{});
 }
 function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
-function enableProduct(id,el){if(el){el.textContent='…';el.style.pointerEvents='none';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(!d.ok&&el){el.textContent='failed';el.style.pointerEvents='';}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.textContent='failed';el.style.pointerEvents='';}});}
+function enableProduct(id,el){if(el){el.disabled=true;el.textContent='Turning on…';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(el){if(d.ok){el.textContent='✓ On';const row=el.closest('.prodoff-row');if(row)row.style.opacity='.45';}else{el.disabled=false;el.textContent='Try again';}}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.disabled=false;el.textContent='Try again';}});}
 function checkStockPrompt(){
   if(appData.stock_prompt_enabled===false)return;   // turned off in settings
   const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;   // not on lock screen
