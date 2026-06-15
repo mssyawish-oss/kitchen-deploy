@@ -946,6 +946,92 @@ def api_features():
         save_data(db)
     return jsonify({"ok":True})
 
+# ===== ALARM CENTER — per-alarm settings + uploadable custom sounds =====
+ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
+try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
+except Exception: pass
+_ALARM_KEYS={"probe","stock","prodoff","timer","rotstopped","orders","service"}
+_SND_OK=("mp3","wav","ogg","webm","m4a","aac")
+_SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
+
+@app.route("/api/alarm_settings",methods=["POST"])
+def api_alarm_settings():
+    d=request.get_json(silent=True) or {}
+    cfg=d.get("alarm_cfg") if isinstance(d.get("alarm_cfg"),dict) else d
+    with data_lock:
+        store=db.get("alarm_cfg",{}) or {}
+        for k,v in (cfg or {}).items():
+            if k not in _ALARM_KEYS or not isinstance(v,dict): continue
+            cur=store.get(k,{}) or {}
+            for b in ("enabled","flash","vibrate"):
+                if b in v: cur[b]=bool(v[b])
+            if isinstance(v.get("color"),str): cur["color"]=v["color"][:9]
+            if "volume" in v:
+                try: cur["volume"]=max(0.0,min(1.0,float(v["volume"])))
+                except Exception: pass
+            if "interval" in v:
+                try: cur["interval"]=max(400,min(60000,int(v["interval"])))
+                except Exception: pass
+            if "autostop" in v:
+                try: cur["autostop"]=max(0,min(120,int(v["autostop"])))
+                except Exception: pass
+            store[k]=cur
+        db["alarm_cfg"]=store
+        # keep the legacy on/off flags in sync so the existing alarm gates honour these toggles
+        for k,legacy in (("probe","probe_alarm_enabled"),("stock","stock_alarm_enabled"),("prodoff","products_off_enabled")):
+            if k in store and "enabled" in store[k]: db[legacy]=store[k]["enabled"]
+        save_data(db)
+    return jsonify({"ok":True,"alarm_cfg":db.get("alarm_cfg",{})})
+
+@app.route("/api/alarm_sound/<key>",methods=["GET"])
+def api_alarm_sound_get(key):
+    if key not in _ALARM_KEYS: return ("bad key",404)
+    fn=((db.get("alarm_cfg",{}) or {}).get(key,{}) or {}).get("sound_file")
+    if not fn: return ("no custom sound",404)
+    p=os.path.join(ALARM_SOUNDS_DIR,fn)
+    if not os.path.exists(p): return ("missing",404)
+    import mimetypes
+    return send_file(p,mimetype=(mimetypes.guess_type(p)[0] or "application/octet-stream"))
+
+@app.route("/api/alarm_sound/<key>",methods=["POST"])
+def api_alarm_sound_set(key):
+    if key not in _ALARM_KEYS: return jsonify({"ok":False,"error":"bad key"})
+    f=request.files.get("file")
+    if not f: return jsonify({"ok":False,"error":"no file"})
+    raw=f.read()
+    if not raw: return jsonify({"ok":False,"error":"empty file"})
+    if len(raw)>3*1024*1024: return jsonify({"ok":False,"error":"file too big (max 3 MB)"})
+    ext=_SND_EXT.get((f.mimetype or "").lower())
+    if not ext:
+        ext=(os.path.splitext(f.filename or "")[1] or "").lstrip(".").lower()
+        if ext not in _SND_OK: ext="mp3"
+    try:
+        for old in os.listdir(ALARM_SOUNDS_DIR):
+            if old.startswith(key+"."): os.remove(os.path.join(ALARM_SOUNDS_DIR,old))
+    except Exception: pass
+    fn=key+"."+ext
+    try:
+        with open(os.path.join(ALARM_SOUNDS_DIR,fn),"wb") as out: out.write(raw)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)})
+    with data_lock:
+        store=db.get("alarm_cfg",{}) or {}; cur=store.get(key,{}) or {}
+        cur["sound_file"]=fn; cur["sound_v"]=int(time.time()); cur["has_custom"]=True
+        store[key]=cur; db["alarm_cfg"]=store; save_data(db)
+    return jsonify({"ok":True,"sound_v":db["alarm_cfg"][key]["sound_v"]})
+
+@app.route("/api/alarm_sound/<key>",methods=["DELETE"])
+def api_alarm_sound_del(key):
+    if key not in _ALARM_KEYS: return jsonify({"ok":False,"error":"bad key"})
+    try:
+        for old in os.listdir(ALARM_SOUNDS_DIR):
+            if old.startswith(key+"."): os.remove(os.path.join(ALARM_SOUNDS_DIR,old))
+    except Exception: pass
+    with data_lock:
+        store=db.get("alarm_cfg",{}) or {}; cur=store.get(key,{}) or {}
+        cur.pop("sound_file",None); cur["has_custom"]=False; cur["sound_v"]=int(time.time())
+        store[key]=cur; db["alarm_cfg"]=store; save_data(db)
+    return jsonify({"ok":True})
+
 @app.route("/api/nowait_config",methods=["POST"])
 def api_nowait_config():
     d=request.get_json(silent=True) or {}
