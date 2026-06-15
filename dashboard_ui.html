@@ -426,6 +426,12 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 #page-probes .timer-card{padding:7px 11px;gap:4px;}
 #page-probes .gauge{width:min(80px,11vh);margin:0 auto;}
 #page-probes #rot-live .rl-card{padding:11px;gap:8px;}
+/* ---- Products-off warning banner ---- */
+.prodoff-banner{display:flex;align-items:flex-start;gap:12px;background:linear-gradient(180deg,#3a0a0a,#1f0909);border:1px solid #ef4444;border-left:4px solid #ef4444;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.prodoff-banner.flashing{animation:prodoff-pulse 1.1s infinite;}
+@keyframes prodoff-pulse{0%,100%{border-color:#ef4444;box-shadow:none;}50%{border-color:#ff9a9a;box-shadow:0 0 18px rgba(239,68,68,.55);}}
+.prodoff-chip{display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;margin:3px 5px 3px 0;padding:4px 10px;font-size:12px;cursor:pointer;}
+.prodoff-chip:hover{background:rgba(255,255,255,.2);}
 /* ---- Cameras page ---- */
 .cam-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
 .cam-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);cursor:pointer;}
@@ -529,6 +535,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   </div>
   <div class="page-area">
     <div class="page active" id="page-probes">
+      <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div class="sec-head"><span>Probes</span></div>
@@ -771,6 +778,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Turn each alarm or prompt on/off.</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ft-stock-alarm" style="width:18px;height:18px;"> Low-stock "cook more" alarm (rotisserie &amp; fried)</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ft-probe-alarm" style="width:18px;height:18px;"> Probe "ready / overdone" alarm</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ft-products-off" style="width:18px;height:18px;"> "Still turned off" product alarm (from 9:55am)</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px;cursor:pointer;"><input type="checkbox" id="ft-stock-prompt" style="width:18px;height:18px;"> Stock-check prompt</label>
     <div style="font-size:13px;color:var(--muted);margin:0 0 8px 26px;">Remind every <select id="ft-stock-prompt-hrs" class="input" style="width:auto;display:inline-block;padding:3px 6px;font-size:13px;"><option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option><option value="6">6 hours</option></select> during trading</div>
     <button class="btn btn-primary" style="width:100%;" onclick="saveFeatures()">Save Alarm Settings</button>
@@ -1523,6 +1531,26 @@ function submitStockCheck(){
   if(!isNaN(f)){_frySig='';fetch('/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:f})});}
   closeModal('stockcheck-modal');
 }
+// ===== Products turned off (Square sold-out) — morning warning + alarm =====
+let _prodOffSilenced=null;
+function checkProductsOff(){
+  const b=document.getElementById('products-off-banner');if(!b)return;
+  if(appData.products_off_enabled===false){b.style.display='none';b.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');return;}
+  fetch('/api/products_offline').then(r=>r.json()).then(d=>{
+    if(!d.ok||!d.off||!d.off.length){b.style.display='none';b.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');return;}
+    const now=new Date(),mins=now.getHours()*60+now.getMinutes(),today=now.toISOString().slice(0,10);
+    const afterOpen=mins>=(9*60+55);                    // from 9:55am
+    const alarmOn=afterOpen&&(_prodOffSilenced!==today);
+    const chips=d.off.map(p=>{const lbl=p.item+((p.variation&&p.variation.toLowerCase()!=='regular')?(' · '+p.variation):'');return '<span class="prodoff-chip" onclick="enableProduct(\''+p.id+'\',this)" title="tap to switch back on">'+_mEsc(lbl)+' &times;</span>';}).join('');
+    b.style.display='flex';b.classList.toggle('flashing',alarmOn);
+    b.innerHTML='<svg style="width:22px;height:22px;color:#ef4444;flex-shrink:0;margin-top:2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+      +'<div style="flex:1;min-width:0;"><div style="font-weight:800;color:#fff;font-size:14px;">'+d.off.length+' PRODUCT'+(d.off.length>1?'S':'')+' STILL TURNED OFF</div><div style="font-size:11px;color:#fca5a5;margin:2px 0 6px;">Tap one to switch it back on.</div>'+chips+'</div>'
+      +(alarmOn?'<button class="btn" style="flex-shrink:0;align-self:center;" onclick="silenceProductsOff()">Silence</button>':'');
+    if(alarmOn){if(typeof playAlarm==='function')playAlarm('prod-off');}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
+  }).catch(()=>{});
+}
+function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
+function enableProduct(id,el){if(el){el.textContent='…';el.style.pointerEvents='none';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(!d.ok&&el){el.textContent='failed';el.style.pointerEvents='';}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.textContent='failed';el.style.pointerEvents='';}});}
 function checkStockPrompt(){
   if(appData.stock_prompt_enabled===false)return;   // turned off in settings
   const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;   // not on lock screen
@@ -1598,8 +1626,8 @@ function showSettingsTab(g){const modal=document.querySelector('#settings-modal 
   [...modal.children].forEach(el=>{if(el.classList.contains('modal-header')||el.id==='settings-tabbar')return;el.style.display=(el.dataset.grp===g)?'':'none';});
   document.querySelectorAll('#settings-tabbar .set-tab').forEach(t=>t.classList.toggle('on',t.dataset.g===g));modal.scrollTop=0;}
 function openSettingsModal(){if(!gateUnlocked('settings')){requirePin('Manager Code','Settings needs a Manager or Admin PIN',u=>{sectionUnlockedAt['settings']=Date.now();_openSettingsModal();},SETTINGS_ROLES);return;}_openSettingsModal();}
-function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-alarm',appData.stock_alarm_enabled);set('ft-probe-alarm',appData.probe_alarm_enabled);set('ft-stock-prompt',appData.stock_prompt_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';}
-function saveFeatures(){const body={stock_alarm_enabled:document.getElementById('ft-stock-alarm').checked,probe_alarm_enabled:document.getElementById('ft-probe-alarm').checked,stock_prompt_enabled:document.getElementById('ft-stock-prompt').checked,stock_prompt_hours:parseInt((document.getElementById('ft-stock-prompt-hrs')||{}).value||'1')};const s=document.getElementById('ft-status');s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';s.style.color=d.ok?'var(--green)':'var(--red)';loadAppData();});}
+function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-alarm',appData.stock_alarm_enabled);set('ft-probe-alarm',appData.probe_alarm_enabled);set('ft-products-off',appData.products_off_enabled);set('ft-stock-prompt',appData.stock_prompt_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';}
+function saveFeatures(){const body={stock_alarm_enabled:document.getElementById('ft-stock-alarm').checked,probe_alarm_enabled:document.getElementById('ft-probe-alarm').checked,products_off_enabled:document.getElementById('ft-products-off').checked,stock_prompt_enabled:document.getElementById('ft-stock-prompt').checked,stock_prompt_hours:parseInt((document.getElementById('ft-stock-prompt-hrs')||{}).value||'1')};const s=document.getElementById('ft-status');s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';s.style.color=d.ok?'var(--green)':'var(--red)';loadAppData();});}
 function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
@@ -1698,6 +1726,7 @@ async function init(){
   setInterval(checkSquareActivity,10000);checkSquareActivity();
   setInterval(checkAllReminders,20000);checkAllReminders();
   setInterval(checkStockPrompt,30000);
+  checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();
