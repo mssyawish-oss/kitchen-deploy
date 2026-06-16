@@ -1547,9 +1547,9 @@ def _hm_to_min(s,d):
 def rotcam_loop():
     while True:
         cfg=_rotcam_cfg()
-        try: iv=max(10,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display)
+        try: iv=max(3,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display)
         except Exception: iv=120
-        try: bench_iv=max(4,int(cfg.get("bench_interval",6) or 6))     # bench cadence (faster → catches each row as it lands)
+        try: bench_iv=max(3,int(cfg.get("bench_interval",6) or 6))     # bench cadence (faster → catches each row as it lands)
         except Exception: bench_iv=6
         nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
         a=_hm_to_min(cfg.get("active_start"),595)   # default 09:55
@@ -1589,10 +1589,10 @@ def api_rotcam_config():
               "bench_ip","bench_user","bench_pass","bench_rtsp_url","bench_stream"):
         if k in d: cfg[k]=str(d[k]).strip()
     if "interval" in d:
-        try: cfg["interval"]=max(10,int(d["interval"]))
+        try: cfg["interval"]=max(3,int(d["interval"]))
         except Exception: pass
     if "bench_interval" in d:
-        try: cfg["bench_interval"]=max(4,int(d["bench_interval"]))
+        try: cfg["bench_interval"]=max(3,int(d["bench_interval"]))
         except Exception: pass
     if "bench_zone" in d and isinstance(d["bench_zone"],(list,tuple)) and len(d["bench_zone"])==4:
         try: cfg["bench_zone"]=[max(0.0,min(1.0,float(x))) for x in d["bench_zone"]]
