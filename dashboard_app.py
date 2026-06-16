@@ -1328,13 +1328,14 @@ def _rotcam_bench_apply(n):
 # pulls from THIS camera (whole frame, no crop) instead of cropping the front camera.
 def _bench_rtsp():
     cfg=_rotcam_cfg()
-    if (cfg.get("bench_rtsp_url") or "").strip(): return cfg["bench_rtsp_url"].strip()
     ip=(cfg.get("bench_ip") or "").strip()
-    if not ip: return ""
-    user=(cfg.get("bench_user") or "").strip(); pw=(cfg.get("bench_pass") or "").strip()
-    stream=(cfg.get("bench_stream") or "stream1").strip()
-    auth=(urllib.parse.quote(user)+":"+urllib.parse.quote(pw)+"@") if user else ""
-    return "rtsp://%s%s:554/%s"%(auth,ip,stream)
+    if ip:    # structured fields take priority — password gets URL-encoded (handles special chars ffmpeg chokes on)
+        user=(cfg.get("bench_user") or "").strip(); pw=(cfg.get("bench_pass") or "").strip()
+        stream=(cfg.get("bench_stream") or "stream1").strip()
+        auth=(urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw,safe="")+"@") if user else ""
+        return "rtsp://%s%s:554/%s"%(auth,ip,stream)
+    if (cfg.get("bench_rtsp_url") or "").strip(): return cfg["bench_rtsp_url"].strip()
+    return ""
 def _bench_grab():
     import subprocess
     url=_bench_rtsp()
