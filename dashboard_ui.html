@@ -193,19 +193,32 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
 /* Today's Prep */
-.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
-.prep-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;position:relative;transition:transform .08s,border-color .15s;}
-.prep-card:active{transform:scale(.99);}
-.prep-card.done{border-color:var(--green);}
-.prep-card .pc-row{display:flex;align-items:center;gap:12px;padding:11px 13px;}
-.prep-card .pc-img{width:62px;height:62px;border-radius:11px;object-fit:cover;background:var(--surface2);display:block;flex-shrink:0;}
-.prep-card .pc-noimg{width:62px;height:62px;border-radius:11px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;}
-.prep-card .pc-name{font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:0;line-height:1.25;}
+.prep-grid{display:flex;flex-direction:column;gap:9px;}
+.prep-card{background:var(--surface);border:1px solid var(--border2);border-left:5px solid var(--border2);border-radius:12px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;position:relative;transition:transform .08s,border-color .15s;}
+.prep-card:active{transform:scale(.995);}
+.prep-card.pri-high{border-left-color:#ef4444;}
+.prep-card.pri-med{border-left-color:#f59e0b;}
+.prep-card.pri-low{border-left-color:#3b82f6;}
+.prep-card.done{border-left-color:var(--green)!important;opacity:.82;}
+.prep-card .pc-row{display:flex;align-items:center;gap:11px;padding:9px 12px;}
+.prep-card .pc-img{width:46px;height:46px;border-radius:9px;object-fit:cover;background:var(--surface2);display:block;flex-shrink:0;}
+.prep-card .pc-noimg{width:46px;height:46px;border-radius:9px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;}
+.prep-card .pc-mid{flex:1;min-width:0;}
+.prep-card .pc-name{font-size:15px;font-weight:700;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.prep-card.done .pc-name{text-decoration:line-through;color:var(--muted);}
+.prep-card .pc-meta{display:flex;align-items:center;gap:7px;margin-top:3px;flex-wrap:wrap;}
+.pc-pri-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;padding:1px 6px;border-radius:5px;letter-spacing:.4px;}
+.pc-pri-tag.pri-high{background:rgba(239,68,68,.16);color:#ef4444;}
+.pc-pri-tag.pri-med{background:rgba(245,158,11,.18);color:#f59e0b;}
+.pc-pri-tag.pri-low{background:rgba(59,130,246,.18);color:#60a5fa;}
+.pc-remind{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:3px;}
+.pc-remind svg{width:11px;height:11px;}
+.pc-remind.due{color:#ef4444;font-weight:700;}
 .prep-card .pc-check{width:30px;height:30px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:800;}
 .prep-card.done .pc-check{background:var(--green);border-color:var(--green);}
-.prep-card .pc-proof{border-top:1px solid var(--border);padding:8px;background:var(--surface2);}
-.prep-card .pc-proof img{width:100%;height:150px;object-fit:cover;border-radius:9px;cursor:pointer;display:block;border:1px solid var(--border2);}
-.prep-card .pc-proof .pc-cap{font-size:11.5px;color:var(--green);font-weight:700;margin-top:6px;display:flex;align-items:center;gap:5px;padding:0 2px;}
+.prep-card .pc-proof{border-top:1px solid var(--border);padding:7px 12px;background:var(--surface2);display:flex;align-items:center;gap:10px;}
+.prep-card .pc-proof img{width:52px;height:52px;object-fit:cover;border-radius:8px;cursor:pointer;display:block;border:1px solid var(--border2);flex-shrink:0;}
+.prep-card .pc-proof .pc-cap{font-size:11.5px;color:var(--green);font-weight:700;}
 .prep-pick.sel{border-color:var(--amber);background:var(--surface2);}
 .prep-pick .pc-tick{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:var(--amber);color:#1a1205;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;opacity:0;transition:opacity .12s;}
 .prep-pick.sel .pc-tick{opacity:1;}
@@ -717,6 +730,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="section-title">Add / edit item</div>
     <input type="hidden" id="prep-edit-id">
     <div class="form-row"><div class="label">Name</div><input class="input" id="prep-name" placeholder="e.g. Cut lettuce, Marinate wings…"></div>
+    <div class="form-row"><div class="label">Priority</div><select class="input" id="prep-priority"><option value="high">🔴 High</option><option value="med" selected>🟠 Medium</option><option value="low">🔵 Low</option></select></div>
+    <div class="form-row"><div class="label">Remind at <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-remind" type="time"> <span style="font-size:11.5px;color:var(--muted);margin-left:8px;">Sounds an alarm if not done by this time.</span></div>
     <div class="form-row"><div class="label">Picture</div><label class="btn" style="cursor:pointer;">Choose image…<input type="file" accept="image/*" style="display:none;" id="prep-img-input" onchange="prepPickImage(this)"></label> <span id="prep-img-name" style="font-size:12px;color:var(--muted);margin-left:8px;"></span><div id="prep-img-preview" style="margin-top:8px;"></div></div>
     <div class="row" style="gap:6px;margin-top:6px;"><button class="btn btn-primary" style="flex:1;" id="prep-save-btn" onclick="savePrepItem()">Add item</button><button class="btn" onclick="prepClearForm()">Clear</button></div>
     <div id="prep-manage-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
@@ -1934,12 +1949,17 @@ function renderPrepPage(){
   }
   const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
   if(badge)badge.className='nav-badge'+(pend>0?' show':'');
+  const PRANK={high:0,med:1,low:2};const now=nowHHMM();
+  const sorted=items.slice().sort((a,b)=>{const ad=done[a.id]?1:0,bd=done[b.id]?1:0;if(ad!==bd)return ad-bd;return (PRANK[a.priority]||1)-(PRANK[b.priority]||1);});
   let html='<div style="font-size:14px;color:var(--muted);margin-bottom:12px;"><b style="color:var(--text);">'+doneN+' of '+items.length+'</b> prepped'+(pend>0?(' · '+pend+' to go'):' · all done ✓')+'</div><div class="prep-grid">';
-  html+=items.map(p=>{
-    const d=done[p.id];
+  html+=sorted.map(p=>{
+    const d=done[p.id];const pri=p.priority||'med';
     const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';
+    const priTag='<span class="pc-pri-tag pri-'+pri+'">'+(pri==='high'?'High':pri==='low'?'Low':'Med')+'</span>';
+    const due=p.remind&&!d&&now>=p.remind;
+    const rem=p.remind?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
     const proof=(d&&d.photo)?('<div class="pc-proof"><img src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')"><div class="pc-cap">&#10003; Prepped'+(d.time?' at '+d.time:'')+' · tap photo to enlarge</div></div>'):'';
-    return '<div class="prep-card'+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div><div class="pc-check">'+(d?'&#10003;':'')+'</div></div>'+proof+'</div>';
+    return '<div class="prep-card pri-'+pri+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div><div class="pc-meta">'+priTag+rem+'</div></div><div class="pc-check">'+(d?'&#10003;':'')+'</div></div>'+proof+'</div>';
   }).join('')+'</div>';
   box.innerHTML=html;
 }
@@ -1970,18 +1990,20 @@ let _prepFile=null;
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
   const el=document.getElementById('prep-manage-list');if(!el)return;const presets=appData.prep_presets||[];
-  el.innerHTML=presets.length?presets.map(p=>'<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;">🍗</div>')+'<span style="flex:1;font-size:14px;font-weight:600;min-width:0;">'+_mEsc(p.name)+'</span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>').join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
+  const PDOT={high:'🔴',med:'🟠',low:'🔵'};
+  el.innerHTML=presets.length?presets.map(p=>{const pri=p.priority||'med';const meta=PDOT[pri]+' '+(pri==='high'?'High':pri==='low'?'Low':'Med')+(p.remind?(' · ⏰ '+p.remind):'');return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;">🍗</div>')+'<span style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:11px;color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
 }
 function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">';}}
-function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';}
+function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-priority').value=p.priority||'med';document.getElementById('prep-remind').value=p.remind||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';}
 function deletePrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!confirm('Delete "'+(p?p.name:'')+'"?'))return;appData.prep_presets=(appData.prep_presets||[]).filter(x=>x.id!==id);saveKeys(['prep_presets']);renderPrepManageList();renderPrepPage();}
-function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-priority'))g('prep-priority').value='med';if(g('prep-remind'))g('prep-remind').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
 function savePrepItem(){
   const name=document.getElementById('prep-name').value.trim();const st=document.getElementById('prep-manage-status');
   if(!name){if(st){st.textContent='Enter a name.';st.style.color='var(--red)';}return;}
   let id=document.getElementById('prep-edit-id').value||('p'+Date.now().toString(36));
+  const priority=document.getElementById('prep-priority').value||'med';const remind=document.getElementById('prep-remind').value||'';
   appData.prep_presets=appData.prep_presets||[];
-  const finish=img=>{const ex=appData.prep_presets.find(p=>p.id===id);if(ex){ex.name=name;if(img)ex.img=img;}else appData.prep_presets.push({id:id,name:name,img:img||''});saveKeys(['prep_presets']);prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
+  const finish=img=>{const ex=appData.prep_presets.find(p=>p.id===id);if(ex){ex.name=name;ex.priority=priority;ex.remind=remind;if(img)ex.img=img;}else appData.prep_presets.push({id:id,name:name,img:img||'',priority:priority,remind:remind});saveKeys(['prep_presets']);prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
   if(_prepFile){if(st){st.textContent='Uploading…';st.style.color='var(--muted)';}const fd=new FormData();fd.append('file',_prepFile);fetch('/api/prep_image/'+id,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)finish(d.img);else if(st){st.textContent='Image error: '+(d.error||'failed');st.style.color='var(--red)';}}).catch(()=>{if(st){st.textContent='Upload failed.';st.style.color='var(--red)';}});}
   else finish(null);
 }
@@ -2115,9 +2137,27 @@ function checkAllReminders(){
     document.getElementById('jobs-badge').classList.add('show');
     document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
   });
+  // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM)
+  (function(){const pt=appData.prep_today||{};
+    if(pt.date!==(new Date().toISOString().slice(0,10)))return;
+    const presets=appData.prep_presets||[];const doneMap=pt.done||{};
+    (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind||p.remind!==now)return;if(doneMap[iid])return;
+      const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+      triggerAlarm('PREP DUE',p.name);
+      document.getElementById('jobs-badge').classList.add('show');
+      document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
+    });
+  })();
   if(document.getElementById('page-service').classList.contains('active'))renderServicePage();
   if(document.getElementById('page-packdown').classList.contains('active'))renderPackdownPage();
   updatePrepBadge();
+  updatePackdownBadge();
+}
+function updatePackdownBadge(){  // Checklist tab badge strobes whenever there are overdue (flashing) checklist tasks
+  const b=document.getElementById('packdown-badge');if(!b)return;
+  const checks=appData.packdown_checks||{};const now=nowHHMM();
+  const due=(appData.packdown_tasks||[]).some(t=>t.remind_at&&!((checks[t.id]||{}).done)&&!packdownDueDismissed[t.id]&&now>=t.remind_at);
+  b.className='nav-badge'+(due?' show':'');
 }
 function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so its icon strobes when prep is outstanding)
   const badge=document.getElementById('jobs-badge');if(!badge)return;
