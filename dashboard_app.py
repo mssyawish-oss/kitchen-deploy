@@ -1568,9 +1568,14 @@ def rotcam_loop():
                     if cfg.get("bench_enabled",False):                  # BENCH auto-count
                         try:
                             if _bench_rtsp():                           # dedicated side-angle bench camera (always sees the bench)
-                                bframe,berr=_bench_grab()
+                                # Tapo allows ONE connection. Reuse the live-feed stream frame if it's fresh
+                                # (a viewer is watching); only open our own grab when the feed stream is idle.
+                                bframe=ROTCAM.get("bench_live") if (ROTCAM.get("bench_live") and (time.time()-ROTCAM.get("bench_live_ts",0))<8) else None
+                                watching=(time.time()-ROTCAM.get("bench_want",0))<20
+                                if bframe is None and not watching:
+                                    bframe,berr=_bench_grab()
+                                    if berr: ROTCAM["bench_error"]=berr
                                 if bframe: _rotcam_bench_apply(_benchcam_count(bframe))
-                                elif berr: ROTCAM["bench_error"]=berr
                             else:                                       # fallback: crop the bottom of the front camera frame
                                 _rotcam_bench_apply(_rotcam_bench_count(jpeg))
                         except Exception: pass
@@ -1620,8 +1625,10 @@ def api_rotcam_test():
 @app.route("/api/benchcam_test",methods=["POST"])
 def api_benchcam_test():
     if not _bench_rtsp(): return jsonify({"ok":False,"error":"No bench camera configured (add its RTSP/IP first)."})
-    jpeg,err=_bench_grab()
-    if err: return jsonify({"ok":False,"error":err})
+    jpeg=ROTCAM.get("bench_live") if (ROTCAM.get("bench_live") and (time.time()-ROTCAM.get("bench_live_ts",0))<8) else None
+    if jpeg is None:                                   # reuse the live-feed frame if running (Tapo = 1 connection)
+        jpeg,err=_bench_grab()
+        if err: return jsonify({"ok":False,"error":err})
     rows=_benchcam_count(jpeg)
     out={"ok":True,"bench_rows":rows}
     if ROTCAM.get("bench_comp"): out["preview"]=ROTCAM["bench_comp"]
