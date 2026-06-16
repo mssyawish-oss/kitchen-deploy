@@ -1335,7 +1335,7 @@ function renderPhotoLog(){const box=document.getElementById('photo-log');if(!box
 function saveCameraConfig(){const body={ip:document.getElementById('cam-ip').value.trim(),port:document.getElementById('cam-port').value.trim(),channel:document.getElementById('cam-channel').value.trim(),url_override:document.getElementById('cam-url').value.trim(),enabled:document.getElementById('cam-enabled').checked};const u=document.getElementById('cam-user').value;if(u)body.user=u;const p=document.getElementById('cam-pass').value;if(p)body.pass=p;camStatus('Saving…','muted');fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){camStatus(d.enabled?'Saved — camera ON for task completion.':'Saved (camera OFF — tasks use PIN).','green');loadAppData();}else camStatus('Error saving.','red');});}
 function testCamera(){camStatus('Contacting camera…','muted');document.getElementById('cam-preview').innerHTML='';saveCameraConfig();setTimeout(()=>{fetch('/api/camera_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok&&d.preview){camStatus('Camera works! &#10003;','green');document.getElementById('cam-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);">';}else camStatus('Could not get a photo: '+(d.error||'unknown'),'red');});},600);}
 
-async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
@@ -1590,29 +1590,48 @@ function openRotcam(ev){if(ev)ev.stopPropagation();
   }
   openModal('rotcam-modal');}
 function closeRotcam(){const big=document.getElementById('rotcam-big');if(big)big.src='';if(window._camBigPollT){clearInterval(window._camBigPollT);window._camBigPollT=null;}closeModal('rotcam-modal');}
-// --- per-row overlay on the cam feed: spinning (motion-detected) + doneness (probe-driven) ---
-let _camSpinCanvas=null,_camSpinPrev=null,_camLastMotion=0,_rotSpinning=true,_camSpinStart=0;
+// --- per-ROW spinning detection on the cam feed. Two key guards:
+//   (1) FROZEN-FEED: a live camera always has tiny sensor noise frame-to-frame, so the global diff is never
+//       exactly ~0. If it IS ~0 the feed is FROZEN/LAGGED (not a real stop) → never alarm. This kills the
+//       false "not spinning" that fired whenever the feed hiccuped.
+//   (2) PER-ROW: each spit band is checked on its own, so 1 row can be spinning and another flagged stopped.
+const _ROT_SPIN_BANDS=[[0.005,0.155],[0.165,0.300],[0.328,0.453],[0.465,0.580],[0.590,0.695],[0.705,0.795]];
+const _ROT_SPIN_X=[0.21,0.81];
+let _camSpinCanvas=null,_camSpinPrev=null,_camSpinStart=0,_camFeedLiveAt=0,_rowMotionAt=[0,0,0,0,0,0];
 function _camSpinCheck(){
+  const banner=document.getElementById('cam-stopped');
   if(appData.rotcam_public&&appData.rotcam_public.spin_enabled===false){   // alarm turned off in settings
-    const b=document.getElementById('cam-stopped');if(b)b.classList.remove('show');
+    if(banner)banner.classList.remove('show');
     if(window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
     return;}
   const img=document.getElementById('rotcam-stream');
-  if(!img||!img.complete||!img.naturalWidth){return;}
-  const c=_camSpinCanvas||(_camSpinCanvas=document.createElement('canvas'));c.width=64;c.height=36;
+  if(!img||!img.complete||!img.naturalWidth)return;
+  const W=128,H=72;
+  const c=_camSpinCanvas||(_camSpinCanvas=document.createElement('canvas'));c.width=W;c.height=H;
   const ctx=c.getContext('2d',{willReadFrequently:true});
-  let cur;try{ctx.drawImage(img,0,0,64,36);cur=ctx.getImageData(0,0,64,36).data;}catch(e){return;}
-  if(_camSpinPrev){let d=0;for(let i=0;i<cur.length;i+=4)d+=Math.abs(cur[i]-_camSpinPrev[i]);d/=(cur.length/4);
-    if(d>2.2)_camLastMotion=Date.now();}                 // motion threshold — tune at the shop
-  else{_camLastMotion=Date.now();_camSpinStart=Date.now();}
+  let cur;try{ctx.drawImage(img,0,0,W,H);cur=ctx.getImageData(0,0,W,H).data;}catch(e){return;}
+  const now=Date.now();
+  if(!_camSpinPrev){_camSpinPrev=cur;_camSpinStart=now;_camFeedLiveAt=now;for(let r=0;r<6;r++)_rowMotionAt[r]=now;return;}
+  let gd=0;for(let i=0;i<cur.length;i+=4)gd+=Math.abs(cur[i]-_camSpinPrev[i]);gd/=(cur.length/4);
+  const FROZEN=0.25;                                      // <this = same frame repeated = feed frozen/lagging
+  if(gd>=FROZEN)_camFeedLiveAt=now;                       // feed is genuinely live (has noise/motion)
+  const x1=Math.floor(_ROT_SPIN_X[0]*W),x2=Math.ceil(_ROT_SPIN_X[1]*W);
+  for(let r=0;r<6;r++){
+    const ya=Math.floor(_ROT_SPIN_BANDS[r][0]*H),yb=Math.ceil(_ROT_SPIN_BANDS[r][1]*H);
+    let d=0,n=0;for(let y=ya;y<yb;y++){for(let x=x1;x<x2;x++){const i=(y*W+x)*4;d+=Math.abs(cur[i]-_camSpinPrev[i]);n++;}}
+    if(n&&(d/n)>2.2)_rowMotionAt[r]=now;                  // this spit band moved
+  }
   _camSpinPrev=cur;
-  const cooking=(window._lastRotCooking||0)>0;
-  const grace=(Date.now()-_camSpinStart)<6000;           // settle for a few seconds after first frame
-  _rotSpinning=(Date.now()-_camLastMotion)<7000;
-  const stopped=cooking&&!_rotSpinning&&!grace;
-  const banner=document.getElementById('cam-stopped');if(banner)banner.classList.toggle('show',stopped);
-  if(stopped&&!window._rotStopAlarm){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
-  else if(!stopped&&window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
+  const grace=(now-_camSpinStart)<8000;                  // settle after first frame
+  const feedFresh=(now-_camFeedLiveAt)<5000;             // saw live noise/motion recently (NOT frozen)
+  const pat=window._rotLevels||'';
+  const loaded=r=>(pat.length===6?pat[r]==='1':((window._lastRotCooking||0)>0));
+  const stoppedRows=[];
+  if(feedFresh&&!grace){ for(let r=0;r<6;r++){ if(loaded(r)&&(now-_rowMotionAt[r])>9000) stoppedRows.push(r+1); } }
+  const any=stoppedRows.length>0;
+  if(banner){banner.classList.toggle('show',any);if(any)banner.textContent=(stoppedRows.length>1?'ROWS ':'ROW ')+stoppedRows.join(', ')+' NOT SPINNING';}
+  if(any&&!window._rotStopAlarm){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
+  else if(!any&&window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
 }
 function _doneForRow(row){
   const p=probeData[row],st=((probeStates[row]||{}).status)||'idle';
