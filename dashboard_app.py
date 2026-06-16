@@ -1334,7 +1334,18 @@ def _bench_rtsp():
         stream=(cfg.get("bench_stream") or "stream1").strip()
         auth=(urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw,safe="")+"@") if user else ""
         return "rtsp://%s%s:554/%s"%(auth,ip,stream)
-    if (cfg.get("bench_rtsp_url") or "").strip(): return cfg["bench_rtsp_url"].strip()
+    raw=(cfg.get("bench_rtsp_url") or "").strip()
+    if raw:
+        try:    # re-encode the embedded login so ffmpeg parses it like VLC does (handles special chars)
+            from urllib.parse import urlsplit
+            p=urlsplit(raw)
+            if p.hostname and p.username is not None:
+                host=p.hostname+(":%d"%p.port if p.port else "")
+                q=("?"+p.query) if p.query else ""
+                return "rtsp://%s:%s@%s%s%s"%(urllib.parse.quote(p.username,safe=""),
+                                              urllib.parse.quote(p.password or "",safe=""),host,p.path or "",q)
+        except Exception: pass
+        return raw
     return ""
 def _bench_grab():
     import subprocess
