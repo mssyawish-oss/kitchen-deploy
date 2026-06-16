@@ -1338,11 +1338,16 @@ def _rotcam_bench_count(jpeg):
         return None
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
-    # only stock is added when BOTH cameras agree: the rotisserie saw a row leave AND the bench saw a new row
-    off=ROTCAM.get("off_credits",0); rise=ROTCAM.get("bench_rises",0); c=min(off,rise)
-    if c>0:
-        rot_put_on(c)                                       # +birds_per_row per confirmed row
-        ROTCAM["off_credits"]=off-c; ROTCAM["bench_rises"]=rise-c
+    # The COUNT comes from the ROTISSERIE (each shelf-row that leaves the spit = one row of birds).
+    # The BENCH only CONFIRMS a chicken actually landed recently — it never decides the NUMBER (it sees
+    # individual chickens, not clean rows, so counting bench items over-counts). So: a rotisserie misread
+    # alone can't add stock (needs bench confirmation), and bench fluctuation alone can't add stock (needs
+    # a real shelf-row to have left).
+    off=ROTCAM.get("off_credits",0)
+    bench_ok=(time.time()-ROTCAM.get("rise_ts",0))<_ROW_WINDOW and ROTCAM.get("bench_rises",0)>0
+    if off>0 and bench_ok:
+        rot_put_on(off)                                     # +birds_per_row per row the rotisserie saw leave
+        ROTCAM["off_credits"]=0; ROTCAM["bench_rises"]=0    # consume both sides
 def _note_row_off(k):
     # front camera saw k shelf-rows go empty → k rows came off the spit (await bench confirmation)
     if k<=0: return
@@ -1414,22 +1419,16 @@ def _bench_grab():
 _BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the wheeled stainless-steel UNLOADING BENCH in a rotisserie chicken shop, where "
                     "cooked chickens are placed after coming off the spit. The bench is ON WHEELS and may be parked in front of "
                     "the rotisserie (left), in the middle, or rolled in front of the glass warming cabinet (right) — find the flat "
-                    "open stainless bench wherever it is and count the chickens resting ON TOP of it in ANY of those positions. "
-                    "DETECT each ROW of cooked, GOLDEN/BROWN WHOLE roasted "
-                    "chickens resting on the bench. A 'row' is a group of about 4 whole chickens placed together. Rows may sit "
-                    "SIDE BY SIDE (2-3 across) and sometimes STACKED (a layer on top) — mark EVERY distinct row, including stacked "
-                    "ones. CRITICAL: count ONLY chickens sitting DIRECTLY on the flat, open stainless-steel UNLOADING BENCH "
-                    "surface. Do NOT count chickens inside or on the HOT-HOLDING / DISPLAY / WARMER CABINET — that is the "
-                    "glass-fronted cabinet (usually along one side) holding chickens on wire racks BEHIND GLASS; those are "
-                    "display/holding stock, NOT bench rows, so ignore them entirely. Also ignore bare steel, trays, tongs, wire "
-                    "frames, fryer baskets, people, and BUTTERFLIED/flattened/halved/quartered chickens — only plump WHOLE birds "
-                    "on the open bench. ALSO do NOT count a chicken that is being CUT / CARVED / PORTIONED or SERVED: if a knife, "
-                    "cleaver, tongs, or hands are on or over a chicken, or it is split open / on a chopping board, IGNORE it — that "
-                    "is a chicken being served to a customer, NOT a freshly-unloaded row. A genuine row is a GROUP of multiple "
-                    "(about 4) untouched WHOLE birds placed together straight off the spit; a single lone chicken being handled is "
-                    "not a row. Return ONLY a JSON array, one object per row, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} "
-                    "with integer coordinates normalised 0-1000 (origin top-left). If there are no whole chickens on the open "
-                    "bench, return [].")
+                    "open stainless bench wherever it is. DETECT each individual cooked, GOLDEN/BROWN WHOLE roasted CHICKEN "
+                    "resting ON TOP of the flat open bench surface — put ONE box around EACH whole chicken (not around groups). "
+                    "CRITICAL: only chickens sitting DIRECTLY on the open stainless bench top. Do NOT box chickens inside or on the "
+                    "HOT-HOLDING / DISPLAY / WARMER CABINET (the glass-fronted cabinet along one side, holding chickens behind "
+                    "glass on wire racks) — those are display stock, ignore them entirely. Also ignore bare steel, trays, tongs, "
+                    "wire frames, fryer baskets, people, and BUTTERFLIED/flattened/halved/quartered chickens — only plump WHOLE "
+                    "birds. ALSO do NOT box a chicken being CUT / CARVED / PORTIONED / SERVED: if a knife, cleaver, tongs or hands "
+                    "are on or over it, or it is split open / on a chopping board, IGNORE it. Return ONLY a JSON array, one object "
+                    "per whole chicken, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} with integer coordinates normalised 0-1000 "
+                    "(origin top-left). If there are no whole chickens on the open bench, return [].")
 _BENCH_ZONE=(0.08,0.15,0.53,0.96)   # x1,y1,x2,y2 fraction — the unloading bench area on the LEFT (cuts off before the warmer cabinet on the right). Tunable via rotcam_config['bench_zone'].
 def _bench_zone():
     z=_rotcam_cfg().get("bench_zone")
@@ -1453,7 +1452,7 @@ def _bench_annotate(jpeg,boxes):
                 x1=int(min(xmin,xmax)/1000.0*W); y1=int(min(ymin,ymax)/1000.0*H)
                 x2=int(max(xmin,xmax)/1000.0*W); y2=int(max(ymin,ymax)/1000.0*H)
                 dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
-                dr.text((x1+4,max(0,y1+3)),"row %d"%i,fill=(0,255,0))
+                dr.text((x1+4,max(0,y1+3)),"chicken %d"%i,fill=(0,255,0))
             except Exception: pass
         out=io.BytesIO(); im.save(out,"JPEG",quality=82); return out.getvalue()
     except Exception:
