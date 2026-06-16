@@ -1708,6 +1708,8 @@ def get_db():
     rc=db.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
+    safe["rotcam_public"]["bench_user"]=rc.get("bench_user","")   # username is not secret — show it so it can be verified
+    safe["rotcam_public"]["bench_has_pass"]=bool((rc.get("bench_pass") or "").strip() or (rc.get("bench_rtsp_url") or "").strip())
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
     try: safe["backend_update_pending"]=os.path.exists(PENDING_FILE)
     except Exception: safe["backend_update_pending"]=False
