@@ -1737,6 +1737,48 @@ def api_rotcam_frame():
     ROTCAM["frame"]=jpeg; ROTCAM["frame_ts"]=time.time()
     return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
+def _bench_render(jpeg,maxw=720):
+    # one PIL pass: downscale + draw the zone + the latest detection boxes (for the live feed)
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB")
+        if im.width>maxw: im=im.resize((maxw,max(1,int(im.height*maxw/im.width))))
+        W,H=im.size; dr=ImageDraw.Draw(im)
+        zx1,zy1,zx2,zy2=_bench_zone()
+        dr.rectangle([int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)],outline=(0,190,255),width=2)
+        boxes=ROTCAM.get("bench_boxes") or []
+        if boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30:
+            for i,b in enumerate(boxes,1):
+                try:
+                    ymin,xmin,ymax,xmax=b[0],b[1],b[2],b[3]
+                    x1=int(min(xmin,xmax)/1000.0*W); y1=int(min(ymin,ymax)/1000.0*H)
+                    x2=int(max(xmin,xmax)/1000.0*W); y2=int(max(ymin,ymax)/1000.0*H)
+                    dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                    dr.text((x1+4,max(0,y1+3)),"chicken %d"%i,fill=(0,255,0))
+                except Exception: pass
+        out=io.BytesIO(); im.save(out,"JPEG",quality=72); return out.getvalue()
+    except Exception:
+        return jpeg
+@app.route("/api/benchcam_stream")
+def api_benchcam_stream():
+    # smooth MJPEG for the bench (like the rotisserie) — zone + boxes drawn on each frame
+    if not _bench_rtsp(): return Response("bench camera not configured",status=404)
+    def gen():
+        last_ts=0; last_emit=0; start=time.time()
+        while True:
+            ROTCAM["bench_want"]=time.time()
+            fr=ROTCAM.get("bench_live"); ts=ROTCAM.get("bench_live_ts",0)
+            now=time.time()
+            if fr and ts!=last_ts and (now-last_emit)>=0.11:    # cap ~9fps to keep CPU sane
+                last_ts=ts; last_emit=now
+                img=_bench_render(fr)
+                yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "+str(len(img)).encode()+b"\r\n\r\n"+img+b"\r\n"
+            else:
+                time.sleep(0.03)
+            if not ROTCAM.get("bench_live") and (now-start)>10: break
+    return Response(gen(),mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control":"no-store","Connection":"close"})
+
 @app.route("/api/benchcam_frame")
 def api_benchcam_frame():
     if not _bench_rtsp(): return Response("bench camera not configured",status=404)
@@ -1750,11 +1792,7 @@ def api_benchcam_frame():
         jpeg,err=_bench_grab()                                    # fallback one-shot grab
         if err: return Response(err,status=503)
         fr=jpeg
-    fr=_downscale_jpeg(fr,720)
-    boxes=ROTCAM.get("bench_boxes") or []                         # redraw the latest AI boxes on the live frame
-    if not (boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30): boxes=[]
-    fr=_bench_annotate(fr,boxes)                                   # always show the detection zone + any boxes
-    return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    return Response(_bench_render(fr),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
 def api_mcp():
