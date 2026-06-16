@@ -262,8 +262,13 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .nav-btn.active .nav-inner{background:rgba(251,155,36,.13);}
 .nav-btn.hidden{display:none;}
 .nav-badge{position:absolute;top:6px;right:calc(50% - 26px);background:var(--red);color:#fff;font-size:8px;font-weight:700;border-radius:8px;padding:1px 5px;display:none;}
-.nav-badge.show{display:block;}
+.nav-badge.show{display:block;animation:nav-badge-pulse .85s ease-in-out infinite;}
+@keyframes nav-badge-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.35);}}
 .nav-btn.alarming .nav-svg{animation:alarm-icon .5s infinite;}
+/* strobe the whole nav button (icon + label) when its page has a pending task/reminder, or an alarm is sounding — so you see it from any page */
+@keyframes nav-strobe{0%,100%{color:#ff5b5b;}50%{color:var(--muted);}}
+.nav-btn:has(.nav-badge.show):not(.active),.nav-btn.alarming:not(.active){animation:nav-strobe .85s ease-in-out infinite;}
+.side-item:has(.nav-badge.show):not(.active){animation:nav-strobe .85s ease-in-out infinite;}
 @keyframes alarm-icon{0%,100%{opacity:1;}50%{opacity:.2;}}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);}
 .page-header{margin-bottom:14px;padding-bottom:12px;}
