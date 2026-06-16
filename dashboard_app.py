@@ -1393,7 +1393,11 @@ _BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADIN
                     "glass-fronted cabinet (usually along one side) holding chickens on wire racks BEHIND GLASS; those are "
                     "display/holding stock, NOT bench rows, so ignore them entirely. Also ignore bare steel, trays, tongs, wire "
                     "frames, fryer baskets, people, and BUTTERFLIED/flattened/halved/quartered chickens — only plump WHOLE birds "
-                    "on the open bench. Return ONLY a JSON array, one object per row, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} "
+                    "on the open bench. ALSO do NOT count a chicken that is being CUT / CARVED / PORTIONED or SERVED: if a knife, "
+                    "cleaver, tongs, or hands are on or over a chicken, or it is split open / on a chopping board, IGNORE it — that "
+                    "is a chicken being served to a customer, NOT a freshly-unloaded row. A genuine row is a GROUP of multiple "
+                    "(about 4) untouched WHOLE birds placed together straight off the spit; a single lone chicken being handled is "
+                    "not a row. Return ONLY a JSON array, one object per row, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} "
                     "with integer coordinates normalised 0-1000 (origin top-left). If there are no whole chickens on the open "
                     "bench, return [].")
 _BENCH_ZONE=(0.08,0.15,0.53,0.96)   # x1,y1,x2,y2 fraction — the unloading bench area on the LEFT (cuts off before the warmer cabinet on the right). Tunable via rotcam_config['bench_zone'].
