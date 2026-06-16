@@ -1310,17 +1310,29 @@ def _rotcam_bench_count(jpeg):
         return max(0,min(3,int(m.group())))
     except Exception:
         return None
+_ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
+def _try_credit():
+    # only stock is added when BOTH cameras agree: the rotisserie saw a row leave AND the bench saw a new row
+    off=ROTCAM.get("off_credits",0); rise=ROTCAM.get("bench_rises",0); c=min(off,rise)
+    if c>0:
+        rot_put_on(c)                                       # +birds_per_row per confirmed row
+        ROTCAM["off_credits"]=off-c; ROTCAM["bench_rises"]=rise-c
+def _note_row_off(k):
+    # front camera saw k shelf-rows go empty → k rows came off the spit (await bench confirmation)
+    if k<=0: return
+    now=time.time()
+    if now-ROTCAM.get("off_ts",0)>_ROW_WINDOW: ROTCAM["off_credits"]=0   # stale → reset
+    ROTCAM["off_credits"]=ROTCAM.get("off_credits",0)+k; ROTCAM["off_ts"]=now
+    _try_credit()
 def _rotcam_bench_apply(n):
     if n is None: return                                   # blocked/error → hold, don't touch stock
-    # PEAK-ON-CLEAR: cooked rows sit on the bench only briefly (they go straight to the warmer), so we
-    # can't wait for two reads to agree. Track the HIGHEST count seen while the bench is occupied; when it
-    # returns to empty, that peak = how many rows passed over the bench → add them. This catches a quick
-    # placement that only shows up for a single read.
-    peak=ROTCAM.get("bench_peak",0)
-    if n>peak: ROTCAM["bench_peak"]=peak=n                 # row(s) appeared → remember the most seen
-    if n==0 and peak>0:                                    # bench cleared → commit what passed through
-        rot_put_on(peak)                                   # +birds_per_row per row
-        ROTCAM["bench_peak"]=0
+    prev=ROTCAM.get("bench_rows",0)
+    if isinstance(n,int) and n>prev:                       # new row(s) landed on the bench
+        now=time.time()
+        if now-ROTCAM.get("rise_ts",0)>_ROW_WINDOW: ROTCAM["bench_rises"]=0
+        ROTCAM["bench_rises"]=ROTCAM.get("bench_rises",0)+(n-prev); ROTCAM["rise_ts"]=now
+        _try_credit()    # credits stock ONLY if the rotisserie cam recently saw a row come off (else: a warmer
+                         # chicken being cut on the bench — NOT new stock — so it's ignored)
     ROTCAM["bench_rows"]=n
 # --- DEDICATED SIDE-ANGLE BENCH CAMERA (2nd Tapo) -----------------------------------
 # A second camera mounted to the side keeps the unloading bench in full view wherever it
@@ -1420,6 +1432,7 @@ def _benchcam_count(jpeg):
     except Exception:
         return None
     boxes=boxes[:8]
+    ROTCAM["bench_boxes"]=boxes; ROTCAM["bench_boxes_ts"]=time.time()   # for the live feed to redraw on fresh frames
     annotated=_bench_draw_boxes(img,boxes)                       # green box per detected row → live feed
     ROTCAM["bench_frame"]=annotated; ROTCAM["bench_frame_ts"]=time.time()
     ROTCAM["bench_comp"]="data:image/jpeg;base64,"+_b.b64encode(annotated).decode()
@@ -1443,7 +1456,7 @@ def _rotcam_apply(rows):
         if len(h)>=2 and h[-1]==h[-2]:
             confirmed=h[-1]; prev=ROTCAM["cooking"]
             if confirmed!=prev:
-                if confirmed<prev and False: rot_put_on(prev-confirmed)   # display-only (no auto-add)
+                if confirmed<prev: _note_row_off(prev-confirmed)   # count dropped → row(s) came off → arm bench credit
                 ROTCAM["cooking"]=confirmed
         return
     # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then act on shelves
@@ -1454,7 +1467,7 @@ def _rotcam_apply(rows):
         if confirmed!=prev:
             if prev and len(prev)==6:
                 came_off=sum(1 for i in range(6) if prev[i]=="1" and confirmed[i]=="0")
-                if came_off>0 and False: rot_put_on(came_off)   # shelf detection is DISPLAY-ONLY now (never auto-adds stock — that was the original over-count source)
+                if came_off>0: _note_row_off(came_off)   # shelf went loaded→empty → row(s) came off → arm bench credit (does NOT add stock until the bench cam confirms a new row)
             ROTCAM["cooking_pat"]=confirmed
             ROTCAM["cooking"]=confirmed.count("1")
 def _hm_to_min(s,d):
@@ -1580,6 +1593,37 @@ def rotcam_stream_loop():
                 except Exception: pass
         time.sleep(0.5)
 
+def benchcam_stream_loop():
+    # same persistent-MJPEG trick as the rotisserie cam, for the side bench camera → smooth, no per-grab lag
+    import subprocess
+    while True:
+        if (time.time()-ROTCAM.get("bench_want",0))>20 or not _bench_rtsp():
+            time.sleep(1); continue
+        url=_bench_rtsp(); p=None
+        try:
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+                                "-an","-r","12","-q:v","6","-f","mjpeg","-"],
+                               stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
+            buf=b""
+            while True:
+                if (time.time()-ROTCAM.get("bench_want",0))>20: break
+                chunk=p.stdout.read(65536)
+                if not chunk: break
+                buf+=chunk
+                while True:
+                    s=buf.find(b"\xff\xd8")
+                    if s<0: break
+                    e=buf.find(b"\xff\xd9", s+2)
+                    if e<0: break
+                    ROTCAM["bench_live"]=buf[s:e+2]; ROTCAM["bench_live_ts"]=time.time(); buf=buf[e+2:]
+                if len(buf)>4*10**6: buf=buf[-10**6:]
+        except Exception: time.sleep(5)
+        finally:
+            if p:
+                try: p.kill()
+                except Exception: pass
+        time.sleep(0.5)
+
 @app.route("/api/rotcam_stream")
 def api_rotcam_stream():
     # smooth MJPEG video (multipart/x-mixed-replace) — the browser <img> plays it like a webcam,
@@ -1616,12 +1660,21 @@ def api_rotcam_frame():
 @app.route("/api/benchcam_frame")
 def api_benchcam_frame():
     if not _bench_rtsp(): return Response("bench camera not configured",status=404)
-    fr=ROTCAM.get("bench_frame")
-    if fr and (time.time()-ROTCAM.get("bench_frame_ts",0))<20:   # fresh annotated frame (green boxes on detected rows)
-        return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
-    jpeg,err=_bench_grab()                                        # else a plain live grab (no boxes yet)
-    if err: return Response(err,status=503)
-    return Response(_downscale_jpeg(jpeg,720),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    ROTCAM["bench_want"]=time.time()                              # tell the bench streamer a viewer is here
+    fr=None
+    for _ in range(50):                                          # wait up to ~5s for the first live frame
+        cand=ROTCAM.get("bench_live")
+        if cand and (time.time()-ROTCAM.get("bench_live_ts",0))<8: fr=cand; break
+        time.sleep(0.1)
+    if fr is None:
+        jpeg,err=_bench_grab()                                    # fallback one-shot grab
+        if err: return Response(err,status=503)
+        fr=jpeg
+    fr=_downscale_jpeg(fr,720)
+    boxes=ROTCAM.get("bench_boxes") or []                         # redraw the latest AI boxes on the live frame
+    if boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30:
+        fr=_bench_draw_boxes(fr,boxes)
+    return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
 def api_mcp():
@@ -1968,5 +2021,6 @@ if __name__=="__main__":
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
+    threading.Thread(target=benchcam_stream_loop,daemon=True).start()
     threading.Timer(2.0,lambda:webbrowser.open("http://127.0.0.1:8080")).start()
     asyncio.run(ble_loop())
