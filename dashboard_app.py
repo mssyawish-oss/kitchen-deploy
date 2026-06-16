@@ -1366,39 +1366,64 @@ def _bench_grab():
         return p.stdout,None
     except FileNotFoundError: return None,"ffmpeg is not installed."
     except Exception as e: return None,str(e)
-_BENCH_SIDE_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADING BENCH in a rotisserie chicken shop — the bench "
-                    "where cooked chickens are placed straight after coming off the spit. Count how many ROWS of cooked, "
-                    "GOLDEN/BROWN WHOLE roasted chickens are sitting on the bench right now. A 'row' is a group of about 4 whole "
-                    "chickens placed together as they come off one spit. Rows may sit SIDE BY SIDE (2 or 3 across the bench) and "
-                    "are sometimes STACKED (a second layer resting on top of the bottom rows) — count EVERY distinct row you can "
-                    "see, including stacked ones on top. IMPORTANT: ignore bare steel, trays, tongs, wire frames/cages, fryer "
-                    "baskets, and any PEOPLE (heads, bodies, arms, gloved hands). Do NOT count BUTTERFLIED / flattened / "
-                    "spatchcocked / split-open / halved or quartered chickens — count ONLY plump WHOLE birds. If the bench is "
-                    "empty reply 0. If it is completely blocked or out of view reply the single word BLOCKED. Otherwise reply "
-                    "ONLY one digit 0-6 for the number of rows.")
+_BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADING BENCH in a rotisserie chicken shop, where cooked "
+                    "chickens are placed after coming off the spit. DETECT each ROW of cooked, GOLDEN/BROWN WHOLE roasted "
+                    "chickens resting on the bench. A 'row' is a group of about 4 whole chickens placed together. Rows may sit "
+                    "SIDE BY SIDE (2-3 across) and sometimes STACKED (a layer on top) — mark EVERY distinct row, including stacked "
+                    "ones. Do NOT mark bare steel, trays, tongs, wire frames, fryer baskets, people, or BUTTERFLIED/flattened/"
+                    "halved/quartered chickens — only plump WHOLE birds. Return ONLY a JSON array, one object per row, each as "
+                    "{\"box_2d\":[ymin,xmin,ymax,xmax]} with integer coordinates normalised 0-1000 (origin top-left). If there are "
+                    "no whole chickens on the bench, return [].")
+def _bench_draw_boxes(jpeg,boxes):
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        dr=ImageDraw.Draw(im)
+        for i,b in enumerate(boxes,1):
+            try:
+                ymin,xmin,ymax,xmax=b[0],b[1],b[2],b[3]
+                x1=int(min(xmin,xmax)/1000.0*W); y1=int(min(ymin,ymax)/1000.0*H)
+                x2=int(max(xmin,xmax)/1000.0*W); y2=int(max(ymin,ymax)/1000.0*H)
+                dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                dr.text((x1+4,max(0,y1+3)),"row %d"%i,fill=(0,255,0))
+            except Exception: pass
+        out=io.BytesIO(); im.save(out,"JPEG",quality=82); return out.getvalue()
+    except Exception:
+        return jpeg
 def _benchcam_count(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key or not jpeg: return None
+    import base64 as _b
     img=_downscale_jpeg(jpeg,720)
-    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(img).decode()
     _gem_count_call()
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
-    gencfg={"temperature":0,"maxOutputTokens":32}
+    gencfg={"temperature":0,"maxOutputTokens":700}
     if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
-    body={"contents":[{"parts":[{"text":_BENCH_SIDE_PROMPT},
-          {"inline_data":{"mime_type":"image/jpeg","data":__import__("base64").b64encode(img).decode()}}]}],
+    body={"contents":[{"parts":[{"text":_BENCH_DETECT_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":_b.b64encode(img).decode()}}]}],
           "generationConfig":gencfg}
     url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    boxes=[]
     try:
         req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
         with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
         cand=(data.get("candidates") or [{}])[0]
         txt="".join(p.get("text","") for p in (((cand.get("content") or {}).get("parts")) or []) if isinstance(p,dict))
         if not txt: return None
-        if "block" in txt.lower() and not re.search(r"\d",txt): return None
-        m=re.search(r"\d",txt)
-        return max(0,min(6,int(m.group()))) if m else None
-    except Exception: return None
+        mt=re.search(r"\[.*\]",txt,re.S)
+        if mt:
+            for o in (json.loads(mt.group()) or []):
+                bb=o.get("box_2d") if isinstance(o,dict) else (o if isinstance(o,list) else None)
+                if bb and len(bb)>=4:
+                    try: boxes.append([float(bb[0]),float(bb[1]),float(bb[2]),float(bb[3])])
+                    except Exception: pass
+    except Exception:
+        return None
+    boxes=boxes[:8]
+    annotated=_bench_draw_boxes(img,boxes)                       # green box per detected row → live feed
+    ROTCAM["bench_frame"]=annotated; ROTCAM["bench_frame_ts"]=time.time()
+    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+_b.b64encode(annotated).decode()
+    return len(boxes)
 # ===================================================================================
 def _rotcam_read():
     fr=ROTCAM.get("frame")                                   # reuse the live-feed frame if fresh
@@ -1587,6 +1612,16 @@ def api_rotcam_frame():
     if err: return Response(err,status=503)
     ROTCAM["frame"]=jpeg; ROTCAM["frame_ts"]=time.time()
     return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+
+@app.route("/api/benchcam_frame")
+def api_benchcam_frame():
+    if not _bench_rtsp(): return Response("bench camera not configured",status=404)
+    fr=ROTCAM.get("bench_frame")
+    if fr and (time.time()-ROTCAM.get("bench_frame_ts",0))<20:   # fresh annotated frame (green boxes on detected rows)
+        return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    jpeg,err=_bench_grab()                                        # else a plain live grab (no boxes yet)
+    if err: return Response(err,status=503)
+    return Response(_downscale_jpeg(jpeg,720),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
 def api_mcp():
