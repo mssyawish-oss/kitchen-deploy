@@ -1343,7 +1343,14 @@ def _bench_grab():
         p=subprocess.run(["ffmpeg","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
                          capture_output=True,timeout=25)
         if p.returncode!=0 or not p.stdout:
-            return None,"Couldn't read the bench camera (check its RTSP/camera-account login)."
+            err=(p.stderr or b"").decode("latin1","ignore")
+            hint=""
+            low=err.lower()
+            if "401" in err or "unauthor" in low: hint=" — 401 Unauthorized: wrong RTSP login. Set a Camera Account in the Tapo app (Settings → Advanced) and use that user/pass."
+            elif "404" in err or "not found" in low: hint=" — stream path not found: try /stream2 instead of /stream1."
+            elif "timed out" in low or "timeout" in low: hint=" — connection timed out."
+            tail=err.strip().splitlines()[-1] if err.strip() else ""
+            return None,"Couldn't read the bench camera"+hint+((" ["+tail[:120]+"]") if tail else "")
         return p.stdout,None
     except FileNotFoundError: return None,"ffmpeg is not installed."
     except Exception as e: return None,str(e)
