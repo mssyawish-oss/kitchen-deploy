@@ -1410,8 +1410,11 @@ def _bench_grab():
         return p.stdout,None
     except FileNotFoundError: return None,"ffmpeg is not installed."
     except Exception as e: return None,str(e)
-_BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADING BENCH in a rotisserie chicken shop, where cooked "
-                    "chickens are placed after coming off the spit. DETECT each ROW of cooked, GOLDEN/BROWN WHOLE roasted "
+_BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the wheeled stainless-steel UNLOADING BENCH in a rotisserie chicken shop, where "
+                    "cooked chickens are placed after coming off the spit. The bench is ON WHEELS and may be parked in front of "
+                    "the rotisserie (left), in the middle, or rolled in front of the glass warming cabinet (right) — find the flat "
+                    "open stainless bench wherever it is and count the chickens resting ON TOP of it in ANY of those positions. "
+                    "DETECT each ROW of cooked, GOLDEN/BROWN WHOLE roasted "
                     "chickens resting on the bench. A 'row' is a group of about 4 whole chickens placed together. Rows may sit "
                     "SIDE BY SIDE (2-3 across) and sometimes STACKED (a layer on top) — mark EVERY distinct row, including stacked "
                     "ones. CRITICAL: count ONLY chickens sitting DIRECTLY on the flat, open stainless-steel UNLOADING BENCH "
