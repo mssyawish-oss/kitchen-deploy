@@ -192,6 +192,22 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-tag.load{color:#fde68a;background:rgba(245,158,11,.22);}
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
+/* Today's Prep */
+.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+.prep-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;position:relative;transition:transform .08s,border-color .15s;}
+.prep-card:active{transform:scale(.98);}
+.prep-card.done{border-color:var(--green);}
+.prep-card .pc-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface2);display:block;}
+.prep-card .pc-noimg{width:100%;aspect-ratio:4/3;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:34px;}
+.prep-card .pc-body{padding:9px 11px;display:flex;align-items:center;gap:8px;}
+.prep-card .pc-name{font-size:15px;font-weight:700;color:var(--text);flex:1;min-width:0;line-height:1.2;}
+.prep-card .pc-check{width:26px;height:26px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800;}
+.prep-card.done .pc-check{background:var(--green);border-color:var(--green);}
+.prep-card .pc-done-ov{position:absolute;top:8px;right:8px;background:rgba(22,163,74,.95);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:7px;display:flex;align-items:center;gap:5px;}
+.prep-card .pc-done-ov img{width:22px;height:22px;border-radius:4px;object-fit:cover;}
+.prep-pick.sel{border-color:var(--amber);background:var(--surface2);}
+.prep-pick .pc-tick{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:var(--amber);color:#1a1205;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;opacity:0;transition:opacity .12s;}
+.prep-pick.sel .pc-tick{opacity:1;}
 .rl-card.warn{animation:rl-warn 1s infinite;}
 .rl-card.crit{animation:rl-crit .5s infinite;}
 @keyframes rl-warn{0%,100%{border-color:var(--amber-dim);}50%{border-color:var(--amber);box-shadow:0 0 16px rgba(251,191,36,.55);background:linear-gradient(180deg,#3a2406,#1c1106);}}
@@ -638,9 +654,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header"><div class="page-title">Jobs When Not Busy</div><button class="btn" onclick="openJobsAdmin()">&#9881; Setup</button></div>
-      <div id="busy-indicator" class="busy-indicator busy"><div style="font-size:16px;font-weight:700;" id="busy-label">Checking...</div><div style="font-size:12px;color:var(--muted);margin-top:4px;" id="busy-sub"></div></div>
-      <div id="jobs-list"></div>
+      <div class="page-header"><div class="page-title">Today's Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">＋ Set today's list</button><button class="btn" onclick="openPrepManage()">&#9881; Items</button></div></div>
+      <div id="prep-list"></div>
     </div>
     <div class="page" id="page-cameras">
       <div class="page-header"><div class="page-title">Cameras</div><div class="row" style="gap:6px;"><button class="btn" onclick="openSettingsModal()">&#9881; Manage</button></div></div>
@@ -654,7 +669,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="nav-btn" data-page="packdown" onclick="navTo('packdown',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8.5 12 2.2 2.2L16 9.5"/></svg><span>Checklist</span></div><div class="nav-badge" id="packdown-badge">!</div></button>
     <button class="nav-btn" data-page="service" onclick="navTo('service',this)" id="nav-service-btn"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg><span>Routines</span></div><div class="nav-badge" id="service-badge">!</div></button>
     <button class="nav-btn" data-page="recipes" onclick="navTo('recipes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 14a4 4 0 0 1-1-7.86A5 5 0 0 1 15.4 4.6 4.5 4.5 0 0 1 17.5 14"/><path d="M6.5 14v6h11v-6"/><path d="M6.5 17.2h11"/></svg><span>Recipes</span></div></button>
-    <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Jobs</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
+    <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
   </nav>
   </div>
@@ -674,6 +689,31 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div style="color:var(--red);font-size:12px;min-height:18px;margin-top:8px;" id="pin-confirm-error"></div>
     <button class="btn mt-8" onclick="closeModal('pin-confirm-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- Today's Prep: morning staff pick the list -->
+<div class="modal-overlay" id="prep-build-modal">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-header"><div class="modal-title">SET TODAY'S PREP</div><button class="modal-close" onclick="closeModal('prep-build-modal')">Close</button></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Tap the items the afternoon staff need to prep today. Tap again to unselect.</div>
+    <div id="prep-build-grid" class="prep-grid"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepToday()">Save today's prep list</button>
+  </div>
+</div>
+<!-- Today's Prep: manage preset items -->
+<div class="modal-overlay" id="prep-manage-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header"><div class="modal-title">PREP ITEMS</div><button class="modal-close" onclick="closeModal('prep-manage-modal')">Close</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Create the prep items (with a photo) that staff can choose from each day.</div>
+    <div id="prep-manage-list"></div>
+    <div class="divider"></div>
+    <div class="section-title">Add / edit item</div>
+    <input type="hidden" id="prep-edit-id">
+    <div class="form-row"><div class="label">Name</div><input class="input" id="prep-name" placeholder="e.g. Cut lettuce, Marinate wings…"></div>
+    <div class="form-row"><div class="label">Picture</div><label class="btn" style="cursor:pointer;">Choose image…<input type="file" accept="image/*" style="display:none;" id="prep-img-input" onchange="prepPickImage(this)"></label> <span id="prep-img-name" style="font-size:12px;color:var(--muted);margin-left:8px;"></span><div id="prep-img-preview" style="margin-top:8px;"></div></div>
+    <div class="row" style="gap:6px;margin-top:6px;"><button class="btn btn-primary" style="flex:1;" id="prep-save-btn" onclick="savePrepItem()">Add item</button><button class="btn" onclick="prepClearForm()">Clear</button></div>
+    <div id="prep-manage-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
   </div>
 </div>
 
@@ -1201,7 +1241,7 @@ function toggleSidebar(){const s=document.getElementById('app-shell');if(window.
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){requirePin('Enter Code','Code required to open '+(page==='stock'?'Stock':'Recipes'),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);});return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderJobsPage();if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();}
+function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){requirePin('Enter Code','Code required to open '+(page==='stock'?'Stock':'Recipes'),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);});return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
 function renderCamerasPage(){
@@ -1231,7 +1271,7 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleDayPill(el){el.classList.toggle('on');}
 function toggleOrderDay(el){el.classList.toggle('on');updateOrderPreview();}
-async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};}
+async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};}
 async function saveAppData(){try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(appData)});}catch(e){}}
 // save only specific top-level keys — avoids overwriting another device's unrelated changes
 async function saveKeys(keys){const body={};keys.forEach(k=>body[k]=appData[k]);try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){}}
@@ -1873,15 +1913,81 @@ function editRecipe(i){const r=(appData.recipes||[])[i];if(!r)return;editingReci
 function saveRecipe(){const name=document.getElementById('recipe-name-input').value.trim();const category=document.getElementById('recipe-cat-input').value.trim();const body=document.getElementById('recipe-body-input').value.trim();if(!name){alert('Enter a name.');return;}appData.recipes=appData.recipes||[];if(editingRecipe){const ex=appData.recipes.find(r=>r.id===editingRecipe);if(ex)Object.assign(ex,{name,category,body});editingRecipe=null;}else{appData.recipes.push({id:'rec_'+Date.now(),name,category,body});}saveAppData();closeModal('recipe-form-modal');renderRecipesPage();}
 function deleteRecipe(i){if(!confirm('Delete?'))return;appData.recipes.splice(i,1);saveAppData();renderRecipesPage();}
 
-// JOBS
-function renderJobsPage(){const jd=appData.jobs_done||{};document.getElementById('jobs-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="job-item ${jd[j.id]?'done':''}" onclick="completeJob('${j.id}')"><div class="job-priority ${j.priority||'med'}"></div><div><div style="font-size:14px;font-weight:500;">${j.text}</div><div style="font-size:11px;color:var(--muted);">${j.area||''}</div>${j.remind_time?`<div class="job-reminder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${j.remind_time}${j.days&&j.days.length>0?' | '+j.days.map(d=>DNAMES[d]).join(', '):''}</div>`:''}${jd[j.id]?proofHtml(Object.assign({done:true},jd[j.id])):''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-illu illu-rooster"></div>No jobs. Tap Setup.</div>';}
+// ===== TODAY'S PREP (preset items → morning picks → afternoon checklist w/ photo) =====
+function _prepToday(){return new Date().toISOString().slice(0,10);}
+function renderPrepPage(){
+  const box=document.getElementById('prep-list');if(!box)return;
+  const today=_prepToday();const pt=appData.prep_today||{};const presets=appData.prep_presets||[];
+  const items=((pt.date===today?(pt.items||[]):[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));
+  const done=(pt.date===today?(pt.done||{}):{});
+  const badge=document.getElementById('jobs-badge');
+  if(!items.length){
+    if(badge)badge.className='nav-badge';
+    box.innerHTML='<div class="empty-state" style="padding:34px 18px;text-align:center;"><div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:13px;color:var(--muted);line-height:1.6;">Morning staff: tap <b>＋ Set today\'s list</b> at the top and choose what the afternoon shift needs to prep.<br>No items to choose from yet? Tap <b>⚙ Items</b> to create them.</div></div>';
+    return;
+  }
+  const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
+  if(badge)badge.className='nav-badge'+(pend>0?' show':'');
+  let html='<div style="font-size:14px;color:var(--muted);margin-bottom:12px;"><b style="color:var(--text);">'+doneN+' of '+items.length+'</b> prepped'+(pend>0?(' · '+pend+' to go'):' · all done ✓')+'</div><div class="prep-grid">';
+  html+=items.map(p=>{
+    const d=done[p.id];
+    const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';
+    const ov=d?('<div class="pc-done-ov">&#10003;'+(d.photo?' <img src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')">':'')+' '+(d.time||'')+'</div>'):'';
+    return '<div class="prep-card'+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')">'+img+ov+'<div class="pc-body"><div class="pc-name">'+_mEsc(p.name)+'</div><div class="pc-check">'+(d?'&#10003;':'')+'</div></div></div>';
+  }).join('')+'</div>';
+  box.innerHTML=html;
+}
+function completePrep(id){
+  const today=_prepToday();appData.prep_today=appData.prep_today||{};
+  if(appData.prep_today.date!==today){appData.prep_today={date:today,items:appData.prep_today.items||[],done:{}};}
+  appData.prep_today.done=appData.prep_today.done||{};
+  if(appData.prep_today.done[id]){delete appData.prep_today.done[id];saveKeys(['prep_today']);renderPrepPage();return;}  // undo
+  const p=(appData.prep_presets||[]).find(x=>x.id===id);
+  completeWithProof('Prepped: '+(p?p.name:''),'Snap a photo of the prepped item',function(rec){
+    appData.prep_today.done[id]=rec;saveKeys(['prep_today']);renderPrepPage();
+  });
+}
+let _prepPick=new Set();
+function openPrepBuild(){const pt=appData.prep_today||{};_prepPick=new Set(pt.date===_prepToday()?(pt.items||[]):[]);renderPrepBuildGrid();openModal('prep-build-modal');}
+function renderPrepBuildGrid(){
+  const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
+  if(!presets.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px;">No prep items yet. Close this and tap <b>⚙ Items</b> to create some first.</div>';return;}
+  grid.innerHTML=presets.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';return '<div class="prep-card prep-pick'+(_prepPick.has(p.id)?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')">'+img+'<div class="pc-tick">&#10003;</div><div class="pc-body"><div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join('');
+}
+function togglePrepPick(id){if(_prepPick.has(id))_prepPick.delete(id);else _prepPick.add(id);renderPrepBuildGrid();}
+function savePrepToday(){
+  const today=_prepToday();const items=(appData.prep_presets||[]).filter(p=>_prepPick.has(p.id)).map(p=>p.id);
+  const pt=appData.prep_today||{};const prev=(pt.date===today?(pt.done||{}):{});const done={};items.forEach(id=>{if(prev[id])done[id]=prev[id];});
+  appData.prep_today={date:today,items:items,done:done};saveKeys(['prep_today']);closeModal('prep-build-modal');renderPrepPage();
+}
+let _prepFile=null;
+function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
+function renderPrepManageList(){
+  const el=document.getElementById('prep-manage-list');if(!el)return;const presets=appData.prep_presets||[];
+  el.innerHTML=presets.length?presets.map(p=>'<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;">🍗</div>')+'<span style="flex:1;font-size:14px;font-weight:600;min-width:0;">'+_mEsc(p.name)+'</span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>').join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
+}
+function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">';}}
+function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';}
+function deletePrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!confirm('Delete "'+(p?p.name:'')+'"?'))return;appData.prep_presets=(appData.prep_presets||[]).filter(x=>x.id!==id);saveKeys(['prep_presets']);renderPrepManageList();renderPrepPage();}
+function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+function savePrepItem(){
+  const name=document.getElementById('prep-name').value.trim();const st=document.getElementById('prep-manage-status');
+  if(!name){if(st){st.textContent='Enter a name.';st.style.color='var(--red)';}return;}
+  let id=document.getElementById('prep-edit-id').value||('p'+Date.now().toString(36));
+  appData.prep_presets=appData.prep_presets||[];
+  const finish=img=>{const ex=appData.prep_presets.find(p=>p.id===id);if(ex){ex.name=name;if(img)ex.img=img;}else appData.prep_presets.push({id:id,name:name,img:img||''});saveKeys(['prep_presets']);prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
+  if(_prepFile){if(st){st.textContent='Uploading…';st.style.color='var(--muted)';}const fd=new FormData();fd.append('file',_prepFile);fetch('/api/prep_image/'+id,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)finish(d.img);else if(st){st.textContent='Image error: '+(d.error||'failed');st.style.color='var(--red)';}}).catch(()=>{if(st){st.textContent='Upload failed.';st.style.color='var(--red)';}});}
+  else finish(null);
+}
+// JOBS (legacy quiet-jobs — kept for data, no longer a tab)
+function renderJobsPage(){const jd=appData.jobs_done||{};if(!document.getElementById('jobs-list'))return;document.getElementById('jobs-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="job-item ${jd[j.id]?'done':''}" onclick="completeJob('${j.id}')"><div class="job-priority ${j.priority||'med'}"></div><div><div style="font-size:14px;font-weight:500;">${j.text}</div><div style="font-size:11px;color:var(--muted);">${j.area||''}</div>${j.remind_time?`<div class="job-reminder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${j.remind_time}${j.days&&j.days.length>0?' | '+j.days.map(d=>DNAMES[d]).join(', '):''}</div>`:''}${jd[j.id]?proofHtml(Object.assign({done:true},jd[j.id])):''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-illu illu-rooster"></div>No jobs. Tap Setup.</div>';}
 function completeJob(jobId){appData.jobs_done=appData.jobs_done||{};if(appData.jobs_done[jobId]){delete appData.jobs_done[jobId];saveKeys(['jobs_done']);renderJobsPage();return;}const job=(appData.quiet_jobs||[]).find(j=>j.id===jobId);completeWithProof('Complete Job',job?job.text:'',function(rec){appData.jobs_done[jobId]=rec;saveKeys(['jobs_done']);renderJobsPage();});}
 function openJobsAdmin(){editingJob=null;setBtn('btn-add-job','+ Add Job');renderJobsAdminList();openModal('jobs-admin-modal');}
 function renderJobsAdminList(){document.getElementById('jobs-admin-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:13px;">${j.text}</span><span style="font-size:10px;color:var(--cyan);margin:0 6px;">${j.remind_time||''}</span><span class="tag ${j.priority==='high'?'tag-red':j.priority==='low'?'tag-green':'tag-amber'}">${j.priority||'med'}</span><button class="btn" style="padding:3px 8px;font-size:11px;margin-left:8px;" onclick="editJob(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;margin-left:4px;" onclick="removeJob(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No jobs yet.</div>';}
 function addJob(){const text=document.getElementById('new-job-text').value.trim();const area=document.getElementById('new-job-area').value.trim();const priority=document.getElementById('new-job-priority').value;const remind_time=document.getElementById('new-job-time').value.trim();const days=[];document.querySelectorAll('#new-job-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));if(!text){alert('Enter a job.');return;}appData.quiet_jobs=appData.quiet_jobs||[];if(editingJob){const ex=appData.quiet_jobs.find(j=>j.id===editingJob);if(ex)Object.assign(ex,{text,area,priority,remind_time,days});editingJob=null;setBtn('btn-add-job','+ Add Job');}else{appData.quiet_jobs.push({id:'job_'+Date.now(),text,area,priority,remind_time,days});}saveAppData();renderJobsAdminList();document.getElementById('new-job-text').value='';document.getElementById('new-job-area').value='';document.getElementById('new-job-time').value='';document.querySelectorAll('#new-job-days .day-pill').forEach(p=>p.classList.remove('on'));}
 function editJob(i){const j=(appData.quiet_jobs||[])[i];if(!j)return;editingJob=j.id;document.getElementById('new-job-text').value=j.text||'';document.getElementById('new-job-area').value=j.area||'';document.getElementById('new-job-priority').value=j.priority||'med';document.getElementById('new-job-time').value=j.remind_time||'';setDayPills('#new-job-days',j.days);setBtn('btn-add-job','Save Changes');document.getElementById('new-job-text').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeJob(i){appData.quiet_jobs.splice(i,1);saveAppData();renderJobsAdminList();}
-async function checkSquareActivity(){try{const r=await fetch('/api/square_activity'),d=await r.json();const ind=document.getElementById('busy-indicator');if(!d.configured){document.getElementById('busy-label').textContent='Square not connected';ind.className='busy-indicator quiet';document.getElementById('busy-sub').textContent='Add your Square token in ⚙ Settings.';document.getElementById('jobs-badge').className='nav-badge';return;}document.getElementById('busy-label').textContent=d.busy?'BUSY — Keep serving!':'QUIET — Complete a job!';ind.className='busy-indicator '+(d.busy?'busy':'quiet');document.getElementById('busy-sub').textContent=d.error?('Square error: '+d.error):(d.sales_last_30min+' sale(s) in last 30 min');document.getElementById('jobs-badge').className='nav-badge'+(d.busy?'':' show');}catch(e){}}
+async function checkSquareActivity(){if(!document.getElementById('busy-indicator'))return;try{const r=await fetch('/api/square_activity'),d=await r.json();const ind=document.getElementById('busy-indicator');if(!d.configured){document.getElementById('busy-label').textContent='Square not connected';ind.className='busy-indicator quiet';document.getElementById('busy-sub').textContent='Add your Square token in ⚙ Settings.';document.getElementById('jobs-badge').className='nav-badge';return;}document.getElementById('busy-label').textContent=d.busy?'BUSY — Keep serving!':'QUIET — Complete a job!';ind.className='busy-indicator '+(d.busy?'busy':'quiet');document.getElementById('busy-sub').textContent=d.error?('Square error: '+d.error):(d.sales_last_30min+' sale(s) in last 30 min');document.getElementById('jobs-badge').className='nav-badge'+(d.busy?'':' show');}catch(e){}}
 
 // SETTINGS
 let _curSetTab='General';

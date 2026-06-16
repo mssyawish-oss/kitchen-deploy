@@ -865,9 +865,31 @@ def _prune_photos(days=45):
     try:
         cutoff=time.time()-days*86400
         for fn in os.listdir(PHOTOS_DIR):
+            if fn.startswith("prep_"): continue   # prep-item preset pictures are permanent, never prune them
             fp=os.path.join(PHOTOS_DIR,fn)
             if os.path.isfile(fp) and os.path.getmtime(fp)<cutoff: os.remove(fp)
     except Exception: pass
+
+@app.route("/api/prep_image/<pid>",methods=["POST"])
+def api_prep_image(pid):
+    # upload the picture for a prep preset item; saved permanently in the photos folder
+    if not re.match(r'^[A-Za-z0-9_-]{1,40}$',pid or ""): return jsonify({"ok":False,"error":"bad id"})
+    f=request.files.get("file")
+    if not f: return jsonify({"ok":False,"error":"no image"})
+    raw=f.read()
+    if not raw: return jsonify({"ok":False,"error":"empty image"})
+    if len(raw)>5*1024*1024: return jsonify({"ok":False,"error":"image too big (max 5 MB)"})
+    ext=(os.path.splitext(f.filename or "")[1] or "").lstrip(".").lower()
+    if ext not in ("png","jpg","jpeg","webp","gif"): ext="jpg"
+    try:
+        for old in os.listdir(PHOTOS_DIR):
+            if old.startswith("prep_"+pid+"."): os.remove(os.path.join(PHOTOS_DIR,old))
+    except Exception: pass
+    fn="prep_%s.%s"%(pid,ext)
+    try:
+        with open(os.path.join(PHOTOS_DIR,fn),"wb") as out: out.write(raw)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)})
+    return jsonify({"ok":True,"img":fn})
 
 @app.route("/api/capture",methods=["POST"])
 def api_capture():
