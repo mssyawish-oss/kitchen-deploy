@@ -566,7 +566,7 @@ def _books_gate_page(setup):
         "color:#fff;font-size:16px;margin-bottom:10px}button{width:100%;padding:12px;border:none;"
         "border-radius:10px;background:#b45309;color:#fff6e6;font-size:15px;font-weight:600;cursor:pointer}"
         ".e{color:#f87171;font-size:12px;min-height:16px;margin-top:8px}</style>"
-        "<div class='c'><h1>&#128209; "+title+"</h1><p>"+sub+"</p>"
+        "<div class='c'><h1>"+title+"</h1><p>"+sub+"</p>"
         "<input id='pw' type='password' placeholder='Password' autofocus "
         "onkeydown=\"if(event.key==='Enter')go()\">"
         +("<input id='pw2' type='password' placeholder='Repeat password' onkeydown=\"if(event.key==='Enter')go()\">" if setup else "")+
