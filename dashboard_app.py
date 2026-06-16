@@ -1396,11 +1396,23 @@ _BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADIN
                     "on the open bench. Return ONLY a JSON array, one object per row, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} "
                     "with integer coordinates normalised 0-1000 (origin top-left). If there are no whole chickens on the open "
                     "bench, return [].")
-def _bench_draw_boxes(jpeg,boxes):
+_BENCH_ZONE=(0.08,0.15,0.53,0.96)   # x1,y1,x2,y2 fraction — the unloading bench area on the LEFT (cuts off before the warmer cabinet on the right). Tunable via rotcam_config['bench_zone'].
+def _bench_zone():
+    z=_rotcam_cfg().get("bench_zone")
+    if isinstance(z,(list,tuple)) and len(z)==4:
+        try:
+            v=[float(x) for x in z]
+            if all(0<=x<=1 for x in v) and v[0]<v[2] and v[1]<v[3]: return (v[0],v[1],v[2],v[3])
+        except Exception: pass
+    return _BENCH_ZONE
+def _bench_annotate(jpeg,boxes):
+    # draw the detection ZONE (cyan) + a green box per detected row, on the given frame
     try:
         from PIL import Image, ImageDraw; import io
         im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
         dr=ImageDraw.Draw(im)
+        zx1,zy1,zx2,zy2=_bench_zone()
+        dr.rectangle([int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)],outline=(0,190,255),width=2)
         for i,b in enumerate(boxes,1):
             try:
                 ymin,xmin,ymax,xmax=b[0],b[1],b[2],b[3]
@@ -1416,16 +1428,25 @@ def _benchcam_count(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key or not jpeg: return None
     import base64 as _b
-    img=_downscale_jpeg(jpeg,720)
+    img=_downscale_jpeg(jpeg,1100)                 # keep detail — we send only a cropped sub-region
+    zx1,zy1,zx2,zy2=_bench_zone()
+    crop_jpeg=img; cropped=False
+    try:                                           # crop to the bench zone so the AI never sees the cabinet/counter
+        from PIL import Image; import io
+        full=Image.open(io.BytesIO(img)).convert("RGB"); W,H=full.size
+        crop=full.crop((int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)))
+        if crop.width>760: crop=crop.resize((760,max(1,int(crop.height*760/crop.width))))
+        cb=io.BytesIO(); crop.save(cb,"JPEG",quality=82); crop_jpeg=cb.getvalue(); cropped=True
+    except Exception: cropped=False
     _gem_count_call()
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
     gencfg={"temperature":0,"maxOutputTokens":700}
     if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
     body={"contents":[{"parts":[{"text":_BENCH_DETECT_PROMPT},
-          {"inline_data":{"mime_type":"image/jpeg","data":_b.b64encode(img).decode()}}]}],
+          {"inline_data":{"mime_type":"image/jpeg","data":_b.b64encode(crop_jpeg).decode()}}]}],
           "generationConfig":gencfg}
     url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
-    boxes=[]
+    raw=[]
     try:
         req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
         with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
@@ -1437,13 +1458,19 @@ def _benchcam_count(jpeg):
             for o in (json.loads(mt.group()) or []):
                 bb=o.get("box_2d") if isinstance(o,dict) else (o if isinstance(o,list) else None)
                 if bb and len(bb)>=4:
-                    try: boxes.append([float(bb[0]),float(bb[1]),float(bb[2]),float(bb[3])])
+                    try: raw.append([float(bb[0]),float(bb[1]),float(bb[2]),float(bb[3])])
                     except Exception: pass
     except Exception:
         return None
-    boxes=boxes[:8]
-    ROTCAM["bench_boxes"]=boxes; ROTCAM["bench_boxes_ts"]=time.time()   # for the live feed to redraw on fresh frames
-    annotated=_bench_draw_boxes(img,boxes)                       # green box per detected row → live feed
+    boxes=[]                                       # remap crop-relative coords back to the FULL frame
+    for ymin,xmin,ymax,xmax in raw[:8]:
+        if cropped:
+            boxes.append([ (zy1+(ymin/1000.0)*(zy2-zy1))*1000, (zx1+(xmin/1000.0)*(zx2-zx1))*1000,
+                           (zy1+(ymax/1000.0)*(zy2-zy1))*1000, (zx1+(xmax/1000.0)*(zx2-zx1))*1000 ])
+        else:
+            boxes.append([ymin,xmin,ymax,xmax])
+    ROTCAM["bench_boxes"]=boxes; ROTCAM["bench_boxes_ts"]=time.time()
+    annotated=_bench_annotate(img,boxes)
     ROTCAM["bench_frame"]=annotated; ROTCAM["bench_frame_ts"]=time.time()
     ROTCAM["bench_comp"]="data:image/jpeg;base64,"+_b.b64encode(annotated).decode()
     return len(boxes)
@@ -1532,6 +1559,9 @@ def api_rotcam_config():
         except Exception: pass
     if "bench_interval" in d:
         try: cfg["bench_interval"]=max(4,int(d["bench_interval"]))
+        except Exception: pass
+    if "bench_zone" in d and isinstance(d["bench_zone"],(list,tuple)) and len(d["bench_zone"])==4:
+        try: cfg["bench_zone"]=[max(0.0,min(1.0,float(x))) for x in d["bench_zone"]]
         except Exception: pass
     for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled"):
         if bk in d: cfg[bk]=bool(d[bk])
@@ -1682,8 +1712,8 @@ def api_benchcam_frame():
         fr=jpeg
     fr=_downscale_jpeg(fr,720)
     boxes=ROTCAM.get("bench_boxes") or []                         # redraw the latest AI boxes on the live frame
-    if boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30:
-        fr=_bench_draw_boxes(fr,boxes)
+    if not (boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30): boxes=[]
+    fr=_bench_annotate(fr,boxes)                                   # always show the detection zone + any boxes
     return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
