@@ -193,18 +193,19 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
 /* Today's Prep */
-.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
 .prep-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;position:relative;transition:transform .08s,border-color .15s;}
-.prep-card:active{transform:scale(.98);}
+.prep-card:active{transform:scale(.99);}
 .prep-card.done{border-color:var(--green);}
-.prep-card .pc-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--surface2);display:block;}
-.prep-card .pc-noimg{width:100%;aspect-ratio:4/3;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:34px;}
-.prep-card .pc-body{padding:9px 11px;display:flex;align-items:center;gap:8px;}
-.prep-card .pc-name{font-size:15px;font-weight:700;color:var(--text);flex:1;min-width:0;line-height:1.2;}
-.prep-card .pc-check{width:26px;height:26px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800;}
+.prep-card .pc-row{display:flex;align-items:center;gap:12px;padding:11px 13px;}
+.prep-card .pc-img{width:62px;height:62px;border-radius:11px;object-fit:cover;background:var(--surface2);display:block;flex-shrink:0;}
+.prep-card .pc-noimg{width:62px;height:62px;border-radius:11px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;}
+.prep-card .pc-name{font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:0;line-height:1.25;}
+.prep-card .pc-check{width:30px;height:30px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:800;}
 .prep-card.done .pc-check{background:var(--green);border-color:var(--green);}
-.prep-card .pc-done-ov{position:absolute;top:8px;right:8px;background:rgba(22,163,74,.95);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:7px;display:flex;align-items:center;gap:5px;}
-.prep-card .pc-done-ov img{width:22px;height:22px;border-radius:4px;object-fit:cover;}
+.prep-card .pc-proof{border-top:1px solid var(--border);padding:8px;background:var(--surface2);}
+.prep-card .pc-proof img{width:100%;height:150px;object-fit:cover;border-radius:9px;cursor:pointer;display:block;border:1px solid var(--border2);}
+.prep-card .pc-proof .pc-cap{font-size:11.5px;color:var(--green);font-weight:700;margin-top:6px;display:flex;align-items:center;gap:5px;padding:0 2px;}
 .prep-pick.sel{border-color:var(--amber);background:var(--surface2);}
 .prep-pick .pc-tick{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:var(--amber);color:#1a1205;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;opacity:0;transition:opacity .12s;}
 .prep-pick.sel .pc-tick{opacity:1;}
@@ -1937,8 +1938,8 @@ function renderPrepPage(){
   html+=items.map(p=>{
     const d=done[p.id];
     const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';
-    const ov=d?('<div class="pc-done-ov">&#10003;'+(d.photo?' <img src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')">':'')+' '+(d.time||'')+'</div>'):'';
-    return '<div class="prep-card'+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')">'+img+ov+'<div class="pc-body"><div class="pc-name">'+_mEsc(p.name)+'</div><div class="pc-check">'+(d?'&#10003;':'')+'</div></div></div>';
+    const proof=(d&&d.photo)?('<div class="pc-proof"><img src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')"><div class="pc-cap">&#10003; Prepped'+(d.time?' at '+d.time:'')+' · tap photo to enlarge</div></div>'):'';
+    return '<div class="prep-card'+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div><div class="pc-check">'+(d?'&#10003;':'')+'</div></div>'+proof+'</div>';
   }).join('')+'</div>';
   box.innerHTML=html;
 }
@@ -1957,7 +1958,7 @@ function openPrepBuild(){const pt=appData.prep_today||{};_prepPick=new Set(pt.da
 function renderPrepBuildGrid(){
   const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
   if(!presets.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px;">No prep items yet. Close this and tap <b>⚙ Items</b> to create some first.</div>';return;}
-  grid.innerHTML=presets.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';return '<div class="prep-card prep-pick'+(_prepPick.has(p.id)?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')">'+img+'<div class="pc-tick">&#10003;</div><div class="pc-body"><div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join('');
+  grid.innerHTML=presets.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg">🍗</div>';return '<div class="prep-card prep-pick'+(_prepPick.has(p.id)?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')"><div class="pc-tick">&#10003;</div><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join('');
 }
 function togglePrepPick(id){if(_prepPick.has(id))_prepPick.delete(id);else _prepPick.add(id);renderPrepBuildGrid();}
 function savePrepToday(){
