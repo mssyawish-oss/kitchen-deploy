@@ -1363,6 +1363,7 @@ def _rotcam_bench_apply(n):
         now=time.time()
         if now-ROTCAM.get("rise_ts",0)>_ROW_WINDOW: ROTCAM["bench_rises"]=0
         ROTCAM["bench_rises"]=ROTCAM.get("bench_rises",0)+(n-settled); ROTCAM["rise_ts"]=now
+        ROTCAM["force_shelf"]=True   # bench saw a row land → check the spit IMMEDIATELY (don't wait for the timer)
         _try_credit()    # credits stock ONLY if the rotisserie cam recently saw a row come off (else: a warmer
                          # chicken being cut on the bench — NOT new stock — so it's ignored)
     ROTCAM["bench_rows"]=n                                  # update the settled count (rises and falls)
@@ -1573,7 +1574,7 @@ def rotcam_loop():
                             else:                                       # fallback: crop the bottom of the front camera frame
                                 _rotcam_bench_apply(_rotcam_bench_count(jpeg))
                         except Exception: pass
-                    if time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count on its slower cadence
+                    if ROTCAM.pop("force_shelf",False) or time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count: on the timer, OR immediately when the bench just saw a row land
                         ROTCAM["last_shelf_ts"]=time.time()
                         rows,cerr=_rotcam_count(jpeg)
                         if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(900); continue
