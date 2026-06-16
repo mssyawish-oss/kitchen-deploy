@@ -2116,6 +2116,13 @@ function checkAllReminders(){
   });
   if(document.getElementById('page-service').classList.contains('active'))renderServicePage();
   if(document.getElementById('page-packdown').classList.contains('active'))renderPackdownPage();
+  updatePrepBadge();
+}
+function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so its icon strobes when prep is outstanding)
+  const badge=document.getElementById('jobs-badge');if(!badge)return;
+  const today=new Date().toISOString().slice(0,10);const pt=appData.prep_today||{};
+  const pend=(pt.date===today)?((pt.items||[]).filter(id=>!((pt.done||{})[id])).length):0;
+  badge.className='nav-badge'+(pend>0?' show':'');
 }
 
 // ── HANDOVER NOTES ──
