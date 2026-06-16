@@ -1388,10 +1388,14 @@ _BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the stainless-steel UNLOADIN
                     "chickens are placed after coming off the spit. DETECT each ROW of cooked, GOLDEN/BROWN WHOLE roasted "
                     "chickens resting on the bench. A 'row' is a group of about 4 whole chickens placed together. Rows may sit "
                     "SIDE BY SIDE (2-3 across) and sometimes STACKED (a layer on top) — mark EVERY distinct row, including stacked "
-                    "ones. Do NOT mark bare steel, trays, tongs, wire frames, fryer baskets, people, or BUTTERFLIED/flattened/"
-                    "halved/quartered chickens — only plump WHOLE birds. Return ONLY a JSON array, one object per row, each as "
-                    "{\"box_2d\":[ymin,xmin,ymax,xmax]} with integer coordinates normalised 0-1000 (origin top-left). If there are "
-                    "no whole chickens on the bench, return [].")
+                    "ones. CRITICAL: count ONLY chickens sitting DIRECTLY on the flat, open stainless-steel UNLOADING BENCH "
+                    "surface. Do NOT count chickens inside or on the HOT-HOLDING / DISPLAY / WARMER CABINET — that is the "
+                    "glass-fronted cabinet (usually along one side) holding chickens on wire racks BEHIND GLASS; those are "
+                    "display/holding stock, NOT bench rows, so ignore them entirely. Also ignore bare steel, trays, tongs, wire "
+                    "frames, fryer baskets, people, and BUTTERFLIED/flattened/halved/quartered chickens — only plump WHOLE birds "
+                    "on the open bench. Return ONLY a JSON array, one object per row, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} "
+                    "with integer coordinates normalised 0-1000 (origin top-left). If there are no whole chickens on the open "
+                    "bench, return [].")
 def _bench_draw_boxes(jpeg,boxes):
     try:
         from PIL import Image, ImageDraw; import io
