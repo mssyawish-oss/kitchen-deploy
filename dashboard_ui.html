@@ -170,16 +170,22 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-row{flex:1;display:flex;align-items:center;gap:7px;border-bottom:1px solid rgba(255,255,255,.06);padding:0 3px;min-height:0;}
 .ra-row:last-child{border-bottom:none;}
 .ra-num{flex-shrink:0;width:13px;text-align:center;font-size:10px;font-weight:800;color:rgba(255,255,255,.45);font-family:var(--font-mono);}
-.ra-spit{flex:1;display:flex;align-items:center;justify-content:flex-start;gap:5px;height:100%;position:relative;min-width:0;}
-.ra-spit::before{content:'';position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:rgba(255,255,255,.10);}
-.ra-chk{width:clamp(17px,3.6vw,28px);height:auto;z-index:1;flex-shrink:0;transform-origin:50% 58%;}
-.ra-row[data-state=spinning] .ra-chk{animation:ra-spin 2.6s linear infinite;}
-.ra-row[data-state=spinning] .ra-chk:nth-child(2){animation-delay:-.6s;}
-.ra-row[data-state=spinning] .ra-chk:nth-child(3){animation-delay:-1.2s;}
-.ra-row[data-state=spinning] .ra-chk:nth-child(4){animation-delay:-1.8s;}
-.ra-row[data-state=stopped] .ra-chk{background:#7e5524;}
+.ra-spit{flex:1;display:flex;align-items:center;height:100%;position:relative;min-width:0;}
+.ra-spit::before{content:'';position:absolute;left:10px;right:10px;top:50%;height:3px;transform:translateY(-50%);border-radius:2px;background:linear-gradient(180deg,#8a8d93,#e2e4e8 42%,#9a9da3 58%,#5c5f65);z-index:0;}
+.ra-mount{position:absolute;top:50%;transform:translateY(-50%);width:13px;height:21px;background:linear-gradient(180deg,#3c3f46,#191b1f);border:1px solid #4c5159;border-radius:3px;z-index:3;box-shadow:inset 0 1px 1px rgba(255,255,255,.12);}
+.ra-mount.l{left:-1px;}.ra-mount.r{right:-1px;}
+.ra-mount::after{content:'';position:absolute;top:4px;left:50%;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:#777b82;box-shadow:0 7px 0 #777b82,0 13px 0 #777b82;}
+.ra-birds{flex:1;display:flex;align-items:center;justify-content:center;gap:clamp(3px,1vw,9px);z-index:1;min-width:0;}
+.ra-chk{width:clamp(20px,4.3vw,34px);height:auto;flex-shrink:0;transform-origin:50% 54%;filter:drop-shadow(0 2px 2px rgba(0,0,0,.45));}
+.ra-row[data-state=spinning] .ra-chk{animation:ra-spin 2.7s linear infinite;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(2){animation-delay:-.65s;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(3){animation-delay:-1.3s;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(4){animation-delay:-1.95s;}
+.ra-row[data-state=stopped] .ra-chk{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45)) saturate(.55) brightness(.82);}
 @keyframes ra-spin{to{transform:rotate(360deg);}}
-.ra-tag{flex-shrink:0;font-size:clamp(8px,1.7vw,11px);font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.03em;white-space:nowrap;}
+.ra-tag{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:clamp(8px,1.7vw,11px);font-weight:800;padding:3px 9px;border-radius:7px;letter-spacing:.03em;white-space:nowrap;}
+.ra-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.ra-tag.stop .ra-dot{border-radius:2px;}
 .ra-tag.spin{color:#bbf7d0;background:rgba(22,163,74,.25);}
 .ra-tag.stop{color:#fff;background:#dc2626;animation:blink 1s infinite;}
 .ra-tag.empty{color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);}
@@ -1618,25 +1624,30 @@ try{window._rotViewMode=localStorage.getItem('rotViewMode')||'anim';}catch(e){wi
 window._rowState=window._rowState||['empty','empty','empty','empty','empty','empty'];
 function applyRotView(){const w=document.querySelector('#rl-cam .cam-wrap');if(w)w.classList.toggle('show-anim',(window._rotViewMode||'anim')==='anim');const lbl=document.getElementById('ra-toggle-lbl');if(lbl)lbl.textContent=(window._rotViewMode==='anim'?'Cam view':'Animated');const hint=document.querySelector('#rl-cam .rl-camhint');if(hint)hint.textContent=(window._rotViewMode==='anim'?'live rotisserie status · tap to enlarge cam':'tap to enlarge');}
 function toggleRotView(ev){if(ev)ev.stopPropagation();window._rotViewMode=(window._rotViewMode==='anim'?'cam':'anim');try{localStorage.setItem('rotViewMode',window._rotViewMode);}catch(e){}applyRotView();renderRotAnim();}
-const _CHICK_SVG='<svg class="ra-chk" viewBox="0 0 30 28" xmlns="http://www.w3.org/2000/svg">'
-  +'<line x1="12" y1="12" x2="8.5" y2="3.5" stroke="#a8691f" stroke-width="3.6" stroke-linecap="round"/>'
-  +'<line x1="18" y1="12" x2="21.5" y2="3.5" stroke="#a8691f" stroke-width="3.6" stroke-linecap="round"/>'
-  +'<circle cx="8.5" cy="3.2" r="2.3" fill="#cf9544"/><circle cx="21.5" cy="3.2" r="2.3" fill="#cf9544"/>'
-  +'<ellipse cx="15" cy="17.5" rx="11" ry="9" fill="#c9842f"/>'
-  +'<ellipse cx="12.5" cy="14.5" rx="5.5" ry="3.6" fill="#e8b15e" opacity=".6"/>'
+const _CHICK_SVG='<svg class="ra-chk" viewBox="0 0 44 34" xmlns="http://www.w3.org/2000/svg">'
+  +'<path d="M16 21 Q13 29 16 31.5" stroke="#a8691f" stroke-width="5" fill="none" stroke-linecap="round"/>'      // drumstick
+  +'<path d="M28 21 Q31 29 28 31.5" stroke="#a8691f" stroke-width="5" fill="none" stroke-linecap="round"/>'
+  +'<circle cx="16" cy="31.5" r="2.6" fill="#caa356"/><circle cx="28" cy="31.5" r="2.6" fill="#caa356"/>'        // knuckle ends
+  +'<ellipse cx="22" cy="18" rx="16" ry="13" fill="#b3742a"/>'                                                  // body base
+  +'<ellipse cx="22" cy="20.5" rx="13.5" ry="9.5" fill="#9c5d20"/>'                                             // underside shadow
+  +'<ellipse cx="20.5" cy="14.5" rx="13" ry="9" fill="#d4923c"/>'                                               // lit upper body
+  +'<path d="M9 14 Q15 19 13 25" stroke="#9c5d20" stroke-width="1.4" fill="none" opacity=".55"/>'               // wing creases
+  +'<path d="M35 14 Q29 19 31 25" stroke="#9c5d20" stroke-width="1.4" fill="none" opacity=".55"/>'
+  +'<ellipse cx="17" cy="11" rx="7" ry="4" fill="#eab964" opacity=".85"/>'                                      // gloss
+  +'<ellipse cx="16" cy="9.6" rx="3.4" ry="1.7" fill="#f7dba0" opacity=".75"/>'                                 // hot spec
   +'</svg>';
 function renderRotAnim(){
   const host=document.getElementById('rot-anim');if(!host)return;
-  if(!host.dataset.built){let h='';for(let r=0;r<6;r++){h+='<div class="ra-row" id="ra-row-'+r+'"><div class="ra-num">'+(r+1)+'</div><div class="ra-spit" id="ra-spit-'+r+'"></div><div class="ra-tag" id="ra-tag-'+r+'"></div></div>';}host.innerHTML=h;host.dataset.built='1';}
+  if(!host.dataset.built){let h='';for(let r=0;r<6;r++){h+='<div class="ra-row" id="ra-row-'+r+'"><div class="ra-num">'+(r+1)+'</div><div class="ra-spit" id="ra-spit-'+r+'"><span class="ra-mount l"></span><div class="ra-birds" id="ra-birds-'+r+'"></div><span class="ra-mount r"></span></div><div class="ra-tag" id="ra-tag-'+r+'"></div></div>';}host.innerHTML=h;host.dataset.built='1';}
   const pat=window._rotLevels||'';const st=window._rowState||[];
   for(let r=0;r<6;r++){
     const loaded=pat.length===6?pat[r]==='1':false;
     const state=loaded?(st[r]&&st[r]!=='empty'?st[r]:'loaded'):'empty';
     const row=document.getElementById('ra-row-'+r);if(row&&row.getAttribute('data-state')!==state)row.setAttribute('data-state',state);
-    const spit=document.getElementById('ra-spit-'+r);const want=loaded?4:0;
-    if(spit&&spit.children.length!==want){spit.innerHTML=want?_CHICK_SVG.repeat(want):'';}
+    const birds=document.getElementById('ra-birds-'+r);const want=loaded?4:0;
+    if(birds&&birds.children.length!==want){birds.innerHTML=want?_CHICK_SVG.repeat(want):'';}
     let txt,cls;if(!loaded){txt='Empty';cls='empty';}else if(state==='stopped'){txt='STOPPED';cls='stop';}else if(state==='spinning'){txt='Spinning';cls='spin';}else{txt='Loaded';cls='load';}
-    const tag=document.getElementById('ra-tag-'+r);if(tag&&(tag.textContent!==txt||tag.className!=='ra-tag '+cls)){tag.textContent=txt;tag.className='ra-tag '+cls;}
+    const tag=document.getElementById('ra-tag-'+r);if(tag&&tag.dataset.k!==cls+'|'+txt){tag.dataset.k=cls+'|'+txt;tag.className='ra-tag '+cls;tag.innerHTML='<span class="ra-dot"></span>'+txt;}
   }
 }
 // --- per-ROW spinning detection on the cam feed. Two key guards:
