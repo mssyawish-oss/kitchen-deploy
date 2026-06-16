@@ -1326,14 +1326,20 @@ def _note_row_off(k):
     _try_credit()
 def _rotcam_bench_apply(n):
     if n is None: return                                   # blocked/error → hold, don't touch stock
-    prev=ROTCAM.get("bench_rows",0)
-    if isinstance(n,int) and n>prev:                       # new row(s) landed on the bench
+    # DEBOUNCE: the bench is on wheels — a frame caught mid-move, motion-blurred, or with the bench
+    # half out of view can misread for ONE read. Require two CONSECUTIVE equal reads before we trust a
+    # count, so a transient blip never moves stock.
+    last=ROTCAM.get("bench_raw_last"); ROTCAM["bench_raw_last"]=n
+    if n!=last: return                                     # not confirmed yet — wait for the next read to agree
+    settled=ROTCAM.get("bench_rows",0)
+    if n==settled: return                                  # confirmed, but no change
+    if isinstance(n,int) and n>settled:                    # confirmed NEW row(s) on the bench
         now=time.time()
         if now-ROTCAM.get("rise_ts",0)>_ROW_WINDOW: ROTCAM["bench_rises"]=0
-        ROTCAM["bench_rises"]=ROTCAM.get("bench_rises",0)+(n-prev); ROTCAM["rise_ts"]=now
+        ROTCAM["bench_rises"]=ROTCAM.get("bench_rises",0)+(n-settled); ROTCAM["rise_ts"]=now
         _try_credit()    # credits stock ONLY if the rotisserie cam recently saw a row come off (else: a warmer
                          # chicken being cut on the bench — NOT new stock — so it's ignored)
-    ROTCAM["bench_rows"]=n
+    ROTCAM["bench_rows"]=n                                  # update the settled count (rises and falls)
 # --- DEDICATED SIDE-ANGLE BENCH CAMERA (2nd Tapo) -----------------------------------
 # A second camera mounted to the side keeps the unloading bench in full view wherever it
 # rolls, and can see rows placed side-by-side or stacked. When configured, the bench watcher
