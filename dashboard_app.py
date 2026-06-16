@@ -264,14 +264,23 @@ def query_square_recent(cfg,minutes=30):
 # ── LIVE ROTISSERIE STOCK ── available birds = (loaded & finished) − (sold via Square)
 ROT_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[]}
 rot_lock=threading.Lock()
+_rl0=db.get("rot_live")                                   # restore across restarts so the count is NOT lost
+if isinstance(_rl0,dict):
+    for _k in ("day","available","sold_today","seen"):
+        if _k in _rl0: ROT_LIVE[_k]=_rl0[_k]
 _first_sweep=False   # on startup, sweep all of TODAY's sales once to catch up; then poll a short window
 def _rot_cfg():
     r=db.get("rotisserie") or {}
     return {"open_rows":r.get("open_rows",2),"bpr":r.get("birds_per_row",4)}
+def _rot_save():       # persist live counts so a server restart doesn't reset them
+    with rot_lock: snap={k:ROT_LIVE[k] for k in ("day","available","sold_today","seen")}
+    try:
+        with data_lock: db["rot_live"]=snap; save_data(db)
+    except Exception: pass
 def _rot_reset_if_needed():
     c=_rot_cfg();today=datetime.now().strftime("%Y-%m-%d")
     if ROT_LIVE["day"]!=today:
-        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0,"seen":[]})   # start the day empty — the camera/bench-watcher builds the count up (no morning auto-add)
+        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0,"seen":[]})   # NEW DAY only → start empty (the camera/bench-watcher builds it up). A restart mid-day keeps the saved count.
 def rot_state():
     with rot_lock:
         _rot_reset_if_needed()
@@ -281,22 +290,35 @@ def rot_state():
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
+    _rot_save()
 def rot_adjust(delta):
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,ROT_LIVE["available"]+delta)
+    _rot_save()
 def rot_set(v):
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,float(v))
+    _rot_save()
 def rot_deduct(birds,oids):
     with rot_lock:
         _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,ROT_LIVE["available"]-birds)
         ROT_LIVE["sold_today"]+=birds;ROT_LIVE["seen"].extend(oids);ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
+    _rot_save()
 
 # ── LIVE FRIED-CHICKEN STOCK (whole pieces; 18/batch, ~15 min) ──
 DEFAULT_FRIED_MAP={"2 PCS FRIED CHICKEN PACK|Regular":2,"3 PCS FRIED CHICKEN PACK|Regular":3,"2 PCS PACK SPECIAL|Regular":2}
 FRY_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[]}
 fry_lock=threading.Lock()
+_fl0=db.get("fry_live")                                   # restore across restarts
+if isinstance(_fl0,dict):
+    for _k in ("day","available","sold_today","seen"):
+        if _k in _fl0: FRY_LIVE[_k]=_fl0[_k]
 def _fry_cfg():
     f=db.get("fried") or {}
     return {"batch":f.get("batch",18),"open":f.get("open",18),"low_at":f.get("low_at",6)}
+def _fry_save():
+    with fry_lock: snap={k:FRY_LIVE[k] for k in ("day","available","sold_today","seen")}
+    try:
+        with data_lock: db["fry_live"]=snap; save_data(db)
+    except Exception: pass
 def _fry_reset_if_needed():
     c=_fry_cfg();today=datetime.now().strftime("%Y-%m-%d")
     if FRY_LIVE["day"]!=today: FRY_LIVE.update({"day":today,"available":float(c["open"]),"sold_today":0.0,"seen":[]})
@@ -308,14 +330,18 @@ def fry_state():
 def fry_put_on(batches):   # a finished batch went into the warmer → add straight to available
     c=_fry_cfg()
     with fry_lock: _fry_reset_if_needed();FRY_LIVE["available"]+=batches*c["batch"]
+    _fry_save()
 def fry_adjust(delta):
     with fry_lock: _fry_reset_if_needed();FRY_LIVE["available"]=max(0.0,FRY_LIVE["available"]+delta)
+    _fry_save()
 def fry_set(v):
     with fry_lock: _fry_reset_if_needed();FRY_LIVE["available"]=max(0.0,float(v))
+    _fry_save()
 def fry_deduct(pcs,oids):
     with fry_lock:
         _fry_reset_if_needed();FRY_LIVE["available"]=max(0.0,FRY_LIVE["available"]-pcs)
         FRY_LIVE["sold_today"]+=pcs;FRY_LIVE["seen"].extend(oids);FRY_LIVE["seen"]=FRY_LIVE["seen"][-3000:]
+    _fry_save()
 
 SALES_FEED={"day":None,"items":[]}
 def sales_feed_add(oid,bbq,fried,sched,items,src,when=None):
