@@ -164,6 +164,28 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .cam-dbar i{display:block;height:100%;border-radius:3px;transition:width .6s,background .6s;}
 .cam-stopped{position:absolute;top:8px;left:8px;background:rgba(220,38,38,.9);color:#fff;font-size:11px;font-weight:800;padding:4px 9px;border-radius:7px;display:none;pointer-events:none;letter-spacing:.04em;}
 .cam-stopped.show{display:block;animation:blink 1s infinite;}
+/* animated rotisserie panel (toggle alternative to the raw cam) */
+.rot-anim{position:absolute;inset:0;background:linear-gradient(180deg,#241a12,#100b07);display:none;flex-direction:column;padding:5px 7px;z-index:2;}
+.cam-wrap.show-anim .rot-anim{display:flex;}
+.ra-row{flex:1;display:flex;align-items:center;gap:7px;border-bottom:1px solid rgba(255,255,255,.06);padding:0 3px;min-height:0;}
+.ra-row:last-child{border-bottom:none;}
+.ra-num{flex-shrink:0;width:13px;text-align:center;font-size:10px;font-weight:800;color:rgba(255,255,255,.45);font-family:var(--font-mono);}
+.ra-spit{flex:1;display:flex;align-items:center;justify-content:flex-start;gap:5px;height:100%;position:relative;min-width:0;}
+.ra-spit::before{content:'';position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:rgba(255,255,255,.10);}
+.ra-chk{width:clamp(13px,3vw,24px);height:clamp(10px,2.2vw,17px);border-radius:50%;background:#cf8a33;box-shadow:inset 0 -2px 3px rgba(60,30,0,.5),inset 0 2px 3px rgba(255,224,170,.55);z-index:1;flex-shrink:0;}
+.ra-row[data-state=spinning] .ra-chk{animation:ra-spin 2.6s linear infinite;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(2){animation-delay:-.6s;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(3){animation-delay:-1.2s;}
+.ra-row[data-state=spinning] .ra-chk:nth-child(4){animation-delay:-1.8s;}
+.ra-row[data-state=stopped] .ra-chk{background:#7e5524;}
+@keyframes ra-spin{to{transform:rotate(360deg);}}
+.ra-tag{flex-shrink:0;font-size:clamp(8px,1.7vw,11px);font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.03em;white-space:nowrap;}
+.ra-tag.spin{color:#bbf7d0;background:rgba(22,163,74,.25);}
+.ra-tag.stop{color:#fff;background:#dc2626;animation:blink 1s infinite;}
+.ra-tag.empty{color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);}
+.ra-tag.load{color:#fde68a;background:rgba(245,158,11,.22);}
+.ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
+.ra-toggle:hover{background:rgba(255,255,255,.24);}
 .rl-card.warn{animation:rl-warn 1s infinite;}
 .rl-card.crit{animation:rl-crit .5s infinite;}
 @keyframes rl-warn{0%,100%{border-color:var(--amber-dim);}50%{border-color:var(--amber);box-shadow:0 0 16px rgba(251,191,36,.55);background:linear-gradient(180deg,#3a2406,#1c1106);}}
@@ -1537,9 +1559,10 @@ function renderRotcamCard(){
   if(el.dataset.built)return;            // build once — don't restart the stream on every refresh
   el.dataset.built='1';
   el.innerHTML=`<div class="rl-card cam-card" onclick="openRotcam(event)">
-    <div class="rl-top"><div class="rl-tag">ROTISSERIE CAM</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span></div>
-    <div class="cam-wrap"><img id="rotcam-stream" alt=""><div class="cam-msg" id="rotcam-msg">Connecting…</div><div class="cam-stopped" id="cam-stopped">NOT SPINNING</div><div class="cam-overlay" id="cam-overlay"></div></div>
+    <div class="rl-top"><div class="rl-tag">ROTISSERIE</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span><button class="ra-toggle" onclick="toggleRotView(event)"><span id="ra-toggle-lbl">Cam view</span></button></div>
+    <div class="cam-wrap"><img id="rotcam-stream" alt=""><div class="cam-msg" id="rotcam-msg">Connecting…</div><div class="cam-stopped" id="cam-stopped">NOT SPINNING</div><div class="cam-overlay" id="cam-overlay"></div><div class="rot-anim" id="rot-anim"></div></div>
     <div class="rl-camhint">tap to enlarge</div></div>`;
+  applyRotView();
   const img=document.getElementById('rotcam-stream');
   img.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};
   if(_camIsPhone()){
@@ -1590,6 +1613,25 @@ function openRotcam(ev){if(ev)ev.stopPropagation();
   }
   openModal('rotcam-modal');}
 function closeRotcam(){const big=document.getElementById('rotcam-big');if(big)big.src='';if(window._camBigPollT){clearInterval(window._camBigPollT);window._camBigPollT=null;}closeModal('rotcam-modal');}
+// --- animated rotisserie panel (toggle alternative to the raw cam) ---
+try{window._rotViewMode=localStorage.getItem('rotViewMode')||'anim';}catch(e){window._rotViewMode='anim';}
+window._rowState=window._rowState||['empty','empty','empty','empty','empty','empty'];
+function applyRotView(){const w=document.querySelector('#rl-cam .cam-wrap');if(w)w.classList.toggle('show-anim',(window._rotViewMode||'anim')==='anim');const lbl=document.getElementById('ra-toggle-lbl');if(lbl)lbl.textContent=(window._rotViewMode==='anim'?'Cam view':'Animated');const hint=document.querySelector('#rl-cam .rl-camhint');if(hint)hint.textContent=(window._rotViewMode==='anim'?'live rotisserie status · tap to enlarge cam':'tap to enlarge');}
+function toggleRotView(ev){if(ev)ev.stopPropagation();window._rotViewMode=(window._rotViewMode==='anim'?'cam':'anim');try{localStorage.setItem('rotViewMode',window._rotViewMode);}catch(e){}applyRotView();renderRotAnim();}
+function renderRotAnim(){
+  const host=document.getElementById('rot-anim');if(!host)return;
+  if(!host.dataset.built){let h='';for(let r=0;r<6;r++){h+='<div class="ra-row" id="ra-row-'+r+'"><div class="ra-num">'+(r+1)+'</div><div class="ra-spit" id="ra-spit-'+r+'"></div><div class="ra-tag" id="ra-tag-'+r+'"></div></div>';}host.innerHTML=h;host.dataset.built='1';}
+  const pat=window._rotLevels||'';const st=window._rowState||[];
+  for(let r=0;r<6;r++){
+    const loaded=pat.length===6?pat[r]==='1':false;
+    const state=loaded?(st[r]&&st[r]!=='empty'?st[r]:'loaded'):'empty';
+    const row=document.getElementById('ra-row-'+r);if(row&&row.getAttribute('data-state')!==state)row.setAttribute('data-state',state);
+    const spit=document.getElementById('ra-spit-'+r);const want=loaded?4:0;
+    if(spit&&spit.children.length!==want){spit.innerHTML='';for(let i=0;i<want;i++){const d=document.createElement('div');d.className='ra-chk';spit.appendChild(d);}}
+    let txt,cls;if(!loaded){txt='Empty';cls='empty';}else if(state==='stopped'){txt='STOPPED';cls='stop';}else if(state==='spinning'){txt='Spinning';cls='spin';}else{txt='Loaded';cls='load';}
+    const tag=document.getElementById('ra-tag-'+r);if(tag&&(tag.textContent!==txt||tag.className!=='ra-tag '+cls)){tag.textContent=txt;tag.className='ra-tag '+cls;}
+  }
+}
 // --- per-ROW spinning detection on the cam feed. Two key guards:
 //   (1) FROZEN-FEED: a live camera always has tiny sensor noise frame-to-frame, so the global diff is never
 //       exactly ~0. If it IS ~0 the feed is FROZEN/LAGGED (not a real stop) → never alarm. This kills the
@@ -1627,7 +1669,13 @@ function _camSpinCheck(){
   const pat=window._rotLevels||'';
   const loaded=r=>(pat.length===6?pat[r]==='1':((window._lastRotCooking||0)>0));
   const stoppedRows=[];
-  if(feedFresh&&!grace){ for(let r=0;r<6;r++){ if(loaded(r)&&(now-_rowMotionAt[r])>9000) stoppedRows.push(r+1); } }
+  window._rowState=window._rowState||[];
+  for(let r=0;r<6;r++){                                   // per-row state drives the animated panel too
+    if(!loaded(r)) window._rowState[r]='empty';
+    else if(!feedFresh||grace) window._rowState[r]='loaded';        // feed frozen/settling → can't judge spin
+    else if((now-_rowMotionAt[r])>9000){ window._rowState[r]='stopped'; stoppedRows.push(r+1); }
+    else window._rowState[r]='spinning';
+  }
   const any=stoppedRows.length>0;
   if(banner){banner.classList.toggle('show',any);if(any)banner.textContent=(stoppedRows.length>1?'ROWS ':'ROW ')+stoppedRows.join(', ')+' NOT SPINNING';}
   if(any&&!window._rotStopAlarm){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
@@ -1645,7 +1693,7 @@ function _doneForRow(row){
   return{pct,color:'#5b9bff',lab:Math.round(t)+'°C'};
 }
 function renderCamRows(){const ov=document.getElementById('cam-overlay');if(ov)ov.innerHTML='';}  // doneness now lives on the probe cards; cam keeps only the spinning/stopped alarm
-setInterval(()=>{_camSpinCheck();renderCamRows();},1200);
+setInterval(()=>{_camSpinCheck();renderCamRows();if(typeof renderRotAnim==='function')renderRotAnim();},1200);
 function putOnRow(){_rotSig='';fetch('/api/rot_put_on',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:1})}).then(r=>r.json()).then(renderRotLive);}
 let _frySig='';
 function renderFryLive(fry){
