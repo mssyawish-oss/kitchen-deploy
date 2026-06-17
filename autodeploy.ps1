@@ -30,11 +30,17 @@ $ui = Join-Path $repo "dashboard_ui.html"
 $appfile = Join-Path $repo "dashboard_app.py"
 $liveUi = Join-Path $app "dashboard_ui.html"
 $livePy = Join-Path $app "dashboard_app.py"
+$wb = Join-Path $repo "weekly-books.html"
+$liveWb = Join-Path $app "weekly-books.html"
 function Differs($src,$dst){ if (-not (Test-Path $dst)) { return $true }; return (Get-FileHash $src).Hash -ne (Get-FileHash $dst).Hash }
 
 # UI (screen) - validate basic integrity; deploy even if the backend check can't run
 $uiOk = (Test-Path $ui) -and ((Get-Item $ui).Length -ge 50000) -and (Select-String -Path $ui -Pattern "Bruno" -Quiet)
 $uiChanged = $uiOk -and (Differs $ui $liveUi)
+
+# weekly-books (screen) - same as UI: live on next page load, no restart needed
+$wbOk = (Test-Path $wb) -and ((Get-Item $wb).Length -ge 20000) -and (Select-String -Path $wb -Pattern "Bruno" -Quiet)
+$wbChanged = $wbOk -and (Differs $wb $liveWb)
 
 # backend (app.py) - only deploy if it compiles cleanly
 $appOk = $false
@@ -44,13 +50,15 @@ if (Test-Path $appfile) {
 }
 $appChanged = $appOk -and (Differs $appfile $livePy)
 
-if (-not $uiChanged -and -not $appChanged) { exit }   # already up to date
+if (-not $uiChanged -and -not $appChanged -and -not $wbChanged) { exit }   # already up to date
 
 $bk = Join-Path $app ("backup\" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory -Force -Path $bk | Out-Null
 Copy-Item $liveUi $bk -ErrorAction SilentlyContinue
 Copy-Item $livePy $bk -ErrorAction SilentlyContinue
+Copy-Item $liveWb $bk -ErrorAction SilentlyContinue
 
+if ($wbChanged) { Copy-Item $wb $liveWb -Force; Log "UPDATED weekly-books (live now)" }
 if ($uiChanged) { Copy-Item $ui $liveUi -Force; Log "UPDATED screen (live now)" }
 if ($appChanged) {
   Copy-Item $appfile $livePy -Force

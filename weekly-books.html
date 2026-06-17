@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Books</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#eef1f5; color:#1a2230; line-height:1.45; padding:18px; }
+  .wrap { max-width:720px; margin:0 auto; }
+  h1 { font-size:22px; margin-bottom:2px; }
+  .sub { color:#6b7689; font-size:13px; margin-bottom:14px; }
+  button { font-family:inherit; font-size:13px; cursor:pointer; border:none; border-radius:7px; padding:8px 12px; font-weight:600; }
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .primary { background:#1a2230; color:#fff; } .primary:hover { background:#2b3648; }
+  .sync { background:#0ea5e9; color:#fff; } .sync:hover { background:#0284c7; }
+  .sync:disabled { opacity:.6; cursor:default; }
+  .ghost { background:#fff; color:#475569; border:1px solid #d4dae3; } .ghost:hover { background:#f1f5f9; }
+  #status { font-size:12px; color:#475569; }
+  .weekbar { display:flex; align-items:center; justify-content:center; gap:14px; background:#fff;
+    border:1px solid #e3e8ef; border-radius:12px; padding:10px; margin-bottom:12px; }
+  .weekbar .nav { background:#eef1f5; color:#334155; width:38px; height:38px; border-radius:50%; font-size:18px; }
+  .weekbar .nav:hover { background:#e2e8f0; }
+  .weekbar .wk { font-size:17px; font-weight:700; min-width:220px; text-align:center; }
+  .weekbar .wk small { display:block; font-weight:500; color:#94a0b3; font-size:12px; }
+  .stats { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:140px; background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:11px 13px; }
+  .stat .k { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b7689; }
+  .stat .val { font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  @media (max-width:840px){ .grid { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:#4a5568; margin-bottom:10px; display:flex; justify-content:space-between; }
+  .txrow { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .txrow input.cat { flex:1; padding:7px 8px; border:1px solid #e1e6ee; border-radius:6px; font-size:14px; font-family:inherit; }
+  .txrow input.amt { width:104px; padding:7px 8px; border:1px solid #e1e6ee; border-radius:6px; font-size:14px; font-family:inherit; text-align:right; }
+  .txrow input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.13); }
+  .txrow.synced input.cat { background:#ecfeff; border-color:#bae6fd; }
+  .badge { font-size:9px; font-weight:700; color:#0369a1; background:#e0f2fe; border-radius:4px; padding:2px 4px; align-self:center; }
+  .del { background:transparent; color:#c0392b; padding:2px 6px; font-size:17px; line-height:1; }
+  .add { margin-top:4px; width:100%; }
+  .add.inc { background:#ecfdf5; color:#15803d; } .add.inc:hover { background:#d1fae5; }
+  .add.exp { background:#fef2f2; color:#b91c1c; } .add.exp:hover { background:#fee2e2; }
+  .verdict { border-radius:12px; padding:16px; text-align:center; color:#fff; margin-bottom:14px; }
+  .verdict.profit { background:linear-gradient(135deg,#16a34a,#15803d); }
+  .verdict.loss { background:linear-gradient(135deg,#dc2626,#991b1b); }
+  .verdict.zero { background:linear-gradient(135deg,#64748b,#475569); }
+  .verdict .label { font-size:12px; text-transform:uppercase; letter-spacing:.06em; opacity:.85; }
+  .verdict .big { font-size:32px; font-weight:700; margin:2px 0; }
+  .verdict .small { font-size:13px; opacity:.9; }
+  .empty { color:#aab4c2; font-size:13px; padding:6px 2px; }
+  .legend { font-size:12px; margin-top:8px; }
+  .legend div { display:flex; align-items:center; gap:6px; padding:2px 0; }
+  .legend .sw { width:11px; height:11px; border-radius:3px; flex:none; }
+  .legend .lv { margin-left:auto; font-variant-numeric:tabular-nums; color:#475569; }
+  .flag { background:#fffbeb; border:1px solid #fde68a; color:#92400e; font-size:12px; padding:9px 11px; border-radius:8px; margin-bottom:12px; }
+  .summary .row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:14px;}
+  .summary .row:last-child{border-bottom:none;}
+  .summary .row .v{font-variant-numeric:tabular-nums;font-weight:600;}
+  .summary .row.tot{font-weight:700;font-size:15px;border-top:2px solid #d4dae3;margin-top:2px;padding-top:11px;}
+  .pct{font-size:12px;color:#94a0b3;margin-left:8px;font-weight:600;}
+  .net{font-size:22px;font-weight:800;}
+  .pos2{color:#16a34a;} .neg2{color:#dc2626;}
+  .u18{display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7689;}
+  .u18 input{width:90px;padding:6px 8px;border:1px solid #e1e6ee;border-radius:6px;text-align:right;font-family:inherit;}
+  .txrow select.rec{font-family:inherit;font-size:11px;border:1px solid #e1e6ee;border-radius:6px;padding:5px 4px;color:#6b7689;background:#fff;}
+  .staffrow .staffname{flex:1;padding:7px 8px;font-size:14px;font-weight:500;}
+  .suptick{display:flex;align-items:center;gap:4px;font-size:12px;color:#475569;white-space:nowrap;cursor:pointer;}
+  .suptick input{margin:0;cursor:pointer;}
+  /* ---- polished theme (overrides) ---- */
+  body{ background:linear-gradient(180deg,#eef2f7,#e7ecf3); padding:22px 16px 40px; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:760px; }
+  .apphead{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .apphead .logo{ width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#f59e0b,#ea580c);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;box-shadow:0 4px 12px rgba(234,88,12,.3); }
+  .apphead h1{ font-size:20px; font-weight:800; letter-spacing:-.01em; margin:0; }
+  .apphead .sub2{ color:#64748b; font-size:12.5px; margin:1px 0 0; }
+  button{ border-radius:9px; padding:9px 13px; transition:.12s; }
+  .ghost{ box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .note{ background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:12px;padding:9px 12px;border-radius:9px;margin-bottom:14px; }
+  .weekbar{ border-radius:14px; box-shadow:0 1px 3px rgba(15,23,42,.05); }
+  .card{ border-radius:14px; padding:18px; box-shadow:0 1px 3px rgba(15,23,42,.05); }
+  .card h2{ font-size:12px; letter-spacing:.05em; font-weight:700; color:#64748b; margin-bottom:12px; }
+  .card.hero{ background:linear-gradient(180deg,#ffffff,#fbfcfe); border-color:#dbe3ee; box-shadow:0 6px 22px rgba(15,23,42,.07); }
+  .txrow input.cat,.txrow input.amt{ border-radius:8px; border-color:#e3e8f0; padding:8px 9px; }
+  .summary .row{ padding:9px 0; border-bottom-color:#f1f5f9; }
+  .summary .row.tot{ border-top-color:#e2e8f0; padding-top:12px; }
+  .net{ font-size:24px; font-weight:800; }
+  .add{ border-radius:9px; }
+  #gate{ position:fixed; inset:0; background:linear-gradient(180deg,#1e293b,#0f172a); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; }
+  #gate .box{ background:#fff; border-radius:16px; padding:28px 26px; width:100%; max-width:340px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,.4); }
+  #gate .logo{ width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#f59e0b,#ea580c);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px; }
+  #gate h3{ font-size:17px; margin-bottom:4px; }
+  #gate p{ font-size:12.5px; color:#64748b; margin-bottom:16px; }
+  #gate input{ width:100%; padding:11px 12px; border:1px solid #d4dae3; border-radius:9px; font-size:15px; font-family:inherit; text-align:center; margin-bottom:10px; }
+  #gate input:focus{ outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+  #gate button{ width:100%; background:#0f172a; color:#fff; padding:11px; font-size:14px; }
+  #gate .err{ color:#dc2626; font-size:12px; min-height:16px; margin-top:8px; }
+  @media (max-width:560px){ body{ padding:14px 11px 32px; } .card{ padding:15px; } .weekbar .wk{ min-width:auto; font-size:16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="apphead">
+    <div class="logo">BC</div>
+    <div>
+      <h1>Weekly Books</h1>
+      <div class="sub2">Bruno's Chicken Shop · weekly profit &amp; loss</div>
+    </div>
+  </div>
+
+  <div class="note" id="manualNote" style="display:none">Manual mode — auto-sync from Square &amp; bills runs in the Claude desktop app. Here you can view and edit your books by hand.</div>
+
+  <div class="toolbar">
+    <button class="sync" id="syncBtn" onclick="syncWeek()">⟳ Sync from Square</button>
+    <button class="sync" id="billBtn" onclick="loadBills()" style="background:#7c3aed">Load invoices</button>
+    <button class="ghost" onclick="goToday()">This week</button>
+    <button class="ghost" id="viewBtn" onclick="toggleView()">Month view</button>
+    <span id="status"></span>
+  </div>
+
+  <div class="weekbar">
+    <button class="nav" onclick="nav(-1)">‹</button>
+    <div class="wk" id="wkLabel">—<small id="wkSmall"></small></div>
+    <button class="nav" onclick="nav(1)">›</button>
+  </div>
+
+  <div id="syncStatus" style="display:none"></div>
+
+  <div id="weekView">
+  <div class="card" id="liveCard">
+    <h2><span>Live &amp; day-by-day</span><button class="ghost" style="padding:4px 10px;font-size:11px" onclick="refreshSelected()">⟳ update</button></h2>
+    <div id="lvDays" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"></div>
+    <div class="summary">
+      <div class="row"><span id="lvSalesLbl">Sales (last 60 min)</span><span class="v pos2" id="lvSales">—</span></div>
+      <div class="row"><span id="lvWagesLbl">Wage cost (last 60 min)</span><span class="v neg2" id="lvWages">—</span></div>
+      <div class="row tot"><span>Labour % of sales</span><span class="v" id="lvPct">—</span></div>
+    </div>
+    <div id="lvChart"></div>
+    <div class="empty" id="lvNote" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card summary hero">
+    <div class="row"><span>Total sales</span><span class="v pos2" id="plSales">$0</span></div>
+    <div class="row"><span>Cost of goods sold<span class="pct" id="plCogsPct"></span></span><span class="v neg2" id="plCogs">$0</span></div>
+    <div class="row tot"><span>Gross profit</span><span class="v" id="plGross">$0</span></div>
+    <div class="row"><span>Wages + super<span class="pct" id="plLabPct"></span></span><span class="v neg2" id="plLabour">$0</span></div>
+    <div class="row"><span>Other expenses</span><span class="v neg2" id="plOther">$0</span></div>
+    <div class="row tot"><span>Net profit</span><span class="v net" id="plNet">$0</span></div>
+  </div>
+
+  <div class="card">
+    <h2 style="cursor:pointer" onclick="toggleSec('inc')"><span><span id="incCaret">▸</span> Income — total sales</span><span id="incTotal" style="color:#16a34a">$0</span></h2>
+    <div id="incAlert" class="flag" style="display:none"></div>
+    <div id="incBody" style="display:none">
+      <div id="incList"></div>
+      <button class="add inc" onclick="addTx('income')">+ Add income</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span>Cost of goods &amp; labour</span></h2>
+    <div class="summary">
+      <div class="row"><span>Total COGS<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
+      <div class="row"><span>Total wages<span class="pct" id="wgPct"></span></span><span class="v neg2" id="wgTot">$0</span></div>
+      <div class="row"><span>Labour incl. super<span class="pct" id="labPct"></span></span><span class="v neg2" id="labTot">$0</span></div>
+    </div>
+    <div class="empty" style="margin-top:8px">COGS = the total of any expense below you tag as <b>COGS</b>.</div>
+  </div>
+
+  <div class="card">
+    <h2 style="cursor:pointer" onclick="toggleSec('wage')"><span><span id="wageCaret">▸</span> Wages — by staff</span><span id="wageTotal" style="color:#dc2626">$0</span></h2>
+    <div id="wageAlert" class="flag" style="display:none"></div>
+    <div id="wageBody" style="display:none">
+      <div id="wageList"></div>
+      <div class="empty" style="margin-top:6px">Tick "super" per person (untick under-18s). Super (12%): <b id="superTotal">$0</b></div>
+      <button class="add exp" onclick="addTx('expense','Wages','wage')">+ Add manual wage</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="cursor:pointer" onclick="toggleSec('exp')"><span><span id="expCaret">▸</span> Expenses</span><span id="expTotal" style="color:#dc2626">$0</span></h2>
+    <div id="expBody" style="display:none">
+      <div id="expList"></div>
+      <button class="add exp" onclick="addTx('expense','','other')">+ Add expense</button>
+    </div>
+  </div>
+  </div>
+  <div id="monthView" style="display:none"></div>
+</div>
+
+<script>
+const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const PAL=['#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b','#84cc16','#06b6d4','#a855f7','#eab308','#10b981','#f43f5e','#0ea5e9','#d946ef','#65a30d'];
+const fmt=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
+const pad=n=>String(n).padStart(2,'0');
+const isoOf=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
+function mondayOf(d){const x=new Date(d);x.setHours(0,0,0,0);const wd=(x.getDay()+6)%7;x.setDate(x.getDate()-wd);return x;}
+const KEY='weeklybooks_v2';
+const SEED=[["2026-01-05","consulting",-250.0],["2026-01-05","deliverect",-22.0],["2026-01-05","gst",-1600.0],["2026-01-05","loans",-1704.0],["2026-01-07","Acounting",-195.0],["2026-01-07","Bins",-175.0],["2026-01-07","Deputy",-45.0],["2026-01-07","Electricty",-486.0],["2026-01-07","Gas",-240.0],["2026-01-07","Insurance",-345.0],["2026-01-07","Phone",-30.0],["2026-01-07","Point of sale",-61.0],["2026-01-07","Rent",-1299.0],["2026-01-07","xero",-36.0],["2026-01-12","consulting",-250.0],["2026-01-12","deliverect",-22.0],["2026-01-12","gst",-1600.0],["2026-01-12","loans",-1573.0],["2026-01-12","window cleaner",-40.0],["2026-01-14","Acounting",-195.0],["2026-01-14","Bins",-175.0],["2026-01-14","Deputy",-45.0],["2026-01-14","Electricty",-520.0],["2026-01-14","Gas",-240.0],["2026-01-14","Insurance",-345.0],["2026-01-14","Phone",-10.0],["2026-01-14","Point of sale",-51.0],["2026-01-14","Rent",-1299.0],["2026-01-14","xero",-36.0],["2026-01-19","consulting",-250.0],["2026-01-19","deliverect",-22.0],["2026-01-19","gst",-1600.0],["2026-01-19","loans",-1573.0],["2026-01-21","Acounting",-195.0],["2026-01-21","Bins",-175.0],["2026-01-21","Deputy",-45.0],["2026-01-21","Electricty",-520.0],["2026-01-21","Gas",-240.0],["2026-01-21","Insurance",-345.0],["2026-01-21","Phone",-10.0],["2026-01-21","Point of sale",-51.0],["2026-01-21","Rent",-1299.0],["2026-01-21","xero",-36.0],["2026-01-26","Baiaida Poultry",-5486.0],["2026-01-26","Costco",-636.0],["2026-01-26","Doordash",765.0],["2026-01-26","Fruit talk",-1440.0],["2026-01-26","Misc",-357.0],["2026-01-26","PFD Food",-5708.0],["2026-01-26","Packaging",-1195.0],["2026-01-26","Russel\u2019s poultry",-1157.0],["2026-01-26","Uber",9263.0],["2026-01-26","Wage",-11722.0],["2026-01-26","bopple",288.0],["2026-01-26","bopple",9075.0],["2026-01-26","card",27040.0],["2026-01-26","cc",3420.0],["2026-01-26","cfm",-362.0],["2026-01-26","consulting",-250.0],["2026-01-26","deliverect",-22.0],["2026-01-26","filters",-522.0],["2026-01-26","gst",-1600.0],["2026-01-26","loans",-1573.0],["2026-01-26","window cleaner",-40.0],["2026-01-28","Acounting",-195.0],["2026-01-28","Bins",-175.0],["2026-01-28","Deputy",-45.0],["2026-01-28","Electricty",-520.0],["2026-01-28","Gas",-240.0],["2026-01-28","Insurance",-345.0],["2026-01-28","Phone",-10.0],["2026-01-28","Point of sale",-51.0],["2026-01-28","Rent",-1296.0],["2026-01-28","xero",-36.0],["2026-02-02","Costco",-386.0],["2026-02-02","Doordash",622.0],["2026-02-02","Uber",6486.0],["2026-02-02","Wage",-9283.0],["2026-02-02","bopple",6488.0],["2026-02-02","card",24263.0],["2026-02-02","cc",3150.0],["2026-02-02","consulting",-250.0],["2026-02-02","deliverect",-22.0],["2026-02-02","gst",-1600.0],["2026-02-02","loans",-1573.0],["2026-02-04","Acounting",-195.0],["2026-02-04","Asahi",-360.0],["2026-02-04","Baiaida Poultry",-4248.4],["2026-02-04","Bins",-175.0],["2026-02-04","Deputy",-45.0],["2026-02-04","Electricty",-520.0],["2026-02-04","Fruit talk",-1174.0],["2026-02-04","Gas",-240.0],["2026-02-04","Insurance",-345.0],["2026-02-04","Misc",-557.0],["2026-02-04","PFD Food",-5907.0],["2026-02-04","Packaging",-991.0],["2026-02-04","Phone",-10.0],["2026-02-04","Point of sale",-51.0],["2026-02-04","Rent",-1296.0],["2026-02-04","Russel\u2019s poultry",-1378.0],["2026-02-04","xero",-36.0],["2026-02-09","Asahi",-490.0],["2026-02-09","Baiaida Poultry",-4318.0],["2026-02-09","Doordash",748.0],["2026-02-09","Fruit talk",-1190.0],["2026-02-09","Misc",-623.5],["2026-02-09","PFD Food",-4486.0],["2026-02-09","Packaging",-672.0],["2026-02-09","Russel\u2019s poultry",-1152.0],["2026-02-09","Uber",8181.0],["2026-02-09","Wage",-8738.0],["2026-02-09","bopple",2550.0],["2026-02-09","card",11503.0],["2026-02-09","card",15474.0],["2026-02-09","cc",1600.0],["2026-02-09","cfm",-376.0],["2026-02-09","consulting",-250.0],["2026-02-09","deliverect",-22.0],["2026-02-09","gst",-1600.0],["2026-02-09","loans",-1573.0],["2026-02-09","super",-670.0],["2026-02-09","window cleaner",-40.0],["2026-02-10","Rent",-1296.0],["2026-02-11","Acounting",-195.0],["2026-02-11","Bins",-175.0],["2026-02-11","Electricty",-527.0],["2026-02-11","Gas",-240.0],["2026-02-11","Insurance",-345.0],["2026-02-11","Phone",-10.0],["2026-02-11","Point of sale",-51.0],["2026-02-11","xero",-36.0],["2026-02-16","Asahi",-359.0],["2026-02-16","Baiaida Poultry",-4388.0],["2026-02-16","Costco",-320.0],["2026-02-16","Doordash",277.0],["2026-02-16","Fruit talk",-1177.0],["2026-02-16","Misc",-696.0],["2026-02-16","PFD Food",-6064.0],["2026-02-16","Packaging",-700.0],["2026-02-16","Russel\u2019s poultry",-1415.0],["2026-02-16","Uber",6335.0],["2026-02-16","Wage",-9259.0],["2026-02-16","card",32097.0],["2026-02-16","cc",3868.0],["2026-02-16","cfm",-282.0],["2026-02-16","consulting",-250.0],["2026-02-16","deliverect",-22.0],["2026-02-16","gst",-1600.0],["2026-02-16","loans",-1573.0],["2026-02-16","super",-670.0],["2026-02-17","Rent",-1296.0],["2026-02-18","Acounting",-195.0],["2026-02-18","Bins",-175.0],["2026-02-18","Electricty",-527.0],["2026-02-18","Gas",-240.0],["2026-02-18","Insurance",-345.0],["2026-02-18","Phone",-10.0],["2026-02-18","Point of sale",-51.0],["2026-02-18","xero",-36.0],["2026-02-23","Asahi",-426.68],["2026-02-23","Baiaida Poultry",-4178.0],["2026-02-23","Bunnings",-38.0],["2026-02-23","Costco",-366.0],["2026-02-23","Doordash",623.87],["2026-02-23","Fruit talk",-1334.0],["2026-02-23","Misc",-191.24],["2026-02-23","Misc",-10.17],["2026-02-23","Packaging",-944.35],["2026-02-23","Russel\u2019s poultry",-1328.5],["2026-02-23","Uber",8041.58],["2026-02-23","United",-4877.0],["2026-02-23","Wage",-8683.0],["2026-02-23","Woolworth",-5.0],["2026-02-23","aldi",-52.02],["2026-02-23","aldi",-41.5],["2026-02-23","aldi",-15.0],["2026-02-23","card",29513.78],["2026-02-23","cc",2872.1],["2026-02-23","cfm",-282.0],["2026-02-23","consulting",-250.0],["2026-02-23","deliverect",-22.0],["2026-02-23","gst",-1600.0],["2026-02-23","loans",-1573.0],["2026-02-23","super",-705.0],["2026-02-23","tools",-17.0],["2026-02-23","window cleaner",-40.0],["2026-02-24","Rent",-1296.0],["2026-02-25","Acounting",-195.0],["2026-02-25","Bins",-175.0],["2026-02-25","Electricty",-527.0],["2026-02-25","Gas",-240.0],["2026-02-25","Insurance",-345.0],["2026-02-25","Phone",-10.0],["2026-02-25","Point of sale",-51.0],["2026-02-25","xero",-36.0],["2026-03-02","Asahi",-457.0],["2026-03-02","Baiaida Poultry",-4318.0],["2026-03-02","Doordash",640.0],["2026-03-02","Fruit talk",-1181.0],["2026-03-02","Packaging",-883.0],["2026-03-02","Russel\u2019s poultry",-1601.0],["2026-03-02","Uber",7537.0],["2026-03-02","United",-5323.0],["2026-03-02","Wage",-8657.0],["2026-03-02","aldi",-31.39],["2026-03-02","card",27161.0],["2026-03-02","cc",2984.0],["2026-03-02","cfm",-282.0],["2026-03-02","consulting",-250.0],["2026-03-02","deliverect",-22.0],["2026-03-02","gst",-1600.0],["2026-03-02","loans",-1573.0],["2026-03-02","super",-715.0],["2026-03-03","Rent",-1296.0],["2026-03-04","Acounting",-195.0],["2026-03-04","Bins",-175.0],["2026-03-04","Electricty",-527.0],["2026-03-04","Gas",-240.0],["2026-03-04","Insurance",-345.0],["2026-03-04","Phone",-10.0],["2026-03-04","Point of sale",-51.0],["2026-03-04","xero",-36.0],["2026-03-09","Asahi",-430.0],["2026-03-09","Baiaida Poultry",-3326.0],["2026-03-09","Costco",-267.0],["2026-03-09","Doordash",491.0],["2026-03-09","Fruit talk",-1150.0],["2026-03-09","Misc",-15.5],["2026-03-09","Packaging",-990.0],["2026-03-09","Russel\u2019s poultry",-1007.0],["2026-03-09","Uber",6627.0],["2026-03-09","United",-4306.0],["2026-03-09","Wage",-6851.0],["2026-03-09","Woolworth",-492.0],["2026-03-09","card",27170.0],["2026-03-09","cc",2779.0],["2026-03-09","cfm",-282.0],["2026-03-09","consulting",-250.0],["2026-03-09","deliverect",-22.0],["2026-03-09","gst",-1600.0],["2026-03-09","loans",-1573.0],["2026-03-09","super",-640.0],["2026-03-09","window cleaner",-40.0],["2026-03-10","Rent",-1296.0],["2026-03-11","Acounting",-195.0],["2026-03-11","Bins",-175.0],["2026-03-11","Electricty",-527.0],["2026-03-11","Gas",-240.0],["2026-03-11","Insurance",-345.0],["2026-03-11","Phone",-10.0],["2026-03-11","Point of sale",-51.0],["2026-03-11","xero",-36.0],["2026-03-16","Baiaida Poultry",-4388.0],["2026-03-16","Bunnings",-38.0],["2026-03-16","Costco",-355.0],["2026-03-16","Doordash",688.0],["2026-03-16","Fruit talk",-1032.0],["2026-03-16","Packaging",-623.0],["2026-03-16","Russel\u2019s poultry",-1516.0],["2026-03-16","Uber",8178.0],["2026-03-16","United",-5976.0],["2026-03-16","Wage",-8855.0],["2026-03-16","Woolworth",-195.0],["2026-03-16","card",28698.0],["2026-03-16","cc",2800.0],["2026-03-16","cfm",-282.0],["2026-03-16","consulting",-250.0],["2026-03-16","credit card int",-815.0],["2026-03-16","deliverect",-22.0],["2026-03-16","filters",-100.0],["2026-03-16","grease trap",-330.0],["2026-03-16","gst",-1600.0],["2026-03-16","loans",-1573.0],["2026-03-16","super",-640.0],["2026-03-17","Rent",-1296.0],["2026-03-18","Acounting",-195.0],["2026-03-18","Bins",-175.0],["2026-03-18","Electricty",-527.0],["2026-03-18","Gas",-240.0],["2026-03-18","Insurance",-345.0],["2026-03-18","Phone",-10.0],["2026-03-18","Point of sale",-51.0],["2026-03-18","xero",-36.0],["2026-03-19","Woolworth",-89.0],["2026-03-23","Asahi",-688.0],["2026-03-23","Baiaida Poultry",-3396.0],["2026-03-23","Doordash",835.0],["2026-03-23","Fruit talk",-1249.0],["2026-03-23","Packaging",-823.0],["2026-03-23","Russel\u2019s poultry",-1514.0],["2026-03-23","Uber",9056.0],["2026-03-23","United",-5853.0],["2026-03-23","Wage",-8662.0],["2026-03-23","Woolworth",-370.0],["2026-03-23","card",29819.0],["2026-03-23","cc",2820.0],["2026-03-23","consulting",-250.0],["2026-03-23","deliverect",-22.0],["2026-03-23","gst",-1600.0],["2026-03-23","loans",-1573.0],["2026-03-23","officeworks",-26.0],["2026-03-23","super",-625.0],["2026-03-23","window cleaner",-40.0],["2026-03-24","Rent",-1296.0],["2026-03-25","Acounting",-195.0],["2026-03-25","Bins",-175.0],["2026-03-25","Electricty",-527.0],["2026-03-25","Gas",-240.0],["2026-03-25","Insurance",-345.0],["2026-03-25","Phone",-10.0],["2026-03-25","Point of sale",-51.0],["2026-03-25","xero",-36.0],["2026-03-27","Woolworth",-21.0],["2026-03-30","Baiaida Poultry",-6372.0],["2026-03-30","Doordash",886.0],["2026-03-30","Fruit talk",-1577.0],["2026-03-30","Packaging",-1584.0],["2026-03-30","Russel\u2019s poultry",-2161.0],["2026-03-30","Uber",8614.0],["2026-03-30","United",-7753.0],["2026-03-30","Wage",-8917.0],["2026-03-30","Woolworth",-72.0],["2026-03-30","card",34099.0],["2026-03-30","cc",3062.0],["2026-03-30","consulting",-250.0],["2026-03-30","deliverect",-22.0],["2026-03-30","gst",-1600.0],["2026-03-30","loans",-1573.0],["2026-03-30","super",-625.0],["2026-03-31","Rent",-1296.0],["2026-04-01","Acounting",-195.0],["2026-04-01","Bins",-175.0],["2026-04-01","Electricty",-527.0],["2026-04-01","Gas",-240.0],["2026-04-01","Insurance",-345.0],["2026-04-01","Phone",-10.0],["2026-04-01","Point of sale",-51.0],["2026-04-01","xero",-36.0],["2026-04-06","Baiaida Poultry",-2194.4],["2026-04-06","Costco",-601.78],["2026-04-06","Costco",-316.87],["2026-04-06","Fruit talk",-391.1],["2026-04-06","Misc",-217.72],["2026-04-06","Misc",-14.23],["2026-04-06","Packaging",-762.74],["2026-04-06","Packaging",-111.87],["2026-04-06","Russel\u2019s poultry",-705.2],["2026-04-06","Russel\u2019s poultry",-205.3],["2026-04-06","Russel\u2019s poultry",-189.0],["2026-04-06","United",-2737.0],["2026-04-06","United",-1966.75],["2026-04-06","United",-1766.4],["2026-04-06","United",-812.8],["2026-04-06","Woolworth",-44.29],["2026-04-06","Woolworth",-43.2],["2026-04-06","consulting",-250.0],["2026-04-06","deliverect",-22.0],["2026-04-06","fiesta food",-760.0],["2026-04-06","gst",-1600.0],["2026-04-06","loans",-1573.0],["2026-04-06","window cleaner",-40.0],["2026-04-07","Rent",-1296.0],["2026-04-08","Acounting",-195.0],["2026-04-08","Bins",-175.0],["2026-04-08","Electricty",-527.0],["2026-04-08","Gas",-240.0],["2026-04-08","Insurance",-345.0],["2026-04-08","Phone",-10.0],["2026-04-08","Point of sale",-51.0],["2026-04-08","xero",-36.0],["2026-04-13","Asahi",-919.17],["2026-04-13","Baiaida Poultry",-2264.4],["2026-04-13","Baiaida Poultry",-2124.4],["2026-04-13","Costco",-357.33],["2026-04-13","Costco",-59.97],["2026-04-13","Fruit talk",-617.66],["2026-04-13","Fruit talk",-437.94],["2026-04-13","Fruit talk",-343.27],["2026-04-13","Fruit talk",-307.62],["2026-04-13","Russel\u2019s poultry",-828.7],["2026-04-13","Russel\u2019s poultry",-324.7],["2026-04-13","Russel\u2019s poultry",-126.0],["2026-04-13","Russel\u2019s poultry",-73.2],["2026-04-13","United",-4156.7],["2026-04-13","United",-1763.65],["2026-04-13","United",-52.95],["2026-04-13","Woolworth",-112.12],["2026-04-13","Woolworth",-41.39],["2026-04-13","Woolworth",-33.95],["2026-04-13","Woolworth",-26.0],["2026-04-13","Woolworth",-13.04],["2026-04-13","Woolworth",-11.55],["2026-04-13","consulting",-250.0],["2026-04-13","deliverect",-22.0],["2026-04-13","filters",-112.0],["2026-04-13","gst",-1600.0],["2026-04-13","loans",-1573.0],["2026-04-14","Rent",-1296.0],["2026-04-15","Acounting",-195.0],["2026-04-15","Bins",-175.0],["2026-04-15","Electricty",-527.0],["2026-04-15","Gas",-240.0],["2026-04-15","Insurance",-345.0],["2026-04-15","Phone",-10.0],["2026-04-15","Point of sale",-51.0],["2026-04-15","xero",-36.0],["2026-04-20","Asahi",-860.03],["2026-04-20","Baiaida Poultry",-2264.4],["2026-04-20","Baiaida Poultry",-2054.4],["2026-04-20","Bunnings",-38.66],["2026-04-20","Costco",-369.36],["2026-04-20","Doordash",680.0],["2026-04-20","Fruit talk",-532.6],["2026-04-20","Fruit talk",-232.7],["2026-04-20","Fruit talk",-197.5],["2026-04-20","Misc",-147.83],["2026-04-20","Packaging",-325.49],["2026-04-20","Russel\u2019s poultry",-915.3],["2026-04-20","Russel\u2019s poultry",-393.2],["2026-04-20","Russel\u2019s poultry",-332.2],["2026-04-20","Russel\u2019s poultry",-209.8],["2026-04-20","Russel\u2019s poultry",-140.7],["2026-04-20","Uber",8927.0],["2026-04-20","United",-3856.3],["2026-04-20","United",-2397.85],["2026-04-20","Wage",-8894.0],["2026-04-20","Woolworth",-174.88],["2026-04-20","Woolworth",-67.0],["2026-04-20","Woolworth",-39.95],["2026-04-20","Woolworth",-33.96],["2026-04-20","card",32371.0],["2026-04-20","cc",3044.0],["2026-04-20","consulting",-250.0],["2026-04-20","gst",-1600.0],["2026-04-20","loans",-1573.0],["2026-04-20","window cleaner",-40.0],["2026-04-21","Rent",-1296.0],["2026-04-22","Acounting",-195.0],["2026-04-22","Bins",-175.0],["2026-04-22","Electricty",-527.0],["2026-04-22","Gas",-240.0],["2026-04-22","Insurance",-345.0],["2026-04-22","Phone",-10.0],["2026-04-22","Point of sale",-51.0],["2026-04-22","xero",-36.0],["2026-04-27","Asahi",-819.87],["2026-04-27","Baiaida Poultry",-2124.4],["2026-04-27","Baiaida Poultry",-1342.2],["2026-04-27","Doordash",815.0],["2026-04-27","Fruit talk",-1246.0],["2026-04-27","Misc",-78.0],["2026-04-27","Misc",-27.0],["2026-04-27","Misc",-4.95],["2026-04-27","Packaging",-813.45],["2026-04-27","Russel\u2019s poultry",-962.5],["2026-04-27","Russel\u2019s poultry",-320.0],["2026-04-27","Russel\u2019s poultry",-266.7],["2026-04-27","Russel\u2019s poultry",-254.5],["2026-04-27","Russel\u2019s poultry",-138.7],["2026-04-27","Uber",8526.0],["2026-04-27","United",-3054.6],["2026-04-27","United",-2726.95],["2026-04-27","Wage",-9373.0],["2026-04-27","Woolworth",-88.3],["2026-04-27","Woolworth",-28.04],["2026-04-27","Woolworth",-22.0],["2026-04-27","Woolworth",-16.36],["2026-04-27","Woolworth",-11.85],["2026-04-27","Woolworth",-11.4],["2026-04-27","Woolworth",-9.98],["2026-04-27","Woolworth",-9.0],["2026-04-27","card",33438.0],["2026-04-27","cc",2820.0],["2026-04-27","consulting",-250.0],["2026-04-27","gst",-1600.0],["2026-04-27","loans",-419.0],["2026-04-28","Rent",-1296.0],["2026-04-29","Acounting",-195.0],["2026-04-29","Bins",-175.0],["2026-04-29","Electricty",-527.0],["2026-04-29","Gas",-240.0],["2026-04-29","Insurance",-345.0],["2026-04-29","Phone",-10.0],["2026-04-29","Point of sale",-51.0],["2026-04-29","xero",-36.0],["2026-05-04","Asahi",-793.0],["2026-05-04","Baiaida Poultry",-4318.0],["2026-05-04","Doordash",1064.0],["2026-05-04","Fruit talk",-1050.0],["2026-05-04","Misc",-11600.0],["2026-05-04","Misc",-104.25],["2026-05-04","Packaging",-852.0],["2026-05-04","Russel\u2019s poultry",-1502.0],["2026-05-04","Uber",8328.0],["2026-05-04","United",-4765.0],["2026-05-04","Wage",-9819.0],["2026-05-04","aldi",-509.0],["2026-05-04","card",27730.0],["2026-05-04","cc",2463.0],["2026-05-04","consulting",-250.0],["2026-05-04","gst",-1600.0],["2026-05-04","loans",-419.0],["2026-05-04","window cleaner",-40.0],["2026-05-05","Rent",-1296.0],["2026-05-06","Acounting",-195.0],["2026-05-06","Bins",-175.0],["2026-05-06","Electricty",-527.0],["2026-05-06","Gas",-240.0],["2026-05-06","Insurance",-345.0],["2026-05-06","Phone",-10.0],["2026-05-06","Point of sale",-51.0],["2026-05-06","xero",-36.0],["2026-05-11","Asahi",-865.0],["2026-05-11","Baiaida Poultry",-3466.0],["2026-05-11","Doordash",1019.0],["2026-05-11","Fruit talk",-1328.0],["2026-05-11","Packaging",-702.0],["2026-05-11","Russel\u2019s poultry",-1889.0],["2026-05-11","Uber",8125.0],["2026-05-11","United",-5873.0],["2026-05-11","Wage",-8976.0],["2026-05-11","aldi",-251.0],["2026-05-11","card",29487.0],["2026-05-11","cc",3105.0],["2026-05-11","consulting",-250.0],["2026-05-11","gst",-1600.0],["2026-05-11","loans",-419.0],["2026-05-12","Rent",-1296.0],["2026-05-13","Acounting",-195.0],["2026-05-13","Bins",-175.0],["2026-05-13","Electricty",-527.0],["2026-05-13","Gas",-240.0],["2026-05-13","Insurance",-345.0],["2026-05-13","Phone",-10.0],["2026-05-13","Point of sale",-51.0],["2026-05-13","xero",-36.0],["2026-05-18","United",-2961.5],["2026-05-18","United",-2320.9],["2026-05-18","United",-320.1],["2026-05-18","United",-126.9],["2026-05-18","United",-83.4],["2026-05-18","consulting",-250.0],["2026-05-18","gst",-1600.0],["2026-05-18","loans",-419.0],["2026-05-18","window cleaner",-40.0],["2026-05-19","Rent",-1296.0],["2026-05-20","Acounting",-195.0],["2026-05-20","Bins",-175.0],["2026-05-20","Electricty",-527.0],["2026-05-20","Gas",-240.0],["2026-05-20","Insurance",-345.0],["2026-05-20","Packaging",-11.0],["2026-05-20","Phone",-10.0],["2026-05-20","Point of sale",-51.0],["2026-05-20","xero",-36.0],["2026-05-21","Misc",-21.25],["2026-05-21","Russel\u2019s poultry",-346.0],["2026-05-21","aldi",-24.3],["2026-05-22","Asahi",-571.03],["2026-05-22","Baiaida Poultry",-2124.4],["2026-05-22","Baiaida Poultry",-1272.2],["2026-05-22","Baiaida Poultry",-614.8],["2026-05-22","Costco",-35.98],["2026-05-22","Fruit talk",-86.38],["2026-05-22","Misc",-154.32],["2026-05-22","Misc",-40.5],["2026-05-22","Packaging",-621.94],["2026-05-22","Russel\u2019s poultry",-889.5],["2026-05-22","Russel\u2019s poultry",-332.2],["2026-05-22","Russel\u2019s poultry",-133.2],["2026-05-22","Russel\u2019s poultry",-128.5],["2026-05-22","aldi",-46.46],["2026-05-22","aldi",-16.77],["2026-05-22","aldi",-15.25],["2026-05-22","aldi",-12.69],["2026-05-22","aldi",-4.99],["2026-05-25","consulting",-250.0],["2026-05-25","gst",-1600.0],["2026-05-25","loans",-419.0],["2026-05-26","Rent",-1296.0],["2026-05-27","Acounting",-195.0],["2026-05-27","Bins",-175.0],["2026-05-27","Electricty",-527.0],["2026-05-27","Gas",-240.0],["2026-05-27","Insurance",-345.0],["2026-05-27","Phone",-10.0],["2026-05-27","Point of sale",-51.0],["2026-05-27","xero",-36.0]];
+// seed only the EXPENSE history from the CSV; income now comes from the Square/Uber/DoorDash sync
+function seedTx(){return SEED.filter(r=>r[2]<0).map((r,i)=>({id:'s'+i,date:r[0],type:'expense',cat:r[1],amt:Math.abs(r[2])}));}
+// Real COGS supplier invoices read straight from the Bills Drive folder (the in-app PDF reader can't
+// fetch text reliably, so they're loaded here). Weeks up to 24 May already come from the imported CSV
+// history, so only invoices dated 25 May onward are added — avoids double-counting. Ask Claude to refresh
+// this list when new invoices arrive.
+const BILLS_DATA=[
+ {d:'2026-03-30',v:'Baiada Poultry',a:2124.40,i:'U779117',f:'1TP772bguwNqaCFIlJuTeP8bRPbMuY-sL'},
+ {d:'2026-03-30',v:'United Foodservice',a:2587.70,i:'SI477254',f:'1AFaLl8UTnMHkDtm9176XsLup1b_9Rxhg'},
+ {d:'2026-03-30',v:"Russel's Poultry",a:324.50,i:'RU711900',f:'169jrK-S9Eb9mY24-DgEjY8L2u91cfalK'},
+ {d:'2026-03-31',v:"Russel's Poultry",a:319.50,i:'RU712040',f:'1xx_LnrZMGcuaSJBf7sTXNXJDgDlb5uOE'},
+ {d:'2026-04-01',v:'CFM cooking oil',a:287.50,i:'INV-137768',f:'1Wf6oehHp9tUd5R-EHCpchkeQS1eZaoxi'},
+ {d:'2026-04-01',v:"Russel's Poultry",a:187.50,i:'RU712281',f:'1gLQwAchX3VnNMArOpTCD8tVYsuuw4Wjh'},
+ {d:'2026-04-02',v:'Baiada Poultry',a:2264.40,i:'U780658',f:'16R3ynKXAHKZ-RsKhF-DEWz_Z1nB31X1q'},
+ {d:'2026-04-02',v:'Fresho produce',a:412.65,i:'F52014824',f:'14xjpzrxOUEktSNg3RgcYy1kvho8RVksR'},
+ {d:'2026-04-02',v:'United Foodservice',a:5088.95,i:'SI478166',f:'1Xu1YDBq7qc6RT4mf-wKsZKyhCp82egTW'},
+ {d:'2026-04-02',v:'Fiesta Foods',a:760.00,i:'30143',f:'1ARICwOv3tqQeEZu0QWhQcmgetojWhJGX'},
+ {d:'2026-04-02',v:"Russel's Poultry",a:1330.50,i:'RU712439',f:'12TMhidh_p2JLHJmhAvi6_NwUsRPnAdDs'},
+ {d:'2026-04-04',v:'Baiada Poultry',a:1984.40,i:'U781361',f:'1L_9u953CX8v1OLO5hwInvvt4JZ1FnLYB'},
+ {d:'2026-04-04',v:'Fresho produce',a:539.47,i:'F52075746',f:'1XDEklo-wCNj1_9zJ224bgNQLNFDKvhlg'},
+ {d:'2026-04-07',v:'Fresho produce',a:437.94,i:'F52134486',f:'1506zzdenb0BtxoFtUU-1TcElka96lFtT'},
+ {d:'2026-04-07',v:'United Foodservice',a:1766.40,i:'SI478577',f:'1hLY7EzicDq6vBGBs6k2L41EB1AO-N5xX'},
+ {d:'2026-04-07',v:'G & W Packaging',a:762.74,i:'INV-49026',f:'101yB0nLeQWTOtvakesEZHU72-adiSn-P'},
+ {d:'2026-04-07',v:"Russel's Poultry",a:205.30,i:'RU712677',f:'16dqSmDiZZd3bIdEcv7nHV1LIwMXcyHWi'},
+ {d:'2026-04-08',v:"Russel's Poultry",a:189.00,i:'RU712802',f:'1Q5Ut7-hfPf2IPUXECBvBDTQkz7_shbm0'},
+ {d:'2026-04-09',v:'Baiada Poultry',a:2194.40,i:'U782914',f:'18hji1tiCHsbahW0lobZ9MHQoMgScgn0F'},
+ {d:'2026-04-09',v:'United Foodservice',a:812.80,i:'SI478944',f:'1FFOWyi3XEdQwgzZ3jVLuHeWAPL11k6lF'},
+ {d:'2026-04-09',v:'G & W Packaging',a:111.87,i:'INV-49071',f:'14jlZltRMmcYbHtwDAcZ49yaOClJDpQnl'},
+ {d:'2026-04-09',v:'CFM cooking oil',a:564.00,i:'INV-138175',f:'1FHtbvmI2afseJFYYsB6tQUw_X2W4EjtH'},
+ {d:'2026-04-10',v:'Fresho produce',a:391.10,i:'F52279699',f:'1RwH5zMWva8oPnhHUD8KEZlNLt8NQTcEN'},
+ {d:'2026-04-10',v:'United Foodservice',a:1966.75,i:'SI479097',f:'1mb5Xtxpnbdqi-jmwS8csPd5j5Q_mGJcM'},
+ {d:'2026-04-10',v:"Russel's Poultry",a:705.20,i:'RU713125',f:'1AGWXfg-4Hq-9SZ-_dPi1itACSNmdddop'},
+ {d:'2026-04-13',v:'Baiada Poultry',a:2124.40,i:'U784633',f:'1bYh6qXWFTq3cq2c5G8o5lwYtYGybNqsc'},
+ {d:'2026-04-13',v:'United Foodservice',a:4156.70,i:'SI479355',f:'1oOHmYGXO4YszSVOVMpbSG2CX8JA4Rrbx'},
+ {d:'2026-04-13',v:'United Foodservice',a:52.95,i:'SI479356',f:'1TlOk1beG68m3QiENhdn8J-U5BL38zSjS'},
+ {d:'2026-04-13',v:'G & W Packaging',a:489.58,i:'INV-49109',f:'1T65fcch72653SEbSUt3MCySzEJc6YK2E'},
+ {d:'2026-04-13',v:"Russel's Poultry",a:126.00,i:'RU713220',f:'1p_qW_aM643rCedfH8GGXRnESFxYEpgBE'},
+ {d:'2026-04-14',v:'Fresho produce',a:307.62,i:'F52408963',f:'12iUAmKTrImU-ZTxYLfXlfXeY75uRVozG'},
+ {d:'2026-04-14',v:"Russel's Poultry",a:73.20,i:'RU713460',f:'18dxF9KtBes3qXsFdKv7Wituwg6stc78O'},
+ {d:'2026-04-15',v:'Fresho produce',a:343.27,i:'F52454768',f:'1T581QXVoV2QVHHB8FuR3vMR_NE002HBq'},
+ {d:'2026-04-15',v:'Asahi drinks',a:885.83,i:'9018115705',f:'1Ox1oA-uVxHTuvehYMazI4w-YVKV2_SwY'},
+ {d:'2026-04-16',v:'Baiada Poultry',a:2264.40,i:'U786945',f:'1BeH1qZtwnCJU_DpoOL4dIIwrq-kKIpO6'},
+ {d:'2026-04-16',v:'CFM cooking oil',a:569.50,i:'INV-138560',f:'1ZzXu28XQ_npLIJlidelfZxPpKR4Qwbfy'},
+ {d:'2026-04-16',v:"Russel's Poultry",a:324.70,i:'RU713634',f:'1WuyXLMP_kAwnfACN2EdP2afV-6v-IMd9'},
+ {d:'2026-04-17',v:'Fresho produce',a:617.66,i:'F52550432',f:'1llBPSjdrbrGt1VtXaUZldfvVZcZNa9WT'},
+ {d:'2026-04-17',v:'United Foodservice',a:1763.65,i:'SI480263',f:'16cmox9Hw9_uwd4LcP1i3ESJbywSfl0Lg'},
+ {d:'2026-04-17',v:"Russel's Poultry",a:828.70,i:'RU713891',f:'1s5dkyjX2jwdBsZiidUF1_aT-7Ad8BIlH'},
+ {d:'2026-04-20',v:'Baiada Poultry',a:2054.40,i:'U788919',f:'1UAZouNsWxr_ErVOwxgkZm8MKSE19fmHa'},
+ {d:'2026-04-20',v:'Fresho produce',a:232.70,i:'F52643537',f:'1Bn94iHz1B0Wa3gqRL_Vqp78B0CfzQTPu'},
+ {d:'2026-04-20',v:'United Foodservice',a:3856.30,i:'SI480537',f:'1IEnt8N_ZUvwSJGHaq9v7B3Qt45NFg_bZ'},
+ {d:'2026-04-20',v:'G & W Packaging',a:893.31,i:'INV-49240',f:'1TXljjY170LRMLB6G9z0lh0FQTXhdt_lQ'},
+ {d:'2026-04-20',v:"Russel's Poultry",a:332.20,i:'RU714087',f:'1fmhpLyh3A3_LpW5ZhhF4hi1DSPVLZMCB'},
+ {d:'2026-04-21',v:'G & W Packaging',a:325.49,i:'INV-49285',f:'1B-b0nhQIikKzhmdQXV0Lth4qISL7-t--'},
+ {d:'2026-04-21',v:"Russel's Poultry",a:393.20,i:'RU714206',f:'1JT-DnpwbxIR_LnLsBbVb6tmjDi9QPiLL'},
+ {d:'2026-04-22',v:'Fresho produce',a:197.50,i:'F52726912',f:'1UQJoBC9I5kJVR9SqlnZsloURtj7bnF33'},
+ {d:'2026-04-22',v:"Russel's Poultry",a:140.70,i:'RU714333',f:'12dLUoGXj7R8oEieFRTZHoVz4JN3Mum04'},
+ {d:'2026-04-23',v:'Baiada Poultry',a:2264.40,i:'U790318',f:'13nMdjEh6T70wqF1Pzqf0gpCmh1pHVQt2'},
+ {d:'2026-04-23',v:"Russel's Poultry",a:209.80,i:'RU714498',f:'1LAq8uJihLssKoC7JnBfAxWJZ9FBOqzlb'},
+ {d:'2026-04-24',v:'Fresho produce',a:532.60,i:'F52831135',f:'1aOA4GIjW3k1N_6TAI-TLsa9y3OyY_9Up'},
+ {d:'2026-04-24',v:'Asahi drinks',a:860.03,i:'9018166757',f:'1dirpcqgDFYhyfNsRtWmNTiOrkdaFRxi8'},
+ {d:'2026-04-24',v:'United Foodservice',a:2397.85,i:'SI481538',f:'1zO7H2fyrNY6oluBGwsX_lyyQFqbSeX26'},
+ {d:'2026-04-24',v:"Russel's Poultry",a:915.30,i:'RU714664',f:'1ZHzCjziOJrW1Ye3uYMkXCQZ2NhkDpMFg'},
+ {d:'2026-04-27',v:'Baiada Poultry',a:2124.40,i:'U792486',f:'1dPLE6ybEvJFWKz2cHPdEpQOB7WKHaxSR'},
+ {d:'2026-04-27',v:'Fresho produce',a:472.53,i:'F52915685',f:'1uBJXEn449ccqnbz6zgWjV3kRDfqgCWLg'},
+ {d:'2026-04-27',v:'Fresho produce',a:49.00,i:'F52915747',f:'141h6EEHsj4qEt7GgyeERZw-gkB8Dkv3n'},
+ {d:'2026-04-27',v:'United Foodservice',a:2726.95,i:'SI481798',f:'1jzzahPsd4Jl9cJKWsTIWpSTrIOIfHUOc'},
+ {d:'2026-04-27',v:'G & W Packaging',a:813.45,i:'INV-49366',f:'1Y5890vAfEII729IX2bNsgCp166avqe5H'},
+ {d:'2026-04-27',v:"Russel's Poultry",a:320.00,i:'RU714776',f:'10-TE7pZZuhy_WQZAVoMe_Jx4iLiVPAnc'},
+ {d:'2026-04-28',v:"Russel's Poultry",a:138.70,i:'RU714965',f:'1WPAnFNwPZyqG2kmVZLHTmyJIVHZ2kHry'},
+ {d:'2026-04-29',v:'Melbourne Chilli',a:320.00,i:'BCS290426',f:'1ppZyzia3DEb-wSVhbftX4a2I04wKvNge'},
+ {d:'2026-04-29',v:"Russel's Poultry",a:266.70,i:'RU715108',f:'1Wj1LyIy-VR4mjhZtgvk07OiLQtFmKemF'},
+ {d:'2026-04-29',v:"Russel's Poultry",a:254.50,i:'RU715192',f:'1Umo9jN_8yd-WhzDWko5iGbK9SD3Pvmtq'},
+ {d:'2026-04-30',v:'Baiada Poultry',a:1342.20,i:'U793728',f:'18XR2AxgxLC4fWSKZihc-XNHXNSOHg_YH'},
+ {d:'2026-04-30',v:'Fresho produce',a:435.12,i:'F53049947',f:'1KhUmXf-kznTEFQPCN3NOX4XPCrzjjb3s'},
+ {d:'2026-04-30',v:'Fresho produce',a:54.00,i:'F53050035',f:'1f_7UksIv_jXQZtqGQAwuVgElgyenVaem'},
+ {d:'2026-04-30',v:'G & W Packaging',a:206.80,i:'INV-49457',f:'1t8ZlQDlS6uP1x7pDuuPbKLf4Da0bLdsr'},
+ {d:'2026-04-30',v:'CFM cooking oil',a:569.50,i:'INV-139439',f:'1lwPQkHZZ00d2-wWl9mz5db-mXBWRHJ0H'},
+ {d:'2026-05-01',v:'United Foodservice',a:3054.60,i:'SI482813',f:'16Pyym7lTIBxjgUbUkpquBBSeukXEHQ9E'},
+ {d:'2026-05-01',v:'Asahi drinks',a:760.79,i:'9018214116',f:'1k7Q2KAgN8SnKeT8B6NAKQd-JD76Oy9i6'},
+ {d:'2026-05-01',v:"Russel's Poultry",a:962.50,i:'RU715417',f:'1eBDWs4KnsFayVIVM5pT24hyevYL8rCTm'},
+ {d:'2026-05-04',v:'United Foodservice',a:2854.80,i:'SI483097',f:'1O8ueYRS09XOx_PmWyROrimIOZME0xDFK'},
+ {d:'2026-05-04',v:'G & W Packaging',a:852.32,i:'INV-49495',f:'1aTjoMQFS1HaCnliRfq0AgVE4t1OVwV41'},
+ {d:'2026-05-04',v:"Russel's Poultry",a:266.70,i:'RU715550',f:'1lMTT4D1Fts7Sy3rDTAnXfgg_6tIdOInv'},
+ {d:'2026-05-05',v:'Fresho produce',a:571.65,i:'F53236643',f:'1zZnjp2htOREqUnQpqPbw8iKk8dMx2he-'},
+ {d:'2026-05-05',v:"Russel's Poultry",a:141.20,i:'RU715710',f:'1IqM6MXWRuF6qFWupouS7X_psTBw7oRFw'},
+ {d:'2026-05-07',v:'Baiada Poultry',a:2194.40,i:'U797527',f:'1TX2l_LAGqdMwcRf0wQ2UitnpDp1r3CGX'},
+ {d:'2026-05-07',v:"Russel's Poultry",a:322.50,i:'RU715959',f:'1joM3cR7GFMQfYtvEECF8-lHvxunL4IId'},
+ {d:'2026-05-08',v:'Fresho produce',a:479.58,i:'F53390161',f:'112aTPsKPaVIwqdsAhA-8D81B8F6swp04'},
+ {d:'2026-05-08',v:'Asahi drinks',a:793.35,i:'9018258250',f:'1GXPrv5nOR9IVeVWg6jQ9WIhfH3vQo0U5'},
+ {d:'2026-05-08',v:'United Foodservice',a:1863.70,i:'SI484085',f:'1CM2XXTa3xcJTk-wGJgBNUaYCgyj6F7Wi'},
+ {d:'2026-05-08',v:"Russel's Poultry",a:773.20,i:'RU716213',f:'1B_VOOKgZywqJDV3kl88LsNRNv_TTjLt_'},
+ {d:'2026-05-11',v:'Baiada Poultry',a:2124.40,i:'U799839',f:'1LIGZKOA8F2D7N0BWc3eLl3VJ7Eo5nph_'},
+ {d:'2026-05-11',v:'United Foodservice',a:2998.75,i:'SI484371',f:'1A84dM85w70cpEdTBHRDzsjJ3buZ4owgO'},
+ {d:'2026-05-11',v:'CFM cooking oil',a:281.50,i:'INV-140097',f:'1y9Mlopc1ks1BOct5GmGg1VxSguL6VdRl'},
+ {d:'2026-05-11',v:'G & W Packaging',a:702.79,i:'INV-49629'},
+ {d:'2026-05-11',v:"Russel's Poultry",a:254.50,i:'RU716303',f:'1ON2M0al_gFMmAJGdfDSsp9tpiMGpBdNx'},
+ {d:'2026-05-12',v:"Russel's Poultry",a:267.20,i:'RU716480',f:'1lfS38OsmGS68Gv7mDbxmT0ANKfa86nfM'},
+ {d:'2026-05-13',v:"Russel's Poultry",a:400.20,i:'RU716668',f:'1FMth2OzW2xZxw7sHpXkLMGhEa2hkNVC1'},
+ {d:'2026-05-14',v:'Baiada Poultry',a:1342.20,i:'U801276',f:'1gJ-tF7d1SWzgmsVh30z2XEzXzdzTtx53'},
+ {d:'2026-05-15',v:'Asahi drinks',a:864.99,i:'9018282428',f:'1-5yF3jGKEGtJhdGF_NOC_D-RpNfWfCcU'},
+ {d:'2026-05-15',v:'United Foodservice',a:2816.55,i:'SI485374',f:'1dUwzCqud8_S3-25cTBmgHTw_JRA0WKyW'},
+ {d:'2026-05-15',v:"Russel's Poultry",a:967.20,i:'RU716999',f:'1zCC9iLPoSmg5O0QK8LTUN_pElzCSUYyD'},
+ {d:'2026-05-16',v:'Fresho produce',a:387.68,i:'F53718511',f:'1Pv21xMCpX738T0TLeOTLZMHo2eUTEfwP'},
+ {d:'2026-05-16',v:'Fresho produce',a:84.80,i:'F53731060',f:'1TpcEPfXeIK5JRQ-Rez-49KVexu2YjRw1'},
+ {d:'2026-05-18',v:'Baiada Poultry',a:2124.40,i:'U802908',f:'1p6H0YUUL0UyiUfShFUAYByfjehKrvI3S'},
+ {d:'2026-05-23',v:'Baiada Poultry',a:614.80,i:'U807367',f:'1WdTylLZEMy0nFP5WMCY1vdrRqS3XWhyH'},
+ {d:'2026-05-18',v:'United Foodservice',a:2961.50,i:'SI485644'},
+ {d:'2026-05-21',v:'United Foodservice',a:320.10,i:'SI486556'},
+ {d:'2026-05-21',v:'United Foodservice',a:126.90,i:'SI486557'},
+ {d:'2026-05-21',v:'United Foodservice',a:83.40,i:'SI486558'},
+ {d:'2026-05-22',v:'United Foodservice',a:2320.90,i:'SI486620'},
+ {d:'2026-05-19',v:'Fresho produce',a:365.32,i:'F53804326',f:'1CGPQFr5wSfkYwFGqyoes3yZ0BmS4mhxO'},
+ {d:'2026-05-22',v:'Fresho produce',a:501.78,i:'F53953769',f:'10BxU6oxHm2qYMiqfaiSgEH5KHiITFbY7'},
+ {d:'2026-05-23',v:'Fresho produce',a:86.38,i:'F54009999',f:'1QOFx_9IhU5Ft1toWjZGwGgdSOS8fAwZ6'},
+ {d:'2026-05-22',v:'Asahi drinks',a:571.03,i:'9018314294',f:'1ztkVZdoKd8mj-XghORfnVwxbt8PveTSe'},
+ {d:'2026-05-21',v:'CFM cooking oil',a:287.50,i:'INV-140680',f:'1gLWi786c1B9k9BkfAss19Njne5SCrvMH'},
+ {d:'2026-05-18',v:'G & W Packaging',a:621.94,i:'INV-49765'},
+ {d:'2026-06-06',v:'Baiada Poultry',a:210.00,i:'U814694',f:'1DEBY3p3NPHE3FTe2cb-VJMcmJHLRlevA'},
+ {d:'2026-06-01',v:'G & W Packaging',a:1073.38,i:'INV-50001'},
+ {d:'2026-05-25',v:'G & W Packaging',a:1207.14,i:'INV-49887'},
+ {d:'2026-06-05',v:"Russel's Poultry",a:625.00,i:'RU719335',f:'1xeVvY4X4FYC_blNSef-rkkzpDR4Ya99V'},
+ {d:'2026-06-04',v:"Russel's Poultry",a:121.00,i:'RU719067',f:'1Ei9zQafawWp3lVEw8B6a1RiwreDosL7X'},
+ {d:'2026-06-03',v:"Russel's Poultry",a:126.00,i:'RU718995',f:'1e_CyIypPmJMmkwaeXcfxPcwWl_mJC9ET'},
+ {d:'2026-06-02',v:"Russel's Poultry",a:225.00,i:'RU718865',f:'1zarMdHYDBKioVuMrD6uYapKT7OYWy3cA'},
+ {d:'2026-06-01',v:"Russel's Poultry",a:266.70,i:'RU718651',f:'190UT1Kxh2S3TgCLK0ru2guamwuScjqlN'},
+ {d:'2026-05-29',v:"Russel's Poultry",a:756.00,i:'RU718521',f:'1hMqbY7QNdEBX7vkYujl5UWAFIp0nwqQd'},
+ {d:'2026-05-28',v:"Russel's Poultry",a:201.50,i:'RU718288',f:'1xOgC5YZSRPwffBUFWcz93wXCQRcJ3oCZ'},
+ {d:'2026-05-27',v:"Russel's Poultry",a:252.00,i:'RU718222',f:'1hCbKMj89GBQuurqmun_rC0Txb6vuwdDQ'},
+ {d:'2026-05-26',v:"Russel's Poultry",a:225.00,i:'RU718085',f:'1o47-nUaOeIvUNeCtJlF67rRqKHe2uJNi'},
+ {d:'2026-06-05',v:'United Foodservice',a:2778.70,i:'SI489284',f:'1pBcOSYsHCIskEd05Uz3ZiZbovFdX8w0T'},
+ {d:'2026-06-04',v:'Baiada Poultry',a:2194.40,i:'U812713',f:'1O7fLkT4rChCSDhc7U6zGqClKZLdY6_D3'},
+ {d:'2026-06-04',v:'Fresho produce',a:319.93,i:'F54469859',f:'1fg95gTfdbGA5wd-XEMu7ZT1LIlZhmTJt'},
+ {d:'2026-06-04',v:'CFM cooking oil',a:281.50,i:'INV-141522',f:'1LPOlXnCwGC9tOphEiXnYhtpLjZEGBWmc'},
+ {d:'2026-06-02',v:'Baiada Poultry',a:315.92,i:'U812069',f:'1CTS_C3r84JrjHkkSOpEJ_4ujrZiiU6bz'},
+ {d:'2026-06-01',v:'Baiada Poultry',a:2054.40,i:'U811210',f:'1j8FF_FJwGhvbQY7nwb8HOBSOhUGkb4A9'},
+ {d:'2026-06-01',v:'United Foodservice',a:2954.05,i:'SI488252',f:'17HTojWWB-_khkVc1ItGEoe5URXejWUrd'},
+ {d:'2026-06-01',v:'Fresho produce',a:326.15,i:'F54334384',f:'1JjNx52IAQ3KCNFnuHXykc-7Z6zQGuiXD'},
+ {d:'2026-05-29',v:'Baiada Poultry',a:500.36,i:'U809250',f:'12GYVXB_YGM5mt72ViZa5xAqEjVZ0oqB-'},
+ {d:'2026-05-29',v:'United Foodservice',a:2545.85,i:'SI487959',f:'17goCE5y_MmXhk17pd4wwVoFzpbZpeOyf'},
+ {d:'2026-05-29',v:'Asahi drinks',a:951.78,i:'9018361887',f:'1ClkzyRar2id4GVvTAn8AmrVUlSBssDWP'},
+ {d:'2026-05-28',v:'Baiada Poultry',a:1272.20,i:'U808695',f:'1YE-zDcyPrmm-ilBNrTtXb3xGg6_sKa_A'},
+ {d:'2026-05-28',v:'United Foodservice',a:545.00,i:'SI487821',f:'14fszuG4QMWvIpsQ1lGwM0uPbJFFtMFuh'},
+ {d:'2026-05-28',v:'CFM cooking oil',a:281.50,i:'INV-141105',f:'1P3joyNa9LRqdUJ3MqBsZiM3tVVx9Cio7'},
+ {d:'2026-05-28',v:'Feel Good Foods',a:383.35,i:'332487',f:'1rRohnhp0wmlSoO9fp3i-k7uJaghJM2H2'},
+ {d:'2026-05-28',v:'Fresho produce',a:387.45,i:'F54183157',f:'1vtGO3MzlaKhvOpCHztkNm6-E7aD7B90z'},
+ {d:'2026-05-26',v:'Fiesta Foods',a:760.00,i:'30233',f:'13ZqOBjLK0sRR-9AnzgfGbmWLUVE-tpiu'},
+ {d:'2026-05-25',v:'Baiada Poultry',a:1439.60,i:'U807211',f:'1dzpY_RR7gLvfnDglSn5YzSzhvqcjzYbL'},
+ {d:'2026-05-25',v:'United Foodservice',a:3285.95,i:'SI486914',f:'1l4yi7iqPxqcV3bdX_KW-OqdvcRucxAoA'},
+ {d:'2026-05-25',v:'Fresho produce',a:482.35,i:'F54057113',f:'1VW4VhvQr9tleqNIOO9otfqszKKnjPS_J'},
+ {d:'2026-06-09',v:'Baiada Poultry',a:1984.40,i:'U814693',f:'1RX5wMfrCBvSbunZBeX3nZERHmc1EnosN'},
+ {d:'2026-06-09',v:'United Foodservice',a:2448.25,i:'SI489663',f:'1zM0ZrEf0jBg6iRRqUxmDrm1g4bkASobA'},
+ {d:'2026-06-09',v:"Russel's Poultry",a:461.20,i:'RU719488',f:'1lGtZ2BJ1TJM5hMFIKBhy7xbwpIQK10Ur'},
+ {d:'2026-06-09',v:'Fresho produce',a:384.17,i:'F54648150',f:'1hfvUcCe3sR5bx3qocluTAHU2Q0Kc2wAq'},
+ {d:'2026-06-11',v:'Poultry Plus',a:915.00,i:'PP563962',f:'1Rz8JeMk2CGzdOrRKgt0b-jsPuNiIqtqp'},
+ {d:'2026-06-11',v:'CFM cooking oil',a:281.50,i:'INV-141966',f:'141Y-TrGQwPOxwGKVlsu5nvHh7Ur9_vVm'},
+ {d:'2026-06-12',v:'United Foodservice',a:2541.45,i:'SI490515',f:'1mbDny_SAdMJe02AthtB_X0004aH_miyZ'},
+ {d:'2026-06-12',v:'Baiada Poultry',a:280.00,i:'U816583',f:'1SD2JwptXkIwznPHa6cTy9t6lcfBfKrr3'},
+ {d:'2026-06-12',v:'Fresho produce',a:319.84,i:'F54821524',f:'1bc8EIy4D9VEEPtH6rTFnKl2p0qIK4mnV'},
+ {d:'2026-06-12',v:'Melbourne Meat',a:380.00,i:'F54709842',f:'1brcectVrVSoZJzQcZAnBEW6QHy1UXsF6'},
+ {d:'2026-06-13',v:'Baiada Poultry',a:491.84,i:'U817154',f:'16NmXH23m0ufhvSRYIxYTQXEAFyin05p4'},
+ {d:'2026-06-13',v:'Fresho produce',a:160.11,i:'F54840244',f:'1zE6CZN3x0IPNfhrqhluNSsCRmfsBQgiM'},
+ {d:'2026-06-15',v:'Baiada Poultry',a:2054.40,i:'U817970',f:'1hyHDVfh-PI95sfuc7CUOyw5kvI3n9mnw'},
+ {d:'2026-06-15',v:'United Foodservice',a:2747.25,i:'SI490794',f:'15Vcb7NGA_FLjx3TtK9eJm7jK50_FLJPF'},
+ {d:'2026-06-15',v:'Fresho produce',a:245.46,i:'F54894878',f:'14FyqEABESwVBc0oCOq0VQ6prjSzEIut4'}
+];
+const BILLS_IDX={}; BILLS_DATA.forEach(function(b){ BILLS_IDX[b.i]=b; });
+function ensureBills(){
+  try{
+    const have=new Set(TX.filter(t=>t.inv).map(t=>t.inv));
+    let added=false;
+    BILLS_DATA.forEach(function(b){ if(have.has(b.i))return; TX.push({id:'bd_'+b.i,date:b.d,type:'expense',cat:b.v,amt:b.a,bucket:'cogs',src:'embed',inv:b.i}); added=true; });
+    if(added) save();
+  }catch(e){}
+}
+function loadBills(){ ensureBills(); ensureHist(); render(); status('Loaded '+BILLS_DATA.length+' supplier invoices (30 Mar onward).'); }
+// Your fixed overheads (the recurring amounts you set), applied to every April & May week as weekly values.
+// Monthly amounts are spread ÷ 4.33: PoS 322, loans 1816.65, Rent 7659, Accounting 770, Phone 60, Xero 162, Internet 99.
+const FIXED_WEEKS=['2026-03-30','2026-04-06','2026-04-13','2026-04-20','2026-04-27','2026-05-04','2026-05-11','2026-05-18','2026-05-25','2026-06-01','2026-06-08','2026-06-15'];
+const FIXED_OH=[['Point of sale',74.31],['loans',419.23],['Rent',1767.46],['Acounting',177.69],['Electricty',600],['Gas',235],['Phone',13.85],['xero',37.38],['internet',22.85],['insurance',344.41],['consulting',750],['gst',2000]];
+function ensureFixedOH(){
+  try{
+    let ch=false;
+    FIXED_WEEKS.forEach(function(w){ FIXED_OH.forEach(function(o){
+      const id='oh_'+w+'_'+o[0].replace(/\W+/g,'');
+      if(!TX.some(t=>t.id===id)){ TX.push({id:id,date:w,type:'expense',cat:o[0],amt:o[1],bucket:'other',src:'embed'}); ch=true; }
+    }); });
+    if(ch) save();
+  }catch(e){}
+}
+// Delivery payouts pinned from the ACTUAL payout emails — verified per week. ensurePayouts also CORRECTS
+// any week whose booked figure doesn't match (fixes the old bug that stamped one week's payout onto another).
+// Known gaps in the inbox itself: no Uber email for w/c 13 Apr; no DoorDash email for w/c 30 Mar.
+const PAYOUTS_DATA=[
+ {w:'2026-03-02',cat:'Uber Eats (net payout)',amt:7537.15},
+ {w:'2026-03-09',cat:'Uber Eats (net payout)',amt:6627.90},
+ {w:'2026-03-16',cat:'Uber Eats (net payout)',amt:8178.07},
+ {w:'2026-03-23',cat:'Uber Eats (net payout)',amt:9056.77},
+ {w:'2026-03-30',cat:'Uber Eats (net payout)',amt:8614.72},
+ {w:'2026-04-06',cat:'Uber Eats (net payout)',amt:8445.31},
+ {w:'2026-04-13',cat:'Uber Eats (net payout)',amt:9331.89},
+ {w:'2026-04-20',cat:'Uber Eats (net payout)',amt:8927.65},
+ {w:'2026-04-27',cat:'Uber Eats (net payout)',amt:8526.99},
+ {w:'2026-05-04',cat:'Uber Eats (net payout)',amt:8328.26},
+ {w:'2026-05-11',cat:'Uber Eats (net payout)',amt:8125.54},
+ {w:'2026-05-18',cat:'Uber Eats (net payout)',amt:8278.60},
+ {w:'2026-05-25',cat:'Uber Eats (net payout)',amt:8410.44},
+ {w:'2026-03-30',cat:'DoorDash (net payout)',amt:835.02},
+ {w:'2026-04-06',cat:'DoorDash (net payout)',amt:1318.25},
+ {w:'2026-04-13',cat:'DoorDash (net payout)',amt:832.14},
+ {w:'2026-04-20',cat:'DoorDash (net payout)',amt:680.86},
+ {w:'2026-04-27',cat:'DoorDash (net payout)',amt:815.01},
+ {w:'2026-05-04',cat:'DoorDash (net payout)',amt:1064.53},
+ {w:'2026-05-11',cat:'DoorDash (net payout)',amt:1019.00},
+ {w:'2026-05-18',cat:'DoorDash (net payout)',amt:1193.13},
+ {w:'2026-05-25',cat:'DoorDash (net payout)',amt:816.14},
+ {w:'2026-06-01',cat:'Uber Eats (net payout)',amt:7944.57},
+ {w:'2026-06-08',cat:'Uber Eats (net payout)',amt:8462.53},
+ {w:'2026-06-01',cat:'DoorDash (net payout)',amt:1158.14}
+];
+// Weekly wage totals verified directly against Square timecards (paid hours × rate, unpaid breaks deducted)
+const WAGES_DATA=[
+ {w:'2026-03-02',a:7657.20},{w:'2026-03-09',a:6330.95},{w:'2026-03-16',a:7854.95},{w:'2026-03-23',a:7643.70},
+ {w:'2026-03-30',a:7917.75},{w:'2026-04-06',a:7337.60},{w:'2026-04-13',a:8463.99},{w:'2026-04-20',a:7794.77},
+ {w:'2026-04-27',a:8373.35},{w:'2026-05-04',a:9049.51},{w:'2026-05-11',a:8458.36},{w:'2026-05-18',a:8727.02},{w:'2026-05-25',a:8758.01}
+];
+// Square income verified per week straight from the payouts & cash records (created if a week has none;
+// a live sync of that week takes precedence)
+const INCOME_DATA=[
+ {w:'2026-03-02',dep:26947.86,cash:2984.00},
+ {w:'2026-03-09',dep:26848.12,cash:3114.65},
+ {w:'2026-03-16',dep:27974.59,cash:2889.60},
+ {w:'2026-03-23',dep:31095.66,cash:2730.50},
+ {w:'2026-03-30',dep:33342.06,cash:3048.40},
+ {w:'2026-04-06',dep:26914.66,cash:2982.55},
+ {w:'2026-04-13',dep:29261.30,cash:2887.60},
+ {w:'2026-04-20',dep:33674.58,cash:3164.05},
+ {w:'2026-04-27',dep:32660.36,cash:2940.50},
+ {w:'2026-05-04',dep:27086.86,cash:2713.90},
+ {w:'2026-05-11',dep:30217.73,cash:3415.00},
+ {w:'2026-05-18',dep:29888.34,cash:2554.50},
+ {w:'2026-05-25',dep:28687.58,cash:3183.00}
+];
+function ensureIncome(){
+  try{
+    let ch=false;
+    INCOME_DATA.forEach(function(p){
+      [['Bank deposits (Square)',p.dep,'d'],['Cash sales (Square)',p.cash,'c']].forEach(function(x){
+        if(!(x[1]>0)) return;
+        if(TX.some(t=>weekKey(t.date)===p.w && t.type==='income' && t.cat===x[0])) return;
+        TX.push({id:'in_'+p.w+'_'+x[2],date:p.w,type:'income',cat:x[0],amt:x[1],src:'sync'});
+        ch=true;
+      });
+    });
+    if(ch) save();
+  }catch(e){}
+}
+function ensureWages(){
+  try{
+    let ch=false;
+    WAGES_DATA.forEach(function(p){
+      if(TX.some(t=>weekKey(t.date)===p.w && t.src==='sync' && t.staffId)) return; // week has live per-staff data — leave it
+      const id='wg_'+p.w;
+      const ex=TX.find(t=>t.id===id);
+      if(ex){ if(Math.abs((+ex.amt||0)-p.a)>0.01){ ex.amt=p.a; ch=true; } return; }
+      TX=TX.filter(t=>!(weekKey(t.date)===p.w && t.type==='expense' && bucketOf(t)==='wage')); // clear imported/mis-synced wage rows once
+      TX.push({id:id,date:p.w,type:'expense',cat:'Staff wages (Square)',amt:p.a,src:'sync'});
+      ch=true;
+    });
+    if(ch) save();
+  }catch(e){}
+}
+function ensurePayouts(){
+  try{
+    let ch=false;
+    PAYOUTS_DATA.forEach(function(p){
+      let t=TX.find(x=>weekKey(x.date)===p.w && x.type==='income' && x.cat===p.cat);
+      if(!t){ TX.push({id:'po_'+p.w+'_'+p.cat.replace(/\W+/g,'').slice(0,8),date:p.w,type:'income',cat:p.cat,amt:p.amt,src:'sync'}); ch=true; }
+      else if(Math.abs((+t.amt||0)-p.amt)>0.01){ t.amt=p.amt; ch=true; }
+    });
+    if(ch) save();
+  }catch(e){}
+}
+
+
+// ── Imported history (26 Jan – Mar) rebuilt from the original transactions CSV: weekly income, wages, payouts, COGS & overheads ──
+const HIST=[{w:'2026-01-26',c:"Bank deposits (Square)",a:39823.00,k:'inc_dep'},{w:'2026-01-26',c:"Uber Eats (net payout)",a:9263.00,k:'inc_uber'},{w:'2026-01-26',c:"DoorDash (net payout)",a:765.00,k:'inc_dd'},{w:'2026-01-26',c:"Wages",a:11722.00,k:'wage'},{w:'2026-01-26',c:"Baiada Poultry",a:5486.00,k:'cogs'},{w:'2026-01-26',c:"CFM cooking oil",a:362.00,k:'cogs'},{w:'2026-01-26',c:"Costco",a:636.00,k:'cogs'},{w:'2026-01-26',c:"Fresho produce",a:1440.00,k:'cogs'},{w:'2026-01-26',c:"PFD Foods",a:5708.00,k:'cogs'},{w:'2026-01-26',c:"Packaging",a:1195.00,k:'cogs'},{w:'2026-01-26',c:"Russel's Poultry",a:1157.00,k:'cogs'},{w:'2026-01-26',c:"Acounting",a:195.00,k:'other'},{w:'2026-01-26',c:"Bins",a:175.00,k:'other'},{w:'2026-01-26',c:"Consulting",a:250.00,k:'other'},{w:'2026-01-26',c:"Deliverect",a:22.00,k:'other'},{w:'2026-01-26',c:"Deputy",a:45.00,k:'other'},{w:'2026-01-26',c:"Electricty",a:520.00,k:'other'},{w:'2026-01-26',c:"Filters",a:522.00,k:'other'},{w:'2026-01-26',c:"Gas",a:240.00,k:'other'},{w:'2026-01-26',c:"Gst",a:1600.00,k:'other'},{w:'2026-01-26',c:"Insurance",a:345.00,k:'other'},{w:'2026-01-26',c:"Loans",a:1573.00,k:'other'},{w:'2026-01-26',c:"Misc",a:357.00,k:'other'},{w:'2026-01-26',c:"Phone",a:10.00,k:'other'},{w:'2026-01-26',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-01-26',c:"Rent",a:1296.00,k:'other'},{w:'2026-01-26',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-01-26',c:"Xero",a:36.00,k:'other'},{w:'2026-02-02',c:"Bank deposits (Square)",a:33901.00,k:'inc_dep'},{w:'2026-02-02',c:"Uber Eats (net payout)",a:6486.00,k:'inc_uber'},{w:'2026-02-02',c:"DoorDash (net payout)",a:622.00,k:'inc_dd'},{w:'2026-02-02',c:"Wages",a:9283.00,k:'wage'},{w:'2026-02-02',c:"Asahi drinks",a:360.00,k:'cogs'},{w:'2026-02-02',c:"Baiada Poultry",a:4248.40,k:'cogs'},{w:'2026-02-02',c:"Costco",a:386.00,k:'cogs'},{w:'2026-02-02',c:"Fresho produce",a:1174.00,k:'cogs'},{w:'2026-02-02',c:"PFD Foods",a:5907.00,k:'cogs'},{w:'2026-02-02',c:"Packaging",a:991.00,k:'cogs'},{w:'2026-02-02',c:"Russel's Poultry",a:1378.00,k:'cogs'},{w:'2026-02-02',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-02',c:"Bins",a:175.00,k:'other'},{w:'2026-02-02',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-02',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-02',c:"Deputy",a:45.00,k:'other'},{w:'2026-02-02',c:"Electricty",a:520.00,k:'other'},{w:'2026-02-02',c:"Gas",a:240.00,k:'other'},{w:'2026-02-02',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-02',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-02',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-02',c:"Misc",a:557.00,k:'other'},{w:'2026-02-02',c:"Phone",a:10.00,k:'other'},{w:'2026-02-02',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-02',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-02',c:"Xero",a:36.00,k:'other'},{w:'2026-02-09',c:"Bank deposits (Square)",a:31127.00,k:'inc_dep'},{w:'2026-02-09',c:"Uber Eats (net payout)",a:8181.00,k:'inc_uber'},{w:'2026-02-09',c:"DoorDash (net payout)",a:748.00,k:'inc_dd'},{w:'2026-02-09',c:"Wages",a:9408.00,k:'wage'},{w:'2026-02-09',c:"Asahi drinks",a:490.00,k:'cogs'},{w:'2026-02-09',c:"Baiada Poultry",a:4318.00,k:'cogs'},{w:'2026-02-09',c:"CFM cooking oil",a:376.00,k:'cogs'},{w:'2026-02-09',c:"Fresho produce",a:1190.00,k:'cogs'},{w:'2026-02-09',c:"PFD Foods",a:4486.00,k:'cogs'},{w:'2026-02-09',c:"Packaging",a:672.00,k:'cogs'},{w:'2026-02-09',c:"Russel's Poultry",a:1152.00,k:'cogs'},{w:'2026-02-09',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-09',c:"Bins",a:175.00,k:'other'},{w:'2026-02-09',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-09',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-09',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-09',c:"Gas",a:240.00,k:'other'},{w:'2026-02-09',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-09',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-09',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-09',c:"Misc",a:623.50,k:'other'},{w:'2026-02-09',c:"Phone",a:10.00,k:'other'},{w:'2026-02-09',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-09',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-09',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-02-09',c:"Xero",a:36.00,k:'other'},{w:'2026-02-16',c:"Bank deposits (Square)",a:35965.00,k:'inc_dep'},{w:'2026-02-16',c:"Uber Eats (net payout)",a:6335.00,k:'inc_uber'},{w:'2026-02-16',c:"DoorDash (net payout)",a:277.00,k:'inc_dd'},{w:'2026-02-16',c:"Wages",a:9929.00,k:'wage'},{w:'2026-02-16',c:"Asahi drinks",a:359.00,k:'cogs'},{w:'2026-02-16',c:"Baiada Poultry",a:4388.00,k:'cogs'},{w:'2026-02-16',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-02-16',c:"Costco",a:320.00,k:'cogs'},{w:'2026-02-16',c:"Fresho produce",a:1177.00,k:'cogs'},{w:'2026-02-16',c:"PFD Foods",a:6064.00,k:'cogs'},{w:'2026-02-16',c:"Packaging",a:700.00,k:'cogs'},{w:'2026-02-16',c:"Russel's Poultry",a:1415.00,k:'cogs'},{w:'2026-02-16',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-16',c:"Bins",a:175.00,k:'other'},{w:'2026-02-16',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-16',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-16',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-16',c:"Gas",a:240.00,k:'other'},{w:'2026-02-16',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-16',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-16',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-16',c:"Misc",a:696.00,k:'other'},{w:'2026-02-16',c:"Phone",a:10.00,k:'other'},{w:'2026-02-16',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-16',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-16',c:"Xero",a:36.00,k:'other'},{w:'2026-02-23',c:"Bank deposits (Square)",a:32385.88,k:'inc_dep'},{w:'2026-02-23',c:"Uber Eats (net payout)",a:8041.58,k:'inc_uber'},{w:'2026-02-23',c:"DoorDash (net payout)",a:623.87,k:'inc_dd'},{w:'2026-02-23',c:"Wages",a:9388.00,k:'wage'},{w:'2026-02-23',c:"Aldi",a:108.52,k:'cogs'},{w:'2026-02-23',c:"Asahi drinks",a:426.68,k:'cogs'},{w:'2026-02-23',c:"Baiada Poultry",a:4178.00,k:'cogs'},{w:'2026-02-23',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-02-23',c:"Costco",a:366.00,k:'cogs'},{w:'2026-02-23',c:"Fresho produce",a:1334.00,k:'cogs'},{w:'2026-02-23',c:"Packaging",a:944.35,k:'cogs'},{w:'2026-02-23',c:"Russel's Poultry",a:1328.50,k:'cogs'},{w:'2026-02-23',c:"United Foodservice",a:4877.00,k:'cogs'},{w:'2026-02-23',c:"Woolworths",a:5.00,k:'cogs'},{w:'2026-02-23',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-23',c:"Bins",a:175.00,k:'other'},{w:'2026-02-23',c:"Bunnings",a:38.00,k:'other'},{w:'2026-02-23',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-23',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-23',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-23',c:"Gas",a:240.00,k:'other'},{w:'2026-02-23',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-23',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-23',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-23',c:"Misc",a:201.41,k:'other'},{w:'2026-02-23',c:"Phone",a:10.00,k:'other'},{w:'2026-02-23',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-23',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-23',c:"Tools",a:17.00,k:'other'},{w:'2026-02-23',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-02-23',c:"Xero",a:36.00,k:'other'},{w:'2026-03-02',c:"Aldi",a:31.39,k:'cogs'},{w:'2026-03-02',c:"Asahi drinks",a:457.00,k:'cogs'},{w:'2026-03-02',c:"Baiada Poultry",a:4318.00,k:'cogs'},{w:'2026-03-02',c:"Fresho produce",a:1181.00,k:'cogs'},{w:'2026-03-02',c:"Packaging",a:883.00,k:'cogs'},{w:'2026-03-02',c:"Russel's Poultry",a:1601.00,k:'cogs'},{w:'2026-03-02',c:"United Foodservice",a:5323.00,k:'cogs'},{w:'2026-03-02',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-02',c:"Bins",a:175.00,k:'other'},{w:'2026-03-02',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-02',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-02',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-02',c:"Gas",a:240.00,k:'other'},{w:'2026-03-02',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-02',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-02',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-02',c:"Phone",a:10.00,k:'other'},{w:'2026-03-02',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-02',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-02',c:"Xero",a:36.00,k:'other'},{w:'2026-03-09',c:"Asahi drinks",a:430.00,k:'cogs'},{w:'2026-03-09',c:"Baiada Poultry",a:3326.00,k:'cogs'},{w:'2026-03-09',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-03-09',c:"Costco",a:267.00,k:'cogs'},{w:'2026-03-09',c:"Fresho produce",a:1150.00,k:'cogs'},{w:'2026-03-09',c:"Packaging",a:990.00,k:'cogs'},{w:'2026-03-09',c:"Russel's Poultry",a:1007.00,k:'cogs'},{w:'2026-03-09',c:"United Foodservice",a:4306.00,k:'cogs'},{w:'2026-03-09',c:"Woolworths",a:492.00,k:'cogs'},{w:'2026-03-09',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-09',c:"Bins",a:175.00,k:'other'},{w:'2026-03-09',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-09',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-09',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-09',c:"Gas",a:240.00,k:'other'},{w:'2026-03-09',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-09',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-09',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-09',c:"Misc",a:15.50,k:'other'},{w:'2026-03-09',c:"Phone",a:10.00,k:'other'},{w:'2026-03-09',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-09',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-09',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-03-09',c:"Xero",a:36.00,k:'other'},{w:'2026-03-16',c:"Baiada Poultry",a:4388.00,k:'cogs'},{w:'2026-03-16',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-03-16',c:"Costco",a:355.00,k:'cogs'},{w:'2026-03-16',c:"Fresho produce",a:1032.00,k:'cogs'},{w:'2026-03-16',c:"Packaging",a:623.00,k:'cogs'},{w:'2026-03-16',c:"Russel's Poultry",a:1516.00,k:'cogs'},{w:'2026-03-16',c:"United Foodservice",a:5976.00,k:'cogs'},{w:'2026-03-16',c:"Woolworths",a:284.00,k:'cogs'},{w:'2026-03-16',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-16',c:"Bins",a:175.00,k:'other'},{w:'2026-03-16',c:"Bunnings",a:38.00,k:'other'},{w:'2026-03-16',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-16',c:"Credit Card Int",a:815.00,k:'other'},{w:'2026-03-16',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-16',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-16',c:"Filters",a:100.00,k:'other'},{w:'2026-03-16',c:"Gas",a:240.00,k:'other'},{w:'2026-03-16',c:"Grease Trap",a:330.00,k:'other'},{w:'2026-03-16',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-16',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-16',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-16',c:"Phone",a:10.00,k:'other'},{w:'2026-03-16',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-16',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-16',c:"Xero",a:36.00,k:'other'},{w:'2026-03-23',c:"Asahi drinks",a:688.00,k:'cogs'},{w:'2026-03-23',c:"Baiada Poultry",a:3396.00,k:'cogs'},{w:'2026-03-23',c:"Fresho produce",a:1249.00,k:'cogs'},{w:'2026-03-23',c:"Packaging",a:823.00,k:'cogs'},{w:'2026-03-23',c:"Russel's Poultry",a:1514.00,k:'cogs'},{w:'2026-03-23',c:"United Foodservice",a:5853.00,k:'cogs'},{w:'2026-03-23',c:"Woolworths",a:391.00,k:'cogs'},{w:'2026-03-23',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-23',c:"Bins",a:175.00,k:'other'},{w:'2026-03-23',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-23',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-23',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-23',c:"Gas",a:240.00,k:'other'},{w:'2026-03-23',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-23',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-23',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-23',c:"Officeworks",a:26.00,k:'other'},{w:'2026-03-23',c:"Phone",a:10.00,k:'other'},{w:'2026-03-23',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-23',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-23',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-03-23',c:"Xero",a:36.00,k:'other'}];
+function ensureHist(){
+  try{ let ch=false;
+    HIST.forEach(function(h,ix){ var id='hi_'+ix;
+      if(TX.some(function(t){return t.id===id;})) return;
+      var row={id:id,date:h.w,cat:h.c,amt:h.a,src:'embed'};
+      if(h.k==='inc_dep'||h.k==='inc_uber'||h.k==='inc_dd'){ row.type='income'; }
+      else { row.type='expense'; row.bucket=(h.k==='wage'?'wage':(h.k==='cogs'?'cogs':'other')); }
+      TX.push(row); ch=true;
+    });
+    if(ch) save();
+  }catch(e){}
+}
+
+let TX=[]; let curMon=mondayOf(new Date());
+let WAGE_ALERTS=[];   // staff with shifts left open > 12h (forgot to clock off)
+// true only inside the Claude app (where the live Square/Gmail/Drive connectors exist). When this file is
+// hosted (Cloudflare etc.) it's false → the app shows the saved/baked-in books and skips live syncing.
+/* hosted-on-our-server shim: when NOT inside the Claude app, route MCP calls to our own backend so live Square data works behind our server/Cloudflare Tunnel. Inside Claude, the real window.cowork is used. */
+if(!(window.cowork&&window.cowork.callMcpTool)){window.cowork={callMcpTool:async function(name,args){const r=await fetch('/api/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,args})});if(!r.ok)throw new Error('backend '+r.status);return await r.json();},askClaude:async function(){return '';}};}
+const IN_CLAUDE=!!(window.cowork&&window.cowork.callMcpTool);
+// per-week, per-staff shift details (filled by the wage sync; shown as a dropdown under each staff name)
+const SHIFTKEY='weeklybooks_shifts';
+function shiftsMap(){ try{return JSON.parse(localStorage.getItem(SHIFTKEY)||'{}');}catch(e){return {};} }
+function shiftsFor(id){ try{ return ((shiftsMap()[curKey()]||{})[id])||[]; }catch(e){ return []; } }
+function load(){
+  try{
+    const s=localStorage.getItem(KEY); TX=s?JSON.parse(s):seedTx(); if(!s)save();
+    // one-time cleanup: drop the old seed income lines from the original CSV import
+    if(localStorage.getItem(KEY+'_noSeedInc')!=='1'){
+      TX=TX.filter(t=>!(typeof t.id==='string' && t.id[0]==='s' && t.type==='income'));
+      localStorage.setItem(KEY+'_noSeedInc','1'); save();
+    }
+    // one-time cleanup: drop the fixed overhead lines (gas/elec/Square) — overheads are now entered manually as recurring
+    if(localStorage.getItem(KEY+'_noFixed')!=='1'){
+      TX=TX.filter(t=>t.src!=='fixed');
+      localStorage.setItem(KEY+'_noFixed','1'); save();
+    }
+    ensureGstLine();
+    TX=TX.filter(t=>t.src!=='bill');   // drop rows from the old (broken) Drive reader; real invoices come from ensureBills
+    ensureBills(); ensureHist();
+    ensurePayouts();
+    ensureWages();
+    ensureIncome();
+    // one-time: clear the wrongly-booked Uber/DoorDash lines from the 1–7 June week (the real ones book Mon onward)
+    if(localStorage.getItem(KEY+'_ddclean2')!=='1'){
+      TX=TX.filter(t=>!(weekKey(t.date)==='2026-06-01' && t.src==='sync' && (t.cat==='Uber Eats (net payout)'||t.cat==='DoorDash (net payout)')));
+      localStorage.setItem(KEY+'_ddclean2','1'); save();
+    }
+    // one-time: rebuild April & May from REAL data — drop the imported-CSV expense rows (keeping Wage/super),
+    // replaced by the actual supplier invoices (ensureBills) + your fixed overheads (ensureFixedOH)
+    if(localStorage.getItem(KEY+'_aprMayReal')!=='1'){
+      TX=TX.filter(t=>!(typeof t.id==='string' && t.id.charAt(0)==='s' && t.date>='2026-03-30' && !/^(wage|super)$/i.test(t.cat||'')));
+      localStorage.setItem(KEY+'_aprMayReal','1'); save();
+    }
+    ensureFixedOH();
+    dedupeMark();
+    pruneFuturePayouts();
+  }catch(e){ TX=seedTx(); }
+}
+// INVARIANT: Uber/DoorDash payout statements only exist AFTER a week ends (Uber ~midnight Sun, DoorDash Mon).
+// Drop any delivery payout line sitting in a week that hasn't reached its Sunday 10pm yet — whatever created it,
+// it can't be real. Enforced on load AND on every render, so an unfinished week can never show delivery income.
+function pruneFuturePayouts(){
+  const before=TX.length;
+  TX=TX.filter(function(t){
+    if(t.src!=='sync'||(t.cat!=='Uber Eats (net payout)'&&t.cat!=='DoorDash (net payout)')) return true;
+    return Date.now()>=parseISO(weekKey(t.date)).getTime()+(6*24+22)*3600000;
+  });
+  if(TX.length!==before) save();
+}
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(TX));}catch(e){} }
+const uid=()=>'t'+Date.now()+Math.random().toString(36).slice(2,6);
+const status=m=>{document.getElementById('status').textContent=m;};
+
+function weekKey(d){return isoOf(mondayOf(parseISO(d)));}
+function curKey(){return isoOf(curMon);}
+function weekTx(){return TX.filter(t=>weekKey(t.date)===curKey());}
+
+const isWage=t=>/wage|super/i.test(t.cat||'');
+const COGS=/poultry|baiada|united|russel|pfd|fruit|veg|produce|\bfood\b|packag|asahi|costco|woolworth|woolies|aldi|drink|beverage|meat|fresho|bakery|dairy|cfm|fiesta|\boil\b|chips|bread|coke|milk/i;
+function bucketOf(t){ if(t.type!=='expense') return null; if(t.bucket) return t.bucket; if(isWage(t)) return 'wage'; return COGS.test(t.cat||'')?'cogs':'other'; }
+function addTx(type,cat,bucket){ const t={id:uid(),date:curKey(),type,cat:cat||'',amt:0}; if(bucket)t.bucket=bucket; TX.push(t); save(); render(true, type==='income'?'income':(bucket||'other')); }
+// deleting a recurring row records a per-week exception so it STAYS deleted from that week
+// (the recurrence keeps going in other weeks; delete every copy and the recurrence ends entirely)
+const RSKIP='weeklybooks_recurSkip';
+function rskip(){ try{return JSON.parse(localStorage.getItem(RSKIP)||'{}');}catch(e){return {};} }
+function delTx(id){
+  const t=TX.find(x=>x.id===id);
+  if(t&&t.recurId){ try{ const m=rskip(); const wk=weekKey(t.date); m[t.recurId]=m[t.recurId]||[]; if(m[t.recurId].indexOf(wk)<0)m[t.recurId].push(wk); localStorage.setItem(RSKIP,JSON.stringify(m)); }catch(e){} }
+  TX=TX.filter(t=>t.id!==id); save(); render();
+}
+function editCat(id,v){ const t=TX.find(x=>x.id===id); if(t){t.cat=v; save();} }
+function editAmt(id,v){ const t=TX.find(x=>x.id===id); if(t){t.amt=Math.abs(parseFloat(v)||0); save(); renderTotals();} }
+// per-week super exclusion for under-18 staff
+const U18KEY='weeklybooks_u18';
+function u18map(){ try{return JSON.parse(localStorage.getItem(U18KEY)||'{}');}catch(e){return {};} }
+function getU18(){ return +(u18map()[curKey()]||0); }
+function setU18(v){ const m=u18map(); m[curKey()]=Math.abs(parseFloat(v)||0); try{localStorage.setItem(U18KEY,JSON.stringify(m));}catch(e){} renderTotals(); }
+// recurring expenses
+function setRecur(id,v){ const t=TX.find(x=>x.id===id); if(!t)return; t.recur=v||''; if(v && !t.recurId) t.recurId=t.id; save(); render(); }
+function weeksBetween(a,b){ return Math.round((parseISO(b)-parseISO(a))/(7*86400000)); }
+function materializeRecurring(wkArg){
+  const wk=wkArg||curKey(), tpl={};
+  TX.forEach(t=>{ if(t.recur && t.recurId){ const tw=weekKey(t.date); if(parseISO(tw)<=parseISO(wk)){ if(!tpl[t.recurId] || parseISO(weekKey(tpl[t.recurId].date))<parseISO(tw)) tpl[t.recurId]=t; } } });
+  let added=false;
+  Object.values(tpl).forEach(src=>{
+    const srcWk=weekKey(src.date); if(srcWk===wk) return;
+    const n=weeksBetween(srcWk,wk); if(n<=0) return;
+    if(!src.recur) return; // weekly/fortnightly/monthly all appear every week; the amount is spread (see weeklyVal)
+    if((rskip()[src.recurId]||[]).indexOf(wk)>=0) return; // user deleted it from this week — respect that
+    if(TX.some(t=>weekKey(t.date)===wk && t.recurId===src.recurId)) return;
+    TX.push({id:uid(),date:wk,type:'expense',cat:src.cat,amt:src.amt,bucket:src.bucket,recur:src.recur,recurId:src.recurId}); added=true;
+  });
+  if(added) save();
+}
+// GST is now computed LIVE per week (see renderTotals), so remove any old static GST set-aside line.
+function ensureGstLine(){
+  try{ var n=TX.length; TX=TX.filter(t=>t.src!=='gst' && t.recurId!=='fx_gst'); if(TX.length!==n) save(); }catch(e){}
+}
+function nav(dir){
+  if(viewMode==='month'){ curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+dir,1); status(''); render(); return; }
+  curMon=mondayOf(addDays(curMon,7*dir)); status(''); render(); maybeAutoSync();
+}
+function goToday(){ viewMode='week'; curMon=mondayOf(new Date()); status(''); render(); maybeAutoSync(); }
+// ── Month view: zoom out and see the month week by week ──
+let viewMode='week'; let curMonth=null;
+function toggleView(){
+  viewMode=(viewMode==='week')?'month':'week';
+  if(viewMode==='month') curMonth=new Date(curMon.getFullYear(),curMon.getMonth(),1);
+  render();
+}
+function jumpWeek(k){ viewMode='week'; curMon=parseISO(k); render(); maybeAutoSync(); }
+function weekTotals(wkKey){
+  const wt=TX.filter(t=>weekKey(t.date)===wkKey);
+  const sum=a=>a.reduce((s,t)=>s+weeklyVal(t),0);
+  const sales=sum(wt.filter(t=>t.type==='income'));
+  const cogs=sum(wt.filter(t=>bucketOf(t)==='cogs'));
+  const wages=sum(wt.filter(t=>bucketOf(t)==='wage'));
+  const other=sum(wt.filter(t=>bucketOf(t)==='other'));
+  let sup=0; wt.forEach(t=>{ if(bucketOf(t)==='wage'&&t.staffId&&!isSuperExcl(t.staffId)) sup+=(+t.amt||0)*0.12; });
+  return {sales:sales,cogs:cogs,wages:wages+sup,other:other,net:sales-cogs-wages-sup-other};
+}
+function renderMonth(){
+  document.getElementById('weekView').style.display='none';
+  const mv=document.getElementById('monthView'); mv.style.display='';
+  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='Week view';
+  if(!curMonth) curMonth=new Date(curMon.getFullYear(),curMon.getMonth(),1);
+  const mNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('wkLabel').childNodes[0].nodeValue=mNames[curMonth.getMonth()];
+  document.getElementById('wkSmall').textContent=curMonth.getFullYear();
+  const td=function(v,c,b){ return '<td style="text-align:right;padding:'+(b?'10px':'8px')+' 6px;border-bottom:1px solid #eef2f7;font-variant-numeric:tabular-nums;'+(b?'font-weight:700;':'')+'color:'+c+'">'+fmt(v)+'</td>'; };
+  let mon=mondayOf(new Date(curMonth));
+  if(mon.getMonth()!==curMonth.getMonth()) mon=addDays(mon,7);
+  const tot={sales:0,cogs:0,wages:0,other:0,net:0};
+  // materialize ALL the month's weeks first, then dedupe Mark ONCE, then total — so doubles never get counted
+  let mm=new Date(mon);
+  while(mm.getMonth()===curMonth.getMonth()){ materializeRecurring(isoOf(mm)); mm=addDays(mm,7); }
+  dedupeMark(); pruneFuturePayouts();
+  let rows='';
+  while(mon.getMonth()===curMonth.getMonth()){
+    const k=isoOf(mon);
+    const t=weekTotals(k);
+    tot.sales+=t.sales; tot.cogs+=t.cogs; tot.wages+=t.wages; tot.other+=t.other; tot.net+=t.net;
+    const sun=addDays(mon,6);
+    rows+='<tr style="cursor:pointer" onclick="jumpWeek(\''+k+'\')" title="Open this week">'+
+      '<td style="padding:8px 6px;border-bottom:1px solid #eef2f7;white-space:nowrap;font-weight:600">'+mon.getDate()+' '+MO[mon.getMonth()]+' – '+sun.getDate()+' '+MO[sun.getMonth()]+'</td>'+
+      td(t.sales,'#16a34a')+td(-t.cogs,'#dc2626')+td(-t.wages,'#dc2626')+td(-t.other,'#dc2626')+
+      '<td style="text-align:right;padding:8px 6px;border-bottom:1px solid #eef2f7;font-weight:700;font-variant-numeric:tabular-nums;color:'+(t.net>=0?'#16a34a':'#dc2626')+'">'+fmt(t.net)+'</td></tr>';
+    mon=addDays(mon,7);
+  }
+  mv.innerHTML='<div class="card"><h2><span>'+mNames[curMonth.getMonth()]+' '+curMonth.getFullYear()+' — week by week</span></h2>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<tr style="color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em"><th style="text-align:left;padding:6px">Week</th><th style="text-align:right;padding:6px">Sales</th><th style="text-align:right;padding:6px">COGS</th><th style="text-align:right;padding:6px">Wages</th><th style="text-align:right;padding:6px">Other</th><th style="text-align:right;padding:6px">Left over</th></tr>'+
+    rows+
+    '<tr style="border-top:2px solid #e2e8f0"><td style="padding:10px 6px;font-weight:700">Month total</td>'+
+    td(tot.sales,'#16a34a',1)+td(-tot.cogs,'#dc2626',1)+td(-tot.wages,'#dc2626',1)+td(-tot.other,'#dc2626',1)+
+    '<td style="text-align:right;padding:10px 6px;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;color:'+(tot.net>=0?'#16a34a':'#dc2626')+'">'+fmt(tot.net)+'</td></tr>'+
+    '</table></div>'+
+    '<div class="empty" style="margin-top:8px">Click any week to open it. Wages include super where staff detail exists.</div></div>';
+}
+
+// ---- staff names + per-staff super ----
+let STAFF={};
+try{ STAFF=JSON.parse(localStorage.getItem('weeklybooks_staff')||'{}'); }catch(e){ STAFF={}; }
+const SUPKEY='weeklybooks_superExcl';
+function supExcl(){ try{return JSON.parse(localStorage.getItem(SUPKEY)||'{}');}catch(e){return {};} }
+function isSuperExcl(id){ return !!supExcl()[id]; }
+function toggleSuper(id,included){ const m=supExcl(); if(included) delete m[id]; else m[id]=true; try{localStorage.setItem(SUPKEY,JSON.stringify(m));}catch(e){} renderTotals(); }
+async function loadStaffNames(){
+  try{ let cur; do{
+    const req={query:{filter:{status:'ACTIVE'}},limit:200}; if(cur)req.cursor=cur;
+    const res=await call(SQUARE,{service:'team',method:'searchMembers',request:req,characterization:'Staff names'});
+    (res.team_members||[]).forEach(mb=>{ STAFF[mb.id]=((mb.given_name||'')+' '+(mb.family_name||'')).trim()||mb.id; });
+    cur=res.cursor;
+  }while(cur); try{localStorage.setItem('weeklybooks_staff',JSON.stringify(STAFF));}catch(e){} }catch(e){}
+}
+// Income / Wages / Expenses are collapsible — all start CLOSED so the page opens compact (totals stay visible in the headers)
+function toggleSec(k){ const b=document.getElementById(k+'Body'); const open=b.style.display==='none'; b.style.display=open?'':'none'; const c=document.getElementById(k+'Caret'); if(c)c.textContent=open?'▾':'▸'; }
+function applyWagesState(){}
+function wageRowHTML(t){
+  if(t.staffId){
+    const inc=!isSuperExcl(t.staffId);
+    const sh=shiftsFor(t.staffId);
+    const hasOpen=sh.some(x=>x.open);
+    const sid='sh_'+String(t.staffId||'').replace(/\W+/g,'');
+    const shiftRows=sh.map(function(x){
+      const ds=new Date(x.s);
+      const day=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(ds.getDay()+6)%7]+' '+ds.getDate()+'/'+(ds.getMonth()+1);
+      const t1=ds.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const t2=x.e?new Date(x.e).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+      return '<div style="display:flex;gap:10px;font-size:12px;color:'+(x.open?'#b45309':'#475569')+';padding:3px 2px;border-bottom:1px dashed #eef2f7">'+
+        '<span style="width:64px">'+day+'</span><span style="flex:1">'+t1+' – '+t2+(x.open?' — no clock-off':'')+'</span>'+
+        '<span>'+(x.h?(x.h.toFixed(1)+'h'):'')+'</span><span style="width:74px;text-align:right;font-variant-numeric:tabular-nums">'+(x.amt?('$'+x.amt.toFixed(2)):'')+'</span></div>';
+    }).join('');
+    return `<div class="txrow synced staffrow">
+      <span class="staffname" ${sh.length?`style="cursor:pointer" onclick="var d=document.getElementById('${sid}');if(d)d.style.display=d.style.display==='none'?'':'none'" title="Click to see this week's shifts"`:''}>${sh.length?'▸ ':''}${(t.cat||'Staff')}${hasOpen?' <span title="Has a shift with no clock-off" style="color:#b45309;font-weight:800">!</span>':''}</span>
+      <label class="suptick"><input type="checkbox" ${inc?'checked':''} onchange="toggleSuper('${t.staffId}',this.checked)">super</label>
+      <input class="amt" type="number" step="0.01" value="${t.amt||''}" oninput="editAmt('${t.id}',this.value)">
+      <button class="del" onclick="delTx('${t.id}')" title="Delete">&times;</button></div>`+
+      (shiftRows?`<div id="${sid}" style="display:none;margin:0 6px 8px 14px">${shiftRows}</div>`:'');
+  }
+  return rowHTML(t);
+}
+function isAutoTx(t){ return t.src==='sync' || t.src==='bill' || t.src==='embed'; }
+function rowHTML(t){
+  const auto=isAutoTx(t);
+  const isExp = t.type==='expense';
+  const b = isExp?bucketOf(t):'';
+  const bkt = isExp ? `<select class="rec bkt" title="Category" onchange="setBucket('${t.id}',this.value)">
+      <option value="cogs"${b==='cogs'?' selected':''}>COGS</option>
+      <option value="wage"${b==='wage'?' selected':''}>Wages</option>
+      <option value="other"${b==='other'?' selected':''}>Other</option></select>` : '';
+  const showRec = isExp && !auto;
+  const rec = showRec ? `<select class="rec" title="Repeat" onchange="setRecur('${t.id}',this.value)">
+      <option value="">one-off</option>
+      <option value="weekly"${t.recur==='weekly'?' selected':''}>weekly</option>
+      <option value="fortnightly"${t.recur==='fortnightly'?' selected':''}>fortnightly</option>
+      <option value="monthly"${t.recur==='monthly'?' selected':''}>monthly</option></select>` : '';
+  const verify=payoutLink(t);
+  return `<div class="txrow ${auto?'synced':''}">
+    <input class="cat" placeholder="Category" value="${(t.cat||'').replace(/"/g,'&quot;')}" oninput="editCat('${t.id}',this.value)">
+    ${auto?'<span class="badge">AUTO</span>':''}${bkt}${rec}
+    <input class="amt" type="number" step="0.01" placeholder="0" value="${t.amt||''}" oninput="editAmt('${t.id}',this.value)">
+    ${(t.recur==='monthly'||t.recur==='fortnightly')?`<span class="pct" style="margin-left:0;white-space:nowrap">≈${fmt(weeklyVal(t))}/wk</span>`:''}
+    ${verify?`<a href="${verify}" target="_blank" rel="noopener" class="pct" style="margin-left:0;white-space:nowrap;color:#0369a1;font-weight:600" title="Open this week's payout email in Gmail to confirm">verify ↗</a>`:''}
+    <button class="del" onclick="delTx('${t.id}')" title="Delete">&times;</button></div>`;
+}
+// build a Gmail link that opens THIS week's Uber/DoorDash payout email so the figure can be confirmed.
+// authuser=<business email> forces the correct inbox (these emails go to info@…, not your personal Gmail).
+const PAYOUT_MAILBOX='info@brunoschickenshop.com.au';
+function payoutLink(t){
+  if(!t||t.type!=='income') return '';
+  const mon=parseISO(weekKey(t.date)), sun=addDays(mon,6);
+  let q='';
+  if(/Uber/i.test(t.cat||'')) q='from:uber.com "payment summary" "'+usDate(mon)+' - '+usDate(sun)+'"';
+  else if(/DoorDash/i.test(t.cat||'')) q='from:doordash.com "'+pad(mon.getMonth()+1)+'/'+pad(mon.getDate())+'/'+mon.getFullYear()+'"';
+  else return '';
+  return 'https://mail.google.com/mail/?authuser='+encodeURIComponent(PAYOUT_MAILBOX)+'#search/'+encodeURIComponent(q);
+}
+function setBucket(id,v){ const t=TX.find(x=>x.id===id); if(t){ t.bucket=v; save(); render(); } }
+// one combined line per supplier — CLICK it to expand the individual invoices, each linking to its PDF
+function groupRowHTML(cat,g,gi){
+  const items=(g.items||[]).slice().sort(function(a,b){return a.date<b.date?-1:1;}).map(function(it){
+    const b=it.inv&&BILLS_IDX[it.inv];
+    const link=(b&&b.f)?('<a href="https://drive.google.com/file/d/'+b.f+'/view" target="_blank" rel="noopener" style="color:#0369a1;font-weight:600">view invoice</a>')
+                       :'<span style="color:#94a3b8">no copy on file</span>';
+    const d=it.date?(it.date.slice(8,10)+'/'+it.date.slice(5,7)):'';
+    return '<div style="display:flex;gap:10px;align-items:baseline;font-size:12px;color:#475569;padding:4px 2px;border-bottom:1px dashed #eef2f7">'+
+      '<span style="width:38px">'+d+'</span><span style="flex:1">'+(it.inv||'—')+'</span>'+
+      '<span style="font-variant-numeric:tabular-nums">$'+(+it.amt).toFixed(2)+'</span><span style="width:88px;text-align:right">'+link+'</span></div>';
+  }).join('');
+  return '<div class="txrow synced" style="cursor:pointer" onclick="var d=document.getElementById(\'grp'+gi+'\');var c=document.getElementById(\'grpc'+gi+'\');var o=d.style.display===\'none\';d.style.display=o?\'\':\'none\';c.textContent=o?\'▾\':\'▸\'" title="Click to see the invoices behind this total">'
+    +'<input class="cat" value="'+(cat||'').replace(/"/g,'&quot;')+'" readonly style="pointer-events:none">'
+    +'<span class="badge">AUTO</span>'
+    +'<span class="bkt" style="padding:6px 8px;color:#0369a1;font-size:11px;font-weight:600;border:1px solid #bae6fd;border-radius:6px;background:#f0f9ff">COGS</span>'
+    +'<input class="amt" type="number" value="'+(Math.round(g.amt*100)/100).toFixed(2)+'" readonly style="pointer-events:none">'
+    +'<span id="grpc'+gi+'" style="width:24px;display:inline-block;color:#94a3b8;text-align:center">▸</span></div>'
+    +'<div id="grp'+gi+'" style="display:none;margin:0 6px 10px 10px">'+items+'</div>';
+}
+function render(focusNew,focusKey){
+  if(viewMode==='month'){ renderMonth(); return; }
+  document.getElementById('weekView').style.display='';
+  document.getElementById('monthView').style.display='none';
+  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='Month view';
+  materializeRecurring();
+  dedupeMark();
+  pruneFuturePayouts();
+  const sun=addDays(curMon,6);
+  document.getElementById('wkLabel').childNodes[0].nodeValue=`${curMon.getDate()} ${MO[curMon.getMonth()]} – ${sun.getDate()} ${MO[sun.getMonth()]}`;
+  document.getElementById('wkSmall').textContent=sun.getFullYear();
+  const wt=weekTx();
+  const autoFirst=(a,b)=>(isAutoTx(b)?1:0)-(isAutoTx(a)?1:0); // auto-fetched rows grouped on top, manual below
+  const inc=wt.filter(t=>t.type==='income').sort(autoFirst);
+  const wage=wt.filter(t=>bucketOf(t)==='wage').sort(autoFirst);
+  const expAll=wt.filter(t=>t.type==='expense' && bucketOf(t)!=='wage');
+  // combine auto-loaded COGS invoices into one line per supplier; manual rows stay individual & editable
+  const grp={}; const manualExp=[];
+  expAll.forEach(t=>{ if(isAutoTx(t) && bucketOf(t)==='cogs'){ const k=t.cat||'(supplier)'; const g=grp[k]||(grp[k]={amt:0,items:[]}); g.amt+=(+t.amt||0); g.items.push({inv:t.inv||'',date:t.date,amt:+t.amt||0}); } else manualExp.push(t); });
+  const expHtml=Object.keys(grp).sort((a,b)=>grp[b].amt-grp[a].amt).map((k,i)=>groupRowHTML(k,grp[k],i))
+    .concat(manualExp.sort(autoFirst).map(rowHTML)).join('');
+  document.getElementById('incList').innerHTML=inc.length?inc.map(rowHTML).join(''):'<div class="empty">No income yet — hit Sync, or add a line.</div>';
+  document.getElementById('wageList').innerHTML=wage.length?wage.map(wageRowHTML).join(''):'<div class="empty">No wages yet — hit Sync to pull staff timecards.</div>';
+  document.getElementById('expList').innerHTML=expHtml||'<div class="empty">No expenses yet — add one and tag it COGS or Other.</div>';
+  // the day-by-day card shows on EVERY week — live today, saved/fetchable hourly charts for any past day
+  const lc=document.getElementById('liveCard'); if(lc) lc.style.display='';
+  refreshDayCard();
+  // payout double-check: every FINISHED week (from 30 Mar) must have an Uber and a DoorDash payout booked —
+  // if one's missing, show a notification so the user can help chase the email
+  const ia=document.getElementById('incAlert');
+  if(ia){
+    const wkMon=parseISO(curKey());
+    const ended=Date.now()>=wkMon.getTime()+8*24*3600000; // past the following Tuesday
+    let msgs=[];
+    if(curKey()>='2026-03-02' && ended){
+      const wti=weekTx();
+      if(!wti.some(t=>t.type==='income'&&t.cat==='Uber Eats (net payout)')) msgs.push('No <b>Uber Eats</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
+      if(!wti.some(t=>t.type==='income'&&t.cat==='DoorDash (net payout)')) msgs.push('No <b>DoorDash</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
+    }
+    if(msgs.length){ ia.style.display=''; ia.innerHTML=msgs.join('<br>'); } else { ia.style.display='none'; }
+  }
+  // un-clocked-off staff warning (shifts open > 12h)
+  const wa=document.getElementById('wageAlert');
+  if(wa){ if(WAGE_ALERTS.length){ wa.style.display=''; wa.innerHTML=WAGE_ALERTS.map(a=>'<b>'+(STAFF[a.id]||'A staff member')+"</b> hasn't clocked off — shift open "+a.hrs+'h. Fix the timecard in Square Teams, then re-sync.').join('<br>'); } else { wa.style.display='none'; } }
+  renderTotals();
+  try{ if(!window._syncBusy) syncDisplayFromTX(); renderSyncStatus(); }catch(e){}
+  if(focusNew){ const id={income:'incList',wage:'wageList',other:'expList',cogs:'expList'}[focusKey]||'expList'; const list=document.getElementById(id); const ins=list.querySelectorAll('input.cat'); if(ins.length)ins[ins.length-1].focus(); }
+}
+// weekly contribution of a row: monthly bills ÷ 4.33, fortnightly ÷ 2, everything else as-is
+function weeklyVal(t){ return (+t.amt||0)/(t.recur==='monthly'?(52/12):t.recur==='fortnightly'?2:1); }
+function renderTotals(){
+  const wt=weekTx();
+  const sum=a=>a.reduce((s,t)=>s+weeklyVal(t),0);
+  const sales=sum(wt.filter(t=>t.type==='income'));
+  const cogs=sum(wt.filter(t=>bucketOf(t)==='cogs'));
+  const wages=sum(wt.filter(t=>bucketOf(t)==='wage'));
+  const other=sum(wt.filter(t=>bucketOf(t)==='other'));
+  const wageRows=wt.filter(t=>bucketOf(t)==='wage');
+  let sup=0; wageRows.forEach(t=>{ if(t.staffId && !isSuperExcl(t.staffId)) sup+=(+t.amt||0)*0.12; });
+  const labour=wages+sup;
+  const gross=sales-cogs;
+  const net=sales-cogs-wages-sup-other;
+  const pct=v=>sales?(v/sales*100).toFixed(1)+'%':'';
+  // section headers
+  document.getElementById('incTotal').textContent=fmt(sales);
+  document.getElementById('wageTotal').textContent='-'+fmt(wages);
+  document.getElementById('superTotal').textContent=fmt(sup);
+  document.getElementById('expTotal').textContent='-'+fmt(cogs+other);
+  // COGS & labour card
+  document.getElementById('cgTot').textContent='-'+fmt(cogs);
+  document.getElementById('cgPct').textContent=pct(cogs);
+  document.getElementById('wgTot').textContent='-'+fmt(wages);
+  document.getElementById('wgPct').textContent=pct(wages);
+  document.getElementById('labTot').textContent='-'+fmt(labour);
+  document.getElementById('labPct').textContent=pct(labour);
+  // P&L summary
+  document.getElementById('plSales').textContent=fmt(sales);
+  document.getElementById('plCogs').textContent='-'+fmt(cogs);
+  document.getElementById('plCogsPct').textContent=pct(cogs);
+  setSigned2('plGross',gross);
+  document.getElementById('plLabour').textContent='-'+fmt(labour);
+  document.getElementById('plLabPct').textContent=pct(labour);
+  document.getElementById('plOther').textContent='-'+fmt(other);
+  setSigned2('plNet',net);
+}
+function setSigned2(id,v){ const el=document.getElementById(id); el.textContent=fmt(v); el.classList.toggle('pos2',v>0); el.classList.toggle('neg2',v<0); }
+// Mark is paid a flat $1000/week, SPREAD across the 7 days (≈$142.85/day) so daily figures aren't thrown
+// off by the whole grand landing on Monday. We normalise Mark to exactly these 7 deterministic daily rows
+// per week (ids 'mkd_<date>'), removing any old single-row/recurring Mark entries so they can't double up.
+const MARK_START='2026-03-02', MARK_WEEKLY=1000;
+function markAmts(){ const a=[]; for(let i=0;i<6;i++)a.push(142.85); a.push(Math.round((MARK_WEEKLY-142.85*6)*100)/100); return a; } // 6×142.85 + 142.90 = 1000.00
+function dedupeMark(){   // keeps its old name so every call site still works
+  try{
+    const isMark=function(t){ return t.type==='expense' && !t.staffId && /\bmark\b/i.test(t.cat||'') && bucketOf(t)==='wage'; };
+    const todayKey=isoOf(new Date());     // only days that have ACTUALLY HAPPENED get a Mark row — it accrues daily
+    let changed=false;
+    const before=TX.length;
+    // keep ONE daily Mark row per day dated today or earlier; drop legacy rows, future days, and any duplicate ids
+    const seenId={};
+    TX=TX.filter(function(t){
+      if(!isMark(t)) return true;
+      if(typeof t.id!=='string' || t.id.indexOf('mkd_')!==0 || t.id.slice(4)>todayKey || seenId[t.id]) return false;
+      seenId[t.id]=1; return true;
+    });
+    if(TX.length!==before) changed=true;
+    const have={}; TX.forEach(function(t){ if(typeof t.id==='string'&&t.id.indexOf('mkd_')===0) have[t.id]=1; });
+    const amts=markAmts();
+    let wk=parseISO(MARK_START); const end=mondayOf(new Date());
+    while(wk<=end){
+      for(let i=0;i<7;i++){
+        const d=isoOf(addDays(wk,i));
+        if(d>todayKey) break;             // future days of this week haven't happened yet
+        const id='mkd_'+d;
+        if(!have[id]){ TX.push({id:id,date:d,type:'expense',cat:'Mark',amt:amts[i],bucket:'wage',src:'mark'}); changed=true; }
+      }
+      wk=addDays(wk,7);
+    }
+    if(changed) save();
+  }catch(e){}
+}
+
+// ---------- Live sync from Square + Uber ----------
+const SQUARE='mcp__4220cd7e-0564-4b88-9067-3cbb9998d4f3__make_api_request';
+const GSEARCH='mcp__a88318f0-837d-4458-90f7-adee0d5aed3c__search_threads';
+const GTHREAD='mcp__a88318f0-837d-4458-90f7-adee0d5aed3c__get_thread';
+const DRIVE_SEARCH='mcp__6abedaba-a266-4b21-b0c6-bbce2c12e092__search_files';
+const DRIVE_READ='mcp__6abedaba-a266-4b21-b0c6-bbce2c12e092__read_file_content';
+const BILLS_FOLDER='1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t';
+async function driveText(fileId){
+  try{
+    let r=await call(DRIVE_READ,{fileId});                       // call() unwraps the MCP envelope via _deep
+    if(r==null) return '';
+    if(typeof r==='string'){ try{const j=JSON.parse(r); if(j&&j.fileContent)return j.fileContent;}catch(e){} return r; }
+    if(typeof r.fileContent==='string') return r.fileContent;     // read_file_content returns the text here
+    if(r.structuredContent && typeof r.structuredContent.fileContent==='string') return r.structuredContent.fileContent;
+    if(typeof r.text==='string') return r.text;
+    if(Array.isArray(r.content)){ const t=r.content.map(c=>c&&c.text||'').join(' '); try{const j=JSON.parse(t); if(j&&j.fileContent)return j.fileContent;}catch(e){} return t; }
+    if(r._raw) return r._raw;
+    return '';
+  }catch(e){ return ''; }
+}
+function parseBill(text,title){
+  const T=text||'', pats=[
+    /total amount (?:paid|due)[^$]{0,25}\$([0-9,]+\.[0-9]{2})/i,
+    /(?:total|balance|amount) (?:due|payable|outstanding)[^$]{0,25}\$([0-9,]+\.[0-9]{2})/i,
+    /new charges[^$]{0,25}\$([0-9,]+\.[0-9]{2})/i,
+    /\btotal\b[^$]{0,25}\$([0-9,]+\.[0-9]{2})/i,
+    /\$([0-9,]+\.[0-9]{2})/
+  ];
+  let amt=0; for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); break; } }
+  const V=[['Optus','Phone / Internet','other'],['Telstra','Phone / Internet','other'],['AGL','Electricity','other'],['EnergyAustralia','Gas','other'],['Energy Australia','Gas','other'],['Origin','Energy','other'],['JJ','Bins / Waste','other'],['Richards','Bins / Waste','other'],['Baiada','Poultry (COGS)','cogs'],['Russel','Poultry (COGS)','cogs'],['Fruit Talk','Produce (COGS)','cogs'],['Asahi','Drinks (COGS)','cogs'],['Schweppes','Drinks (COGS)','cogs'],['Packaging','Packaging (COGS)','cogs'],['Costco','Supplies (COGS)','cogs']];
+  let vendor=(title||'bill').replace(/\.pdf$/i,''), bucket='other';
+  for(const [k,nm,bk] of V){ if(new RegExp(k,'i').test(T)||new RegExp(k,'i').test(title||'')){ vendor=nm; bucket=bk; break; } }
+  return {amt, vendor, bucket};
+}
+// Deterministic fallback for COGS supplier invoices — used when the AI errors or misses the total.
+function regexCogs(text,title){
+  const T=(text||'')+' '+(title||'');
+  if(/customer statement|account summary|balance brought forward|opening balance|\baged\b|remittance advice|credit application|direct debit request|credit note|cradj/i.test(T)) return null;
+  let vendor=null;
+  if(/baiada/i.test(T)) vendor='Baiada Poultry';
+  else if(/fruit talk|fruittalk/i.test(T)) vendor='Fruit Talk produce';
+  else if(/fresho/i.test(T)) vendor='Fresho produce';
+  else if(/asahi/i.test(T)) vendor='Asahi drinks';
+  else if(/united food|unitedfoodservice|zoghaib/i.test(T)) vendor='United Foodservice';
+  else if(/g\s*&\s*w|gnwpackaging/i.test(T)) vendor='G & W Packaging';
+  else if(/cfm/i.test(T)) vendor='CFM cooking oil';
+  else if(/fiesta food/i.test(T)) vendor='Fiesta Foods';
+  else if(/feel good foods/i.test(T)) vendor='Feel Good Foods';
+  else if(/melbourne chilli|hot honey/i.test(T)) vendor='Melbourne Chilli';
+  else if(/russel/i.test(T)) vendor="Russel's Poultry";
+  if(!vendor) return null;
+  const pats=[
+    /TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Total\s*incl\.?\s*GST\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Invoice Total\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Total Amount Due\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Amount Due\s*(?:AUD)?\s*\$?\s*([\d,]+\.\d{2})/i,
+    /Balance Due\s*\$?\s*([\d,]+\.\d{2})/i,
+    /TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})/i,
+    /TOTAL\s*AUD\s*\$?\s*([\d,]+\.\d{2})/i
+  ];
+  let amt=0; for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } }
+  if(!(amt>0)) return null;
+  let invoiceDate=''; const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(dm){ const d=+dm[1],mo=+dm[2],y=+dm[3]; if(mo>=1&&mo<=12&&d>=1&&d<=31) invoiceDate=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  let invoiceNo=''; const im=T.match(/\b(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6})\b/); if(im) invoiceNo=im[1];
+  return {type:'cogs',vendor:vendor,amt:Math.round(amt*100)/100,invoiceNo:invoiceNo,invoiceDate:invoiceDate};
+}
+async function parseBillAI(text,title){
+  const prompt=`Classify and extract ONE expense from this PDF for a chicken shop. Choose a "type":\n`+
+`- "monthly" = a FIXED OVERHEAD bill: rent (est8 / PropertyMe), electricity & gas (AGL), loan (Grenke), accounting (Highview), bins/waste (JJ Richards / JJ's Waste), Xero, Square subscription, phone/internet (Optus/Telstra — business internet line only ~$99, NOT home NBN or Netflix), insurance. Use the CURRENT period charge only, not arrears/overdue/total-due. For JJ's use this period's transactions total (~$713.90), not the total-due-with-overdue. Give periodStart and periodEnd as YYYY-MM-DD if shown.\n`+
+`- "cogs" = a single delivery/supplier INVOICE for food/drink/packaging: Baiada, Fresho, Fruit Talk, Russel's Poultry, United, G & W Packaging, Fiesta Foods, Feel Good Foods, Asahi/Schweppes. Use the invoice TOTAL payable. Give invoiceDate as YYYY-MM-DD.\n`+
+`- "skip" = a STATEMENT that lists multiple invoices or shows a running balance/aging, OR a credit application, direct-debit form, account balance, remittance, or anything that is not a single current invoice/bill. Set amount 0.\n`+
+`IMPORTANT: all dates on these invoices are AUSTRALIAN format DD/MM/YYYY (day FIRST, month second). Convert to YYYY-MM-DD correctly: e.g. 4/6/2026 = 4 June = 2026-06-04 (NOT 2026-04-06), and 1/6/2026 = 1 June = 2026-06-01. Use the invoice's Document Date / Delivery Date.\n`+
+`Reply STRICT JSON only: {"type":"monthly|cogs|skip","vendor":"short name","amount":<number>,"invoiceNo":"the invoice/document number if shown","periodStart":"","periodEnd":"","invoiceDate":""}. Title: ${title}`;
+  let o=null;
+  try{
+    let r=await window.cowork.askClaude(prompt,[(text||'').slice(0,7000)]);
+    if(typeof r!=='string') r=(r&&r.text)||JSON.stringify(r);
+    const m=r.match(/\{[\s\S]*\}/);
+    if(m){ const j=JSON.parse(m[0]); o={type:j.type||'skip', vendor:j.vendor||title, amt:+j.amount||0, invoiceNo:j.invoiceNo||'', periodStart:j.periodStart||'', periodEnd:j.periodEnd||'', invoiceDate:j.invoiceDate||''}; }
+  }catch(e){}
+  const det=regexCogs(text,title);
+  if(!o) return det || {type:'skip', vendor:title, amt:0};                 // AI failed → use deterministic if it's a known supplier
+  if(o.type==='cogs' && !(o.amt>0) && det){ o.amt=det.amt; o.invoiceDate=o.invoiceDate||det.invoiceDate; o.invoiceNo=o.invoiceNo||det.invoiceNo; } // AI saw cogs but missed total
+  if(o.type==='skip' && det){ return det; }                                // AI skipped but it's clearly a supplier invoice with a total
+  return o;
+}
+function safeWk(s,fb){ if(!s) return fb; const d=parseISO(s); return (d&&!isNaN(d.getTime()))? isoOf(mondayOf(d)) : fb; }
+// Xero-relayed invoices (G & W Packaging, CFM) — amount is in the email body, no PDF attachment
+async function syncXeroBills(){
+  let n=0;
+  try{
+    const s=await call(GSEARCH,{query:'from:post.xero.com subject:(Invoice) ("G & W" OR "G&W" OR Packaging OR CFM) newer_than:80d', pageSize:40});
+    const seen={};
+    for(const th of (s.threads||[])){
+      const mm=(th.messages&&th.messages[0])||{}; const subj=mm.subject||''; const snip=mm.snippet||'';
+      if(/statement|credit note/i.test(subj)) continue; // skip statements & credit notes
+      const inv=(subj.match(/INV-\d+/i)||snip.match(/INV-\d+/i)||[])[0];
+      const am=(snip.match(/\$?\s?([0-9,]+\.[0-9]{2})\s*AUD/i)||snip.match(/\$([0-9,]+\.[0-9]{2})/)||[]);
+      const amt=am[1]?parseFloat(am[1].replace(/,/g,'')):0;
+      if(!inv||!(amt>0)||seen[inv]) continue; seen[inv]=true;
+      const dm=snip.match(/Due (\d{1,2} \w{3,9} \d{4})/i);
+      let wk=curKey(); if(dm){ const d=new Date(dm[1]); if(!isNaN(d.getTime())) wk=isoOf(mondayOf(d)); }
+      const vendor=/CFM/i.test(subj)?'CFM (cooking oil)':'G & W Packaging';
+      TX.push({id:uid(),date:wk,type:'expense',cat:vendor,amt:Math.round(amt*100)/100,bucket:'cogs',src:'bill',fileId:'xero:'+inv}); n++;
+    }
+  }catch(e){}
+  return n;
+}
+const BILLCACHE='weeklybooks_billCacheV5';
+async function syncBills(){
+  const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
+  try{
+    // 1) gather EVERY pdf in the folder — it holds far more than one page, so paginate
+    let files=[], token=null, pages=0;
+    do{
+      const req={query:`parentId = '${BILLS_FOLDER}'`, pageSize:100};
+      if(token) req.pageToken=token;
+      const res=await call(DRIVE_SEARCH,req);
+      ((res&&res.files)||[]).forEach(f=>files.push(f));
+      token=res&&res.nextPageToken; pages++;
+    } while(token && pages<15);
+    files=files.filter(f=>(f.mimeType||'').indexOf('pdf')>=0 || /\.pdf$/i.test(f.title||''));
+    // skip obvious non-invoices by filename so we don't waste time reading them
+    const JUNK=/statement|strateg|resume|parking|certificate|balance|direct debit|\bddr\b|credit application|annual|signing|\bica\b|quote|booking|cashflow|my-receipt/i;
+    files=files.filter(f=>!JUNK.test(f.title||''));
+    // 2) classify each, caching the result by file id so future runs only read NEW invoices
+    let cache; try{cache=JSON.parse(localStorage.getItem(BILLCACHE)||'{}');}catch(e){cache={};}
+    let changed=false;
+    TX=TX.filter(t=>t.src!=='bill'); // clean rebuild each run
+    let cb=0, n=0; const seen=new Set();
+    for(const f of files){
+      n++;
+      let o=cache[f.id];
+      if(o===undefined){
+        status(`Reading invoices… ${n}/${files.length}`);
+        const text=await driveText(f.id);   // always read FULL invoice text (snippet is too short to find the total)
+        o=await parseBillAI(text,f.title);
+        // cache ONLY confident hits — skips/zero-amount reads stay uncached so they get retried next run
+        if(o && o.type==='cogs' && o.amt>0){ cache[f.id]=o; changed=true; }
+      }
+      if(!o || o.type!=='cogs' || !(o.amt>0)) continue;
+      const key=(o.vendor+'|'+(o.invoiceNo||f.id)).toLowerCase().replace(/\s+/g,'');
+      if(seen.has(key)) continue; seen.add(key); // never book the same invoice twice
+      const fbWk=weekKey((f.createdTime||'').slice(0,10)||curKey());
+      const wk=safeWk(o.invoiceDate, fbWk);
+      TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id}); cb++;
+    }
+    if(changed){ try{localStorage.setItem(BILLCACHE,JSON.stringify(cache));}catch(e){} }
+    // Note: G&W and CFM invoices are saved as PDFs in the folder now, so they're booked above —
+    // the old email-reading step (syncXeroBills) was removed to avoid booking them twice.
+    save(); render();
+    status(`Bills ✓ ${cb} COGS invoices booked from ${files.length} files scanned. Overheads, statements & forms skipped.`);
+  }catch(e){ status('Bills sync issue: '+(e.message||e)); }
+  if(btn)btn.disabled=false;
+}
+let _dbg='';
+function _deep(r){
+  // unwrap common MCP result envelopes to the underlying JSON payload
+  if(r==null) return r;
+  if(typeof r==='string'){ try{return JSON.parse(r);}catch(e){return r;} }
+  if(Array.isArray(r.content)){
+    const t=r.content.map(c=>c&&(c.text!=null?c.text:(c.json!=null?JSON.stringify(c.json):''))).join('');
+    if(t){ try{return JSON.parse(t);}catch(e){return {_raw:t};} }
+  }
+  if(r.result!=null) return _deep(r.result);
+  if(r.data!=null && (r.data.payouts||r.data.payments)) return r.data;
+  if(typeof r.text==='string'){ try{return JSON.parse(r.text);}catch(e){} }
+  return r;
+}
+async function call(name,args){
+  let r=await window.cowork.callMcpTool(name,args);
+  _dbg = (r&&typeof r==='object')?('keys:'+Object.keys(r).slice(0,6).join(',')):('type:'+typeof r);
+  return _deep(r);
+}
+const BRAND=/bruno/i; // only count the active business; old closed brands (1001 Nights, Village Birdhouse) are ignored
+const usDate=d=>`${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
+
+function setSyncLine(cat,amt,type){
+  type=type||'income';
+  let t=TX.find(x=>weekKey(x.date)===curKey() && x.src==='sync' && x.cat===cat);
+  if(t){ t.amt=Math.round(amt*100)/100; t.type=type; }
+  else TX.push({id:uid(),date:curKey(),type,cat,amt:Math.round(amt*100)/100,src:'sync'});
+}
+
+// ── Sync status panel: shows each source's state so you can see when it has finished searching ──
+const SYNC_SOURCES=[['dep','Bank deposits'],['cash','Cash sales'],['wage','Wages'],['uber','Uber Eats'],['dd','DoorDash'],['bills','Invoices']];
+let SYNC_STATE={};
+function _weekSum(pred){ return TX.filter(t=>weekKey(t.date)===curKey()).filter(pred).reduce((s,t)=>s+(+t.amt||0),0); }
+const _SYNC_PRED={dep:t=>t.cat==='Bank deposits (Square)',cash:t=>t.cat==='Cash sales (Square)',wage:t=>bucketOf(t)==='wage',uber:t=>t.cat==='Uber Eats (net payout)',dd:t=>t.cat==='DoorDash (net payout)',bills:t=>bucketOf(t)==='cogs'};
+function syncDisplayFromTX(){ SYNC_SOURCES.forEach(function(s){ const v=_weekSum(_SYNC_PRED[s[0]]); SYNC_STATE[s[0]]={state:v>0?'done':'none',detail:v>0?fmt(v):'none'}; }); }
+function setBusy(keys){ keys.forEach(function(k){ SYNC_STATE[k]={state:'busy',detail:'searching…'}; }); renderSyncStatus(); }
+function setDone(key){ const v=_weekSum(_SYNC_PRED[key]); SYNC_STATE[key]={state:v>0?'done':'none',detail:v>0?fmt(v):'none'}; renderSyncStatus(); }
+function renderSyncStatus(){
+  const el=document.getElementById('syncStatus'); if(!el) return;
+  if(!Object.keys(SYNC_STATE).length){ el.style.display='none'; return; }
+  el.style.display='';
+  const ic={busy:'…',done:'✓',none:'–',wait:'·'}, col={busy:'#b45309',done:'#16a34a',none:'#94a3b8',wait:'#cbd5e1'};
+  const allDone=SYNC_SOURCES.every(function(s){ const v=SYNC_STATE[s[0]]; return v&&(v.state==='done'||v.state==='none'); });
+  el.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:9px 11px;margin-bottom:12px;font-size:12px;box-shadow:0 1px 3px rgba(15,23,42,.05)">'
+    +'<span style="font-weight:800;color:'+(allDone?'#16a34a':'#b45309')+';margin-right:4px">'+(allDone?'All done ✓':'Searching…')+'</span>'
+    +SYNC_SOURCES.map(function(s){ const v=SYNC_STATE[s[0]]||{state:'wait',detail:''};
+        return '<span style="display:inline-flex;align-items:center;gap:5px;border:1px solid #eef2f7;border-radius:999px;padding:3px 10px;color:#475569">'
+          +'<b style="color:'+(col[v.state]||'#cbd5e1')+'">'+(ic[v.state]||'·')+'</b><span>'+s[1]+'</span>'
+          +(v.detail?'<span style="color:#94a3b8">'+v.detail+'</span>':'')+'</span>'; }).join('')
+    +'</div>';
+}
+
+async function syncWeek(){
+  if(!IN_CLAUDE){ status('Viewing saved books — open in the Claude app to pull live Square/email data.'); return; }
+  if(window._syncBusy) return; window._syncBusy=true;
+  // safety net: never let the busy flag stick (a stuck flag silently blocks ALL future syncs)
+  clearTimeout(window._syncGuard); window._syncGuard=setTimeout(function(){ window._syncBusy=false; },120000);
+  let syncOk=false;
+  ensureBills(); ensureHist(); ensurePayouts(); ensureWages();   // invoices + pinned payouts/wages refresh as part of every sync
+  syncDisplayFromTX(); setBusy(['dep','cash','wage','uber','dd']);   // show the status panel: live sources start "searching"
+  const btn=document.getElementById('syncBtn'); if(btn)btn.disabled=true;
+  const mon=new Date(curMon), sun=addDays(mon,6);
+  let dep=0, cash=0, gotIncome=false;
+  // fetch a slightly wider UTC window (±1 day) so timezone/DST offsets can't clip the week's edges —
+  // the exact LOCAL week boundary is enforced client-side below (c>=mon && c<addDays(mon,7))
+  const begin=isoOf(addDays(mon,-1))+'T00:00:00Z', end=isoOf(addDays(mon,8))+'T00:00:00Z';
+  const monStr=isoOf(mon), sunStr=isoOf(sun);
+  try{
+    // "EARNED IN THIS PERIOD", matching Square's dashboard exactly: card payments TAKEN in these dates
+    // (status COMPLETED), minus Square's processing fees, app fees, gift-card redemptions and refunds.
+    // NOT transfer-dated — money is counted when you earn it, not when it lands in the bank.
+    status('Tallying sales earned this week…');
+    let cur, pages=0;
+    do{
+      const req={begin_time:begin,end_time:end,limit:100}; if(cur)req.cursor=cur;
+      const res=await call(SQUARE,{service:'payments',method:'list',request:req,characterization:'Weekly sales earned (card + cash)'});
+      (res.payments||[]).forEach(p=>{
+        const c=new Date(p.created_at); if(!(c>=mon && c<addDays(mon,7))) return;
+        const amt=(p.amount_money&&p.amount_money.amount||0), rf=(p.refunded_money&&p.refunded_money.amount||0);
+        if(p.source_type==='CASH'){ cash+=(amt-rf)/100; return; }
+        if(p.source_type!=='CARD'||p.status!=='COMPLETED') return;            // EXTERNAL = delivery platforms, booked via their statements
+        const brand=p.card_details&&p.card_details.card&&p.card_details.card.card_brand;
+        if(brand==='SQUARE_GIFT_CARD') return;                                // gift-card redemptions never hit the bank
+        let fees=0; (p.processing_fee||[]).forEach(f=>{ fees+=(f.amount_money&&f.amount_money.amount||0); });
+        const appFee=(p.app_fee_money&&p.app_fee_money.amount||0);
+        dep+=(amt-rf-fees-appFee)/100;
+      });
+      cur=res.cursor; pages++;
+    } while(cur && pages<60);
+    if(dep>0){ setSyncLine('Bank deposits (Square)',Math.round(dep*100)/100); gotIncome=true; }
+    if(cash>0){ setSyncLine('Cash sales (Square)',cash); gotIncome=true; }
+    if(gotIncome) syncOk=true;
+    setDone('dep'); setDone('cash');
+    save(); render();
+  }catch(e){ status('Income sync issue (wages still loading)… '+(e.message||e)); setDone('dep'); setDone('cash'); }   // don't abort — let wages/payouts continue
+  // Staff wages from Square timecards (hours worked minus unpaid breaks × pay rate)
+  let wages=0;
+  try{
+    status('Calculating staff wages from timecards…');
+    await loadStaffNames();
+    const byStaff={};
+    let cur, pages=0;
+    WAGE_ALERTS=[];
+    const shiftRec={};
+    const recShift=function(id,s,e,h,amt,open){ (shiftRec[id]=shiftRec[id]||[]).push({s:s,e:e,h:h,amt:amt,open:open}); };
+    const wkS=new Date(mon), wkE=addDays(mon,7), seenTc=new Set();
+    do{
+      const req={query:{filter:{workday:{date_range:{start_date:monStr,end_date:sunStr},match_timecards_by:'START_AT',default_timezone:'Australia/Melbourne'}}},limit:200}; if(cur)req.cursor=cur;
+      const res=await call(SQUARE,{service:'labor',method:'searchTimecards',request:req,characterization:'Weekly staff wages'});
+      (res.timecards||[]).forEach(tc=>{
+        // shift open for over 12 hours = someone forgot to clock off → flag it
+        if(tc.start_at && !tc.end_at){
+          const hrs=(Date.now()-new Date(tc.start_at).getTime())/3600000;
+          if(hrs>12 && !WAGE_ALERTS.some(a=>a.id===tc.team_member_id)) WAGE_ALERTS.push({id:tc.team_member_id||'?',hrs:Math.round(hrs)});
+          const osd=new Date(tc.start_at);
+          if(osd>=wkS&&osd<wkE) recShift(tc.team_member_id||'?',tc.start_at,'',0,0,true); // show it in the shift dropdown too
+          return;
+        }
+        if(!tc.start_at||!tc.end_at) return;
+        // Square's API can IGNORE the date filter and return other weeks' timecards — enforce the week here, and dedupe across pages
+        if(tc.id){ if(seenTc.has(tc.id)) return; seenTc.add(tc.id); }
+        const sd=new Date(tc.start_at); if(sd<wkS||sd>=wkE) return;
+        let secs=(new Date(tc.end_at)-new Date(tc.start_at))/1000;
+        (tc.breaks||[]).forEach(b=>{ if(b.is_paid===false && b.start_at && b.end_at) secs-=(new Date(b.end_at)-new Date(b.start_at))/1000; });
+        const rate=(tc.wage&&tc.wage.hourly_rate&&tc.wage.hourly_rate.amount||0)/100;
+        if(secs>0 && rate>0){ const id=tc.team_member_id||'?'; byStaff[id]=(byStaff[id]||0)+(secs/3600)*rate; recShift(id,tc.start_at,tc.end_at,secs/3600,(secs/3600)*rate,false); }
+      });
+      cur=res.cursor; pages++;
+    } while(cur && pages<40);
+    // ONLY replace this week's wage rows when fresh timecard data actually came back — if the fetch
+    // returned nothing (Square hiccup), the saved wages from the last sync STAY, same as sales/expenses
+    if(Object.keys(byStaff).length){
+      try{ const m=shiftsMap(); m[curKey()]=shiftRec; localStorage.setItem(SHIFTKEY,JSON.stringify(m)); }catch(e){}
+      TX=TX.filter(t=>!(weekKey(t.date)===curKey() && t.src==='sync' && (t.staffId || t.cat==='Staff wages (Square)')));
+      TX=TX.filter(t=>!(weekKey(t.date)===curKey() && typeof t.id==='string' && t.id.charAt(0)==='s' && /^(wage|super)$/i.test(t.cat||'')));
+    }
+    Object.entries(byStaff).forEach(([id,amt])=>{ if(amt>0){ wages+=amt; TX.push({id:uid(),date:curKey(),type:'expense',bucket:'wage',cat:(STAFF[id]||'Staff'),amt:Math.round(amt*100)/100,src:'sync',staffId:id}); } });
+    setDone('wage');
+    save(); render();
+  }catch(e){ setDone('wage'); }
+  try{
+    status('Reading Uber Eats payout emails…');
+    const q='from:uber.com "payment summary"';  // broad search — the exact week is verified client-side below
+    const s=await call(GSEARCH,{query:q,pageSize:20});
+    let uber=0, found=0;
+    const wkTag=`${usDate(mon)} - ${usDate(sun)}`;
+    for(const th of (s.threads||[])){
+      const subj=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');
+      if(!BRAND.test(subj)) continue; // only count the active brand; ignore old closed businesses
+      if(subj.indexOf(wkTag)===-1) continue; // Gmail search is fuzzy — require THIS week's exact range in the subject
+      const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
+      const body=(t.messages||[]).map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
+      const m=body.match(/Total Payment[\s\S]{0,500}?\$([0-9,]+\.[0-9]{2})/);
+      if(m){ uber+=parseFloat(m[1].replace(/,/g,'')); found++; }
+    }
+    if(uber>0){ setSyncLine('Uber Eats (net payout)',uber); save(); render(); } // never clears an existing line — booked figures stay put
+    setDone('uber');
+    // DoorDash payout emails (accounts@doordash.com; projected Mon / finalized Thu)
+    status('Reading DoorDash payout emails…');
+    let dd=0;
+    try{
+      const ddStr=`${pad(mon.getMonth()+1)}/${pad(mon.getDate())}/${mon.getFullYear()}`;
+      const dq='(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"';  // broad — week verified client-side
+      const ds=await call(GSEARCH,{query:dq,pageSize:20});
+      const byBrand={};
+      for(const th of (ds.threads||[])){
+        const m0=(th.messages&&th.messages[0])||{};
+        const subj=m0.subject||'';                         // subject is already in the search result — no need to fetch the whole email
+        if(subj.indexOf(ddStr)===-1||!BRAND.test(subj)) continue;   // wrong week or a different brand
+        const brand=((subj.match(/payment (?:to|for) (.+?)\s*\(?\d{2}\/\d{2}\/\d{4}/i)||[])[1]||subj).trim();
+        let mm=(m0.snippet||'').match(/payment of \$([0-9,]+\.[0-9]{2})/i);   // the amount sits right in the snippet
+        if(!mm){ try{ const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});   // fallback: read the full body
+            const body=(t.messages||[]).map(m=>[m.htmlBody,m.plaintext_body,m.plaintextBody,m.snippet].filter(Boolean).join(' ')).join(' ');
+            mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
+          }catch(e){} }
+        if(mm) byBrand[brand]=parseFloat(mm[1].replace(/,/g,'')); // latest email per brand wins
+      }
+      dd=Object.values(byBrand).reduce((a,b)=>a+b,0);
+      if(dd>0){ setSyncLine('DoorDash (net payout)',dd); save(); render(); } // never clears an existing line — booked figures stay put
+      setDone('dd');
+    }catch(e){ setDone('dd'); }
+    const allZero=!(dep>0||cash>0||uber>0||dd>0||wages>0);
+    status(`Synced ✓  Deposits ${dep>0?fmt(dep):'—'} · Cash ${cash>0?fmt(cash):'—'} · Uber ${uber>0?fmt(uber):'—'} · DoorDash ${dd>0?fmt(dd):'—'} · Wages ${wages>0?fmt(wages):'—'}.`+(allZero?`  [debug ${_dbg}]`:''));
+  }catch(e){ status('Email sync issue: '+(e.message||e)); }
+  if(btn)btn.disabled=false;
+  clearTimeout(window._syncGuard); window._syncBusy=false;
+  // only record the week as "synced" once income actually came back — a failed fetch won't lock out the next try
+  if(syncOk){ try{ const m=lastSyncMap(); m[curKey()]=Date.now(); localStorage.setItem(LSYNC,JSON.stringify(m)); }catch(e){} }
+}
+let autoSynced={};
+// Auto-sync any week you land on (back to 30 Mar — earlier weeks are the imported history), throttled to
+// once per 30 minutes per week. Saved data shows INSTANTLY; the sync tops it up in the background. While
+// the app stays open, the viewed week re-checks itself every 30 min. The Sync button always forces it.
+const LSYNC='weeklybooks_lastSync';
+function lastSyncMap(){ try{return JSON.parse(localStorage.getItem(LSYNC)||'{}');}catch(e){return {};} }
+function maybeAutoSync(){
+  if(!IN_CLAUDE) return;          // hosted copy: just show the saved books, no live calls
+  const k=curKey();
+  if(k<'2026-03-02') return;
+  if(window._syncBusy) return;
+  if(Date.now()-((lastSyncMap()[k])||0) < 30*60*1000) return;
+  syncWeek();
+}
+// Uber's payout email lands ~midnight Sunday and DoorDash's on Monday — AFTER the week has closed.
+// So early each week (Mon–Thu), quietly check for LAST week's payout emails and book them into last week.
+async function backfillPrevWeek(){
+  try{
+    if(!(window.cowork&&window.cowork.callMcpTool)) return;
+    const dow=(new Date().getDay()+6)%7; if(dow>3) return;
+    const pMon=mondayOf(addDays(mondayOf(new Date()),-7)), pSun=addDays(pMon,6), k=isoOf(pMon);
+    if(autoSynced['bf'+k]) return; autoSynced['bf'+k]=true;
+    const setWkLine=function(cat,amt){
+      let t=TX.find(x=>weekKey(x.date)===k && x.src==='sync' && x.cat===cat);
+      if(!t){ t={id:uid(),date:k,type:'income',cat:cat,amt:0,src:'sync'}; TX.push(t); }
+      t.amt=Math.round(amt*100)/100;
+    };
+    let changed=false;
+    // THE EMAIL IS THE SOURCE OF TRUTH for last week: if it exists the figure is booked/corrected to it;
+    // if it does NOT exist, any figure sitting there is a ghost and gets removed.
+    const dropLine=function(cat){ const n=TX.length; TX=TX.filter(t=>!(weekKey(t.date)===k && t.src==='sync' && t.cat===cat)); if(TX.length!==n) changed=true; };
+    {
+      const wkTag=usDate(pMon)+' - '+usDate(pSun);
+      const s=await call(GSEARCH,{query:'from:uber.com "payment summary"',pageSize:20});
+      let uber=0;
+      for(const th of (s.threads||[])){
+        const subj=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');
+        if(!BRAND.test(subj)||subj.indexOf(wkTag)===-1) continue;
+        const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
+        const body=(t.messages||[]).map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
+        const m=body.match(/Total Payment[\s\S]{0,500}?\$([0-9,]+\.[0-9]{2})/);
+        if(m) uber+=parseFloat(m[1].replace(/,/g,''));
+      }
+      if(uber>0){ setWkLine('Uber Eats (net payout)',uber); changed=true; } else dropLine('Uber Eats (net payout)');
+    }
+    {
+      const ddStr=pad(pMon.getMonth()+1)+'/'+pad(pMon.getDate())+'/'+pMon.getFullYear();
+      const ds=await call(GSEARCH,{query:'(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"',pageSize:20});
+      const byBrand={};
+      for(const th of (ds.threads||[])){
+        const m0=(th.messages&&th.messages[0])||{};
+        const subj=m0.subject||'';
+        if(subj.indexOf(ddStr)===-1||!BRAND.test(subj)) continue;
+        const brand=((subj.match(/payment (?:to|for) (.+?)\s*\(?\d{2}\/\d{2}\/\d{4}/i)||[])[1]||subj).trim();
+        let mm=(m0.snippet||'').match(/payment of \$([0-9,]+\.[0-9]{2})/i);
+        if(!mm){ try{ const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
+            const body=(t.messages||[]).map(m=>[m.htmlBody,m.plaintext_body,m.plaintextBody,m.snippet].filter(Boolean).join(' ')).join(' ');
+            mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
+          }catch(e){} }
+        if(mm) byBrand[brand]=parseFloat(mm[1].replace(/,/g,''));
+      }
+      const dd=Object.values(byBrand).reduce((a,b)=>a+b,0);
+      if(dd>0){ setWkLine('DoorDash (net payout)',dd); changed=true; } else dropLine('DoorDash (net payout)');
+    }
+    if(changed){ save(); render(); status('Last week’s delivery payouts verified against the emails ✓'); }
+  }catch(e){}
+}
+
+// Live indicator: in-store sales (cash + card + online + kiosk) vs wage cost, with a 10am–9pm day chart.
+// Uber/DoorDash are EXCLUDED here — their real income is booked weekly from their payout statements,
+// because what Square sees for delivery orders is the gross menu price, not what they actually pay out.
+const SQ_LOC='LZ3PM4EK0QSQJ';
+// hourly data is SAVED per day, so any day of the week can be reviewed later even when the shop is closed
+const HRKEY='weeklybooks_hourly';
+function hourlyMap(){ try{return JSON.parse(localStorage.getItem(HRKEY)||'{}');}catch(e){return {};} }
+let selDay=isoOf(new Date());
+function lvDayButtons(){
+  const wrap=document.getElementById('lvDays'); if(!wrap) return;
+  const mon=new Date(curMon); const names=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];  // days of the VIEWED week
+  const saved=hourlyMap();
+  let h='';
+  for(let i=0;i<7;i++){
+    const d=addDays(mon,i), k=isoOf(d); const future=d>new Date();
+    h+='<button class="ghost" style="padding:4px 9px;font-size:11px;'+(k===selDay?'background:#0f172a;color:#fff;border-color:#0f172a;':'')+(future?'opacity:.35;':'')+'" '+(future?'disabled':'')+' onclick="showDay(\''+k+'\')" title="'+(saved[k]?'Saved — opens instantly':'Will fetch from Square')+'">'+names[i]+' '+d.getDate()+(saved[k]?'':'·')+'</button>';
+  }
+  wrap.innerHTML=h;
+}
+// keep the day card in step with whichever week is being viewed
+function refreshDayCard(){
+  try{
+    if(weekKey(selDay)!==curKey()){
+      selDay=(curKey()===isoOf(mondayOf(new Date())))?isoOf(new Date()):curKey();
+    }
+    lvDayButtons();
+    const note=document.getElementById('lvNote');
+    if(selDay===isoOf(new Date())) return;            // today's view is managed by syncLive
+    const cached=hourlyMap()[selDay];
+    if(cached){ applyDay(selDay,cached,null); if(note)note.textContent='Saved hourly data · tap any day to load it.'; }
+    else{
+      drawDayChart(new Array(24).fill(0),new Array(24).fill(0));
+      document.getElementById('lvSalesLbl').textContent='Sales';
+      document.getElementById('lvWagesLbl').textContent='Wages';
+      document.getElementById('lvSales').textContent='—';
+      document.getElementById('lvWages').textContent='—';
+      document.getElementById('lvPct').textContent='—';
+      if(note)note.textContent='Tap a day above to load its hourly sales-vs-wages chart from Square (it saves after the first load).';
+    }
+  }catch(e){}
+}
+// ⟳ button: refresh whichever day is selected (re-fetches even if saved)
+async function refreshSelected(){
+  if(selDay===isoOf(new Date())){ syncLive(); return; }
+  const note=document.getElementById('lvNote');
+  if(!(window.cowork&&window.cowork.callMcpTool)){ if(note)note.textContent='Fetching needs the Claude app.'; return; }
+  try{
+    note.textContent='Refreshing that day from Square…';
+    const data=await fetchHourly(selDay,false);
+    const m=hourlyMap(); m[selDay]={s:data.s,w:data.w}; try{localStorage.setItem(HRKEY,JSON.stringify(m));}catch(e){}
+    applyDay(selDay,data,null); note.textContent='Hourly data refreshed & saved.';
+  }catch(e){ note.textContent='Day refresh issue: '+(e.message||e); }
+}
+async function fetchHourly(dayKey, wantLive){
+  const d0=parseISO(dayKey); const now=new Date(); const from=new Date(now.getTime()-3600000);
+  const dEnd=new Date(Math.min(d0.getTime()+86400000, now.getTime()));
+  const hrS=new Array(24).fill(0), hrW=new Array(24).fill(0);
+  let hourSales=0, hourWage=0, cur=null, pages=0;
+  do{
+    const req={location_ids:[SQ_LOC],query:{filter:{date_time_filter:{created_at:{start_at:d0.toISOString(),end_at:dEnd.toISOString()}}},sort:{sort_field:'CREATED_AT',sort_order:'ASC'}},limit:100};
+    if(cur)req.cursor=cur;
+    const r=await call(SQUARE,{service:'orders',method:'search',request:req,characterization:'Hourly sales for the day chart'});
+    (r.orders||[]).forEach(o=>{
+      if(o.state==='CANCELED'||o.state==='DRAFT') return;
+      if(!(o.tenders&&o.tenders.length)) return;
+      const src=(o.source&&o.source.name)||'';
+      if(/uber|doordash/i.test(src)) return;   // delivery is booked weekly from real payout statements
+      const amt=((o.total_money&&o.total_money.amount)||0)/100; const d=new Date(o.created_at);
+      hrS[d.getHours()]+=amt;
+      if(wantLive&&d>=from) hourSales+=amt;
+    });
+    cur=r.cursor; pages++;
+  }while(cur&&pages<12);
+  // timecards: paginate back far enough to cover the requested day (Square returns newest-first)
+  const tcs=[]; let tCur=null, tPages=0, oldest=null;
+  do{
+    const treq={limit:200}; if(tCur)treq.cursor=tCur;
+    const res=await call(SQUARE,{service:'labor',method:'searchTimecards',request:treq,characterization:'Hourly wages for the day chart'});
+    (res.timecards||[]).forEach(tc=>{ tcs.push(tc); if(tc.start_at){ const t=new Date(tc.start_at); if(!oldest||t<oldest) oldest=t; } });
+    tCur=res.cursor; tPages++;
+  }while(tCur && tPages<6 && (!oldest||oldest>=d0));
+  tcs.forEach(tc=>{
+    if(!tc.start_at) return;
+    const s=new Date(tc.start_at), e=tc.end_at?new Date(tc.end_at):now;
+    if(e<=d0||s>=dEnd) return;
+    const rate=(tc.wage&&tc.wage.hourly_rate&&tc.wage.hourly_rate.amount||0)/100; if(!(rate>0)) return;
+    const paidOverlap=function(a,b){
+      const x=Math.max(s,a), y=Math.min(e,b); if(y<=x) return 0;
+      let secs=(y-x)/1000;
+      (tc.breaks||[]).forEach(br=>{ if(br.is_paid===false&&br.start_at){ const bs=new Date(br.start_at), be=br.end_at?new Date(br.end_at):now; const ba=Math.max(bs,x), bb=Math.min(be,y); if(bb>ba) secs-=(bb-ba)/1000; } });
+      return secs;
+    };
+    for(let h=0;h<24;h++){
+      const a=new Date(d0.getTime()+h*3600000), b=new Date(d0.getTime()+(h+1)*3600000);
+      const sec=paidOverlap(a,b); if(sec>0) hrW[h]+=sec/3600*rate;
+    }
+    if(wantLive) hourWage+=paidOverlap(from,now)/3600*rate;
+  });
+  return {s:hrS,w:hrW,hourSales:hourSales,hourWage:hourWage};
+}
+function applyDay(dayKey,data,live){
+  drawDayChart(data.s,data.w);
+  const dS=data.s.reduce((a,b)=>a+b,0), dW=data.w.reduce((a,b)=>a+b,0);
+  const d=parseISO(dayKey);
+  const lbl=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay()+6)%7]+' '+d.getDate()+'/'+(d.getMonth()+1);
+  if(live){
+    document.getElementById('lvSalesLbl').textContent='Sales (last 60 min)';
+    document.getElementById('lvWagesLbl').textContent='Wage cost (last 60 min)';
+    document.getElementById('lvSales').textContent=fmt(live.hourSales);
+    document.getElementById('lvWages').textContent='-'+fmt(live.hourWage);
+    document.getElementById('lvPct').textContent= live.hourSales>0?(live.hourWage/live.hourSales*100).toFixed(0)+'%':(live.hourWage>0?'no sales':'—');
+  } else {
+    document.getElementById('lvSalesLbl').textContent='Sales — '+lbl;
+    document.getElementById('lvWagesLbl').textContent='Wages — '+lbl;
+    document.getElementById('lvSales').textContent=fmt(dS);
+    document.getElementById('lvWages').textContent='-'+fmt(dW);
+    document.getElementById('lvPct').textContent= dS>0?(dW/dS*100).toFixed(0)+'%':'—';
+  }
+  return {dS:dS,dW:dW};
+}
+async function showDay(k){
+  selDay=k; lvDayButtons();
+  const note=document.getElementById('lvNote');
+  if(k===isoOf(new Date())){ syncLive(); return; }
+  const cached=hourlyMap()[k];
+  if(cached){ applyDay(k,cached,null); note.textContent='Saved hourly data for that day · in-store sales only (delivery comes via the weekly statements).'; return; }
+  if(!(window.cowork&&window.cowork.callMcpTool)){ note.textContent='Fetching past days needs the Claude app.'; return; }
+  try{
+    note.textContent='Fetching that day from Square…';
+    const data=await fetchHourly(k,false);
+    const m=hourlyMap(); m[k]={s:data.s,w:data.w}; try{localStorage.setItem(HRKEY,JSON.stringify(m));}catch(e){}
+    applyDay(k,data,null);
+    note.textContent='Hourly data loaded & saved · in-store sales only.';
+  }catch(e){ note.textContent='Day fetch issue: '+(e.message||e); }
+}
+async function syncLive(){
+  const note=document.getElementById('lvNote');
+  lvDayButtons();
+  if(!(window.cowork&&window.cowork.callMcpTool)){ note.textContent='Live data only works inside the Claude app.'; return; }
+  const today=isoOf(new Date());
+  if(selDay!==today) return;                  // user is reviewing a past day — don't overwrite the view
+  try{
+    note.textContent='Updating…';
+    const data=await fetchHourly(today,true);
+    const m=hourlyMap(); m[today]={s:data.s,w:data.w}; try{localStorage.setItem(HRKEY,JSON.stringify(m));}catch(e){}
+    const t=applyDay(today,data,data);
+    note.textContent='As at '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · refreshes every 30 min · cash, card & online only. Today: '+fmt(t.dS)+' sales · '+fmt(t.dW)+' wages · labour '+(t.dS>0?(t.dW/t.dS*100).toFixed(0)+'%':'—')+'.';
+    if(!window._lvTimer) window._lvTimer=setInterval(syncLive, 30*60*1000);
+  }catch(e){ note.textContent='Live update issue: '+(e.message||e); }
+}
+function drawDayChart(hrS,hrW){
+  const el=document.getElementById('lvChart'); if(!el) return;
+  const H0=10,H1=21,n=H1-H0+1;
+  let max=10; for(let h=H0;h<=H1;h++){ if(hrS[h]>max)max=hrS[h]; if(hrW[h]>max)max=hrW[h]; }
+  const W=480,Hh=130,pad=14,bw=(W-2*pad)/n;
+  let s='';
+  for(let i=0;i<n;i++){
+    const h=H0+i,x=pad+i*bw;
+    const hs=hrS[h]/max*(Hh-34), hw=hrW[h]/max*(Hh-34);
+    const pct=hrS[h]>0?Math.round(hrW[h]/hrS[h]*100)+'%':'';
+    s+='<rect x="'+(x+2).toFixed(1)+'" y="'+(Hh-16-hs).toFixed(1)+'" width="'+(bw*0.46).toFixed(1)+'" height="'+Math.max(hs,0.5).toFixed(1)+'" rx="2" fill="#16a34a"><title>'+h+':00 — sales $'+hrS[h].toFixed(0)+'</title></rect>';
+    s+='<rect x="'+(x+2+bw*0.48).toFixed(1)+'" y="'+(Hh-16-hw).toFixed(1)+'" width="'+(bw*0.3).toFixed(1)+'" height="'+Math.max(hw,0.5).toFixed(1)+'" rx="2" fill="#dc2626"><title>'+h+':00 — wages $'+hrW[h].toFixed(0)+'</title></rect>';
+    if(pct) s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(Hh-20-Math.max(hs,hw)).toFixed(1)+'" font-size="7.5" fill="#64748b" text-anchor="middle">'+pct+'</text>';
+    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(Hh-3)+'" font-size="8.5" fill="#94a3b8" text-anchor="middle">'+(h<12?h+'am':(h===12?'12pm':(h-12)+'pm'))+'</text>';
+  }
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+Hh+'" style="width:100%;height:auto;display:block;margin-top:10px">'+s+'</svg>'+
+    '<div class="empty" style="font-size:11px;margin-top:2px"><span style="color:#16a34a">■</span> sales/hr&nbsp;&nbsp;<span style="color:#dc2626">■</span> wages/hr&nbsp;&nbsp;(% = labour share that hour) · 10am–close</div>';
+}
+
+load(); render(); applyWagesState(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
+setInterval(maybeAutoSync, 5*60*1000); // while open, the viewed week re-syncs itself every 30 min (checked every 5)
+</script>
+</body>
+</html>
