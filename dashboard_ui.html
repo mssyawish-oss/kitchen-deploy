@@ -137,7 +137,7 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ls-spark{width:100%;height:40px;display:block;}
 #page-probes.active .probes-grid{flex:0.7 1 0;}
 .rl-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);height:100%;}
-.rl-top{display:flex;align-items:center;gap:10px;}
+.rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px;}
 .rl-chip{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
 #rl-bbq .rl-chip{background:linear-gradient(180deg,#fbab3e,#f3850f);}
 #rl-fry .rl-chip{background:linear-gradient(180deg,#3ee0a6,#16a571);}
@@ -151,7 +151,7 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .cam-min-btn{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:7px;color:var(--muted);width:24px;height:24px;font-size:17px;line-height:1;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 .cam-min-btn:hover{color:var(--text);}
 #rl-benchcam .bench-mini{display:none;}
-#rot-live.bench-min #rl-cam{flex:2.9;}
+#rot-live.bench-min #rl-cam{flex:2.2;}
 #rot-live.bench-min #rl-benchcam{flex:0 0 46px;min-width:46px;}
 #rot-live.bench-min #rl-benchcam .cam-card{display:none;}
 #rot-live.bench-min #rl-benchcam .bench-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;min-height:130px;margin-top:8px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;cursor:pointer;color:var(--muted);padding:12px 4px;}
@@ -276,6 +276,9 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 #page-probes .sec-head{flex-shrink:0;margin:4px 2px 0;}
 #page-probes .probes-grid{flex:0 0 auto;}
 #page-probes .timers-grid{flex:0 0 auto;}
+@media(min-width:900px){  /* installed-app / touchscreen window has no browser bars → let the grids grow to fill the extra height instead of leaving empty space at the bottom */
+  #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 1 0;min-height:0;}
+}
 #page-probes .probe-card,#page-probes .timer-card{justify-content:flex-start;gap:8px;}
 #page-probes .gauge{width:min(120px,17vh);}
 #page-probes .probe-ic{width:min(44px,7vh);height:min(44px,7vh);flex-shrink:0;}
