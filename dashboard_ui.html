@@ -148,6 +148,15 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .rl-cooking .ico{width:13px;height:13px;}
 #rl-cam{flex:1.4;min-width:0;}
 #rl-benchcam{flex:1.4;min-width:0;}
+.cam-min-btn{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:7px;color:var(--muted);width:24px;height:24px;font-size:17px;line-height:1;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.cam-min-btn:hover{color:var(--text);}
+#rl-benchcam .bench-mini{display:none;}
+#rot-live.bench-min #rl-cam{flex:2.9;}
+#rot-live.bench-min #rl-benchcam{flex:0 0 46px;min-width:46px;}
+#rot-live.bench-min #rl-benchcam .cam-card{display:none;}
+#rot-live.bench-min #rl-benchcam .bench-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;min-height:130px;margin-top:8px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;cursor:pointer;color:var(--muted);padding:12px 4px;}
+.bench-mini .bm-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;}
+.bench-mini:hover{color:var(--text);border-color:var(--text);}
 .cam-card{display:flex;flex-direction:column;cursor:pointer;height:100%;}
 .cam-wrap{position:relative;flex:1;margin-top:8px;border-radius:9px;overflow:hidden;background:#000;min-height:90px;}
 .cam-wrap img{width:100%;height:100%;object-fit:contain;display:block;}
@@ -556,6 +565,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   /* Stack the BBQ / Fry / Camera cards vertically */
   #rot-live{flex-direction:column;}
   #rl-bbq,#rl-fry,#rl-live,#rl-cam,#rl-benchcam{flex:none;width:100%;}
+  #rot-live.bench-min #rl-cam{flex:none;}
+  #rot-live.bench-min #rl-benchcam{flex:none;width:100%;min-width:0;}
+  #rot-live.bench-min #rl-benchcam .bench-mini{flex-direction:row;min-height:0;height:auto;margin-top:0;padding:11px 14px;}
+  #rot-live.bench-min #rl-benchcam .bench-mini .bm-label{writing-mode:horizontal-tb;transform:none;margin-right:auto;}
   .rl-card{height:auto;padding:13px;}
   #rl-cam .cam-wrap{min-height:200px;}
   .rl-big{font-size:38px;}
@@ -1653,12 +1666,13 @@ function renderRotcamCard(){
 function renderBenchcamCard(){
   const el=document.getElementById('rl-benchcam');if(!el)return;
   const c=appData.rotcam_public||{};
-  if(!c.bench_configured||c.feed_enabled===false){el.style.display='none';return;}
-  el.style.display='';
+  if(!c.bench_configured||c.feed_enabled===false){el.style.display='none';applyBenchMin();return;}
+  el.style.display='';applyBenchMin();
   if(el.dataset.built)return;
   el.dataset.built='1';
-  el.innerHTML=`<div class="rl-card cam-card" onclick="enlargeBenchcam()">
-    <div class="rl-top"><div class="rl-tag">BENCH CAM &middot; AI</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span></div>
+  el.innerHTML=`<div class="bench-mini" onclick="toggleBenchMin(event)" title="Restore bench cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="bm-label">Bench cam</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></div>
+    <div class="rl-card cam-card" onclick="enlargeBenchcam()">
+    <div class="rl-top"><div class="rl-tag">BENCH CAM &middot; AI</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span><button class="cam-min-btn" onclick="toggleBenchMin(event)" title="Minimise bench cam">&minus;</button></div>
     <div class="cam-wrap"><img id="benchcam-stream" alt=""><div class="cam-msg" id="benchcam-msg">Connecting…</div></div>
     <div class="rl-camhint">green box = a chicken the AI sees &middot; tap to enlarge</div></div>`;
   const bim=document.getElementById('benchcam-stream');
@@ -1700,6 +1714,9 @@ function closeRotcam(){const big=document.getElementById('rotcam-big');if(big)bi
 // --- animated rotisserie panel (toggle alternative to the raw cam) ---
 try{window._rotViewMode=localStorage.getItem('rotViewMode')||'anim';}catch(e){window._rotViewMode='anim';}
 window._rowState=window._rowState||['empty','empty','empty','empty','empty','empty'];
+let _benchMin=false;try{_benchMin=localStorage.getItem('benchMin')==='1';}catch(e){}
+function applyBenchMin(){const rl=document.getElementById('rot-live');if(rl)rl.classList.toggle('bench-min',_benchMin);}
+function toggleBenchMin(ev){if(ev)ev.stopPropagation();_benchMin=!_benchMin;try{localStorage.setItem('benchMin',_benchMin?'1':'0');}catch(e){}applyBenchMin();}
 function applyRotView(){const w=document.querySelector('#rl-cam .cam-wrap');if(w)w.classList.toggle('show-anim',(window._rotViewMode||'anim')==='anim');const lbl=document.getElementById('ra-toggle-lbl');if(lbl)lbl.textContent=(window._rotViewMode==='anim'?'Cam view':'Animated');const hint=document.querySelector('#rl-cam .rl-camhint');if(hint)hint.textContent=(window._rotViewMode==='anim'?'live rotisserie status · tap to enlarge cam':'tap to enlarge');}
 function toggleRotView(ev){if(ev)ev.stopPropagation();window._rotViewMode=(window._rotViewMode==='anim'?'cam':'anim');try{localStorage.setItem('rotViewMode',window._rotViewMode);}catch(e){}applyRotView();renderRotAnim();}
 const _CHICK_SVG='<div class="ra-chk"></div>';
