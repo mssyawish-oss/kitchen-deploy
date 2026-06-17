@@ -1684,7 +1684,7 @@ def rotcam_stream_loop():
         url=_rotcam_rtsp(); p=None
         try:
             p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
-                                "-an","-r","12","-q:v","6","-f","mjpeg","-"],
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
             ROTCAM["error"]=""; buf=b""
             while True:
@@ -1720,7 +1720,7 @@ def benchcam_stream_loop():
         url=_bench_rtsp(); p=None
         try:
             p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
-                                "-an","-r","12","-q:v","6","-f","mjpeg","-"],
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
             buf=b""
             while True:
@@ -1728,13 +1728,19 @@ def benchcam_stream_loop():
                 chunk=p.stdout.read(65536)
                 if not chunk: break
                 buf+=chunk
+                got=False
                 while True:
                     s=buf.find(b"\xff\xd8")
                     if s<0: break
                     e=buf.find(b"\xff\xd9", s+2)
                     if e<0: break
-                    ROTCAM["bench_live"]=buf[s:e+2]; ROTCAM["bench_live_ts"]=time.time(); buf=buf[e+2:]
+                    ROTCAM["bench_live"]=buf[s:e+2]; ROTCAM["bench_live_ts"]=time.time(); buf=buf[e+2:]; got=True
                 if len(buf)>4*10**6: buf=buf[-10**6:]
+                # annotate ONCE here (throttled, shared by all viewers) instead of per-frame per-viewer in the
+                # stream generator — re-encoding every frame per connection was pinning the GIL → whole app laggy.
+                nowr=time.time()
+                if got and (nowr-ROTCAM.get("bench_render_ts",0))>=0.22:
+                    ROTCAM["bench_render"]=_bench_render(ROTCAM.get("bench_live")); ROTCAM["bench_render_ts"]=nowr
         except Exception: time.sleep(5)
         finally:
             if p:
@@ -1802,17 +1808,16 @@ def api_benchcam_stream():
     # smooth MJPEG for the bench (like the rotisserie) — zone + boxes drawn on each frame
     if not _bench_rtsp(): return Response("bench camera not configured",status=404)
     def gen():
-        last_ts=0; last_emit=0; start=time.time()
+        last_ts=0; start=time.time()
         while True:
             ROTCAM["bench_want"]=time.time()
-            fr=ROTCAM.get("bench_live"); ts=ROTCAM.get("bench_live_ts",0)
+            img=ROTCAM.get("bench_render"); ts=ROTCAM.get("bench_render_ts",0)
             now=time.time()
-            if fr and ts!=last_ts and (now-last_emit)>=0.11:    # cap ~9fps to keep CPU sane
-                last_ts=ts; last_emit=now
-                img=_bench_render(fr)
+            if img and ts!=last_ts:    # serve the pre-rendered frame — NO PIL here (rendering happens once in the puller loop)
+                last_ts=ts
                 yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "+str(len(img)).encode()+b"\r\n\r\n"+img+b"\r\n"
             else:
-                time.sleep(0.03)
+                time.sleep(0.04)
             if not ROTCAM.get("bench_live") and (now-start)>10: break
     return Response(gen(),mimetype="multipart/x-mixed-replace; boundary=frame",
                     headers={"Cache-Control":"no-store","Connection":"close"})
@@ -1821,16 +1826,14 @@ def api_benchcam_stream():
 def api_benchcam_frame():
     if not _bench_rtsp(): return Response("bench camera not configured",status=404)
     ROTCAM["bench_want"]=time.time()                              # tell the bench streamer a viewer is here
-    fr=None
-    for _ in range(50):                                          # wait up to ~5s for the first live frame
-        cand=ROTCAM.get("bench_live")
-        if cand and (time.time()-ROTCAM.get("bench_live_ts",0))<8: fr=cand; break
+    for _ in range(50):                                          # wait up to ~5s for the first rendered frame
+        rnd=ROTCAM.get("bench_render")
+        if rnd and (time.time()-ROTCAM.get("bench_render_ts",0))<8:
+            return Response(rnd,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})  # reuse the shared render — no per-request PIL
         time.sleep(0.1)
-    if fr is None:
-        jpeg,err=_bench_grab()                                    # fallback one-shot grab
-        if err: return Response(err,status=503)
-        fr=jpeg
-    return Response(_bench_render(fr),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    jpeg,err=_bench_grab()                                        # fallback one-shot grab
+    if err: return Response(err,status=503)
+    return Response(_bench_render(jpeg),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
 def api_mcp():
