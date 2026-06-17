@@ -1564,7 +1564,7 @@ def _rotcam_apply(rows):
         if len(h)>=2 and h[-1]==h[-2]:
             confirmed=h[-1]; prev=ROTCAM["cooking"]
             if confirmed!=prev:
-                if confirmed<prev: _note_row_off(prev-confirmed)   # count dropped → row(s) came off → arm bench credit
+                if confirmed<prev: rot_put_on(prev-confirmed)   # count dropped → row(s) came off the spit → credit straight to available
                 ROTCAM["cooking"]=confirmed
         return
     # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then act on shelves
@@ -1575,7 +1575,7 @@ def _rotcam_apply(rows):
         if confirmed!=prev:
             if prev and len(prev)==6:
                 came_off=sum(1 for i in range(6) if prev[i]=="1" and confirmed[i]=="0")
-                if came_off>0: _note_row_off(came_off)   # shelf went loaded→empty → row(s) came off → arm bench credit (does NOT add stock until the bench cam confirms a new row)
+                if came_off>0: rot_put_on(came_off)   # shelf went loaded→empty → cooked row(s) pulled off the spit → credit straight to available (rotisserie alone; bench cam is just the live view)
             ROTCAM["cooking_pat"]=confirmed
             ROTCAM["cooking"]=confirmed.count("1")
 def _hm_to_min(s,d):
