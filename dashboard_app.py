@@ -295,7 +295,7 @@ def rot_state():
         _rot_reset_if_needed()
         return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
-                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels","")}
+                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done","")}
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
@@ -1259,6 +1259,42 @@ _ROT_BOX_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, ea
                  "(strip 6). Example: 111110 means strips 1-5 have chicken and strip 6 is empty. "
                  "IMPORTANT: if a PERSON or large object is blocking the view of ANY strip so you cannot clearly see the "
                  "shelf behind them, reply with exactly the single word BLOCKED (instead of digits) — do not guess.")
+# Combined occupancy + DONENESS read (one call). Each strip → one letter by the chickens' colour, allowing for the
+# bright glare off the heating elements. Trained-eye criteria from the owner's labelled on-spit photos.
+_ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, numbered 1-6 (green number, top-left of each "
+                  "strip). Each strip is a close-up of ONE shelf of a rotisserie chicken oven (strip 1 = top). There is a "
+                  "bright white glare from the heating elements behind the chickens — judge the chickens themselves, not the "
+                  "glare. For EACH strip output ONE character for its cooking state by colour:\n"
+                  "0 = EMPTY (no chicken: only metal spit rods, wire grid, glass or dark/empty space)\n"
+                  "N = NOT READY (raw/early: pale, white or pinkish, glossy skin, little or no browning)\n"
+                  "A = ALMOST READY (partly cooked: patchy light-to-medium browning developing, still uneven)\n"
+                  "R = READY (cooked: even golden-brown skin across the whole chicken)\n"
+                  "O = OVERDONE (very dark brown / mahogany, with charred or blackened patches on the ridges)\n"
+                  "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
+                  "0 N A R O, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
+                  "strip5 overdone, strip6 empty). If a PERSON or object blocks a strip so you cannot see it, reply with the "
+                  "single word BLOCKED.")
+_DONE_LABELS={"N":"not_ready","A":"almost_ready","R":"ready","O":"overdone"}
+def _rotcam_save_crops(jpeg,donepat):
+    # auto-build the on-spit training set: save each loaded row's strip into rotcam_dataset/<class>/, throttled per
+    # class so the rare-but-important READY/OVERDONE shots get collected without drowning in NOT_READY frames.
+    if not jpeg or not donepat or len(donepat)!=6: return
+    try:
+        from PIL import Image; import io
+        now=time.time(); seen=ROTCAM.setdefault("crop_ts",{})
+        im=None; x1=x2=None
+        for i,(a,b) in enumerate(_ROT_BOXES):
+            cls=_DONE_LABELS.get(donepat[i].upper())
+            if not cls: continue
+            gap=60 if cls in ("ready","overdone") else 240   # collect ready/overdone every 1 min, others every 4 min
+            if now-seen.get(cls,0)<gap: continue
+            if im is None:
+                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+                x1,x2=int(W*_ROT_BOX_X[0]),int(W*_ROT_BOX_X[1])
+            seen[cls]=now
+            d=os.path.join(BASE_DIR,"rotcam_dataset",cls); os.makedirs(d,exist_ok=True)
+            im.crop((x1,int(im.height*a),x2,int(im.height*b))).save(os.path.join(d,"row%d_%d.jpg"%(i+1,int(now))),"JPEG",quality=82)
+    except Exception: pass
 def _rotcam_boxes_composite(jpeg):
     # crop the 6 locked shelf boxes and stack them into one labelled image — isolates each shelf
     # (no glare above, no bench below) so the AI judges 'chicken vs bare' per shelf. Returns None if Pillow missing.
@@ -1284,8 +1320,9 @@ def _rotcam_count(jpeg):
     if not key: return None,"No Gemini API key configured"
     _gem_count_call()                 # track usage/cost
     comp=_rotcam_boxes_composite(jpeg)
+    done_mode=bool(cfg.get("doneness_enabled")) and comp is not None   # read colour/doneness per row in the same call
     if comp is not None:
-        img=comp; prompt=cfg.get("prompt") or _ROT_BOX_PROMPT   # per-box strips (preferred)
+        img=comp; prompt=(_ROT_DONE_PROMPT if done_mode else (cfg.get("prompt") or _ROT_BOX_PROMPT))   # per-box strips (preferred)
         ROTCAM["last_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
     else:
         img=_downscale_jpeg(jpeg); prompt=cfg.get("prompt") or _ROT_PROMPT   # fallback: whole frame
@@ -1304,6 +1341,15 @@ def _rotcam_count(jpeg):
         parts=((cand.get("content") or {}).get("parts")) or []
         txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
         if not txt: return None,"Gemini returned no answer (finish: %s)"%cand.get("finishReason","?")
+        if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
+            dm=re.search(r"[0NAROnaro]{6}",txt)
+            if "block" in txt.lower() and not dm: return None,"view blocked (skipped)"
+            if dm:
+                done=dm.group().upper(); ROTCAM["done"]=done
+                ROTCAM["levels"]="".join("0" if c=="0" else "1" for c in done)   # derive occupancy from doneness
+                _rotcam_save_crops(jpeg,done)        # auto-collect on-spit training crops, labelled by doneness
+                return ROTCAM["levels"].count("1"),None
+            # no doneness pattern parsed → fall through to plain occupancy parsing below
         mm=re.search(r"[01]{6}",txt)                 # per-level pattern e.g. 111100 → count the loaded levels
         if "block" in txt.lower() and not mm:        # someone standing in front → skip this read, don't touch stock
             return None,"view blocked (skipped)"

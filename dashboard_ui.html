@@ -199,6 +199,10 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-tag.stop{color:#fff;background:#dc2626;animation:blink 1s infinite;}
 .ra-tag.empty{color:rgba(255,255,255,.45);background:rgba(255,255,255,.06);}
 .ra-tag.load{color:#fde68a;background:rgba(245,158,11,.22);}
+.ra-tag.done-not{color:#cbd5e1;background:rgba(148,163,184,.20);}
+.ra-tag.done-almost{color:#fde68a;background:rgba(245,158,11,.22);}
+.ra-tag.done-ready{color:#bbf7d0;background:rgba(22,163,74,.30);}
+.ra-tag.done-over{color:#fff;background:#b91c1c;}
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
 /* Today's Prep */
@@ -965,7 +969,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-enabled" style="width:18px;height:18px;"> Auto-count rows &rarr; stock (uses AI)</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-feed" style="width:18px;height:18px;"> Live camera feed on Temp screen</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-spin" style="width:18px;height:18px;"> Spinning / "not spinning" alarm</label>
-    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-doneness" style="width:18px;height:18px;"> Doneness bars on probe cards</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-doneness" style="width:18px;height:18px;"> Read each row's doneness (not&nbsp;ready / almost / ready / overdone) &amp; auto-collect on-spit training crops</label>
     <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-bench" style="width:18px;height:18px;margin-top:2px;"> <span>Auto-count cooked rows onto stock <span style="color:var(--muted);font-size:12px;">(uses the side bench camera below if set — it always sees the bench; otherwise crops the front camera, which can over-count)</span></span></label>
     <div class="grid-2"><div><div class="label">Camera IP</div><input class="input" id="rc-ip" placeholder="e.g. 192.168.0.120"></div><div><div class="label">Stream</div><select class="input" id="rc-stream" style="background:var(--surface2);"><option value="stream1">stream1 (HD)</option><option value="stream2">stream2 (low-res)</option></select></div></div>
     <div class="grid-2 mt-8"><div><div class="label">Camera-account user</div><input class="input" id="rc-user" placeholder="Tapo camera account"></div><div><div class="label">Camera-account password</div><input class="input" id="rc-pass" type="password"></div></div>
@@ -1444,7 +1448,7 @@ function renderPhotoLog(){const box=document.getElementById('photo-log');if(!box
 function saveCameraConfig(){const body={ip:document.getElementById('cam-ip').value.trim(),port:document.getElementById('cam-port').value.trim(),channel:document.getElementById('cam-channel').value.trim(),url_override:document.getElementById('cam-url').value.trim(),enabled:document.getElementById('cam-enabled').checked};const u=document.getElementById('cam-user').value;if(u)body.user=u;const p=document.getElementById('cam-pass').value;if(p)body.pass=p;camStatus('Saving…','muted');fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){camStatus(d.enabled?'Saved — camera ON for task completion.':'Saved (camera OFF — tasks use PIN).','green');loadAppData();}else camStatus('Error saving.','red');});}
 function testCamera(){camStatus('Contacting camera…','muted');document.getElementById('cam-preview').innerHTML='';saveCameraConfig();setTimeout(()=>{fetch('/api/camera_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok&&d.preview){camStatus('Camera works! &#10003;','green');document.getElementById('cam-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);">';}else camStatus('Could not get a photo: '+(d.error||'unknown'),'red');});},600);}
 
-async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotDone=d.rot.done||'';renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
@@ -1730,7 +1734,15 @@ function renderRotAnim(){
     const row=document.getElementById('ra-row-'+r);if(row&&row.getAttribute('data-state')!==state)row.setAttribute('data-state',state);
     const birds=document.getElementById('ra-birds-'+r);const want=loaded?4:0;
     if(birds&&birds.children.length!==want){birds.innerHTML=want?_CHICK_SVG.repeat(want):'';}
-    let txt,cls;if(!loaded){txt='Empty';cls='empty';}else if(state==='stopped'){txt='STOPPED';cls='stop';}else if(state==='spinning'){txt='Spinning';cls='spin';}else{txt='Loaded';cls='load';}
+    const done=(window._rotDone&&window._rotDone.length===6)?window._rotDone[r]:'';
+    let txt,cls;if(!loaded){txt='Empty';cls='empty';}
+    else if(done==='R'){txt='READY';cls='done-ready';}
+    else if(done==='O'){txt='OVERDONE';cls='done-over';}
+    else if(done==='A'){txt='Almost';cls='done-almost';}
+    else if(done==='N'){txt='Not ready';cls='done-not';}
+    else if(state==='stopped'){txt='STOPPED';cls='stop';}
+    else if(state==='spinning'){txt='Spinning';cls='spin';}
+    else{txt='Loaded';cls='load';}
     const tag=document.getElementById('ra-tag-'+r);if(tag&&tag.dataset.k!==cls+'|'+txt){tag.dataset.k=cls+'|'+txt;tag.className='ra-tag '+cls;tag.innerHTML='<span class="ra-dot"></span>'+txt;}
   }
 }
