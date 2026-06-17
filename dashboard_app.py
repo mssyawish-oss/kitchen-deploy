@@ -280,7 +280,16 @@ def _rot_save():       # persist live counts so a server restart doesn't reset t
 def _rot_reset_if_needed():
     c=_rot_cfg();today=datetime.now().strftime("%Y-%m-%d")
     if ROT_LIVE["day"]!=today:
-        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0,"seen":[]})   # NEW DAY only → start empty (the camera/bench-watcher builds it up). A restart mid-day keeps the saved count.
+        # NEW DAY only → zero the counters (the camera/bench-watcher rebuilds 'available'). A restart mid-day keeps the saved count.
+        # IMPORTANT: keep 'seen' (capped) across the rollover — clearing it let yesterday's still-in-window Square
+        # orders get RE-counted after midnight (phantom 'sold_today'). Dedup memory must survive the daily reset.
+        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0})
+        ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
+def rot_reset_counts():   # manual "start fresh" — zero today's tallies but KEEP 'seen' so the same orders can't recount
+    with rot_lock:
+        ROT_LIVE["day"]=datetime.now().strftime("%Y-%m-%d");ROT_LIVE["available"]=0.0;ROT_LIVE["sold_today"]=0.0
+        ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
+    _rot_save()
 def rot_state():
     with rot_lock:
         _rot_reset_if_needed()
@@ -321,7 +330,14 @@ def _fry_save():
     except Exception: pass
 def _fry_reset_if_needed():
     c=_fry_cfg();today=datetime.now().strftime("%Y-%m-%d")
-    if FRY_LIVE["day"]!=today: FRY_LIVE.update({"day":today,"available":float(c["open"]),"sold_today":0.0,"seen":[]})
+    if FRY_LIVE["day"]!=today:
+        FRY_LIVE.update({"day":today,"available":float(c["open"]),"sold_today":0.0})   # keep 'seen' across rollover (see rot note)
+        FRY_LIVE["seen"]=FRY_LIVE["seen"][-3000:]
+def fry_reset_counts():
+    with fry_lock:
+        FRY_LIVE["day"]=datetime.now().strftime("%Y-%m-%d");FRY_LIVE["available"]=float(_fry_cfg()["open"]);FRY_LIVE["sold_today"]=0.0
+        FRY_LIVE["seen"]=FRY_LIVE["seen"][-3000:]
+    _fry_save()
 def fry_state():
     with fry_lock:
         _fry_reset_if_needed();c=_fry_cfg()
@@ -490,7 +506,7 @@ def square_poll_loop():
                     # count TODAY's sales when due (scheduled → at due-15min; else at order time). skip future + pre-today (stale).
                     def _due(s,d,c):
                         eff=d if (s and d) else c
-                        if eff is None: return True
+                        if eff is None: return False   # no determinable time → don't count/alarm (was True: let undated stale orders slip through)
                         return now>=eff-timedelta(minutes=15) and eff.astimezone().date()==today
                     rb=fb=0.0;rids=[];fids=[]
                     for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in orders:
@@ -2002,6 +2018,12 @@ def api_rot_adjust():
     if "set" in d: rot_set(d.get("set",0))
     else: rot_adjust(float(d.get("delta",0) or 0))
     return jsonify(rot_state())
+
+@app.route("/api/rot_reset",methods=["POST"])
+def api_rot_reset(): rot_reset_counts();return jsonify(rot_state())
+
+@app.route("/api/fry_reset",methods=["POST"])
+def api_fry_reset(): fry_reset_counts();return jsonify(fry_state())
 
 @app.route("/api/rotisserie_upload",methods=["POST"])
 def rotisserie_upload():

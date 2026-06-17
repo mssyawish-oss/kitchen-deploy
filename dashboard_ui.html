@@ -756,6 +756,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="form-row"><div class="label">Or type the exact count</div><input class="input" id="adjust-set" type="number" min="0" style="text-align:center;font-size:20px;"></div>
     <div class="row mt-8"><button class="btn btn-primary" style="flex:1;" onclick="adjustApplySet()">Set exact</button><button class="btn" onclick="closeModal('adjust-modal')">Done</button></div>
+    <button class="btn" style="width:100%;margin-top:10px;font-size:12px;color:var(--muted);" onclick="resetDayCounts()">Reset day &mdash; zero &lsquo;sold today&rsquo; &amp; available</button>
   </div>
 </div>
 
@@ -1859,7 +1860,7 @@ function checkProductsOff(){
       return '<div class="prodoff-row" data-id="'+p.id+'"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div><button class="prodoff-on" onclick="enableProduct(\''+p.id+'\',this)">Turn on</button></div>';
     }).join('');
     b.style.display='block';
-    const minimised=_prodOffMin&&_prodOffMinDay===today;   // minimise lasts the day; expands again each morning
+    const minimised=(_prodOffExpandDay!==today);   // DEFAULT minimised (flashing pill) each morning; expand is opt-in per day
     if(minimised){
       b.classList.add('mini');b.classList.remove('flashing');
       b.innerHTML='<div class="prodoff-mini flashing" onclick="prodOffExpand()" title="tap to view"><span class="num">'+d.off.length+'</span> product'+(d.off.length>1?'s':'')+' switched off &middot; tap to view</div>';
@@ -1875,9 +1876,9 @@ function checkProductsOff(){
     if(alarmOn){startProdAlarm();}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
   }).catch(()=>{});
 }
-let _prodOffMin=false,_prodOffMinDay=null;
-function prodOffMinimise(){_prodOffMin=true;_prodOffMinDay=new Date().toISOString().slice(0,10);checkProductsOff();}
-function prodOffExpand(){_prodOffMin=false;checkProductsOff();}
+let _prodOffExpandDay=null;   // the day the user chose to expand the banner; otherwise it stays minimised
+function prodOffMinimise(){_prodOffExpandDay=null;checkProductsOff();}
+function prodOffExpand(){_prodOffExpandDay=new Date().toISOString().slice(0,10);checkProductsOff();}
 function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
@@ -1916,6 +1917,7 @@ function openAdjust(key){_adjKey=key;const bbq=key==='bbq';
   fetch(bbq?'/api/rot_live':'/api/fry_live').then(r=>r.json()).then(s=>_adjShow(s.available)).catch(()=>{});}
 function adjustStep(delta){fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
 function adjustApplySet(){const n=parseFloat(document.getElementById('adjust-set').value);if(isNaN(n)||n<0){alert('Enter a number (0 or more).');return;}fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:n})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
+function resetDayCounts(){const bbq=_adjKey==='bbq';if(!confirm('Reset '+(bbq?'rotisserie':'fryer')+' counts to fresh?\n\nThis zeroes "sold today" and available. Already-counted Square orders won\'t recount.'))return;fetch(bbq?'/api/rot_reset':'/api/fry_reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(s=>{if(bbq)_rotSig='';else _frySig='';_adjShow(s.available);if(typeof _toast==='function')_toast('Counts reset.');}).catch(()=>alert('Reset failed — is the server updated? (needs a restart)'));}
 function renderServicePage(){const alerts=appData.service_alerts||[],container=document.getElementById('service-container'),empty=document.getElementById('service-empty');if(alerts.length===0){container.innerHTML='';empty.style.display='block';return;}empty.style.display='none';const todayDay=(new Date().getDay()+6)%7,hhmm=nowHHMM();const todayAlerts=alerts.filter(a=>{const days=a.days||[];return days.length===0||days.includes(todayDay);});if(todayAlerts.length===0){container.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center;">No routines scheduled for today.</div>';return;}container.innerHTML=todayAlerts.map(a=>{const key=a.id+'-'+hhmm.slice(0,5);const isNow=hhmm>=a.time&&hhmm<=(a.time.slice(0,3)+String(parseInt(a.time.slice(3))+30).padStart(2,'0'));const dismissed=serviceAlertsDismissed[key];const days=a.days&&a.days.length>0?a.days.map(d=>DNAMES[d]).join(', '):'Every day';return `<div class="alert-card ${(!dismissed&&isNow)?'active-now':''}"><div class="alert-icon">${a.icon||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>'}</div><div style="flex:1;"><div class="alert-title">${a.name}</div><div class="alert-sub">${a.detail||''}</div><div class="alert-time-display">${a.time}</div><div class="alert-days">${days}</div></div>${(!dismissed&&isNow)?`<button class="alert-dismiss" onclick="dismissServiceAlert('${a.id}')">Done &#10003;</button>`:''}</div>`;}).join('');}
 function dismissServiceAlert(id){serviceAlertsDismissed[id+'-'+nowHHMM().slice(0,5)]=true;silenceAlarm();renderServicePage();}
 function openServiceAdmin(){editingAlert=null;setBtn('btn-add-alert','+ Add Routine');renderServiceAdminList();openModal('service-admin-modal');}
