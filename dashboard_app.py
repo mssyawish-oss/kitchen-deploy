@@ -751,6 +751,8 @@ def _sq_enable_variation(vid):
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
         _ENABLE_DBG={"endpoint":"inventory/batch-create","loc":loc,"vid":vid,"raw":res}
         if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
+        if not any(c.get("state")=="IN_STOCK" for c in (res.get("counts") or [])):   # Square silently did nothing → don't claim success
+            return False,"Square didn't apply it from here — switch this one on in the Square app"
         _SQ_OBJ_CACHE.pop(vid,None)
         return True,None
     except Exception as e:
