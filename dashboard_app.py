@@ -733,7 +733,7 @@ def _sq_enable_variation(vid):
         else:                                            # MODIFIER (top-level, addressable)
             obj["modifier_data"]=_clear(obj.get("modifier_data") or {})
         body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert-catalog-objects",data=json.dumps(body).encode(),headers=hdr)
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
         if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
         _SQ_OBJ_CACHE.pop(vid,None)                      # turned on → drop it from the offline cache
