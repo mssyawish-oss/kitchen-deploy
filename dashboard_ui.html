@@ -1672,6 +1672,11 @@ function renderRotcamCard(){
 }
 function renderBenchcamCard(){
   const el=document.getElementById('rl-benchcam');if(!el)return;
+  el.style.display='none';   // bench cam removed from the dashboard — no longer used (rotisserie cam handles counting)
+  const rl=document.getElementById('rot-live');if(rl)rl.classList.remove('bench-min');
+  if(el.dataset.built){const im=document.getElementById('benchcam-stream');if(im)im.src='';if(window._benchPollT){clearInterval(window._benchPollT);window._benchPollT=null;}}
+  return;
+  // eslint-disable-next-line no-unreachable
   const c=appData.rotcam_public||{};
   if(!c.bench_configured||c.feed_enabled===false){el.style.display='none';applyBenchMin();return;}
   el.style.display='';applyBenchMin();
