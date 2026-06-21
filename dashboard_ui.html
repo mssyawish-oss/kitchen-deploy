@@ -1916,6 +1916,16 @@ function prodOffExpand(){_prodOffExpandDay=new Date().toISOString().slice(0,10);
 function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
+let _uiVer=null;   // self-update: reload the app on its own when a new screen build is deployed, so nobody has to manually refresh
+async function checkUiVersion(){
+  try{const r=await fetch('/api/version',{cache:'no-store'});const d=await r.json();if(!d||!d.ui)return;
+    if(_uiVer===null){_uiVer=d.ui;return;}                 // first read = the version we loaded with
+    if(d.ui!==_uiVer){                                      // a newer screen was deployed
+      if(document.querySelector('.modal-overlay.open'))return;   // don't interrupt a tap-sequence; catch it next check
+      location.reload();
+    }
+  }catch(e){}
+}
 function restartDashboard(){if(!confirm('Restart the dashboard now?\n\nThe screen will go offline for about 10–15 seconds and come back on its own.'))return;
   const s=document.getElementById('restart-status');if(s){s.textContent='Restarting…';s.style.color='var(--muted)';}
   _showRestartOverlay();
@@ -2266,6 +2276,7 @@ async function init(){
   setInterval(checkStockPrompt,30000);
   checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
   checkUpdateBanner();setInterval(()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();},60000);   // show 'update ready' banner
+  checkUiVersion();setInterval(checkUiVersion,60000);   // self-update: auto-reload when a new screen build is deployed
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();

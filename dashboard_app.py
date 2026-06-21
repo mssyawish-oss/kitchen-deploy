@@ -570,6 +570,13 @@ def index():
     ui=os.path.join(os.path.dirname(os.path.abspath(__file__)),"dashboard_ui.html")
     with open(ui,encoding="utf-8") as f: return f.read()
 
+@app.route("/api/version")
+def api_version():
+    # UI build id = mtime of the served HTML; changes whenever auto-deploy swaps in a new screen.
+    try: v=int(os.stat(os.path.join(BASE_DIR,"dashboard_ui.html")).st_mtime)
+    except Exception: v=0
+    return jsonify({"ui":v})
+
 def _books_gate_page(setup):
     title="Set a password for Weekly Books" if setup else "Weekly Books — locked"
     sub=("Choose an owner password. You'll need it to view the figures from now on." if setup
