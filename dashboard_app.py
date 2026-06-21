@@ -300,7 +300,7 @@ def rot_state():
         prog=[(min(100,int(round((nowt-la[i])/ck*100))) if (i<len(lv) and lv[i]=="1" and i<len(la) and la[i]>0) else -1) for i in range(6)]
         return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
-                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done","")}
+                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat","")}
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
