@@ -725,8 +725,24 @@ def _sq_enable_variation(vid):
     global _ENABLE_DBG; _ENABLE_DBG=None
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
+    cached=_SQ_OBJ_CACHE.get(vid)
     try:
-        # 'sold_out' is READ-ONLY in the Catalog API — it's an Inventory STATE. To un-86, set the state to IN_STOCK.
+        if cached and cached.get("type")=="MODIFIER":
+            # add-ons aren't inventory-backed → clear sold_out via a catalog upsert of the MODIFIER object
+            obj=copy.deepcopy(cached); vd=obj.get("modifier_data") or {}; los=vd.get("location_overrides") or []; hit=False
+            for ov in los:
+                if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); hit=True
+            if not hit: los.append({"location_id":loc,"sold_out":False})
+            vd["location_overrides"]=los; obj["modifier_data"]=vd
+            body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
+            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+            _ENABLE_DBG={"endpoint":"catalog(mod)","loc":loc,"raw":res}
+            if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
+            cleared=any((not ov.get("sold_out")) for o in (res.get("objects") or []) for ov in ((o.get("modifier_data") or {}).get("location_overrides") or []) if ov.get("location_id")==loc)
+            if not cleared: return False,"Square won't clear this add-on from here — switch it on in the Square app"
+            _SQ_OBJ_CACHE.pop(vid,None); return True,None
+        # item variation: 'sold_out' is READ-ONLY in the Catalog API — it's an Inventory STATE. Un-86 = set IN_STOCK.
         now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         body={"idempotency_key":_secrets.token_hex(16),
               "changes":[{"type":"PHYSICAL_COUNT","physical_count":{
