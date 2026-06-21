@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, re
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, re, copy
 from datetime import datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -659,11 +659,13 @@ def _sq_headers():
     cfg=db.get("square_config",{}) or {}; token=(cfg.get("access_token") or "").strip()
     if not token: return None
     return {"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"}
+_SQ_OBJ_CACHE={}   # id -> full CatalogObject (variation/modifier) captured during the offline scan, so we can
+                   # upsert it back ON without re-fetching by id (Square's retrieve-by-id 404s for these variations)
 def _sq_offline_products():
     # returns [{id,version,item,variation}] for item-variations marked SOLD OUT at this location
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return None,"Square not configured"
-    out=[]
+    out=[]; _SQ_OBJ_CACHE.clear()
     try:
         # --- ITEM variations marked sold out at this location ---
         cursor=None
@@ -679,6 +681,7 @@ def _sq_offline_products():
                     for ov in vd.get("location_overrides") or []:
                         if ov.get("location_id")==loc and ov.get("sold_out"):
                             out.append({"id":v.get("id"),"version":v.get("version"),"item":name,"variation":(vd.get("name") or ""),"kind":"item"})
+                            _SQ_OBJ_CACHE[v.get("id")]=v
             cursor=data.get("cursor")
             if not cursor: break
         # --- MODIFIERS (add-ons) marked sold out at this location ---
@@ -694,6 +697,7 @@ def _sq_offline_products():
                 for ov in md.get("location_overrides") or []:
                     if ov.get("location_id")==loc and ov.get("sold_out"):
                         out.append({"id":obj.get("id"),"version":obj.get("version"),"item":name,"variation":"add-on","kind":"modifier"})
+                        _SQ_OBJ_CACHE[obj.get("id")]=obj
             cursor=data.get("cursor")
             if not cursor: break
         return out,None
@@ -708,9 +712,13 @@ def _sq_enable_variation(vid):
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
     try:
-        with urllib.request.urlopen(urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr),timeout=15,context=SSL_CTX) as r:
-            obj=(json.loads(r.read().decode()) or {}).get("object")
-        if not obj: return False,"product not found"
+        obj=_SQ_OBJ_CACHE.get(vid)
+        if obj is not None:
+            obj=copy.deepcopy(obj)                       # use the object captured during the scan (retrieve-by-id 404s for these)
+        else:                                            # not in cache → fall back to a fresh fetch by id
+            with urllib.request.urlopen(urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr),timeout=15,context=SSL_CTX) as r:
+                obj=(json.loads(r.read().decode()) or {}).get("object")
+        if not obj: return False,"product not found (re-open the list and try again)"
         dkey="modifier_data" if obj.get("type")=="MODIFIER" else "item_variation_data"
         vd=obj.get(dkey) or {}; los=vd.get("location_overrides") or []; found=False
         for ov in los:
@@ -721,6 +729,7 @@ def _sq_enable_variation(vid):
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert-catalog-objects",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
         if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
+        _SQ_OBJ_CACHE.pop(vid,None)                      # turned on → drop it from the offline cache
         return True,None
     except Exception as e:
         rd=getattr(e,"read",None)
