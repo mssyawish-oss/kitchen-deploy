@@ -272,9 +272,9 @@ _first_sweep=False   # on startup, sweep all of TODAY's sales once to catch up; 
 def _rot_cfg():
     r=db.get("rotisserie") or {}
     return {"open_rows":r.get("open_rows",2),"bpr":r.get("birds_per_row",4)}
-def _rot_cook_secs():   # expected full cook time → used only for the "how cooked %" progress estimate
-    try: return max(60,int((db.get("rotisserie") or {}).get("cook_min",55)))*60
-    except Exception: return 55*60
+def _rot_cook_secs():   # average full cook time → ONLY drives the rough "how cooked %" progress gauge (NOT doneness — colour does that; probes are the accurate check). Varies with oven heat / burners; 65 min is the average.
+    try: return max(60,int((db.get("rotisserie") or {}).get("cook_min",65)))*60
+    except Exception: return 65*60
 def _rot_save():       # persist live counts so a server restart doesn't reset them
     with rot_lock: snap={k:ROT_LIVE[k] for k in ("day","available","sold_today","seen")}
     try:
