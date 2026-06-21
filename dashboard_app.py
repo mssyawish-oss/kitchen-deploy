@@ -1610,29 +1610,40 @@ def _rotcam_read():
         if err: return None,None,err
     rows,err=_rotcam_count(jpeg)
     return rows,jpeg,err
+def _rot_min_cook_secs():
+    try: return max(0,int((db.get("rotisserie") or {}).get("min_cook_min",35)))*60
+    except Exception: return 35*60
+_ROT_OFF_CONFIRM=45   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
     if not (isinstance(pat,str) and len(pat)==6 and set(pat)<=set("01")):
-        # no valid per-shelf pattern → fall back to count-based smoothing
+        # no valid per-shelf pattern → just track the cooking count for display; do NOT credit (too unreliable)
         h=ROTCAM["hist"]; h.append(rows); ROTCAM["hist"]=h[-4:]
-        if len(h)>=2 and h[-1]==h[-2]:
-            confirmed=h[-1]; prev=ROTCAM["cooking"]
-            if confirmed!=prev:
-                if confirmed<prev: rot_put_on(prev-confirmed)   # count dropped → row(s) came off the spit → credit straight to available
-                ROTCAM["cooking"]=confirmed
+        if len(h)>=2 and h[-1]==h[-2]: ROTCAM["cooking"]=h[-1]
         return
-    # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then act on shelves
-    # that went loaded(1)→empty(0) — each one is a cooked row pulled → +birds_per_row to available.
+    # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then run a per-shelf DWELL state
+    # machine. A row only credits if it was loaded continuously long enough to be a real cook (>= min_cook) AND
+    # is then sustained-empty (not a momentary glare/occlusion flicker). This stops the over-count (e.g. 72).
     ph=ROTCAM.get("pat_hist",[]); ph.append(pat); ROTCAM["pat_hist"]=ph[-3:]
-    if len(ph)>=2 and ph[-1]==ph[-2]:
-        confirmed=ph[-1]; prev=ROTCAM.get("cooking_pat","")
-        if confirmed!=prev:
-            if prev and len(prev)==6:
-                came_off=sum(1 for i in range(6) if prev[i]=="1" and confirmed[i]=="0")
-                if came_off>0: rot_put_on(came_off)   # shelf went loaded→empty → cooked row(s) pulled off the spit → credit straight to available (rotisserie alone; bench cam is just the live view)
-            ROTCAM["cooking_pat"]=confirmed
-            ROTCAM["cooking"]=confirmed.count("1")
+    if not (len(ph)>=2 and ph[-1]==ph[-2]): return       # wait for two matching reads
+    confirmed=ph[-1]; now=time.time()
+    ROTCAM["cooking_pat"]=confirmed; ROTCAM["cooking"]=confirmed.count("1")
+    la=ROTCAM.setdefault("shelf_loaded_at",[0,0,0,0,0,0])   # when each shelf first went loaded
+    oa=ROTCAM.setdefault("shelf_off_at",[0,0,0,0,0,0])      # when each shelf first read empty (after being loaded)
+    if len(la)!=6: la=ROTCAM["shelf_loaded_at"]=[0,0,0,0,0,0]
+    if len(oa)!=6: oa=ROTCAM["shelf_off_at"]=[0,0,0,0,0,0]
+    min_cook=_rot_min_cook_secs(); credit=0
+    for i in range(6):
+        if confirmed[i]=="1":                              # loaded
+            oa[i]=0
+            if la[i]==0: la[i]=now
+        elif la[i]>0:                                      # empty, and it was loaded → candidate removal
+            if oa[i]==0: oa[i]=now                         # start the "off" timer
+            elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
+                if oa[i]-la[i]>=min_cook: credit+=1        # was up long enough to be a genuinely cooked row
+                la[i]=0; oa[i]=0                            # consume this shelf
+    if credit>0: rot_put_on(credit)                        # +birds_per_row per genuinely-cooked row that came off
 def _hm_to_min(s,d):
     try: h,m=str(s).split(":"); return int(h)*60+int(m)
     except Exception: return d
