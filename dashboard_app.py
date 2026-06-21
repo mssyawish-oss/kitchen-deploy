@@ -719,8 +719,10 @@ def _sq_offline_products():
             try: return None,"Square error: "+e.read().decode()[:180]
             except Exception: pass
         return None,str(e)
+_ENABLE_DBG=None
 def _sq_enable_variation(vid):
     # clear SOLD OUT for one variation OR modifier at this location (turn it back on)
+    global _ENABLE_DBG; _ENABLE_DBG=None
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
     try:
@@ -736,6 +738,7 @@ def _sq_enable_variation(vid):
         body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        _ENABLE_DBG={"type":obj.get("type"),"loc":loc,"sent_overrides":los,"sent_version":obj.get("version"),"raw":res}
         if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
         if not (res.get("objects") or res.get("id_mappings")):   # upsert returned nothing changed → treat as failure, don't show a false "On"
             return False,"Square accepted the request but reported no change"
@@ -757,7 +760,9 @@ def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
     ok,err=_sq_enable_variation(vid)
-    return jsonify({"ok":ok,"error":err})
+    out={"ok":ok,"error":err}
+    if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
+    return jsonify(out)
 # ==================================================================================
 
 # ── Google (Gmail + Drive) via OAuth refresh token, stored in db['google_config'] ──
