@@ -726,23 +726,16 @@ def _sq_enable_variation(vid):
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
     try:
-        obj=_SQ_OBJ_CACHE.get(vid)
-        if obj is None: return False,"product not found (open the sold-out list first, then tap Turn on)"
-        obj=copy.deepcopy(obj)                           # the VARIATION (or MODIFIER) object captured during the scan — upsert it directly
-        dkey="modifier_data" if obj.get("type")=="MODIFIER" else "item_variation_data"
-        vd=obj.get(dkey) or {}; los=vd.get("location_overrides") or []; hit=False
-        for ov in los:
-            if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); hit=True
-        if not hit: los.append({"location_id":loc,"sold_out":False})
-        vd["location_overrides"]=los; obj[dkey]=vd
-        body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
+        # 'sold_out' is READ-ONLY in the Catalog API — it's an Inventory STATE. To un-86, set the state to IN_STOCK.
+        now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        body={"idempotency_key":_secrets.token_hex(16),
+              "changes":[{"type":"PHYSICAL_COUNT","physical_count":{
+                  "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":"1","occurred_at":now_iso}}]}
+        req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-        _ENABLE_DBG={"type":obj.get("type"),"loc":loc,"sent_overrides":los,"sent_version":obj.get("version"),"raw":res}
+        _ENABLE_DBG={"endpoint":"inventory/batch-create","loc":loc,"vid":vid,"raw":res}
         if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
-        if not (res.get("objects") or res.get("id_mappings")):   # upsert returned nothing changed → treat as failure, don't show a false "On"
-            return False,"Square accepted the request but reported no change"
-        _SQ_OBJ_CACHE.pop(vid,None)                      # turned on → drop it from the offline cache
+        _SQ_OBJ_CACHE.pop(vid,None)
         return True,None
     except Exception as e:
         rd=getattr(e,"read",None)
