@@ -686,7 +686,7 @@ def _sq_offline_products():
                     for ov in vd.get("location_overrides") or []:
                         if ov.get("location_id")==loc and ov.get("sold_out"):
                             out.append({"id":v.get("id"),"version":v.get("version"),"item":name,"variation":(vd.get("name") or ""),"kind":"item"})
-                            _SQ_OBJ_CACHE[v.get("id")]=v
+                            _SQ_OBJ_CACHE[v.get("id")]=obj   # cache the PARENT ITEM (variations can't be addressed by id) keyed by the variation id
             cursor=data.get("cursor")
             if not cursor: break
         # --- MODIFIERS (add-ons) marked sold out at this location ---
@@ -718,18 +718,20 @@ def _sq_enable_variation(vid):
     if not hdr or not loc: return False,"Square not configured"
     try:
         obj=_SQ_OBJ_CACHE.get(vid)
-        if obj is not None:
-            obj=copy.deepcopy(obj)                       # use the object captured during the scan (retrieve-by-id 404s for these)
-        else:                                            # not in cache → fall back to a fresh fetch by id
-            with urllib.request.urlopen(urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr),timeout=15,context=SSL_CTX) as r:
-                obj=(json.loads(r.read().decode()) or {}).get("object")
-        if not obj: return False,"product not found (re-open the list and try again)"
-        dkey="modifier_data" if obj.get("type")=="MODIFIER" else "item_variation_data"
-        vd=obj.get(dkey) or {}; los=vd.get("location_overrides") or []; found=False
-        for ov in los:
-            if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); found=True
-        if not found: los.append({"location_id":loc,"sold_out":False})
-        vd["location_overrides"]=los; obj[dkey]=vd
+        if obj is None: return False,"product not found (open the sold-out list first, then tap Turn on)"
+        obj=copy.deepcopy(obj)                           # captured during the scan
+        def _clear(vd):                                  # clear sold_out for THIS location on a variation/modifier_data block
+            los=vd.get("location_overrides") or []; hit=False
+            for ov in los:
+                if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); hit=True
+            if not hit: los.append({"location_id":loc,"sold_out":False})
+            vd["location_overrides"]=los; return vd
+        if obj.get("type")=="ITEM":                      # cached object is the PARENT ITEM → clear the target variation inside it, upsert the ITEM (variations aren't addressable by id)
+            tgt=next((v for v in ((obj.get("item_data") or {}).get("variations") or []) if v.get("id")==vid),None)
+            if not tgt: return False,"variation not found in item"
+            tgt["item_variation_data"]=_clear(tgt.get("item_variation_data") or {})
+        else:                                            # MODIFIER (top-level, addressable)
+            obj["modifier_data"]=_clear(obj.get("modifier_data") or {})
         body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert-catalog-objects",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
