@@ -703,7 +703,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header"><div class="page-title">Today's Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">Set today's list</button><button class="btn" onclick="openPrepManage()">Items</button></div></div>
+      <div class="page-header"><div class="page-title">Today's Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" onclick="resetPrepDone()">Reset done</button><button class="btn" onclick="openPrepManage()">Items</button></div></div>
       <div id="prep-list"></div>
     </div>
     <div class="page" id="page-cameras">
@@ -745,7 +745,13 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <div class="modal-overlay" id="prep-build-modal">
   <div class="modal" style="max-width:760px;">
     <div class="modal-header"><div class="modal-title">SET TODAY'S PREP</div><button class="modal-close" onclick="closeModal('prep-build-modal')">Close</button></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Tap the items the afternoon staff need to prep today. Tap again to unselect.</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tap the items the afternoon staff need to prep, and set each one's priority. Tap again to unselect.</div>
+    <div class="row" style="gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+      <select class="input" id="prep-saved-sel" style="flex:1;min-width:150px;"><option value="">Load a saved list…</option></select>
+      <button class="btn" onclick="loadPrepSaved()">Load</button>
+      <button class="btn btn-danger" onclick="deletePrepSaved()" title="Delete the selected saved list">&#10005;</button>
+      <button class="btn" onclick="savePrepSaved()">Save current as…</button>
+    </div>
     <div id="prep-build-grid" class="prep-grid"></div>
     <button class="btn btn-primary" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepToday()">Save today's prep list</button>
   </div>
@@ -1330,7 +1336,7 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleDayPill(el){el.classList.toggle('on');}
 function toggleOrderDay(el){el.classList.toggle('on');updateOrderPreview();}
-async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};if(typeof applyFriedVis==='function')applyFriedVis();}
+async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};appData.prep_saved_lists=appData.prep_saved_lists||[];if(typeof applyFriedVis==='function')applyFriedVis();}
 async function saveAppData(){try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(appData)});}catch(e){}}
 // save only specific top-level keys — avoids overwriting another device's unrelated changes
 async function saveKeys(keys){const body={};keys.forEach(k=>body[k]=appData[k]);try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){}}
@@ -2007,12 +2013,12 @@ function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.get
 function renderPrepPage(){
   const box=document.getElementById('prep-list');if(!box)return;
   const today=_prepToday();const pt=appData.prep_today||{};const presets=appData.prep_presets||[];
-  const items=((pt.date===today?(pt.items||[]):[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));
-  const done=(pt.date===today?(pt.done||{}):{});
+  const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));   // list persists until rebuilt or reset — does NOT auto-clear daily (so unfinished items stay visible)
+  const done=(pt.done||{});
   const badge=document.getElementById('jobs-badge');
   if(!items.length){
     if(badge)badge.className='nav-badge';
-    box.innerHTML='<div class="empty-state" style="padding:34px 18px;text-align:center;"><div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:13px;color:var(--muted);line-height:1.6;">Morning staff: tap <b>Set today\'s list</b> at the top and choose what the afternoon shift needs to prep.<br>No items to choose from yet? Tap <b>Items</b> to create them.</div></div>';
+    box.innerHTML='<div class="empty-state" style="padding:34px 18px;text-align:center;"><div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:13px;color:var(--muted);line-height:1.6;">Tap <b>Set list</b> at the top to choose what needs prepping (and load a saved list if you have one).<br>No items to choose from yet? Tap <b>Items</b> to create them.</div></div>';
     return;
   }
   const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
@@ -2054,7 +2060,12 @@ function completePrep(id){
   });
 }
 let _prepPick=new Set(),_prepPickPri={};
-function openPrepBuild(){const pt=appData.prep_today||{};const isT=pt.date===_prepToday();_prepPick=new Set(isT?(pt.items||[]):[]);_prepPickPri=Object.assign({},isT?(pt.pri||{}):{});renderPrepBuildGrid();openModal('prep-build-modal');}
+function openPrepBuild(){const pt=appData.prep_today||{};_prepPick=new Set(pt.items||[]);_prepPickPri=Object.assign({},pt.pri||{});renderPrepSavedSel();renderPrepBuildGrid();openModal('prep-build-modal');}
+function resetPrepDone(){if(!confirm('Clear all the ticks? The list stays — every item goes back to not-done.'))return;appData.prep_today=appData.prep_today||{};appData.prep_today.done={};saveKeys(['prep_today']);renderPrepPage();}
+function renderPrepSavedSel(){const sel=document.getElementById('prep-saved-sel');if(!sel)return;const lists=appData.prep_saved_lists||[];sel.innerHTML='<option value="">Load a saved list…</option>'+lists.map(l=>'<option value="'+l.id+'">'+_mEsc(l.name)+' ('+(l.items||[]).length+')</option>').join('');}
+function loadPrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l)return;_prepPick=new Set(l.items||[]);_prepPickPri=Object.assign({},l.pri||{});renderPrepBuildGrid();}
+function savePrepSaved(){const ids=[..._prepPick];if(!ids.length){alert('Pick some items first, then save the list.');return;}const name=(prompt('Name this saved list (e.g. Weekday, Weekend):','')||'').trim();if(!name)return;const pri={};ids.forEach(id=>pri[id]=_prepPickPri[id]||'med');appData.prep_saved_lists=appData.prep_saved_lists||[];const ex=appData.prep_saved_lists.find(l=>l.name.toLowerCase()===name.toLowerCase());if(ex){ex.items=ids;ex.pri=pri;}else appData.prep_saved_lists.push({id:'pl'+Date.now().toString(36),name:name,items:ids,pri:pri});saveKeys(['prep_saved_lists']);renderPrepSavedSel();if(typeof _toast==='function')_toast('Saved list "'+name+'".');}
+function deletePrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l||!confirm('Delete saved list "'+l.name+'"?'))return;appData.prep_saved_lists=(appData.prep_saved_lists||[]).filter(x=>x.id!==sel.value);saveKeys(['prep_saved_lists']);renderPrepSavedSel();}
 function setPrepPickPri(id,pri){_prepPickPri[id]=pri;_prepPick.add(id);renderPrepBuildGrid();}
 function renderPrepBuildGrid(){
   const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
@@ -2067,7 +2078,7 @@ function togglePrepPick(id){if(_prepPick.has(id)){_prepPick.delete(id);delete _p
 function savePrepToday(){
   const today=_prepToday();const items=(appData.prep_presets||[]).filter(p=>_prepPick.has(p.id)).map(p=>p.id);
   const pri={};items.forEach(id=>{pri[id]=_prepPickPri[id]||'med';});
-  const pt=appData.prep_today||{};const prev=(pt.date===today?(pt.done||{}):{});const done={};items.forEach(id=>{if(prev[id])done[id]=prev[id];});
+  const pt=appData.prep_today||{};const prev=(pt.done||{});const done={};items.forEach(id=>{if(prev[id])done[id]=prev[id];});
   appData.prep_today={date:today,items:items,done:done,pri:pri};saveKeys(['prep_today']);closeModal('prep-build-modal');renderPrepPage();
 }
 let _prepFile=null;
@@ -2225,7 +2236,6 @@ function checkAllReminders(){
   });
   // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM)
   (function(){const pt=appData.prep_today||{};
-    if(pt.date!==_prepToday())return;
     const presets=appData.prep_presets||[];const doneMap=pt.done||{};
     (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind||p.remind!==now)return;if(doneMap[iid])return;
       const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
@@ -2247,8 +2257,8 @@ function updatePackdownBadge(){  // Checklist tab badge strobes whenever there a
 }
 function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so its icon strobes when prep is outstanding)
   const badge=document.getElementById('jobs-badge');if(!badge)return;
-  const today=_prepToday();const pt=appData.prep_today||{};
-  const pend=(pt.date===today)?((pt.items||[]).filter(id=>!((pt.done||{})[id])).length):0;
+  const pt=appData.prep_today||{};
+  const pend=((pt.items||[]).filter(id=>!((pt.done||{})[id])).length);
   badge.className='nav-badge'+(pend>0?' show':'');
 }
 
