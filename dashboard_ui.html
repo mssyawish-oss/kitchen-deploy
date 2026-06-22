@@ -1295,8 +1295,8 @@ const SIDE_ICONS={
 function _sideSvg(p){return `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${SIDE_ICONS[p]||''}</svg>`;}
 function _setSidebar(show){const s=document.getElementById('app-shell');if(window.matchMedia('(max-width:600px)').matches){s.classList.toggle('drawer-open',show);return;}s.classList.toggle('nosidebar',!show);try{localStorage.setItem('nosidebar',show?'0':'1');}catch(e){}}
 function toggleSidebar(){const s=document.getElementById('app-shell');const mobile=window.matchMedia('(max-width:600px)').matches;const open=mobile?s.classList.contains('drawer-open'):!s.classList.contains('nosidebar');
-  if(!open&&!gateUnlocked('menu')){requirePin('Manager Code','The menu needs a Manager or Admin PIN',()=>{sectionUnlockedAt['menu']=Date.now();_setSidebar(true);},SETTINGS_ROLES);return;}
-  _setSidebar(!open);}
+  if(open){_setSidebar(false);return;}                                   // closing → free
+  requirePin('Manager Code','The menu needs a Manager or Admin PIN',()=>{_setSidebar(true);},SETTINGS_ROLES);}   // opening → ALWAYS ask (no grace window)
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
