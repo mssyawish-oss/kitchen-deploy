@@ -568,7 +568,8 @@ def sw():
 @app.route("/")
 def index():
     ui=os.path.join(os.path.dirname(os.path.abspath(__file__)),"dashboard_ui.html")
-    with open(ui,encoding="utf-8") as f: return f.read()
+    with open(ui,encoding="utf-8") as f: html=f.read()
+    return Response(html,mimetype="text/html",headers={"Cache-Control":"no-store, must-revalidate"})  # always serve the freshest screen (no stale cached copy on tablets)
 
 @app.route("/api/netinfo")
 def api_netinfo():
