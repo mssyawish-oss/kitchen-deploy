@@ -563,7 +563,7 @@ def app_icon():
 
 @app.route("/sw.js")
 def sw():
-    return Response("self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));",mimetype="application/javascript")
+    return Response("self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));await self.clients.claim();const cs=await self.clients.matchAll();cs.forEach(c=>c.navigate&&c.navigate(c.url));})()));self.addEventListener('fetch',e=>{if(e.request.mode==='navigate'){e.respondWith(fetch(e.request));return;}e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});",mimetype="application/javascript")
 
 @app.route("/")
 def index():
