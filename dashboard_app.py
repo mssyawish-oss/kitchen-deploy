@@ -23,8 +23,12 @@ def load_data():
     return {"suppliers":[],"products":[],"recipes":[],"packdown_tasks":[],"packdown_log":[],"service_alerts":[],"quiet_jobs":[],"email_config":{},"staff":[]}
 
 def save_data(data):
+    # compact (no indent → much smaller/faster write) + atomic replace so a crash mid-write can't corrupt the file
     try:
-        with open(DATA_FILE,"w",encoding="utf-8") as f: json.dump(data,f,indent=2)
+        s=json.dumps(data,separators=(",",":"))
+        tmp=DATA_FILE+".tmp"
+        with open(tmp,"w",encoding="utf-8") as f: f.write(s)
+        os.replace(tmp,DATA_FILE)
     except Exception as e: print(f"Save error:{e}")
 
 db = load_data()
@@ -514,10 +518,12 @@ def square_poll_loop():
                         if eff is None: return False   # no determinable time → don't count/alarm (was True: let undated stale orders slip through)
                         return now>=eff-timedelta(minutes=15) and eff.astimezone().date()==today
                     rb=fb=0.0;rids=[];fids=[]
+                    with rot_lock: _rseen=set(ROT_LIVE["seen"])      # snapshot under the lock → no double-count race vs rot_deduct mutating 'seen'
+                    with fry_lock: _fseen=set(FRY_LIVE["seen"])
                     for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in orders:
                         if not _due(s,d,c): continue
-                        db_=b if (b>0 and oid not in ROT_LIVE["seen"]) else 0
-                        dp_=p if (p>0 and oid not in FRY_LIVE["seen"]) else 0
+                        db_=b if (b>0 and oid not in _rseen) else 0
+                        dp_=p if (p>0 and oid not in _fseen) else 0
                         if db_: rb+=db_;rids.append(oid)
                         if dp_: fb+=dp_;fids.append(oid)
                         if db_ or dp_: sales_feed_add(oid,db_,dp_,s,items,src,(d if (s and d) else c))
@@ -2048,17 +2054,18 @@ def test_print():
 
 @app.route("/api/data")
 def get_db():
+    with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in db.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config","cameras")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config","cameras")}
     safe["cameras_public"]=[]
-    for c in (db.get("cameras") or []):
+    for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
         item["has_rtsp"]=bool((c.get("rtsp_url") or "").strip())
         safe["cameras_public"].append(item)
-    cc=db.get("camera_config") or {}
+    cc=snap.get("camera_config") or {}
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
-    rc=db.get("rotcam_config") or {}
+    rc=snap.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
     safe["rotcam_public"]["bench_user"]=rc.get("bench_user","")   # username is not secret — show it so it can be verified
