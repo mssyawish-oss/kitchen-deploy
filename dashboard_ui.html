@@ -2003,7 +2003,7 @@ function saveRecipe(){const name=document.getElementById('recipe-name-input').va
 function deleteRecipe(i){if(!confirm('Delete?'))return;appData.recipes.splice(i,1);saveAppData();renderRecipesPage();}
 
 // ===== TODAY'S PREP (preset items → morning picks → afternoon checklist w/ photo) =====
-function _prepToday(){return new Date().toISOString().slice(0,10);}
+function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
 function renderPrepPage(){
   const box=document.getElementById('prep-list');if(!box)return;
   const today=_prepToday();const pt=appData.prep_today||{};const presets=appData.prep_presets||[];
@@ -2225,7 +2225,7 @@ function checkAllReminders(){
   });
   // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM)
   (function(){const pt=appData.prep_today||{};
-    if(pt.date!==(new Date().toISOString().slice(0,10)))return;
+    if(pt.date!==_prepToday())return;
     const presets=appData.prep_presets||[];const doneMap=pt.done||{};
     (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind||p.remind!==now)return;if(doneMap[iid])return;
       const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
@@ -2247,7 +2247,7 @@ function updatePackdownBadge(){  // Checklist tab badge strobes whenever there a
 }
 function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so its icon strobes when prep is outstanding)
   const badge=document.getElementById('jobs-badge');if(!badge)return;
-  const today=new Date().toISOString().slice(0,10);const pt=appData.prep_today||{};
+  const today=_prepToday();const pt=appData.prep_today||{};
   const pend=(pt.date===today)?((pt.items||[]).filter(id=>!((pt.done||{})[id])).length):0;
   badge.className='nav-badge'+(pend>0?' show':'');
 }
