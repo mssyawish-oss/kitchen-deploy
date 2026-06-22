@@ -280,6 +280,7 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 @media(min-width:900px){
   #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 0 auto;}
 }
+body.hide-fried #rl-fry,body.hide-fried #batches-head,body.hide-fried #timers-grid{display:none!important;}   /* Settings → hide fried-chicken batches + stock */
 #page-probes .probe-card,#page-probes .timer-card{justify-content:flex-start;gap:8px;}
 #page-probes .gauge{width:min(108px,15vh);}
 #page-probes .probe-ic{width:min(44px,7vh);height:min(44px,7vh);flex-shrink:0;}
@@ -675,7 +676,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div class="sec-head"><span>Probes</span></div>
       <div class="probes-grid" id="probes-grid"></div>
-      <div class="sec-head"><span>Batches</span></div>
+      <div class="sec-head" id="batches-head"><span>Batches</span></div>
       <div class="timers-grid" id="timers-grid"></div>
     </div>
     <div class="page" id="page-stock">
@@ -951,6 +952,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div style="font-size:13px;color:var(--muted);margin:0 0 8px 26px;">Remind every <select id="ft-stock-prompt-hrs" class="input" style="width:auto;display:inline-block;padding:3px 6px;font-size:13px;"><option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option><option value="6">6 hours</option></select> during trading</div>
     <button class="btn btn-primary" style="width:100%;" onclick="saveFeatures()">Save prompt setting</button>
     <div id="ft-status" style="font-size:12px;margin-top:6px;min-height:14px;"></div>
+    <div class="divider"></div>
+    <div class="section-title">Display</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px;cursor:pointer;"><input type="checkbox" id="ft-fried" style="width:18px;height:18px;" onchange="saveFriedVis(this.checked)"> Show fried-chicken batches &amp; stock</label>
+    <div style="font-size:13px;color:var(--muted);margin:0 0 8px 26px;">Turn off to hide the fried batch timers and the Fried stock card (that part's still a manual cook flow).</div>
     <div class="divider"></div>
     <div class="section-title">Hand-out Alarm (ready-now items)</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">An order containing any of these items rings an alarm on the Temp screen until it's handed out (tap Done). One per line — matches Square product names (partial, not case-sensitive).</div>
@@ -1320,7 +1325,7 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleDayPill(el){el.classList.toggle('on');}
 function toggleOrderDay(el){el.classList.toggle('on');updateOrderPreview();}
-async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};}
+async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};if(typeof applyFriedVis==='function')applyFriedVis();}
 async function saveAppData(){try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(appData)});}catch(e){}}
 // save only specific top-level keys — avoids overwriting another device's unrelated changes
 async function saveKeys(keys){const body={};keys.forEach(k=>body[k]=appData[k]);try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){}}
@@ -2122,7 +2127,9 @@ function toggleSettingsSection(sec){if(_setCollapsed.has(sec))_setCollapsed.dele
   const modal=document.querySelector('#settings-modal .modal');if(modal){const h=[...modal.querySelectorAll('.sec-head')].find(x=>x.dataset.sec===sec);if(h)h.classList.toggle('collapsed',_setCollapsed.has(sec));}
   _applySettingsVis();}
 function openSettingsModal(){if(!gateUnlocked('settings')){requirePin('Manager Code','Settings needs a Manager or Admin PIN',u=>{sectionUnlockedAt['settings']=Date.now();_openSettingsModal();},SETTINGS_ROLES);return;}_openSettingsModal();}
-function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-prompt',appData.stock_prompt_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
+function applyFriedVis(){document.body.classList.toggle('hide-fried',appData.fried_enabled===false);}
+function saveFriedVis(on){appData.fried_enabled=!!on;applyFriedVis();fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fried_enabled:!!on})}).catch(()=>{});}
+function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-prompt',appData.stock_prompt_enabled);set('ft-fried',appData.fried_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function saveFeatures(){const body={stock_prompt_enabled:document.getElementById('ft-stock-prompt').checked,stock_prompt_hours:parseInt((document.getElementById('ft-stock-prompt-hrs')||{}).value||'1')};const s=document.getElementById('ft-status');s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';s.style.color=d.ok?'var(--green)':'var(--red)';loadAppData();});}
 // ── Alarm Center UI ──
 const _IV_OPTS=[['Fast',600],['Quick',1000],['Normal',2000],['Relaxed',3600],['Gentle',6000],['Slow',10000]];
