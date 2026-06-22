@@ -570,6 +570,19 @@ def index():
     ui=os.path.join(os.path.dirname(os.path.abspath(__file__)),"dashboard_ui.html")
     with open(ui,encoding="utf-8") as f: return f.read()
 
+@app.route("/api/netinfo")
+def api_netinfo():
+    ips=[]
+    try:
+        s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.connect(("8.8.8.8",80));ips.append(s.getsockname()[0]);s.close()
+    except Exception: pass
+    try:
+        for ai in socket.getaddrinfo(socket.gethostname(),None,socket.AF_INET):
+            a=ai[4][0]
+            if a not in ips and not a.startswith("127."): ips.append(a)
+    except Exception: pass
+    return jsonify({"hostname":socket.gethostname(),"ips":ips,"port":8080})
+
 @app.route("/api/version")
 def api_version():
     # UI build id = mtime of the served HTML; changes whenever auto-deploy swaps in a new screen.
