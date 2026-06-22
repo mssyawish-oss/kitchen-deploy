@@ -276,11 +276,12 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 #page-probes .sec-head{flex-shrink:0;margin:4px 2px 0;}
 #page-probes .probes-grid{flex:0 0 auto;}
 #page-probes .timers-grid{flex:0 0 auto;}
-@media(min-width:900px){  /* installed-app / touchscreen window has no browser bars → let the grids grow to fill the extra height instead of leaving empty space at the bottom */
-  #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 1 0;min-height:0;}
+/* fill spare vertical space on big screens, but NEVER shrink a card below the size its content (the timer ring) needs — that was clipping the rings on shorter tablets */
+@media(min-width:900px){
+  #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 0 auto;}
 }
 #page-probes .probe-card,#page-probes .timer-card{justify-content:flex-start;gap:8px;}
-#page-probes .gauge{width:min(120px,17vh);}
+#page-probes .gauge{width:min(108px,15vh);}
 #page-probes .probe-ic{width:min(44px,7vh);height:min(44px,7vh);flex-shrink:0;}
 #page-probes .gauge{flex-shrink:0;}
 #page-probes .probe-badge,#page-probes .rl-chip{flex-shrink:0;}
