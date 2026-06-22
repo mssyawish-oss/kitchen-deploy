@@ -467,6 +467,38 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .set-tab.on{background:var(--amber);border-color:var(--amber);color:#1a1205;}
 .filter-chip.on{background:var(--amber-dim);border-color:var(--amber);color:#fde68a;box-shadow:0 0 0 1px rgba(251,191,36,.25);}
 .stock-group-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 6px;padding-bottom:6px;border-bottom:2px solid var(--border2);font-family:var(--font-mono);font-weight:700;font-size:16px;color:var(--text);}
+/* ── Stock rebuild ── */
+.stk-search{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:15px;padding:11px 14px;border-radius:11px;outline:none;margin-bottom:10px;}
+.stk-search:focus{border-color:var(--amber);}
+.stk-summary{display:none;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-radius:11px;margin:2px 0 12px;font-size:14px;font-weight:600;}
+.stk-summary.ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);}
+.stk-summary.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.38);color:var(--amber);}
+.stk-summary .btn{padding:7px 14px;}
+.stk-sup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 8px;font-weight:700;font-size:15px;color:var(--text);}
+.stk-sup-need{font-size:11px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.15);padding:3px 9px;border-radius:20px;}
+.stk-card{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-left:4px solid var(--border2);border-radius:12px;padding:10px 12px;margin-bottom:8px;}
+.stk-card.ok{border-left-color:var(--green);}
+.stk-card.low{border-left-color:var(--amber);}
+.stk-info{flex:1;min-width:0;}
+.stk-name{font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.stk-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.stk-pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;background:var(--surface);color:var(--muted);flex-shrink:0;}
+.stk-pill.ok{background:rgba(34,197,94,.15);color:var(--green);}
+.stk-pill.low{background:rgba(245,158,11,.18);color:var(--amber);}
+.stk-stepper{display:flex;align-items:center;background:var(--surface);border:1px solid var(--border2);border-radius:10px;overflow:hidden;flex-shrink:0;}
+.stk-stepper button{width:40px;height:42px;background:transparent;border:none;color:var(--text);font-size:23px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+.stk-stepper button:active{background:var(--surface2);}
+.stk-stepper input{width:50px;height:42px;background:transparent;border:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);color:var(--text);font-size:16px;font-family:var(--font-mono);text-align:center;outline:none;}
+.ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
+.ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
+.ord-line{display:flex;align-items:center;gap:10px;padding:5px 0;}
+.ord-name{flex:1;font-size:13px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ord-qty{width:50px;height:42px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:16px;border-left:1px solid var(--border2);border-right:1px solid var(--border2);}
+.ord-unit{font-size:11px;color:var(--muted);width:42px;text-align:left;}
+.pe-adv-toggle{font-size:12px;color:var(--cyan);cursor:pointer;margin-top:12px;user-select:none;}
+.prod-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 11px;margin-bottom:7px;}
+.prod-row .pr-name{font-size:14px;font-weight:600;color:var(--text);}
+.prod-row .pr-sub{font-size:11px;color:var(--muted);margin-top:2px;}
 .task-item{display:flex;align-items:center;gap:13px;padding:clamp(8px,1.4vh,16px) 4px;border-bottom:1px solid var(--border);}
 .task-check{width:clamp(28px,3.6vh,40px);height:clamp(28px,3.6vh,40px);border:2px solid var(--border2);border-radius:8px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface2);}
 .task-check.done{background:var(--green-dim);border-color:var(--green);color:var(--green);}
@@ -683,9 +715,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="page" id="page-stock">
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button></div></div>
-      <div id="stock-order-info" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
+      <input class="stk-search" id="stock-search" placeholder="Search items…" oninput="setStockSearch(this.value)">
       <div class="stock-filter-chips" id="stock-filter-chips"></div>
-      <div class="stock-header-row"><div class="stock-col-header">Product / Supplier</div><div class="stock-col-header">Today's Target</div><div class="stock-col-header">On Hand</div></div>
+      <div class="stk-summary" id="stock-summary"></div>
       <div id="stock-list"></div><div id="stock-empty" class="empty-state"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
     </div>
     <div class="page" id="page-packdown">
@@ -1013,47 +1045,57 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <!-- Edit product (centered) -->
 <div class="modal-overlay" id="prod-edit-modal" style="z-index:300;">
   <div class="modal" style="max-width:520px;">
-    <div class="modal-header"><div class="modal-title">EDIT PRODUCT</div><button class="modal-close" onclick="closeModal('prod-edit-modal')">Cancel</button></div>
-    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name"></div><div><div class="label">Unit</div><input class="input" id="pe-unit" list="pe-unit-list" placeholder="tub / unit / kg" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="unit"></option><option value="pack"></option><option value="tub"></option><option value="box"></option><option value="carton"></option><option value="bag"></option><option value="bottle"></option><option value="kg"></option><option value="each"></option></datalist></div></div>
+    <div class="modal-header"><div class="modal-title" id="pe-title">EDIT PRODUCT</div><button class="modal-close" onclick="closeModal('prod-edit-modal')">Cancel</button></div>
+    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Unit you order in</div><input class="input" id="pe-unit" list="pe-unit-list" placeholder="box / tub / kg" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="unit"></option><option value="pack"></option><option value="tub"></option><option value="box"></option><option value="carton"></option><option value="bag"></option><option value="bottle"></option><option value="kg"></option><option value="each"></option></datalist></div></div>
     <div class="form-row mt-8"><div class="label">Supplier</div><select class="input" id="pe-supplier" style="background:var(--surface2);"></select></div>
-    <div class="grid-2 mt-8"><div><div class="label" id="pe-pack-label">Order in units of</div><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1"></div><div><div class="label" id="pe-reorder-label">Reorder when below</div><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="optional"></div></div>
-    <div class="grid-2 mt-8"><div><div class="label">Measure usage in</div><select class="input" id="pe-measure" style="background:var(--surface2);" onchange="syncUnitLabels()"><option value="">— same as unit —</option><option value="kg">kg</option><option value="g">g</option><option value="ml">ml</option><option value="L">L</option><option value="ea">ea (each)</option></select></div><div><div class="label" id="pe-size-label">Size per unit</div><input class="input" id="pe-size" type="number" step="0.01" placeholder="e.g. 16"></div></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="pe-measure-note"></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">If "reorder when below" is set, it ignores daily targets — it just orders 1 pack whenever on-hand drops under that level (e.g. below ¼ tub → order 1 tub).</div>
-    <div class="label mt-8" id="pe-targets-label">Daily targets <span style="color:var(--muted);font-weight:400;">(ignored if reorder level set)</span></div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
-      <div><div class="label" style="text-align:center;">Mon</div><input class="input" id="pe-t0" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Tue</div><input class="input" id="pe-t1" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Wed</div><input class="input" id="pe-t2" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Thu</div><input class="input" id="pe-t3" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Fri</div><input class="input" id="pe-t4" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Sat</div><input class="input" id="pe-t5" type="number" style="text-align:center;padding:5px 3px;"></div>
-      <div><div class="label" style="text-align:center;">Sun</div><input class="input" id="pe-t6" type="number" style="text-align:center;padding:5px 3px;"></div>
+    <div class="label mt-8">How should I work out the order?</div>
+    <div class="day-pills" id="pe-mode" style="display:flex;gap:6px;">
+      <div class="set-tab on" data-m="reorder" onclick="setProdMode('reorder')">Reorder when low</div>
+      <div class="set-tab" data-m="targets" onclick="setProdMode('targets')">Daily targets</div>
     </div>
-    <button class="btn btn-primary mt-8" style="width:100%;" onclick="saveProductEdit()">Save Changes</button>
+    <div id="pe-mode-help" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+    <div id="pe-reorder-row" class="grid-2 mt-8"><div><div class="label" id="pe-reorder-label">Reorder when below</div><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2"></div><div><div class="label" id="pe-pack-label">Order in lots of</div><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1"></div></div>
+    <div id="pe-targets-row" style="display:none;">
+      <div class="label mt-8" id="pe-targets-label">Daily target levels</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+        <div><div class="label" style="text-align:center;">Mon</div><input class="input" id="pe-t0" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Tue</div><input class="input" id="pe-t1" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Wed</div><input class="input" id="pe-t2" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Thu</div><input class="input" id="pe-t3" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Fri</div><input class="input" id="pe-t4" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Sat</div><input class="input" id="pe-t5" type="number" style="text-align:center;padding:5px 3px;"></div>
+        <div><div class="label" style="text-align:center;">Sun</div><input class="input" id="pe-t6" type="number" style="text-align:center;padding:5px 3px;"></div>
+      </div>
+    </div>
+    <div class="pe-adv-toggle" id="pe-adv-toggle" onclick="toggleProdAdv()">▸ Advanced — count in kg/g/ml instead of whole units</div>
+    <div id="pe-adv" style="display:none;">
+      <div class="grid-2 mt-8"><div><div class="label">Count usage in</div><select class="input" id="pe-measure" style="background:var(--surface2);" onchange="syncUnitLabels()"><option value="">— same as unit —</option><option value="kg">kg</option><option value="g">g</option><option value="ml">ml</option><option value="L">L</option><option value="ea">ea (each)</option></select></div><div><div class="label" id="pe-size-label">Size per unit</div><input class="input" id="pe-size" type="number" step="0.01" placeholder="e.g. 16"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="pe-measure-note"></div>
+    </div>
+    <button class="btn btn-primary mt-8" style="width:100%;" onclick="saveProductEdit()">Save Product</button>
   </div>
 </div>
 
 <div class="modal-overlay" id="stock-admin-modal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-header"><div class="modal-title">STOCK SETUP</div><button class="modal-close" onclick="closeModal('stock-admin-modal');renderStockPage()">Close</button></div>
-    <div class="section-title">Suppliers &amp; Reminders</div>
-    <div id="supplier-list-admin" style="max-height:160px;overflow-y:auto;"></div>
-    <button class="btn" id="supplier-form-toggle" style="width:100%;margin-top:8px;" onclick="toggleSupplierForm()">+ Add Supplier &#9662;</button>
-    <div id="supplier-form-wrap" style="display:none;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:12px;margin-top:8px;">
-      <div class="grid-2"><div><div class="label">Supplier Name</div><input class="input" id="new-supplier-name" placeholder="Bidvest"></div><div><div class="label">Order Email</div><input class="input" id="new-supplier-email" placeholder="orders@supplier.com.au"></div></div>
-      <div class="form-row mt-8"><div class="label">Category</div><input class="input" id="new-supplier-category" list="supplier-cat-list" placeholder="Dry Goods / Meat / Veg / Packaging"><datalist id="supplier-cat-list"><option value="Dry Goods"></option><option value="Meat"></option><option value="Veg"></option><option value="Dairy"></option><option value="Frozen"></option><option value="Packaging"></option><option value="Drinks"></option></datalist></div>
-      <div class="grid-2 mt-8"><div><div class="label">Reminder Time</div><input class="input" id="new-sup-remind-time" placeholder="09:00"></div><div><div class="label">Notify Email</div><input class="input" id="new-sup-remind-email" placeholder="your@email.com"></div></div>
-      <div class="form-row mt-8"><div class="label">SMS (e.g. 0412345678@sms.clicksend.com)</div><input class="input" id="new-sup-remind-sms"></div>
-      <div><div class="label">Remind on days</div><div class="day-pills" id="new-sup-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
-      <button class="btn btn-primary mt-8" id="btn-add-supplier" style="width:100%;" onclick="addSupplier()">+ Add Supplier</button>
+    <div class="day-pills" style="display:flex;gap:6px;margin-bottom:14px;"><div class="set-tab on" id="setup-tab-products" onclick="setupTab('products')">Products</div><div class="set-tab" id="setup-tab-suppliers" onclick="setupTab('suppliers')">Suppliers</div></div>
+    <div id="setup-products">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="newProduct()">+ New Product</button>
+      <div id="product-list-admin" style="max-height:50vh;overflow-y:auto;"></div>
     </div>
-    <div class="divider"></div>
-    <div class="section-title">Products</div>
-    <div id="product-list-admin" style="max-height:200px;overflow-y:auto;"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 60px;gap:6px;margin-top:8px;align-items:end;"><div><div class="label">Product Name</div><input class="input" id="new-prod-name" placeholder="Chicken Wings"></div><div><div class="label">Supplier</div><select class="input" id="new-prod-supplier" style="background:var(--surface2);"></select></div><div><div class="label">Unit</div><input class="input" id="new-prod-unit" placeholder="kg"></div></div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px;"><div><div class="label" style="text-align:center;">Mon</div><input class="input" id="t-0" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Tue</div><input class="input" id="t-1" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Wed</div><input class="input" id="t-2" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Thu</div><input class="input" id="t-3" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Fri</div><input class="input" id="t-4" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Sat</div><input class="input" id="t-5" type="number" style="text-align:center;padding:5px 3px;"></div><div><div class="label" style="text-align:center;">Sun</div><input class="input" id="t-6" type="number" style="text-align:center;padding:5px 3px;"></div></div>
-    <button class="btn btn-primary mt-8" id="btn-add-product" style="width:100%;" onclick="addProduct()">+ Add Product</button>
+    <div id="setup-suppliers" style="display:none;">
+      <div id="supplier-list-admin" style="max-height:34vh;overflow-y:auto;"></div>
+      <button class="btn" id="supplier-form-toggle" style="width:100%;margin-top:8px;" onclick="toggleSupplierForm()">+ Add Supplier &#9662;</button>
+      <div id="supplier-form-wrap" style="display:none;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:12px;margin-top:8px;">
+        <div class="grid-2"><div><div class="label">Supplier Name</div><input class="input" id="new-supplier-name" placeholder="Bidvest"></div><div><div class="label">Order Email</div><input class="input" id="new-supplier-email" placeholder="orders@supplier.com.au"></div></div>
+        <div class="form-row mt-8"><div class="label">Category</div><input class="input" id="new-supplier-category" list="supplier-cat-list" placeholder="Dry Goods / Meat / Veg / Packaging"><datalist id="supplier-cat-list"><option value="Dry Goods"></option><option value="Meat"></option><option value="Veg"></option><option value="Dairy"></option><option value="Frozen"></option><option value="Packaging"></option><option value="Drinks"></option></datalist></div>
+        <div class="grid-2 mt-8"><div><div class="label">Reminder Time</div><input class="input" id="new-sup-remind-time" placeholder="09:00"></div><div><div class="label">Notify Email</div><input class="input" id="new-sup-remind-email" placeholder="your@email.com"></div></div>
+        <div class="form-row mt-8"><div class="label">SMS (e.g. 0412345678@sms.clicksend.com)</div><input class="input" id="new-sup-remind-sms"></div>
+        <div><div class="label">Remind on days</div><div class="day-pills" id="new-sup-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
+        <button class="btn btn-primary mt-8" id="btn-add-supplier" style="width:100%;" onclick="addSupplier()">+ Add Supplier</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1337,7 +1379,7 @@ setInterval(tick,1000);tick();
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleDayPill(el){el.classList.toggle('on');}
-function toggleOrderDay(el){el.classList.toggle('on');updateOrderPreview();}
+function toggleOrderDay(el){el.classList.toggle('on');_orderAdj={};updateOrderPreview();}
 async function loadAppData(){try{const r=await fetch('/api/data');Object.assign(appData,await r.json());}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};appData.prep_saved_lists=appData.prep_saved_lists||[];if(typeof applyFriedVis==='function')applyFriedVis();}
 async function saveAppData(){try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(appData)});}catch(e){}}
 // save only specific top-level keys — avoids overwriting another device's unrelated changes
@@ -1506,52 +1548,79 @@ function orderQty(p,sel,onHand){
   if(need<=0)return 0;
   return pack>0?Math.ceil(need/pack)*pack:need;
 }
-let stockFilter='All';
+let stockFilter='All',stockSearch='';
 function setStockFilter(c){stockFilter=c;renderStockPage();}
+function setStockSearch(v){stockSearch=v;renderStockPage();}
+function _todayIdx(){return (new Date().getDay()+6)%7;}
+function stockStatusFor(p){
+  const soh=appData.stock_on_hand||{};
+  const counted=soh[p.id]!==undefined&&soh[p.id]!=='';
+  const onHand=counted?parseFloat(soh[p.id]):0;
+  const need=orderQty(p,[_todayIdx()],onHand);
+  const tgt=getTodayTarget(p),unit=p.unit||'';
+  const par=(p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='')?('Min '+p.reorder_at+' '+unit):('Par '+tgt+' '+unit);
+  if(!counted)return {cls:'',label:'Count',sub:par};
+  if(need>0)return {cls:'low',label:'Order '+need,sub:par+' · have '+onHand};
+  return {cls:'ok',label:'OK',sub:par+' · have '+onHand};
+}
 function stockRowHtml(p){
   const soh=appData.stock_on_hand||{};const onHand=soh[p.id]!==undefined?soh[p.id]:'';
-  const target=getTodayTarget(p);
-  return `<div class="stock-product-row"><div><div style="font-size:15px;font-weight:500;">${p.name}</div></div><div><div class="stock-target">${target}</div><div class="stock-target-sub">${p.unit||''}</div></div><div><input class="stock-qty-input" type="number" min="0" value="${onHand}" placeholder="0" oninput="(appData.stock_on_hand=appData.stock_on_hand||{})['${p.id}']=parseFloat(this.value)||0;saveStockSoon()"></div></div>`;
+  const st=stockStatusFor(p);
+  return `<div class="stk-card ${st.cls}" data-id="${p.id}">
+    <div class="stk-info"><div class="stk-name">${p.name}</div><div class="stk-sub">${st.sub}</div></div>
+    <div class="stk-pill ${st.cls}">${st.label}</div>
+    <div class="stk-stepper"><button onclick="stepStock('${p.id}',-1)">−</button><input type="number" min="0" inputmode="decimal" value="${onHand}" placeholder="0" onfocus="this.select()" oninput="setOnHand('${p.id}',this.value)"><button onclick="stepStock('${p.id}',1)">+</button></div>
+  </div>`;
 }
+function setOnHand(id,val){appData.stock_on_hand=appData.stock_on_hand||{};if(val===''){delete appData.stock_on_hand[id];}else{appData.stock_on_hand[id]=parseFloat(val)||0;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
+function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;let v=cur+delta;if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
+function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
+function updateStockSummary(){const el=document.getElementById('stock-summary');if(!el)return;const products=appData.products||[];const soh=appData.stock_on_hand||{};const today=_todayIdx();let need=0,uncounted=0;products.forEach(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';if(!c)uncounted++;const oh=c?parseFloat(soh[p.id]):0;if(orderQty(p,[today],oh)>0)need++;});if(products.length===0){el.style.display='none';return;}el.style.display='flex';if(need>0){el.className='stk-summary warn';el.innerHTML=`<span><b>${need}</b> item${need>1?'s':''} to order${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button>`;}else{el.className='stk-summary ok';el.innerHTML=`<span>All items stocked for today${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn" onclick="openOrderModal()">Place Order</button>`;}}
 function renderStockPage(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const list=document.getElementById('stock-list'),empty=document.getElementById('stock-empty');
-  const dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  document.getElementById('stock-order-info').textContent='Today is '+dayNames[(new Date().getDay()+6)%7]+' — enter current on-hand quantities.';
   // build category filter chips from suppliers that actually have products
   const cats=[];suppliers.forEach(s=>{if((products||[]).some(p=>p.supplier_id===s.id)){const c=s.category||'Uncategorised';if(!cats.includes(c))cats.push(c);}});
   const chipBox=document.getElementById('stock-filter-chips');
   if(chipBox){if(cats.length>0){if(stockFilter!=='All'&&!cats.includes(stockFilter))stockFilter='All';chipBox.style.display='flex';chipBox.innerHTML=['All',...cats].map(c=>`<div class="filter-chip ${stockFilter===c?'on':''}" onclick="setStockFilter(&quot;${c.replace(/"/g,'')}&quot;)">${c}</div>`).join('');}else{chipBox.style.display='none';chipBox.innerHTML='';}}
-  if(products.length===0){list.innerHTML='';empty.style.display='block';return;}
+  if(products.length===0){list.innerHTML='';empty.style.display='block';updateStockSummary();return;}
   empty.style.display='none';
-  // group products under each supplier, filtered by category
+  const q=stockSearch.trim().toLowerCase();const today=_todayIdx();const soh=appData.stock_on_hand||{};
   let html='';
+  const renderGroup=(name,cat,items)=>{
+    const matched=items.filter(p=>!q||(p.name||'').toLowerCase().includes(q));
+    if(matched.length===0)return;
+    const need=matched.filter(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';return orderQty(p,[today],c?parseFloat(soh[p.id]):0)>0;}).length;
+    html+=`<div class="stk-sup-head"><span>${name}</span>`+(need>0?`<span class="stk-sup-need">${need} to order</span>`:`<span class="tag tag-amber">${cat}</span>`)+`</div>`;
+    html+=matched.map(stockRowHtml).join('');
+  };
   suppliers.filter(s=>stockFilter==='All'||(s.category||'Uncategorised')===stockFilter).forEach(sup=>{
-    const items=products.filter(p=>p.supplier_id===sup.id);
-    if(items.length===0)return;
-    html+=`<div class="stock-group-header"><span>${sup.name}</span><span class="tag tag-amber">${sup.category||'Uncategorised'}</span></div>`;
-    html+=items.map(stockRowHtml).join('');
+    const items=products.filter(p=>p.supplier_id===sup.id);if(items.length===0)return;
+    renderGroup(sup.name,sup.category||'Uncategorised',items);
   });
-  // products whose supplier was deleted/missing — only when showing All
-  if(stockFilter==='All'){const orphan=products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id));if(orphan.length){html+=`<div class="stock-group-header"><span>Other</span></div>`+orphan.map(stockRowHtml).join('');}}
-  list.innerHTML=html||'<div class="empty-state">No items in this category.</div>';
+  if(stockFilter==='All'){const orphan=products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id));if(orphan.length)renderGroup('Other','',orphan);}
+  list.innerHTML=html||'<div class="empty-state">No items match.</div>';
+  updateStockSummary();
 }
-function openOrderModal(){const today=(new Date().getDay()+6)%7;document.querySelectorAll('#order-day-pills .day-pill').forEach(p=>p.classList.remove('on'));document.querySelector(`#order-day-pills .day-pill[data-d="${today}"]`).classList.add('on');updateOrderPreview();openModal('order-modal');}
+let _orderAdj={};
+function openOrderModal(){const today=(new Date().getDay()+6)%7;_orderAdj={};document.querySelectorAll('#order-day-pills .day-pill').forEach(p=>p.classList.remove('on'));const tp=document.querySelector(`#order-day-pills .day-pill[data-d="${today}"]`);if(tp)tp.classList.add('on');updateOrderPreview();openModal('order-modal');}
+function adjustOrderLine(pid,delta){const cell=document.querySelector('.ord-line[data-id="'+pid+'"]');if(!cell)return;const q=cell.querySelector('.ord-qty');const cur=parseFloat(q.textContent)||0;let v=cur+delta;if(v<0)v=0;_orderAdj[pid]=v;q.textContent=v;}
 function updateOrderPreview(){
   const sel=[];document.querySelectorAll('#order-day-pills .day-pill.on').forEach(p=>sel.push(parseInt(p.dataset.d)));
-  if(sel.length===0){document.getElementById('order-preview').innerHTML='<div style="color:var(--muted);font-size:12px;">Select at least one day.</div>';return;}
+  const box=document.getElementById('order-preview');
+  if(sel.length===0){box.innerHTML='<div style="color:var(--muted);font-size:12px;">Select at least one day.</div>';return;}
   const products=appData.products||[],suppliers=appData.suppliers||[];
-  const soh=appData.stock_on_hand||{};const lines=products.map(p=>{const onHand=soh[p.id]!==undefined?parseFloat(soh[p.id]):0;const qty=orderQty(p,sel,onHand);const sup=suppliers.find(s=>s.id===p.supplier_id);return{name:p.name,sup:sup?sup.name:'?',qty,unit:p.unit||'unit',supplier_id:p.supplier_id};}).filter(l=>l.qty>0);
-  if(lines.length===0){document.getElementById('order-preview').innerHTML='<div style="color:var(--green);font-size:13px;">&#10003; All stock sufficient.</div>';return;}
+  const soh=appData.stock_on_hand||{};const lines=products.map(p=>{const onHand=soh[p.id]!==undefined?parseFloat(soh[p.id]):0;const base=orderQty(p,sel,onHand);const qty=_orderAdj[p.id]!==undefined?_orderAdj[p.id]:base;const sup=suppliers.find(s=>s.id===p.supplier_id);return{id:p.id,name:p.name,sup:sup?sup.name:'?',qty,unit:p.unit||'unit',supplier_id:p.supplier_id};}).filter(l=>l.qty>0);
+  if(lines.length===0){box.innerHTML='<div style="color:var(--green);font-size:14px;text-align:center;padding:22px;">All stock sufficient — nothing to order.</div>';return;}
   const grouped={};lines.forEach(l=>{if(!grouped[l.supplier_id])grouped[l.supplier_id]={name:l.sup,items:[]};grouped[l.supplier_id].items.push(l);});
-  document.getElementById('order-preview').innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">For: ${sel.map(d=>DNAMES[d]).join(', ')}</div>`+Object.entries(grouped).map(([sid,g])=>`<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px;">${g.name}</div>${g.items.map(i=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span>${i.name}</span><span style="font-family:var(--font-mono);color:var(--amber);">${i.qty} x ${i.unit}</span></div>`).join('')}<button class="btn btn-primary" style="width:100%;margin-top:8px;" id="sendbtn-${sid}" onclick="sendSupplierOrder('${sid}')">Send to ${g.name}</button></div>`).join('');
+  box.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Ordering for ${sel.map(d=>DNAMES[d]).join(', ')} — tap +/− to adjust before sending.</div>`+Object.entries(grouped).map(([sid,g])=>`<div class="ord-sup"><div class="ord-sup-head">${g.name}</div>${g.items.map(i=>`<div class="ord-line" data-id="${i.id}"><span class="ord-name">${i.name}</span><div class="stk-stepper"><button onclick="adjustOrderLine('${i.id}',-1)">−</button><span class="ord-qty">${i.qty}</span><button onclick="adjustOrderLine('${i.id}',1)">+</button></div><span class="ord-unit">${i.unit}</span></div>`).join('')}<button class="btn btn-primary" style="width:100%;margin-top:10px;" id="sendbtn-${sid}" onclick="sendSupplierOrder('${sid}')">Send to ${g.name}</button></div>`).join('');
 }
 function sendSupplierOrder(sid){
   const sel=[];document.querySelectorAll('#order-day-pills .day-pill.on').forEach(p=>sel.push(parseInt(p.dataset.d)));
   if(sel.length===0){alert('Select at least one day.');return;}
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const sup=suppliers.find(s=>s.id===sid),supName=sup?sup.name:'supplier';
-  const soh=appData.stock_on_hand||{};const items=products.filter(p=>p.supplier_id===sid).map(p=>{const onHand=soh[p.id]!==undefined?parseFloat(soh[p.id]):0;const qty=orderQty(p,sel,onHand);return{name:p.name,qty,unit:p.unit||'unit'};}).filter(i=>i.qty>0);
+  const soh=appData.stock_on_hand||{};const items=products.filter(p=>p.supplier_id===sid).map(p=>{const onHand=soh[p.id]!==undefined?parseFloat(soh[p.id]):0;const qty=_orderAdj[p.id]!==undefined?_orderAdj[p.id]:orderQty(p,sel,onHand);return{name:p.name,qty,unit:p.unit||'unit'};}).filter(i=>i.qty>0);
   if(items.length===0){alert('Nothing to order for '+supName+'.');return;}
   const daysStr=sel.map(d=>DNAMES[d]).join(', ');
   const btn=document.getElementById('sendbtn-'+sid);if(btn){btn.disabled=true;btn.textContent='Sending…';}
@@ -1560,43 +1629,65 @@ function sendSupplierOrder(sid){
     else{alert('Error: '+(d.error||'unknown'));if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}}
   }).catch(()=>{alert('Could not send — is the server running?');if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}});
 }
-function openStockAdmin(){editingSupplier=null;editingProduct=null;setBtn('btn-add-supplier','+ Add Supplier');setBtn('btn-add-product','+ Add Product');toggleSupplierForm(false);renderSupplierAdmin();renderProductAdmin();openModal('stock-admin-modal');}
+function openStockAdmin(){editingSupplier=null;editingProduct=null;setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);renderSupplierAdmin();renderProductAdmin();setupTab('products');openModal('stock-admin-modal');}
+function setupTab(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
 function toggleSupplierForm(force){const w=document.getElementById('supplier-form-wrap');if(!w)return;const show=force===undefined?(w.style.display==='none'):force;w.style.display=show?'block':'none';const t=document.getElementById('supplier-form-toggle');if(t)t.style.display=show?'none':'block';}
 function renderSupplierAdmin(){document.getElementById('supplier-list-admin').innerHTML=(appData.suppliers||[]).map((s,i)=>{const days=(s.remind_days||[]).map(d=>DNAMES[d]).join(', ')||'Every day';return `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div class="row-between"><span style="font-size:13px;font-weight:600;">${s.name} <span class="tag tag-amber" style="margin-left:4px;">${s.category||'Uncategorised'}</span></span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editSupplier(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeSupplier(${i})">&#10005;</button></span></div><div style="font-size:11px;color:var(--muted);">${s.email}</div>${s.remind_time?`<div style="font-size:11px;color:var(--cyan);"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${s.remind_time} | ${days}</div>`:''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No suppliers yet.</div>';const sel=document.getElementById('new-prod-supplier');if(sel)sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');}
-function renderProductAdmin(){document.getElementById('product-list-admin').innerHTML=(appData.products||[]).map((p,i)=>{const sup=(appData.suppliers||[]).find(s=>s.id===p.supplier_id);const t=p.targets||{};const tStr=[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'-').join('/');return `<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">${p.name}</span><span style="font-size:11px;color:var(--muted);">${sup?sup.name:'?'} | ${tStr} ${p.unit||''}</span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editProduct(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeProduct(${i})">&#10005;</button></span></div>`;}).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No products yet.</div>';}
+function _prodRule(p){const unit=p.unit||'unit';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder below '+p.reorder_at+' '+unit+(p.pack?' · lots of '+p.pack:'');const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+unit+'/day';}
+function renderProductAdmin(){
+  const products=appData.products||[],suppliers=appData.suppliers||[];
+  if(products.length===0){document.getElementById('product-list-admin').innerHTML='<div style="color:var(--muted);font-size:12px;padding:14px 0;text-align:center;">No products yet. Tap "+ New Product" to add your first item.</div>';return;}
+  const idx={};products.forEach((p,i)=>idx[p.id]=i);
+  let html='';
+  const group=(name,items)=>{if(!items.length)return;html+=`<div style="font-size:12px;font-weight:700;color:var(--amber);margin:12px 0 6px;">${name}</div>`;html+=items.map(p=>`<div class="prod-row"><div style="min-width:0;"><div class="pr-name">${p.name}</div><div class="pr-sub">${_prodRule(p)}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="editProduct(${idx[p.id]})">Edit</button><button class="btn btn-danger" style="padding:4px 9px;font-size:12px;" onclick="removeProduct(${idx[p.id]})">&#10005;</button></span></div>`).join('');};
+  suppliers.forEach(s=>group(s.name,products.filter(p=>p.supplier_id===s.id)));
+  group('No supplier',products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id)));
+  document.getElementById('product-list-admin').innerHTML=html;
+}
 function addSupplier(){const name=document.getElementById('new-supplier-name').value.trim();const email=document.getElementById('new-supplier-email').value.trim();if(!name||!email){alert('Enter name and email.');return;}const category=document.getElementById('new-supplier-category').value.trim()||'Uncategorised';const remind_time=document.getElementById('new-sup-remind-time').value.trim();const remind_email=document.getElementById('new-sup-remind-email').value.trim();const remind_sms=document.getElementById('new-sup-remind-sms').value.trim();const remind_days=[];document.querySelectorAll('#new-sup-days .day-pill.on').forEach(p=>remind_days.push(parseInt(p.dataset.d)));appData.suppliers=appData.suppliers||[];if(editingSupplier){const ex=appData.suppliers.find(s=>s.id===editingSupplier);if(ex)Object.assign(ex,{name,email,category,remind_time,remind_email,remind_sms,remind_days});editingSupplier=null;setBtn('btn-add-supplier','+ Add Supplier');}else{appData.suppliers.push({id:'sup_'+Date.now(),name,email,category,remind_time,remind_email,remind_sms,remind_days});}saveAppData();renderSupplierAdmin();renderProductAdmin();['new-supplier-name','new-supplier-email','new-supplier-category','new-sup-remind-time','new-sup-remind-email','new-sup-remind-sms'].forEach(id=>document.getElementById(id).value='');document.querySelectorAll('#new-sup-days .day-pill').forEach(p=>p.classList.remove('on'));setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);}
 function editSupplier(i){const s=(appData.suppliers||[])[i];if(!s)return;editingSupplier=s.id;document.getElementById('new-supplier-name').value=s.name||'';document.getElementById('new-supplier-email').value=s.email||'';document.getElementById('new-supplier-category').value=s.category||'';document.getElementById('new-sup-remind-time').value=s.remind_time||'';document.getElementById('new-sup-remind-email').value=s.remind_email||'';document.getElementById('new-sup-remind-sms').value=s.remind_sms||'';setDayPills('#new-sup-days',s.remind_days);setBtn('btn-add-supplier','Save Changes');toggleSupplierForm(true);document.getElementById('new-supplier-name').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeSupplier(i){appData.suppliers.splice(i,1);saveAppData();renderSupplierAdmin();}
-function addProduct(){const name=document.getElementById('new-prod-name').value.trim();const supplier_id=document.getElementById('new-prod-supplier').value;const unit=document.getElementById('new-prod-unit').value.trim();if(!name||!supplier_id){alert('Enter name and supplier.');return;}const targets={};for(let d=0;d<7;d++){const v=document.getElementById('t-'+d).value;if(v!=='')targets[d]=parseFloat(v);}if(Object.keys(targets).length===0){alert('Enter at least one target.');return;}appData.products=appData.products||[];if(editingProduct){const ex=appData.products.find(p=>p.id===editingProduct);if(ex)Object.assign(ex,{name,supplier_id,unit,targets,target:targets[0]||0});editingProduct=null;setBtn('btn-add-product','+ Add Product');}else{appData.products.push({id:'prod_'+Date.now(),name,supplier_id,unit,targets,target:targets[0]||0});}saveAppData();renderProductAdmin();document.getElementById('new-prod-name').value='';document.getElementById('new-prod-unit').value='';for(let d=0;d<7;d++)document.getElementById('t-'+d).value='';}
-function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;
+let _prodMode='reorder';
+function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier');sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');if(val)sel.value=val;}
+function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
+function toggleProdAdv(force){const a=document.getElementById('pe-adv'),t=document.getElementById('pe-adv-toggle');const show=force!==undefined?force:(a.style.display==='none');a.style.display=show?'':'none';t.textContent=(show?'▾':'▸')+' Advanced — count in kg/g/ml instead of whole units';}
+function newProduct(){if((appData.suppliers||[]).length===0){alert('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-measure').value='';document.getElementById('pe-size').value='';setProdMode('reorder');toggleProdAdv(false);syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';
-  const sel=document.getElementById('pe-supplier');sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');sel.value=p.supplier_id||'';
+  _fillProdSupplier(p.supplier_id||'');
   const t=p.targets||{};for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value=(t[d]!==undefined?t[d]:'');
   document.getElementById('pe-pack').value=p.pack!=null?p.pack:'';document.getElementById('pe-reorder').value=p.reorder_at!=null?p.reorder_at:'';
   document.getElementById('pe-measure').value=p.measure||'';document.getElementById('pe-size').value=p.size!=null?p.size:'';
+  const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';setProdMode(hasRe?'reorder':'targets');toggleProdAdv(!!p.measure);
   syncUnitLabels();openModal('prod-edit-modal');}
 function syncUnitLabels(){const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
   const meas=(document.getElementById('pe-measure')?document.getElementById('pe-measure').value:'')||'';
-  document.getElementById('pe-pack-label').textContent='Order in units of ('+u+')';
+  document.getElementById('pe-pack-label').textContent='Order in lots of ('+u+')';
   document.getElementById('pe-reorder-label').textContent='Reorder when below ('+u+')';
   const sl=document.getElementById('pe-size-label'),nt=document.getElementById('pe-measure-note');
   if(meas){
     if(sl)sl.textContent=meas+' per '+u;
-    if(nt)nt.textContent='1 '+u+' = the size above. Enter Mon–Sun usage in '+meas+' below — I divide by the size to work out how many '+u+'s to order.';
-    document.getElementById('pe-targets-label').innerHTML='Daily usage in '+meas+' <span style="color:var(--muted);font-weight:400;">(converted to '+u+'s to order)</span>';
+    if(nt)nt.textContent='1 '+u+' holds the size above. Count on-hand in '+meas+' — I divide by the size to work out how many '+u+'s to order.';
+    document.getElementById('pe-targets-label').textContent='Daily target in '+meas;
   }else{
     if(sl)sl.textContent='Size per unit';
     if(nt)nt.textContent='';
-    document.getElementById('pe-targets-label').innerHTML='Daily targets in '+u+' <span style="color:var(--muted);font-weight:400;">(ignored if reorder level set)</span>';
+    document.getElementById('pe-targets-label').textContent='Daily target levels ('+u+')';
   }}
-function saveProductEdit(){const p=(appData.products||[]).find(x=>x.id===editingProduct);if(!p){closeModal('prod-edit-modal');return;}
+function saveProductEdit(){
   const name=document.getElementById('pe-name').value.trim(),supplier_id=document.getElementById('pe-supplier').value,unit=document.getElementById('pe-unit').value.trim();
-  if(!name||!supplier_id){alert('Enter name and supplier.');return;}
+  if(!name||!supplier_id){alert('Enter a product name and pick a supplier.');return;}
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v);}
   const pv=document.getElementById('pe-pack').value.trim(),rv=document.getElementById('pe-reorder').value.trim();
   const mv=document.getElementById('pe-measure').value,sv=document.getElementById('pe-size').value.trim();
-  Object.assign(p,{name,supplier_id,unit,targets,target:targets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at:rv===''?null:parseFloat(rv),measure:mv||null,size:sv===''?null:parseFloat(sv)});editingProduct=null;
-  saveAppData();closeModal('prod-edit-modal');renderProductAdmin();}
+  let reorder_at,finalTargets;
+  if(_prodMode==='reorder'){if(rv===''){alert('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
+  else{if(Object.keys(targets).length===0){alert('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
+  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,measure:mv||null,size:sv===''?null:parseFloat(sv)};
+  appData.products=appData.products||[];
+  if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
+  else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
+  editingProduct=null;saveAppData();closeModal('prod-edit-modal');renderProductAdmin();}
 function removeProduct(i){appData.products.splice(i,1);saveAppData();renderProductAdmin();}
 
 // PACKDOWN
