@@ -1358,11 +1358,13 @@ function completeWithProof(title,sub,onDone){
     if(_capBusy)return;            // a photo is already being taken — ignore the extra taps
     _capBusy=true;
     showCaptureOverlay();          // instant feedback so staff know the tap registered
-    fetch('/api/capture',{method:'POST'}).then(r=>r.json()).then(d=>{
-      _capBusy=false;hideCaptureOverlay();
-      if(d&&d.ok&&d.photo){ onDone({photo:d.photo,time:nowTime(),ts:Date.now()}); }
-      else { requirePin(title,(d&&d.error?'Camera: '+d.error:sub),function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); }
-    }).catch(()=>{ _capBusy=false;hideCaptureOverlay(); requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); });
+    const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+    let done=false;
+    const finish=fn=>{if(done)return;done=true;clearTimeout(to);_capBusy=false;hideCaptureOverlay();fn();};
+    const to=setTimeout(()=>{if(ctrl)try{ctrl.abort();}catch(e){}finish(()=>requirePin(title,'Camera didn’t respond — enter your code to complete.',function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}));},7000);   // never let "Saving…" hang
+    fetch('/api/capture',{method:'POST',signal:ctrl?ctrl.signal:undefined}).then(r=>r.json()).then(d=>{
+      finish(()=>{ if(d&&d.ok&&d.photo){ onDone({photo:d.photo,time:nowTime(),ts:Date.now()}); } else { requirePin(title,(d&&d.error?'Camera: '+d.error:sub),function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); } });
+    }).catch(()=>{ finish(()=>requirePin(title,'Camera didn’t respond — enter your code to complete.',function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});})); });
   } else {
     requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});});
   }
