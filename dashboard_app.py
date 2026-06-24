@@ -1408,8 +1408,9 @@ def _rotcam_count(jpeg):
         parts=((cand.get("content") or {}).get("parts")) or []
         txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
         if not txt: return None,"Gemini returned no answer (finish: %s)"%cand.get("finishReason","?")
+        txtc=re.sub(r"[\s,;/|.\-]+","",txt)          # collapse spaces/separators: the model sometimes replies "O R A N N N"
         if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
-            dm=re.search(r"[0NAROnaro]{6}",txt)
+            dm=re.search(r"[0NAROnaro]{6}",txtc)
             if "block" in txt.lower() and not dm: return None,"view blocked (skipped)"
             if dm:
                 done=dm.group().upper(); ROTCAM["done"]=done
@@ -1417,7 +1418,7 @@ def _rotcam_count(jpeg):
                 _rotcam_save_crops(jpeg,done)        # auto-collect on-spit training crops, labelled by doneness
                 return ROTCAM["levels"].count("1"),None
             # no doneness pattern parsed → fall through to plain occupancy parsing below
-        mm=re.search(r"[01]{6}",txt)                 # per-level pattern e.g. 111100 → count the loaded levels
+        mm=re.search(r"[01]{6}",txtc)                # per-level pattern e.g. 111100 → count the loaded levels
         if "block" in txt.lower() and not mm:        # someone standing in front → skip this read, don't touch stock
             return None,"view blocked (skipped)"
         if mm:
