@@ -559,7 +559,7 @@ def _books_ok(): return bool(session.get("books_ok"))
 
 @app.route("/manifest.json")
 def manifest():
-    return Response(json.dumps({"name":"Bruno's Chicken Shop","short_name":"Bruno's","start_url":"/","display":"standalone","background_color":"#0a0c10","theme_color":"#0a0c10","orientation":"landscape","icons":[{"src":"/icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}),mimetype="application/manifest+json")
+    return Response(json.dumps({"name":"Bruno's Chicken Shop","short_name":"Bruno's","start_url":"/","display":"fullscreen","background_color":"#0a0c10","theme_color":"#0a0c10","orientation":"landscape","icons":[{"src":"/icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}),mimetype="application/manifest+json")
 
 @app.route("/icon.png")
 def app_icon():
