@@ -1070,8 +1070,16 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <div class="modal-overlay" id="prod-edit-modal" style="z-index:300;">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title" id="pe-title">EDIT PRODUCT</div><button class="modal-close" onclick="closeModal('prod-edit-modal')">Cancel</button></div>
-    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Unit you order in</div><input class="input" id="pe-unit" list="pe-unit-list" placeholder="box / tub / kg" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="unit"></option><option value="pack"></option><option value="tub"></option><option value="box"></option><option value="carton"></option><option value="bag"></option><option value="bottle"></option><option value="kg"></option><option value="each"></option></datalist></div></div>
+    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Order as (from supplier)</div><input class="input" id="pe-unit" list="pe-unit-list" placeholder="case / box / each" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="each"></option><option value="case"></option><option value="carton"></option><option value="box"></option><option value="bag"></option><option value="tub"></option><option value="pack"></option><option value="bottle"></option><option value="kg"></option></datalist></div></div>
     <div class="form-row mt-8"><div class="label">Supplier</div><select class="input" id="pe-supplier" style="background:var(--surface2);"></select></div>
+    <div class="label mt-8">Packaging — how many you count are in one <span id="pe-pkg-unit2">case</span></div>
+    <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;font-size:15px;margin-top:4px;">
+      <span style="color:var(--muted);">1</span><span id="pe-pkg-unit" style="font-weight:700;">case</span><span style="color:var(--muted);">=</span>
+      <input class="input" id="pe-packsize" type="number" step="1" min="1" placeholder="1" style="width:72px;text-align:center;" oninput="syncUnitLabels()">
+      <input class="input" id="pe-countunit" list="pe-countunit-list" placeholder="units" style="width:120px;" oninput="syncUnitLabels()">
+      <datalist id="pe-countunit-list"><option value="units"></option><option value="tubs"></option><option value="bottles"></option><option value="portions"></option><option value="pieces"></option><option value="kg"></option><option value="g"></option><option value="ml"></option><option value="L"></option></datalist>
+    </div>
+    <div id="pe-pkg-note" style="font-size:11px;color:var(--muted);margin-top:5px;"></div>
     <div class="label mt-8">How should I work out the order?</div>
     <div class="day-pills" id="pe-mode" style="display:flex;gap:6px;">
       <div class="set-tab on" data-m="reorder" onclick="setProdMode('reorder')">Reorder when low</div>
@@ -1080,8 +1088,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="pe-mode-help" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
     <div id="pe-reorder-row" class="grid-2 mt-8"><div><div class="label" id="pe-reorder-label">Reorder when below</div><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2"></div><div><div class="label" id="pe-pack-label">Order in lots of</div><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1"></div></div>
     <div id="pe-targets-row" style="display:none;">
-      <div class="label mt-8" id="pe-targets-label">Daily target levels</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+      <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;">
         <div><div class="label" style="text-align:center;">Mon</div><input class="input" id="pe-t0" type="number" style="text-align:center;padding:5px 3px;"></div>
         <div><div class="label" style="text-align:center;">Tue</div><input class="input" id="pe-t1" type="number" style="text-align:center;padding:5px 3px;"></div>
         <div><div class="label" style="text-align:center;">Wed</div><input class="input" id="pe-t2" type="number" style="text-align:center;padding:5px 3px;"></div>
@@ -1090,11 +1098,6 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div><div class="label" style="text-align:center;">Sat</div><input class="input" id="pe-t5" type="number" style="text-align:center;padding:5px 3px;"></div>
         <div><div class="label" style="text-align:center;">Sun</div><input class="input" id="pe-t6" type="number" style="text-align:center;padding:5px 3px;"></div>
       </div>
-    </div>
-    <div class="pe-adv-toggle" id="pe-adv-toggle" onclick="toggleProdAdv()">▸ Advanced — count in kg/g/ml instead of whole units</div>
-    <div id="pe-adv" style="display:none;">
-      <div class="grid-2 mt-8"><div><div class="label">Count usage in</div><select class="input" id="pe-measure" style="background:var(--surface2);" onchange="syncUnitLabels()"><option value="">— same as unit —</option><option value="kg">kg</option><option value="g">g</option><option value="ml">ml</option><option value="L">L</option><option value="ea">ea (each)</option></select></div><div><div class="label" id="pe-size-label">Size per unit</div><input class="input" id="pe-size" type="number" step="0.01" placeholder="e.g. 16"></div></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="pe-measure-note"></div>
     </div>
     <button class="btn btn-primary mt-8" style="width:100%;" onclick="saveProductEdit()">Save Product</button>
   </div>
@@ -1580,19 +1583,26 @@ function renderLiveStatus(rot,fry,bleConn){
 // STOCK
 function getTodayTarget(p){const day=(new Date().getDay()+6)%7;const targets=p.targets||{};for(let d=day;d>=0;d--){if(targets[d]!==undefined&&targets[d]!=='')return parseFloat(targets[d]);}return parseFloat(p.target||0);}
 // how much to order: reorder-point items order 1 pack when below the point; others use summed daily par. Always round up to pack size.
+// packaging: how a product is ordered vs counted. e.g. ordered in "case", 6 countable "units" per case.
+function _pkg(p){
+  const orderUnit=((p.unit||'unit').trim())||'unit';
+  let ps=parseFloat(p.pack_size);
+  if(!(ps>0)) ps=(p.measure&&parseFloat(p.size)>0)?parseFloat(p.size):1;   // legacy fallback (old measure/size)
+  const countUnit=((p.count_unit||p.measure||'').trim())||(ps>1?'units':orderUnit);
+  return {orderUnit:orderUnit,ps:ps,countUnit:countUnit,split:ps>1};
+}
+// targets + on-hand are in COUNT units; the result is in ORDER units (e.g. cases).
 function orderQty(p,sel,onHand){
-  const pack=parseFloat(p.pack)||0;
+  const ps=_pkg(p).ps;const pack=parseFloat(p.pack)||0;
   const hasReorder=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';
-  let need;
-  if(hasReorder){need=onHand<parseFloat(p.reorder_at)?(pack||1):0;}
-  else{
-    let total=sel.reduce((s,d)=>{const t=(p.targets||{})[d];return s+(t!==undefined&&t!==''?parseFloat(t):parseFloat(p.target||0));},0);
-    const size=parseFloat(p.size);
-    if(p.measure&&size>0) total=total/size;   // targets are usage in kg/g/ml/ea → divide by pack size to get order units
-    need=total-onHand;
-  }
+  if(hasReorder){return onHand<parseFloat(p.reorder_at)?(pack||1):0;}
+  let total=sel.reduce((s,d)=>{const t=(p.targets||{})[d];return s+(t!==undefined&&t!==''?parseFloat(t):parseFloat(p.target||0));},0);
+  let need=total-onHand;                 // count units still needed
   if(need<=0)return 0;
-  return pack>0?Math.ceil(need/pack)*pack:need;
+  let q=need/ps;                         // → order units (cases)
+  if(ps>1)q=Math.ceil(q);               // order whole cases
+  if(pack>0)q=Math.ceil(q/pack)*pack;   // legacy 'order in lots of'
+  return q;
 }
 let stockFilter='All',stockSearch='';
 function setStockFilter(c){stockFilter=c;renderStockPage();}
@@ -1603,11 +1613,12 @@ function stockStatusFor(p){
   const counted=soh[p.id]!==undefined&&soh[p.id]!=='';
   const onHand=counted?parseFloat(soh[p.id]):0;
   const need=orderQty(p,[_todayIdx()],onHand);
-  const tgt=getTodayTarget(p),unit=p.unit||'';
-  const par=(p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='')?('Min '+p.reorder_at+' '+unit):('Par '+tgt+' '+unit);
+  const pk=_pkg(p),cu=pk.countUnit;
+  const par=(p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='')?('Min '+p.reorder_at+' '+cu):('Par '+getTodayTarget(p)+' '+cu);
+  const ordLbl='Order '+need+(pk.split?' '+pk.orderUnit:'');
   if(!counted)return {cls:'',label:'Count',sub:par};
-  if(need>0)return {cls:'low',label:'Order '+need,sub:par+' · have '+onHand};
-  return {cls:'ok',label:'OK',sub:par+' · have '+onHand};
+  if(need>0)return {cls:'low',label:ordLbl,sub:par+' · have '+onHand+' '+cu};
+  return {cls:'ok',label:'OK',sub:par+' · have '+onHand+' '+cu};
 }
 function stockRowHtml(p){
   const soh=appData.stock_on_hand||{};const onHand=soh[p.id]!==undefined?soh[p.id]:'';
@@ -1680,7 +1691,7 @@ function openStockAdmin(){editingSupplier=null;editingProduct=null;setBtn('btn-a
 function setupTab(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
 function toggleSupplierForm(force){const w=document.getElementById('supplier-form-wrap');if(!w)return;const show=force===undefined?(w.style.display==='none'):force;w.style.display=show?'block':'none';const t=document.getElementById('supplier-form-toggle');if(t)t.style.display=show?'none':'block';}
 function renderSupplierAdmin(){document.getElementById('supplier-list-admin').innerHTML=(appData.suppliers||[]).map((s,i)=>{const days=(s.remind_days||[]).map(d=>DNAMES[d]).join(', ')||'Every day';return `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div class="row-between"><span style="font-size:13px;font-weight:600;">${s.name} <span class="tag tag-amber" style="margin-left:4px;">${s.category||'Uncategorised'}</span></span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editSupplier(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeSupplier(${i})">&#10005;</button></span></div><div style="font-size:11px;color:var(--muted);">${s.email}</div>${s.remind_time?`<div style="font-size:11px;color:var(--cyan);"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${s.remind_time} | ${days}</div>`:''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No suppliers yet.</div>';const sel=document.getElementById('new-prod-supplier');if(sel)sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');}
-function _prodRule(p){const unit=p.unit||'unit';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder below '+p.reorder_at+' '+unit+(p.pack?' · lots of '+p.pack:'');const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+unit+'/day';}
+function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' · '+pk.ps+' '+cu+'/'+pk.orderUnit):'';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder below '+p.reorder_at+' '+cu+pack;const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+cu+'/day'+pack;}
 function renderProductAdmin(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   if(products.length===0){document.getElementById('product-list-admin').innerHTML='<div style="color:var(--muted);font-size:12px;padding:14px 0;text-align:center;">No products yet. Tap "+ New Product" to add your first item.</div>';return;}
@@ -1697,40 +1708,46 @@ function removeSupplier(i){appData.suppliers.splice(i,1);saveAppData();renderSup
 let _prodMode='reorder';
 function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier');sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');if(val)sel.value=val;}
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
-function toggleProdAdv(force){const a=document.getElementById('pe-adv'),t=document.getElementById('pe-adv-toggle');const show=force!==undefined?force:(a.style.display==='none');a.style.display=show?'':'none';t.textContent=(show?'▾':'▸')+' Advanced — count in kg/g/ml instead of whole units';}
-function newProduct(){if((appData.suppliers||[]).length===0){alert('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-measure').value='';document.getElementById('pe-size').value='';setProdMode('reorder');toggleProdAdv(false);syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+let _peTargetUnit='count';
+function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
+function newProduct(){if((appData.suppliers||[]).length===0){alert('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-countunit').value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';
   _fillProdSupplier(p.supplier_id||'');
-  const t=p.targets||{};for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value=(t[d]!==undefined?t[d]:'');
+  const pk=_pkg(p);
+  document.getElementById('pe-packsize').value=pk.ps>1?pk.ps:'';
+  document.getElementById('pe-countunit').value=((p.count_unit||p.measure||'').trim())||(pk.split?'units':'');
   document.getElementById('pe-pack').value=p.pack!=null?p.pack:'';document.getElementById('pe-reorder').value=p.reorder_at!=null?p.reorder_at:'';
-  document.getElementById('pe-measure').value=p.measure||'';document.getElementById('pe-size').value=p.size!=null?p.size:'';
-  const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';setProdMode(hasRe?'reorder':'targets');toggleProdAdv(!!p.measure);
-  syncUnitLabels();openModal('prod-edit-modal');}
+  const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';setProdMode(hasRe?'reorder':'targets');
+  _peTargetUnit=(p.target_in==='order'&&pk.split)?'order':'count';
+  syncUnitLabels();
+  const div=(_peTargetUnit==='order'?pk.ps:1);const t=p.targets||{};
+  for(let d=0;d<7;d++){const v=t[d];document.getElementById('pe-t'+d).value=(v!==undefined&&v!=='')?(Math.round(v/div*100)/100):'';}
+  openModal('prod-edit-modal');}
 function syncUnitLabels(){const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
-  const meas=(document.getElementById('pe-measure')?document.getElementById('pe-measure').value:'')||'';
-  document.getElementById('pe-pack-label').textContent='Order in lots of ('+u+')';
-  document.getElementById('pe-reorder-label').textContent='Reorder when below ('+u+')';
-  const sl=document.getElementById('pe-size-label'),nt=document.getElementById('pe-measure-note');
-  if(meas){
-    if(sl)sl.textContent=meas+' per '+u;
-    if(nt)nt.textContent='1 '+u+' holds the size above. Count on-hand in '+meas+' — I divide by the size to work out how many '+u+'s to order.';
-    document.getElementById('pe-targets-label').textContent='Daily target in '+meas;
-  }else{
-    if(sl)sl.textContent='Size per unit';
-    if(nt)nt.textContent='';
-    document.getElementById('pe-targets-label').textContent='Daily target levels ('+u+')';
-  }}
+  const ps=parseFloat(document.getElementById('pe-packsize').value)||1;
+  let cu=(document.getElementById('pe-countunit').value||'').trim();if(!cu)cu=(ps>1?'units':u);
+  const pu=document.getElementById('pe-pkg-unit'),pu2=document.getElementById('pe-pkg-unit2');if(pu)pu.textContent=u;if(pu2)pu2.textContent=u;
+  const note=document.getElementById('pe-pkg-note');
+  if(note)note.textContent=ps>1?('You’ll count stock in '+cu+' (the loose '+cu+'); orders go to '+u+'s of '+ps+'. e.g. 4 '+cu+' left.'):('You count and order in '+u+'s.');
+  const rl=document.getElementById('pe-reorder-label');if(rl)rl.textContent='Reorder when below ('+cu+')';
+  const pl=document.getElementById('pe-pack-label');if(pl)pl.textContent='Order in lots of ('+u+')';
+  const ts=document.getElementById('pe-target-unit');
+  if(ts){if(ps<=1)_peTargetUnit='count';ts.innerHTML='<option value="count">'+cu+'</option>'+(ps>1?('<option value="order">'+u+'s</option>'):'');ts.value=_peTargetUnit;if(!ts.value){ts.value='count';_peTargetUnit='count';}}
+}
 function saveProductEdit(){
   const name=document.getElementById('pe-name').value.trim(),supplier_id=document.getElementById('pe-supplier').value,unit=document.getElementById('pe-unit').value.trim();
   if(!name||!supplier_id){alert('Enter a product name and pick a supplier.');return;}
-  const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v);}
+  const ps=parseFloat(document.getElementById('pe-packsize').value)||1;const pack_size=ps>1?ps:1;
+  const count_unit=(document.getElementById('pe-countunit').value||'').trim();
+  const target_in=(document.getElementById('pe-target-unit').value==='order'&&ps>1)?'order':'count';
+  const mult=(target_in==='order'?ps:1);
+  const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
   const pv=document.getElementById('pe-pack').value.trim(),rv=document.getElementById('pe-reorder').value.trim();
-  const mv=document.getElementById('pe-measure').value,sv=document.getElementById('pe-size').value.trim();
   let reorder_at,finalTargets;
   if(_prodMode==='reorder'){if(rv===''){alert('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
   else{if(Object.keys(targets).length===0){alert('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
-  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,measure:mv||null,size:sv===''?null:parseFloat(sv)};
+  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:pack_size,count_unit:count_unit||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
