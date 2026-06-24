@@ -525,6 +525,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .alert-time-display{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--amber);margin-top:4px;}
 .alert-days{font-size:13px;color:var(--muted);margin-top:2px;}
 .alert-dismiss{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;flex-shrink:0;}
+.alert-card.rt-done{opacity:.6;border-color:var(--green);}
+.alert-card .rt-strike{text-decoration:line-through;color:var(--muted);}
+.alert-card.active-now:not(.rt-done){animation:rl-warn 1.4s infinite;}
 .recipe-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow);transition:filter .12s;}
 .recipe-card:hover{filter:brightness(1.1);}
 .recipe-name{font-size:15px;font-weight:600;}
@@ -1146,7 +1149,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="grid-2"><div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option></select></div><div class="form-row"><div class="label">Section</div><input class="input" id="new-task-section" placeholder="Kitchen"></div></div>
     <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-task-recur" style="background:var(--surface2);" onchange="onTaskRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="new-task-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-task-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
-    <div id="new-task-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Starting the week of</div><input class="input" type="date" id="new-task-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">It runs that week, skips the next, and so on (every 2 weeks).</div></div>
+    <div id="new-task-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-task-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
     <div id="new-task-dates-wrap" style="display:none;margin-top:8px;"><div class="label">Add the dates it should run</div><div class="row" style="gap:6px;"><input class="input" type="date" id="new-task-date" style="flex:1;"><button class="btn" onclick="addTaskDate()">Add date</button></div><div id="new-task-dates-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
     <div class="form-row mt-8"><div class="label">Alarm time</div><input class="input" type="time" id="new-task-time"></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0;cursor:pointer;"><input type="checkbox" id="new-task-alarm" checked style="width:18px;height:18px;"> Sound the alarm at this time (off = gentle chime only)</label>
@@ -1163,7 +1166,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="form-row mt-8"><div class="label">Instructions</div><input class="input" id="new-alert-detail" placeholder="Load 12 chickens, season with rub"></div>
     <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-alert-recur" style="background:var(--surface2);" onchange="onAlertRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="new-alert-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-alert-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
-    <div id="new-alert-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Starting the week of</div><input class="input" type="date" id="new-alert-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">It runs that week, skips the next, and so on (every 2 weeks).</div></div>
+    <div id="new-alert-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-alert-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
     <div id="new-alert-dates-wrap" style="display:none;margin-top:8px;"><div class="label">Add the dates it should run</div><div class="row" style="gap:6px;"><input class="input" type="date" id="new-alert-date" style="flex:1;"><button class="btn" onclick="addAlertDate()">Add date</button></div><div id="new-alert-dates-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
     <button class="btn btn-primary mt-8" id="btn-add-alert" style="width:100%;" onclick="addServiceAlert()">+ Add Routine</button>
   </div>
@@ -1200,7 +1203,7 @@ let sectionUnlockedAt={};
 function gateUnlocked(key){return sectionUnlockedAt[key]&&(Date.now()-sectionUnlockedAt[key]<GATE_GRACE_MS);}
 const DNAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let currentUser=null,appData={suppliers:[],products:[],recipes:[],packdown_tasks:[],packdown_log:[],service_alerts:[],quiet_jobs:[],email_config:{},staff:[],handover_notes:[],packdown_checks:{},jobs_done:{},stock_on_hand:{},ui:{}};
-let serviceAlertsDismissed={},lastFired={},packdownShift='auto',packdownDueDismissed={};
+let serviceAlertsDismissed={},lastFired={},packdownShift='auto',packdownDueDismissed={},_routineNag={};
 let activeAlarmId=null,dropTimes={bbq:70,fried:15},serverSettings={},lastDrop={bbq:null,fried:null};
 const DEFAULT_USE_BY=90;
 // ── editing state for in-place edits across the dash ──
@@ -1357,12 +1360,13 @@ function _pageActive(p){const el=document.getElementById('page-'+p);return el&&e
 function _attachPhoto(ts,photo){   // patch the photo onto whichever record (by timestamp) once the slow camera returns
   if(!ts||!photo)return;let touched=false;
   const scan=o=>{if(o)Object.values(o).forEach(r=>{if(r&&r.ts===ts&&!r.photo){r.photo=photo;touched=true;}});};
-  scan(appData.packdown_checks);scan((appData.prep_today||{}).done);scan(appData.jobs_done);
+  scan(appData.packdown_checks);scan((appData.prep_today||{}).done);scan(appData.jobs_done);scan(appData.service_done);
   (appData.packdown_log||[]).forEach(e=>{if(e&&e.ts===ts&&!e.photo){e.photo=photo;touched=true;}});
   if(!touched)return;
-  saveKeys(['packdown_checks','packdown_log','prep_today','jobs_done']);
+  saveKeys(['packdown_checks','packdown_log','prep_today','jobs_done','service_done']);
   if(typeof renderPackdownPage==='function'&&_pageActive('packdown'))renderPackdownPage();
   if(typeof renderPrepPage==='function'&&_pageActive('jobs'))renderPrepPage();
+  if(typeof renderServicePage==='function'&&_pageActive('service'))renderServicePage();
   if(typeof renderJobsPage==='function')renderJobsPage();
 }
 let _capQueue=[],_capRunning=false;
@@ -1801,11 +1805,14 @@ function _packdownDailyReset(){const today=_prepToday();if(appData.packdown_rese
 function _taskWkIdx(ds){const a=ds.split('-').map(Number);const x=new Date(a[0],a[1]-1,a[2]);const d=(x.getDay()+6)%7;const m=new Date(a[0],a[1]-1,a[2]-d);return Math.floor(Date.UTC(m.getFullYear(),m.getMonth(),m.getDate())/86400000/7);}
 function _taskActiveToday(t){
   let r=t.recur;if(!r)r=(Array.isArray(t.days)&&t.days.length)?'weekly':'daily';   // legacy: day-of-week set = weekly
+  const today=_prepToday();
+  const start=t.start_date||t.anchor||'';     // recurring doesn't begin before this date
+  if(start&&today<start)return false;
   if(r==='daily')return true;
-  const today=_prepToday(),dow=(new Date().getDay()+6)%7;
+  const dow=(new Date().getDay()+6)%7;
   if(r==='dates')return Array.isArray(t.dates)&&t.dates.includes(today);
   if(r==='weekly')return Array.isArray(t.days)&&t.days.includes(dow);
-  if(r==='fortnightly'){if(!(Array.isArray(t.days)&&t.days.includes(dow)))return false;return ((_taskWkIdx(today)-_taskWkIdx(t.anchor||today))%2+2)%2===0;}
+  if(r==='fortnightly'){if(!(Array.isArray(t.days)&&t.days.includes(dow)))return false;return ((_taskWkIdx(today)-_taskWkIdx(start||today))%2+2)%2===0;}
   return true;
 }
 function _recurLabel(t){let r=t.recur;if(!r)r=(Array.isArray(t.days)&&t.days.length)?'weekly':'daily';const DN=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -1815,7 +1822,7 @@ function _recurLabel(t){let r=t.recur;if(!r)r=(Array.isArray(t.days)&&t.days.len
   return 'Every day';}
 function onTaskRecurChange(){const r=document.getElementById('new-task-recur').value;
   document.getElementById('new-task-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
-  document.getElementById('new-task-anchor-wrap').style.display=(r==='fortnightly')?'':'none';
+  document.getElementById('new-task-anchor-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
   document.getElementById('new-task-dates-wrap').style.display=(r==='dates')?'':'none';}
 let _taskDates=[];
 function renderTaskDates(){const el=document.getElementById('new-task-dates-list');if(!el)return;el.innerHTML=_taskDates.length?_taskDates.map(d=>`<span class="filter-chip on" style="cursor:default;">${d} <span style="cursor:pointer;margin-left:4px;" onclick="removeTaskDate('${d}')">&#10005;</span></span>`).join(''):'<span style="font-size:11px;color:var(--muted);">No dates added yet.</span>';}
@@ -1833,11 +1840,11 @@ function addPackdownTask(){
   const alarm=document.getElementById('new-task-alarm').checked;
   if(!name){alert('Enter a task name.');return;}
   const days=[];document.querySelectorAll('#new-task-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
-  const anchor=document.getElementById('new-task-anchor').value||_prepToday();
+  const start_date=document.getElementById('new-task-anchor').value||'';
   const dates=_taskDates.slice();
   if((recur==='weekly'||recur==='fortnightly')&&days.length===0){alert('Pick at least one day of the week.');return;}
   if(recur==='dates'&&dates.length===0){alert('Add at least one date.');return;}
-  const fields={name,section,remind_at,shift,recur,days,anchor,dates,alarm};
+  const fields={name,section,remind_at,shift,recur,days,start_date,dates,alarm};
   appData.packdown_tasks=appData.packdown_tasks||[];
   if(editingTask){const ex=appData.packdown_tasks.find(t=>t.id===editingTask);if(ex)Object.assign(ex,fields);editingTask=null;setBtn('btn-add-task','+ Add Task');}
   else{appData.packdown_tasks.push(Object.assign({id:'task_'+Date.now()},fields));}
@@ -1849,7 +1856,7 @@ function editPackdownTask(i){const t=(appData.packdown_tasks||[])[i];if(!t)retur
   document.getElementById('new-task-time').value=t.remind_at||'';
   document.getElementById('new-task-shift').value=t.shift||'day';
   document.getElementById('new-task-recur').value=t.recur||'daily';
-  document.getElementById('new-task-anchor').value=t.anchor||'';
+  document.getElementById('new-task-anchor').value=t.start_date||t.anchor||'';
   document.getElementById('new-task-alarm').checked=t.alarm!==false;
   document.querySelectorAll('#new-task-days .day-pill').forEach(p=>p.classList.toggle('on',(t.days||[]).includes(parseInt(p.dataset.d))));
   _taskDates=(t.dates||[]).slice();renderTaskDates();onTaskRecurChange();
@@ -2214,15 +2221,28 @@ function openAdjust(key){_adjKey=key;const bbq=key==='bbq';
 function adjustStep(delta){fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
 function adjustApplySet(){const n=parseFloat(document.getElementById('adjust-set').value);if(isNaN(n)||n<0){alert('Enter a number (0 or more).');return;}fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:n})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
 function resetDayCounts(){const bbq=_adjKey==='bbq';if(!confirm('Reset '+(bbq?'rotisserie':'fryer')+' counts to fresh?\n\nThis zeroes "sold today" and available. Already-counted Square orders won\'t recount.'))return;fetch(bbq?'/api/rot_reset':'/api/fry_reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(s=>{if(bbq)_rotSig='';else _frySig='';_adjShow(s.available);if(typeof _toast==='function')_toast('Counts reset.');}).catch(()=>alert('Reset failed — is the server updated? (needs a restart)'));}
-function renderServicePage(){const alerts=appData.service_alerts||[],container=document.getElementById('service-container'),empty=document.getElementById('service-empty');if(alerts.length===0){container.innerHTML='';empty.style.display='block';return;}empty.style.display='none';const todayDay=(new Date().getDay()+6)%7,hhmm=nowHHMM();const todayAlerts=alerts.filter(a=>_taskActiveToday(a));if(todayAlerts.length===0){container.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center;">No routines scheduled for today.</div>';return;}container.innerHTML=todayAlerts.map(a=>{const key=a.id+'-'+hhmm.slice(0,5);const isNow=hhmm>=a.time&&hhmm<=(a.time.slice(0,3)+String(parseInt(a.time.slice(3))+30).padStart(2,'0'));const dismissed=serviceAlertsDismissed[key];const days=_recurLabel(a);return `<div class="alert-card ${(!dismissed&&isNow)?'active-now':''}"><div class="alert-icon">${a.icon||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>'}</div><div style="flex:1;"><div class="alert-title">${a.name}</div><div class="alert-sub">${a.detail||''}</div><div class="alert-time-display">${a.time}</div><div class="alert-days">${days}</div></div>${(!dismissed&&isNow)?`<button class="alert-dismiss" onclick="dismissServiceAlert('${a.id}')">Done &#10003;</button>`:''}</div>`;}).join('');}
-function dismissServiceAlert(id){serviceAlertsDismissed[id+'-'+nowHHMM().slice(0,5)]=true;silenceAlarm();renderServicePage();}
+function renderServicePage(){const alerts=appData.service_alerts||[],container=document.getElementById('service-container'),empty=document.getElementById('service-empty');if(alerts.length===0){container.innerHTML='';empty.style.display='block';return;}empty.style.display='none';const hhmm=nowHHMM();const todayAlerts=alerts.filter(a=>_taskActiveToday(a));if(todayAlerts.length===0){container.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center;">No routines scheduled for today.</div>';return;}const sd=appData.service_done||{};const clk='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';container.innerHTML=todayAlerts.map(a=>{const st=sd[a.id]||{};const done=!!st.done;const overdue=!done&&hhmm>=a.time;const days=_recurLabel(a);return `<div class="alert-card ${overdue?'active-now':''} ${done?'rt-done':''}"><div class="task-check ${done?'done':''}" onclick="toggleRoutine('${a.id}')">${done?'&#10003;':''}</div><div class="alert-icon">${a.icon||clk}</div><div style="flex:1;"><div class="alert-title ${done?'rt-strike':''}">${a.name}</div><div class="alert-sub">${a.detail||''}</div><div class="alert-time-display">${a.time}${overdue?' · DUE NOW':''}</div><div class="alert-days">${days}</div>${proofHtml(Object.assign({done:done},st))}</div></div>`;}).join('');}
+function toggleRoutine(id){
+  appData.service_done=appData.service_done||{};
+  const cur=appData.service_done[id];
+  if(cur&&cur.done){delete appData.service_done[id];delete _routineNag[id];saveKeys(['service_done']);renderServicePage();updateServiceBadge();return;}
+  const a=(appData.service_alerts||[]).find(x=>x.id===id);
+  completeWithProof('Complete Routine',a?a.name:'',function(rec){
+    appData.service_done[id]=Object.assign({done:true},rec);
+    delete _routineNag[id];
+    if(typeof silenceAlarm==='function')silenceAlarm();   // stop the nag that's ringing
+    saveKeys(['service_done']);renderServicePage();updateServiceBadge();
+  });
+}
+function updateServiceBadge(){const b=document.getElementById('service-badge');if(!b)return;const now=nowHHMM();const sd=appData.service_done||{};const due=(appData.service_alerts||[]).some(a=>_taskActiveToday(a)&&now>=a.time&&!((sd[a.id]||{}).done));b.className='nav-badge'+(due?' show':'');if(!due)document.getElementById('nav-service-btn')?.classList.remove('alarming');}
+function _routinesDailyReset(){const today=_prepToday();if(appData.service_reset_day===today)return;if(appData.service_reset_day){appData.service_done={};saveKeys(['service_done']);}appData.service_reset_day=today;saveKeys(['service_reset_day']);_routineNag={};const pg=document.getElementById('page-service');if(pg&&pg.classList.contains('active'))renderServicePage();}
 let _alertDates=[];
 function renderAlertDates(){const el=document.getElementById('new-alert-dates-list');if(!el)return;el.innerHTML=_alertDates.length?_alertDates.map(d=>`<span class="filter-chip on" style="cursor:default;">${d} <span style="cursor:pointer;margin-left:4px;" onclick="removeAlertDate('${d}')">&#10005;</span></span>`).join(''):'<span style="font-size:11px;color:var(--muted);">No dates added yet.</span>';}
 function addAlertDate(){const i=document.getElementById('new-alert-date'),v=i.value;if(!v)return;if(!_alertDates.includes(v))_alertDates.push(v);_alertDates.sort();i.value='';renderAlertDates();}
 function removeAlertDate(d){_alertDates=_alertDates.filter(x=>x!==d);renderAlertDates();}
 function onAlertRecurChange(){const r=document.getElementById('new-alert-recur').value;
   document.getElementById('new-alert-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
-  document.getElementById('new-alert-anchor-wrap').style.display=(r==='fortnightly')?'':'none';
+  document.getElementById('new-alert-anchor-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
   document.getElementById('new-alert-dates-wrap').style.display=(r==='dates')?'':'none';}
 function _resetAlertForm(){['new-alert-name','new-alert-time','new-alert-icon','new-alert-detail','new-alert-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-alert-recur').value='daily';document.querySelectorAll('#new-alert-days .day-pill').forEach(p=>p.classList.remove('on'));_alertDates=[];renderAlertDates();onAlertRecurChange();}
 function openServiceAdmin(){editingAlert=null;setBtn('btn-add-alert','+ Add Routine');_resetAlertForm();renderServiceAdminList();openModal('service-admin-modal');}
@@ -2230,18 +2250,18 @@ function renderServiceAdminList(){document.getElementById('service-admin-list').
 function addServiceAlert(){const name=document.getElementById('new-alert-name').value.trim();const time=document.getElementById('new-alert-time').value.trim();const icon=document.getElementById('new-alert-icon').value.trim()||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';const detail=document.getElementById('new-alert-detail').value.trim();if(!name||!time){alert('Enter name and time.');return;}
   const recur=document.getElementById('new-alert-recur').value;
   const days=[];document.querySelectorAll('#new-alert-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
-  const anchor=document.getElementById('new-alert-anchor').value||_prepToday();
+  const start_date=document.getElementById('new-alert-anchor').value||'';
   const dates=_alertDates.slice();
   if((recur==='weekly'||recur==='fortnightly')&&days.length===0){alert('Pick at least one day of the week.');return;}
   if(recur==='dates'&&dates.length===0){alert('Add at least one date.');return;}
-  const fields={name,time,icon,detail,recur,days,anchor,dates};
+  const fields={name,time,icon,detail,recur,days,start_date,dates};
   appData.service_alerts=appData.service_alerts||[];
   if(editingAlert){const ex=appData.service_alerts.find(a=>a.id===editingAlert);if(ex)Object.assign(ex,fields);editingAlert=null;setBtn('btn-add-alert','+ Add Routine');}else{appData.service_alerts.push(Object.assign({id:'alert_'+Date.now()},fields));}
   saveAppData();renderServiceAdminList();_resetAlertForm();}
 function editServiceAlert(i){const a=(appData.service_alerts||[])[i];if(!a)return;editingAlert=a.id;
   document.getElementById('new-alert-name').value=a.name||'';document.getElementById('new-alert-time').value=a.time||'';document.getElementById('new-alert-icon').value=a.icon||'';document.getElementById('new-alert-detail').value=a.detail||'';
   document.getElementById('new-alert-recur').value=a.recur||((a.days&&a.days.length)?'weekly':'daily');
-  document.getElementById('new-alert-anchor').value=a.anchor||'';
+  document.getElementById('new-alert-anchor').value=a.start_date||a.anchor||'';
   setDayPills('#new-alert-days',a.days);_alertDates=(a.dates||[]).slice();renderAlertDates();onAlertRecurChange();
   setBtn('btn-add-alert','Save Changes');document.getElementById('new-alert-name').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeServiceAlert(i){appData.service_alerts.splice(i,1);saveAppData();renderServiceAdminList();}
@@ -2496,8 +2516,11 @@ function checkAllReminders(){
   });
   (appData.service_alerts||[]).forEach(a=>{
     if(!_taskActiveToday(a))return;   // daily / weekly / fortnightly / specific dates
-    if(a.time!==now)return;
-    const key='svc-'+a.id+'-'+dateKey+'-'+now;if(lastFired[key]||serviceAlertsDismissed[a.id+'-'+now])return;lastFired[key]=true;
+    if((appData.service_done||{})[a.id]&&appData.service_done[a.id].done){delete _routineNag[a.id];return;}
+    if(now<a.time)return;             // not due yet
+    const nowMs=Date.now(),last=_routineNag[a.id]||0;
+    if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
+    _routineNag[a.id]=nowMs;
     triggerAlarm((a.icon||'')+' '+a.name,a.detail||'');
     document.getElementById('service-badge').classList.add('show');
     document.getElementById('nav-service-btn')?.classList.add('alarming');
@@ -2535,6 +2558,8 @@ function checkAllReminders(){
   updatePrepBadge();
   updatePackdownBadge();
   if(typeof _packdownDailyReset==='function')_packdownDailyReset();   // clear the checklist each new day (the photo log keeps what was done)
+  if(typeof _routinesDailyReset==='function')_routinesDailyReset();   // clear routine completions each new day
+  if(typeof updateServiceBadge==='function')updateServiceBadge();
   if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();   // a prep list scheduled for today becomes today's list
 
 }
