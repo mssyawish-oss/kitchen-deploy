@@ -2301,4 +2301,14 @@ if __name__=="__main__":
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
     threading.Timer(2.0,lambda:webbrowser.open("http://127.0.0.1:8080")).start()
-    asyncio.run(ble_loop())
+    # The Bluetooth probe scan can hard-abort the whole process on a machine/launch context
+    # that lacks Bluetooth permission (macOS kills it — Python can't catch that). Set
+    # DASH_NO_BLE=1 to skip the probe scan and keep the rest of the dashboard running.
+    if os.environ.get("DASH_NO_BLE")=="1":
+        print("  (DASH_NO_BLE=1 — Bluetooth probe scanning disabled)")
+        while True: time.sleep(3600)
+    try:
+        asyncio.run(ble_loop())
+    except Exception as e:
+        print(f"BLE loop stopped: {e} — dashboard stays up without probes")
+        while True: time.sleep(3600)
