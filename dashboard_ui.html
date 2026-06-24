@@ -740,6 +740,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="page" id="page-jobs">
       <div class="page-header"><div class="page-title">Today's Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div></div>
+      <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
     </div>
     <div class="page" id="page-cameras">
@@ -780,8 +781,15 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <!-- Today's Prep: morning staff pick the list -->
 <div class="modal-overlay" id="prep-build-modal">
   <div class="modal" style="max-width:760px;">
-    <div class="modal-header"><div class="modal-title">SET TODAY'S PREP</div><button class="modal-close" onclick="closeModal('prep-build-modal')">Close</button></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tap the items the afternoon staff need to prep, and set each one's priority. Tap again to unselect.</div>
+    <div class="modal-header"><div class="modal-title">SET PREP LIST</div><button class="modal-close" onclick="closeModal('prep-build-modal')">Close</button></div>
+    <div class="row" style="gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:var(--muted);">Prep list for:</span>
+      <button class="btn" onclick="setPrepBuildDate(0)">Today</button>
+      <button class="btn" onclick="setPrepBuildDate(1)">Tomorrow</button>
+      <input class="input" type="date" id="prep-build-date" style="width:auto;" onchange="onPrepBuildDateChange()">
+      <span id="prep-build-daylbl" style="font-size:13px;font-weight:700;color:var(--amber);"></span>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tap the items staff need to prep, and set each one's priority. Tap again to unselect.</div>
     <div class="row" style="gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
       <select class="input" id="prep-saved-sel" style="flex:1;min-width:150px;"><option value="">Load a saved list…</option></select>
       <button class="btn" onclick="loadPrepSaved()">Load</button>
@@ -789,7 +797,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="btn" onclick="savePrepSaved()">Save current as…</button>
     </div>
     <div id="prep-build-grid" class="prep-grid"></div>
-    <button class="btn btn-primary" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepToday()">Save today's prep list</button>
+    <button class="btn btn-primary" id="prep-build-save" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepList()">Save prep list</button>
   </div>
 </div>
 <!-- Today's Prep: manage preset items -->
@@ -2225,6 +2233,7 @@ function deleteRecipe(i){if(!confirm('Delete?'))return;appData.recipes.splice(i,
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
 function renderPrepPage(){
   const box=document.getElementById('prep-list');if(!box)return;
+  renderPrepUpcoming();
   const today=_prepToday();const pt=appData.prep_today||{};const presets=appData.prep_presets||[];
   const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));   // list persists until rebuilt or reset — does NOT auto-clear daily (so unfinished items stay visible)
   const done=(pt.done||{});
@@ -2273,7 +2282,29 @@ function completePrep(id){
   });
 }
 let _prepPick=new Set(),_prepPickPri={};
-function openPrepBuild(){const pt=appData.prep_today||{};_prepPick=new Set(pt.items||[]);_prepPickPri=Object.assign({},pt.pri||{});renderPrepSavedSel();renderPrepBuildGrid();openModal('prep-build-modal');}
+let _prepBuildDate='';
+function _prepDateOffset(n){const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function _prepDateLabel(ds){const today=_prepToday();if(ds===today)return 'Today';if(ds===_prepDateOffset(1))return 'Tomorrow';const d=new Date(ds+'T12:00:00');return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1);}
+function _prepListFor(ds){const today=_prepToday();if(ds===today)return appData.prep_today||{};return (appData.prep_scheduled||{})[ds]||{};}
+function _loadPrepPicks(ds){const l=_prepListFor(ds);_prepPick=new Set(l.items||[]);_prepPickPri=Object.assign({},l.pri||{});}
+function setPrepBuildDate(off){document.getElementById('prep-build-date').value=_prepDateOffset(off);onPrepBuildDateChange();}
+function onPrepBuildDateChange(){let ds=document.getElementById('prep-build-date').value||_prepToday();if(ds<_prepToday())ds=_prepToday();_prepBuildDate=ds;
+  const lbl=_prepDateLabel(ds);
+  const dl=document.getElementById('prep-build-daylbl');if(dl)dl.textContent=lbl;
+  const t=document.querySelector('#prep-build-modal .modal-title');if(t)t.textContent='SET PREP — '+lbl.toUpperCase();
+  const sb=document.getElementById('prep-build-save');if(sb)sb.textContent=(ds===_prepToday()?'Save today’s prep list':'Schedule prep for '+lbl);
+  _loadPrepPicks(ds);renderPrepBuildGrid();}
+function openPrepBuild(dateStr){_prepBuildDate=dateStr||_prepToday();document.getElementById('prep-build-date').value=_prepBuildDate;onPrepBuildDateChange();renderPrepSavedSel();openModal('prep-build-modal');}
+function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled=appData.prep_scheduled||{};const sch=appData.prep_scheduled;let changed=false;
+  if(sch[today]&&(appData.prep_today||{}).date!==today){const s=sch[today];appData.prep_today={date:today,items:s.items||[],pri:s.pri||{},done:{}};delete sch[today];saveKeys(['prep_today','prep_scheduled']);changed=true;}
+  Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});if(changed)saveKeys(['prep_scheduled']);
+  const pg=document.getElementById('page-jobs');if(pg&&pg.classList.contains('active'))renderPrepPage();}
+function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');if(!el)return;const sch=appData.prep_scheduled||{};const today=_prepToday();
+  const dates=Object.keys(sch).filter(d=>d>today&&(sch[d].items||[]).length).sort();
+  if(!dates.length){el.style.display='none';el.innerHTML='';return;}
+  el.style.display='flex';
+  el.innerHTML='<span style="font-size:12px;color:var(--muted);">Scheduled ahead:</span>'+dates.map(d=>`<span class="filter-chip" style="cursor:pointer;" onclick="openPrepBuild('${d}')">${_prepDateLabel(d)} · ${(sch[d].items||[]).length} item${(sch[d].items||[]).length===1?'':'s'} <span onclick="event.stopPropagation();removeScheduledPrep('${d}')" style="margin-left:5px;color:var(--muted);font-weight:700;">&#10005;</span></span>`).join('');}
+function removeScheduledPrep(d){if(!confirm('Remove the scheduled prep list for '+_prepDateLabel(d)+'?'))return;if(appData.prep_scheduled)delete appData.prep_scheduled[d];saveKeys(['prep_scheduled']);renderPrepPage();}
 function resetPrepDone(){if(!confirm('Clear the whole prep list? All items are removed and the page goes back to empty.'))return;appData.prep_today={date:_prepToday(),items:[],done:{},pri:{}};saveKeys(['prep_today']);renderPrepPage();}
 function renderPrepSavedSel(){const sel=document.getElementById('prep-saved-sel');if(!sel)return;const lists=appData.prep_saved_lists||[];sel.innerHTML='<option value="">Load a saved list…</option>'+lists.map(l=>'<option value="'+l.id+'">'+_mEsc(l.name)+' ('+(l.items||[]).length+')</option>').join('');}
 function loadPrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l)return;_prepPick=new Set(l.items||[]);_prepPickPri=Object.assign({},l.pri||{});renderPrepBuildGrid();}
@@ -2288,11 +2319,20 @@ function renderPrepBuildGrid(){
     return '<div class="prep-card prep-pick'+(picked?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')"><div class="pc-tick">&#10003;</div><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div>'+priRow+'</div>';}).join('');
 }
 function togglePrepPick(id){if(_prepPick.has(id)){_prepPick.delete(id);delete _prepPickPri[id];}else{_prepPick.add(id);if(!_prepPickPri[id])_prepPickPri[id]='med';}renderPrepBuildGrid();}
-function savePrepToday(){
-  const today=_prepToday();const items=(appData.prep_presets||[]).filter(p=>_prepPick.has(p.id)).map(p=>p.id);
+function savePrepList(){
+  const today=_prepToday();let ds=_prepBuildDate||today;if(ds<today)ds=today;
+  const items=(appData.prep_presets||[]).filter(p=>_prepPick.has(p.id)).map(p=>p.id);
   const pri={};items.forEach(id=>{pri[id]=_prepPickPri[id]||'med';});
-  const pt=appData.prep_today||{};const prev=(pt.done||{});const done={};items.forEach(id=>{if(prev[id])done[id]=prev[id];});
-  appData.prep_today={date:today,items:items,done:done,pri:pri};saveKeys(['prep_today']);closeModal('prep-build-modal');renderPrepPage();
+  if(ds===today){
+    const pt=appData.prep_today||{};const prev=(pt.done||{});const done={};items.forEach(id=>{if(prev[id])done[id]=prev[id];});
+    appData.prep_today={date:today,items:items,done:done,pri:pri};saveKeys(['prep_today']);
+  }else{
+    appData.prep_scheduled=appData.prep_scheduled||{};
+    if(items.length)appData.prep_scheduled[ds]={items:items,pri:pri};else delete appData.prep_scheduled[ds];
+    saveKeys(['prep_scheduled']);
+  }
+  closeModal('prep-build-modal');renderPrepPage();
+  if(typeof _toast==='function')_toast(ds===today?'Today’s prep list saved.':('Prep scheduled for '+_prepDateLabel(ds)+'.'));
 }
 let _prepFile=null;
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
@@ -2462,6 +2502,8 @@ function checkAllReminders(){
   updatePrepBadge();
   updatePackdownBadge();
   if(typeof _packdownDailyReset==='function')_packdownDailyReset();   // clear the checklist each new day (the photo log keeps what was done)
+  if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();   // a prep list scheduled for today becomes today's list
+
 }
 function updatePackdownBadge(){  // Checklist tab badge strobes whenever there are overdue (flashing) checklist tasks
   const b=document.getElementById('packdown-badge');if(!b)return;
