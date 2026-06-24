@@ -1284,7 +1284,7 @@ function triggerAlarm(title,sub){
   function loop(){if(activeAlarmId!==id)return;_alarmHit('service');setTimeout(()=>{if(activeAlarmId===id)loop();},_acfg('service').interval);}
   loop();
 }
-function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();}
+function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence();}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
 function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;(function b(){if(!_waitAlarm)return;_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},_acfg('orders').interval);})();}
@@ -1300,7 +1300,12 @@ function silenceOneAlarm(key){if(key==='probe'){Object.keys(_probeAlarms).forEac
   _updateFlash();}
 setInterval(_updateFlash,400);
 function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
-function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');}
+// ── cross-screen silence: silencing on one dashboard silences them all ──
+let _silenceSeen=0,_applyingRemoteSilence=false;
+function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
+function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
+function _applyRemoteSilence(ts){if(!ts)return;if(!_silenceSeen){_silenceSeen=ts;return;}if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
+function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
@@ -1311,7 +1316,7 @@ function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)
   if(!orders.length){body=`<div class="wo-empty">No orders waiting &mdash; all caught up</div>`;}
   else{body=`<div class="wo-grid">`+shown.map(o=>{const col=o.late?'var(--red)':'var(--amber)';return `<button class="wo-box" style="border-color:${col};${o.late?'animation:rl-warn 1s infinite;':''}" onclick="waitDone('${o.oid}')" title="Tap to mark handed out"><div class="wo-name">${o.name||(o.items&&o.items[0])||'Order'}</div><div class="wo-meta" style="color:${col};">waiting ${o.mins}m${o.late?' &middot; LATE':''}</div></button>`;}).join('')+(orders.length>6?`<div class="wo-more">+${orders.length-6} more</div>`:'')+`</div>`;}
   el.innerHTML=`<div class="rl-card wo-card">${head}${body}</div>`;}
-function silenceWait(){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'});}
+function silenceWait(){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'});_broadcastSilence();}
 function waitDone(oid){fetch('/api/wait_done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oid})}).then(()=>pollTemps());}
 function toggleFullscreen(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});else document.exitFullscreen();}
 
@@ -1489,7 +1494,7 @@ function renderProbes(){
     </div>`;
   }).join('');
 }
-function ackProbe(pid){probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
+function ackProbe(pid){probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence();}
 function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
 function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,name})});}
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
@@ -1545,7 +1550,7 @@ function renderPhotoLog(){const box=document.getElementById('photo-log');if(!box
 function saveCameraConfig(){const body={ip:document.getElementById('cam-ip').value.trim(),port:document.getElementById('cam-port').value.trim(),channel:document.getElementById('cam-channel').value.trim(),url_override:document.getElementById('cam-url').value.trim(),enabled:document.getElementById('cam-enabled').checked};const u=document.getElementById('cam-user').value;if(u)body.user=u;const p=document.getElementById('cam-pass').value;if(p)body.pass=p;camStatus('Saving…','muted');fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){camStatus(d.enabled?'Saved — camera ON for task completion.':'Saved (camera OFF — tasks use PIN).','green');loadAppData();}else camStatus('Error saving.','red');});}
 function testCamera(){camStatus('Contacting camera…','muted');document.getElementById('cam-preview').innerHTML='';saveCameraConfig();setTimeout(()=>{fetch('/api/camera_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok&&d.preview){camStatus('Camera works! &#10003;','green');document.getElementById('cam-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);">';}else camStatus('Could not get a photo: '+(d.error||'unknown'),'red');});},600);}
 
-async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();_applyRemoteSilence(d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
@@ -2119,7 +2124,7 @@ function checkProductsOff(){
 let _prodOffExpandDay=null;   // the day the user chose to expand the banner; otherwise it stays minimised
 function prodOffMinimise(){_prodOffExpandDay=null;checkProductsOff();}
 function prodOffExpand(){_prodOffExpandDay=new Date().toISOString().slice(0,10);checkProductsOff();}
-function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();}
+function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();_broadcastSilence();}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 let _uiVer=null;   // self-update: reload the app on its own when a new screen build is deployed, so nobody has to manually refresh

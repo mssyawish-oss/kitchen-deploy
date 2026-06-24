@@ -2036,11 +2036,17 @@ def api_mcp():
         return jsonify({"errors":[{"detail":str(e)}]})
     return jsonify({})
 
+ALARM_SILENCE_TS=0   # bumped whenever any screen silences — other screens see it and silence too
+@app.route("/api/silence",methods=["POST"])
+def api_silence():
+    global ALARM_SILENCE_TS
+    ALARM_SILENCE_TS=int(time.time()*1000)
+    return jsonify({"ok":True,"ts":ALARM_SILENCE_TS})
 @app.route("/temps")
 def temps():
     with probe_lock: t=dict(probe_temps)
     with state_lock: s={k:{kk:vv for kk,vv in v.items() if kk!="removal_timer"} for k,v in probe_state.items()}
-    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state()}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
