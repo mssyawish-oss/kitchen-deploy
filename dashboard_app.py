@@ -1313,6 +1313,7 @@ _ROT_PROMPT=("This is a vertical rotisserie chicken oven seen at a downward angl
              "treat the stainless bench at the bottom as a level; the top level may be partly cut off at the top edge — if "
              "chickens are visible there it still counts as loaded. Reply with EXACTLY 6 characters and nothing else: one digit "
              "per level from top (level 1) to bottom (level 6), '1' if that level has chickens or '0' if it is empty. "
+             "Write the 6 characters JOINED TOGETHER with NO spaces, commas or separators. "
              "Example: 111100 means levels 1-4 have chickens and levels 5-6 are empty.")
 # --- LOCKED box positions for THIS camera (fractions of frame H; x = 21%..81% of W). Boxes get
 #     shorter toward the bottom because of the downward angle. Set 2026-06-13 with the owner. ---
@@ -1323,7 +1324,7 @@ _ROT_BOX_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, ea
                  "strip 6 = bottom shelf. For EACH strip decide: does it contain chicken (whole roast chickens / chicken "
                  "meat) = 1, OR is it empty/bare (you see only metal spit rods, a wire grid, glass, or empty dark space, no "
                  "chicken) = 0. Reply with EXACTLY 6 digits and nothing else, one per strip from top (strip 1) to bottom "
-                 "(strip 6). Example: 111110 means strips 1-5 have chicken and strip 6 is empty. "
+                 "(strip 6), JOINED TOGETHER with NO spaces or separators. Example: 111110 means strips 1-5 have chicken and strip 6 is empty. "
                  "IMPORTANT: if a PERSON or large object is blocking the view of ANY strip so you cannot clearly see the "
                  "shelf behind them, reply with exactly the single word BLOCKED (instead of digits) — do not guess.")
 # Combined occupancy + DONENESS read (one call). Each strip → one letter by the chickens' colour, allowing for the
@@ -1338,7 +1339,7 @@ _ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, n
                   "R = READY (cooked: even golden-brown skin across the whole chicken)\n"
                   "O = OVERDONE (very dark brown / mahogany, with charred or blackened patches on the ridges)\n"
                   "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
-                  "0 N A R O, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
+                  "0 N A R O, JOINED TOGETHER with NO spaces, commas or separators, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
                   "strip5 overdone, strip6 empty). If a PERSON or object blocks a strip so you cannot see it, reply with the "
                   "single word BLOCKED.")
 _DONE_LABELS={"N":"not_ready","A":"almost_ready","R":"ready","O":"overdone"}

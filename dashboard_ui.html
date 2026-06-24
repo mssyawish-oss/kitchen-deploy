@@ -146,6 +146,8 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .rl-tag{font-size:11px;font-family:var(--font-body);color:var(--muted);letter-spacing:.12em;font-weight:700;text-transform:uppercase;}
 .rl-cooking{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#0b0c10;background:linear-gradient(180deg,#fbab3e,#f3850f);font-weight:800;white-space:nowrap;padding:4px 10px;border-radius:999px;letter-spacing:.02em;box-shadow:0 1px 5px rgba(243,133,15,.45);}
 .rl-cooking .ico{width:13px;height:13px;}
+.rl-camerr{display:flex;align-items:center;gap:6px;margin-top:9px;padding:6px 10px;border-radius:8px;background:rgba(248,113,113,.13);border:1px solid rgba(248,113,113,.4);color:#fca5a5;font-size:11.5px;line-height:1.3;}
+.rl-camerr svg{width:13px;height:13px;flex:0 0 auto;}
 #rl-cam{flex:1.4;min-width:0;}
 #rl-benchcam{flex:1.4;min-width:0;}
 .cam-min-btn{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:7px;color:var(--muted);width:24px;height:24px;font-size:17px;line-height:1;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
@@ -1748,8 +1750,11 @@ function renderRotLive(rot){
   const avail=rot.available||0;
   const lvl=(H<(R.open_hour||10)||H>(R.close_hour||21))?'none':(avail<=2?'crit':avail<4?'warn':'none');
   const alvl=updateStockAlert('bbq',lvl);
-  const sig=[avail,rot.sold_today,rot.square,alvl,rot.rows_cooking,rot.cam].join('|');
+  const cerr=(rot.cam_err||'').trim();
+  const showErr=rot.cam&&cerr&&!/block|skip/i.test(cerr);   // ignore the normal transient "view blocked" reads
+  const sig=[avail,rot.sold_today,rot.square,alvl,rot.rows_cooking,rot.cam,showErr?cerr:''].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
+  const camErrHtml=showErr?`<div class="rl-camerr" title="${cerr.replace(/"/g,'&quot;')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Camera not counting: ${cerr.length>54?cerr.slice(0,54)+'…':cerr}</span></div>`:'';
   const recHtml=alvl==='none'?'':`<div class="rl-big" style="color:${alvl==='crit'?'var(--red)':'var(--amber)'};"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="rl-biglab">cook<br>more</div>`;
   const cookHtml=rot.cam?`<span class="rl-cooking" title="auto-counted from camera"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> ${rot.rows_cooking||0} ${(rot.rows_cooking||0)===1?'row':'rows'} cooking</span>`:'';
   el.innerHTML=`<div class="rl-card ${alvl==='crit'?'crit':alvl==='warn'?'warn':''}" onclick="ackStock('bbq')"><div class="rl-top"><div class="rl-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 23a7 7 0 0 0 7-7c0-2.2-1.1-4.1-2.7-5.8-.5 1.1-1.3 1.9-2.1 2.2.6-2.4-.4-4.9-2.8-7-.3 2.7-2.1 4.1-3.5 5.6A7 7 0 0 0 5 16a7 7 0 0 0 7 7Z"/></svg></div><div class="rl-tag">ROTISSERIE</div>${cookHtml}</div>
@@ -1758,6 +1763,7 @@ function renderRotLive(rot){
       <div class="rl-stat"><span class="rl-num">${Math.round(avail*4)/4}</span><span class="rl-lab">available</span></div>
       <div class="rl-stat"><span class="rl-num">${Math.round((rot.sold_today||0)*4)/4}</span><span class="rl-lab">sold today</span></div>
     </div>
+    ${camErrHtml}
     <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button></div>
     <div class="rl-right"><div class="rl-src">${rot.square?'&#9679; Square live':'&#9675; manual'}</div></div>
   </div>`;
