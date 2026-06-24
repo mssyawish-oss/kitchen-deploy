@@ -467,6 +467,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .set-tab.on{background:var(--amber);border-color:var(--amber);color:#1a1205;}
 .filter-chip.on{background:var(--amber-dim);border-color:var(--amber);color:#fde68a;box-shadow:0 0 0 1px rgba(251,191,36,.25);}
 .stock-group-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 6px;padding-bottom:6px;border-bottom:2px solid var(--border2);font-family:var(--font-mono);font-weight:700;font-size:16px;color:var(--text);}
+.cap-spin{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--amber);border-radius:50%;display:inline-block;animation:capspin .7s linear infinite;}
+@keyframes capspin{to{transform:rotate(360deg);}}
 /* ── Stock rebuild ── */
 .stk-search{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:15px;padding:11px 14px;border-radius:11px;outline:none;margin-bottom:10px;}
 .stk-search:focus{border-color:var(--amber);}
@@ -1312,20 +1314,23 @@ let cPinBuf='',cPinCB=null,cPinRoles=null;
 function requirePin(title,sub,cb,roles){cPinCB=cb;cPinRoles=roles||null;cPinBuf='';document.getElementById('pin-confirm-title').textContent=title||'Enter PIN';document.getElementById('pin-confirm-sub').textContent=sub||'';document.getElementById('pin-confirm-error').textContent='';updateCPinDots();openModal('pin-confirm-modal');}
 function nowTime(){return new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 // complete a task with PROOF: snap a camera photo if enabled, otherwise fall back to the PIN.
+let _capBusy=false;
 function completeWithProof(title,sub,onDone){
   if(appData.camera_enabled){
-    showCaptureOverlay();
+    if(_capBusy)return;            // a photo is already being taken — ignore the extra taps
+    _capBusy=true;
+    showCaptureOverlay();          // instant feedback so staff know the tap registered
     fetch('/api/capture',{method:'POST'}).then(r=>r.json()).then(d=>{
-      hideCaptureOverlay();
+      _capBusy=false;hideCaptureOverlay();
       if(d&&d.ok&&d.photo){ onDone({photo:d.photo,time:nowTime(),ts:Date.now()}); }
       else { requirePin(title,(d&&d.error?'Camera: '+d.error:sub),function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); }
-    }).catch(()=>{ hideCaptureOverlay(); requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); });
+    }).catch(()=>{ _capBusy=false;hideCaptureOverlay(); requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); });
   } else {
     requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});});
   }
 }
-function showCaptureOverlay(){}   // capture silently — no "Taking photo…" message, just snap it and move on
-function hideCaptureOverlay(){const o=document.getElementById('capture-overlay');if(o)o.style.display='none';}
+function showCaptureOverlay(){let c=document.getElementById('capture-chip');if(!c){c=document.createElement('div');c.id='capture-chip';c.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:rgba(20,22,30,.96);border:1px solid var(--border2);color:var(--text);font-size:16px;font-weight:600;padding:14px 22px;border-radius:14px;box-shadow:0 12px 44px rgba(0,0,0,.55);display:flex;align-items:center;gap:11px;pointer-events:none;';c.innerHTML='<span class="cap-spin"></span>Saving…';document.body.appendChild(c);}c.style.display='flex';}
+function hideCaptureOverlay(){const c=document.getElementById('capture-chip');if(c)c.style.display='none';const o=document.getElementById('capture-overlay');if(o)o.style.display='none';}
 function enlargePhoto(name){requirePin('Enter PIN','A PIN is needed to view task photos',function(){_enlargePhotoShow(name);},null);}
 function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:401;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:12px;">';o.style.display='flex';}
 function proofHtml(state){if(!state||!state.done)return '';if(state.photo)return '<div class="task-who">&#10003; <img src="/photos/'+state.photo+'" onclick="enlargePhoto(\''+state.photo+'\')" style="width:26px;height:26px;border-radius:4px;object-fit:cover;vertical-align:middle;cursor:pointer;border:1px solid var(--border2);"> '+(state.time||'')+'</div>';if(state.who)return '<div class="task-who">&#10003; '+state.who+' at '+(state.time||'')+'</div>';return '';}
