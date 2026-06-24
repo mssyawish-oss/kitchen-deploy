@@ -2521,7 +2521,7 @@ function checkAllReminders(){
     const nowMs=Date.now(),last=_routineNag[a.id]||0;
     if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
     _routineNag[a.id]=nowMs;
-    triggerAlarm((a.icon||'')+' '+a.name,a.detail||'');
+    triggerAlarm(((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // skip SVG-markup icons (they'd print as raw code in the alarm title)
     document.getElementById('service-badge').classList.add('show');
     document.getElementById('nav-service-btn')?.classList.add('alarming');
   });
