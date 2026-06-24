@@ -1353,18 +1353,31 @@ function requirePin(title,sub,cb,roles){cPinCB=cb;cPinRoles=roles||null;cPinBuf=
 function nowTime(){return new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 // complete a task with PROOF: snap a camera photo if enabled, otherwise fall back to the PIN.
 let _capBusy=false;
+function _pageActive(p){const el=document.getElementById('page-'+p);return el&&el.classList.contains('active');}
+function _attachPhoto(ts,photo){   // patch the photo onto whichever record (by timestamp) once the slow camera returns
+  if(!ts||!photo)return;let touched=false;
+  const scan=o=>{if(o)Object.values(o).forEach(r=>{if(r&&r.ts===ts&&!r.photo){r.photo=photo;touched=true;}});};
+  scan(appData.packdown_checks);scan((appData.prep_today||{}).done);scan(appData.jobs_done);
+  (appData.packdown_log||[]).forEach(e=>{if(e&&e.ts===ts&&!e.photo){e.photo=photo;touched=true;}});
+  if(!touched)return;
+  saveKeys(['packdown_checks','packdown_log','prep_today','jobs_done']);
+  if(typeof renderPackdownPage==='function'&&_pageActive('packdown'))renderPackdownPage();
+  if(typeof renderPrepPage==='function'&&_pageActive('jobs'))renderPrepPage();
+  if(typeof renderJobsPage==='function')renderJobsPage();
+}
+let _capQueue=[],_capRunning=false;
+function _queueCapture(ts){_capQueue.push(ts);_runCapQueue();}
+function _runCapQueue(){
+  if(_capRunning||!_capQueue.length)return;_capRunning=true;const ts=_capQueue.shift();
+  const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  const to=setTimeout(()=>{if(ctrl)try{ctrl.abort();}catch(e){}},9000);
+  fetch('/api/capture',{method:'POST',signal:ctrl?ctrl.signal:undefined}).then(r=>r.json()).then(d=>{clearTimeout(to);if(d&&d.ok&&d.photo)_attachPhoto(ts,d.photo);}).catch(()=>{clearTimeout(to);}).finally(()=>{_capRunning=false;_runCapQueue();});
+}
 function completeWithProof(title,sub,onDone){
   if(appData.camera_enabled){
-    if(_capBusy)return;            // a photo is already being taken — ignore the extra taps
-    _capBusy=true;
-    showCaptureOverlay();          // instant feedback so staff know the tap registered
-    const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
-    let done=false;
-    const finish=fn=>{if(done)return;done=true;clearTimeout(to);_capBusy=false;hideCaptureOverlay();fn();};
-    const to=setTimeout(()=>{if(ctrl)try{ctrl.abort();}catch(e){}finish(()=>requirePin(title,'Camera didn’t respond — enter your code to complete.',function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}));},7000);   // never let "Saving…" hang
-    fetch('/api/capture',{method:'POST',signal:ctrl?ctrl.signal:undefined}).then(r=>r.json()).then(d=>{
-      finish(()=>{ if(d&&d.ok&&d.photo){ onDone({photo:d.photo,time:nowTime(),ts:Date.now()}); } else { requirePin(title,(d&&d.error?'Camera: '+d.error:sub),function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});}); } });
-    }).catch(()=>{ finish(()=>requirePin(title,'Camera didn’t respond — enter your code to complete.',function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});})); });
+    const rec={time:nowTime(),ts:Date.now()};   // mark done INSTANTLY — the photo attaches a moment later in the background
+    onDone(rec);
+    _queueCapture(rec.ts);
   } else {
     requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});});
   }
