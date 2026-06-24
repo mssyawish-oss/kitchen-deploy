@@ -1161,7 +1161,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <script>
 const ROLE_PAGES={cashier:['packdown','service','jobs'],kitchen:['probes','stock','packdown','service','recipes','jobs'],manager:['probes','stock','packdown','service','recipes','jobs'],admin:['probes','stock','packdown','service','recipes','jobs']};
 const SETTINGS_ROLES=['manager','admin'];
-const GATED_PAGES=['stock','recipes','cameras'];   // sections that prompt for a code on entry (Settings is gated via the gear)
+const GATED_PAGES=['stock','cameras'];   // sections that prompt for a code on entry (Settings is gated via the gear)
 const GATE_GRACE_MS=300000;              // a section stays unlocked for 5 minutes after a correct code
 let sectionUnlockedAt={};
 function gateUnlocked(key){return sectionUnlockedAt[key]&&(Date.now()-sectionUnlockedAt[key]<GATE_GRACE_MS);}

@@ -952,6 +952,14 @@ def api_prep_image(pid):
     if len(raw)>5*1024*1024: return jsonify({"ok":False,"error":"image too big (max 5 MB)"})
     ext=(os.path.splitext(f.filename or "")[1] or "").lstrip(".").lower()
     if ext not in ("png","jpg","jpeg","webp","gif"): ext="jpg"
+    # Downscale before saving — prep pictures show as small thumbnails, so a full-size
+    # phone photo (several MB) just makes the tablet load slowly. Cap at 900px / JPEG q80.
+    try:
+        from PIL import Image; import io
+        im=Image.open(io.BytesIO(raw)).convert("RGB")
+        if im.width>900: im=im.resize((900,max(1,int(im.height*900/im.width))))
+        buf=io.BytesIO(); im.save(buf,"JPEG",quality=80); raw=buf.getvalue(); ext="jpg"
+    except Exception: pass   # if it isn't a decodable image, fall back to storing as-is
     try:
         for old in os.listdir(PHOTOS_DIR):
             if old.startswith("prep_"+pid+"."): os.remove(os.path.join(PHOTOS_DIR,old))
@@ -1239,7 +1247,11 @@ def serve_photo(name):
     if not re.match(r'^[A-Za-z0-9_.-]+$',name or ""): return Response("bad name",status=400)
     p=os.path.join(PHOTOS_DIR,name)
     if not os.path.exists(p): return Response("not found",status=404)
-    return send_file(p,mimetype="image/jpeg")
+    resp=send_file(p,mimetype="image/jpeg")
+    # Let the tablet cache these instead of re-downloading every render. Task photos have
+    # unique names so they can be cached hard; prep presets reuse a name, so cache 1 day.
+    resp.headers["Cache-Control"]=("public, max-age=86400" if name.startswith("prep_") else "public, max-age=31536000, immutable")
+    return resp
 
 # ── Rotisserie auto-count: grab a frame from the Tapo camera (RTSP) and count rows of chickens with Gemini ──
 ROTCAM={"cooking":0,"hist":[],"last_count":None,"last_ts":0,"error":""}
