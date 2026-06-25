@@ -1810,10 +1810,10 @@ def api_rotcam_config():
               "bench_ip","bench_user","bench_pass","bench_rtsp_url","bench_stream"):
         if k in d: cfg[k]=str(d[k]).strip()
     if "interval" in d:
-        try: cfg["interval"]=max(3,int(d["interval"]))
+        try: cfg["interval"]=max(1,int(d["interval"]))
         except Exception: pass
     if "bench_interval" in d:
-        try: cfg["bench_interval"]=max(3,int(d["bench_interval"]))
+        try: cfg["bench_interval"]=max(1,int(d["bench_interval"]))
         except Exception: pass
     if "box_offset" in d:
         try: cfg["box_offset"]=max(-0.2,min(0.2,float(d["box_offset"])))
