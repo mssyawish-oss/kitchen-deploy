@@ -2225,6 +2225,44 @@ def api_fry_adjust():
 def api_rot_put_on():
     d=request.get_json(silent=True) or {};rot_put_on(int(d.get("rows",1) or 1));return jsonify(rot_state())
 
+# ── SPIT SENSORS ── 6 inductive proximity sensors (one per spit) report a 6-char pattern, 1=spit present.
+# Deterministic: when a spit that was loaded long enough to be a real cook then goes empty, credit a cooked row.
+_SPIT_OFF_CONFIRM=4   # a slot must read EMPTY this long before we count it as removed (debounce)
+def _spit_min_secs():
+    try: return max(0,int((db.get("rotisserie") or {}).get("spit_min_min",20)))*60
+    except Exception: return 20*60
+_SPIT=db.get("spit_live") if isinstance(db.get("spit_live"),dict) else {}
+if not (_SPIT.get("saved_at") and (time.time()-float(_SPIT.get("saved_at",0)))<1800): _SPIT={}
+_SPIT.setdefault("loaded_at",[0,0,0,0,0,0]); _SPIT.setdefault("empty_at",[0,0,0,0,0,0])
+def _spit_save():
+    try:
+        with data_lock: db["spit_live"]={"loaded_at":list(_SPIT["loaded_at"]),"empty_at":list(_SPIT["empty_at"]),"saved_at":time.time()}; save_data(db)
+    except Exception: pass
+def _spit_apply(pat):
+    now=time.time(); la=_SPIT["loaded_at"]; ea=_SPIT["empty_at"]
+    if len(la)!=6: la=_SPIT["loaded_at"]=[0,0,0,0,0,0]
+    if len(ea)!=6: ea=_SPIT["empty_at"]=[0,0,0,0,0,0]
+    mn=_spit_min_secs(); credit=0; changed=False
+    for i in range(6):
+        if pat[i]=="1":                       # spit present in this slot
+            ea[i]=0
+            if la[i]==0: la[i]=now; changed=True
+        elif la[i]>0:                         # was present, now gone → candidate removal
+            if ea[i]==0: ea[i]=now; changed=True
+            elif now-ea[i]>=_SPIT_OFF_CONFIRM:
+                if now-la[i]>=mn: credit+=1    # was up long enough to be a genuine cooked row
+                la[i]=0; ea[i]=0; changed=True
+    ROTCAM["spit_pat"]=pat                     # last sensor pattern (for display/debug)
+    if credit>0: rot_put_on(credit)            # +birds_per_row per cooked row that came off the spit
+    if changed or credit>0: _spit_save()
+@app.route("/api/spit_state",methods=["POST"])
+def api_spit_state():
+    d=request.get_json(silent=True) or {}
+    pat=str(d.get("pattern","")).strip()
+    if not (len(pat)==6 and set(pat)<=set("01")): return jsonify({"ok":False,"error":"pattern must be 6 chars of 0/1"})
+    _spit_apply(pat)
+    return jsonify({"ok":True,"loaded":pat})
+
 @app.route("/api/rot_adjust",methods=["POST"])
 def api_rot_adjust():
     d=request.get_json(silent=True) or {}
