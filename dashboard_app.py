@@ -1702,7 +1702,8 @@ def _rotcam_read():
 def _rot_min_cook_secs():
     try: return max(0,int((db.get("rotisserie") or {}).get("min_cook_min",35)))*60
     except Exception: return 35*60
-_ROT_OFF_CONFIRM=30   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
+_ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
+_ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1726,6 +1727,8 @@ def _rotcam_apply(rows):
     if len(oa)!=6: oa=ROTCAM["shelf_off_at"]=[0,0,0,0,0,0]
     if len(ck)!=6: ck=ROTCAM["shelf_cooked"]=[False,False,False,False,False,False]
     if len(mr)!=6: mr=ROTCAM["shelf_max_rank"]=[0,0,0,0,0,0]
+    sw=ROTCAM.setdefault("shelf_swap_streak",[0,0,0,0,0,0])  # consecutive "raw after cooked" reads (swap confirmation)
+    if len(sw)!=6: sw=ROTCAM["shelf_swap_streak"]=[0,0,0,0,0,0]
     done=ROTCAM.get("done","") or ""                       # per-shelf doneness letters 0/N/A/R/O (if doneness read on)
     _RANK={"N":1,"A":2,"R":3,"O":4}                         # chickens only cook FORWARD, so rank only goes up
     min_cook=_rot_min_cook_secs(); credit=0; changed=False
@@ -1734,23 +1737,25 @@ def _rotcam_apply(rows):
             oa[i]=0
             rank=_RANK.get(done[i] if i<len(done) else "",0)
             if la[i]==0:                                   # newly loaded
-                la[i]=now; mr[i]=rank; changed=True
-            elif mr[i]>=3 and rank==1:
-                # FAST SWAP: shelf was Ready/Overdone and now reads raw → a cooked row was pulled and a fresh raw
-                # one put on the SAME shelf with no empty gap. Credit the cooked row that left; track the new one.
-                credit+=1; la[i]=now; mr[i]=rank; ck[i]=False; changed=True
-            elif rank>mr[i]:
-                mr[i]=rank; changed=True
+                la[i]=now; mr[i]=rank; sw[i]=0; changed=True
+            else:
+                if rank>mr[i]: mr[i]=rank; changed=True
+                if mr[i]>=3 and rank==1:                    # was Ready/Overdone, now reads raw → likely a swap
+                    sw[i]+=1; changed=True
+                    if sw[i]>=_ROT_SWAP_CONFIRM:           # raw held for a few reads → genuine swap, credit the cooked row that left
+                        credit+=1; la[i]=now; mr[i]=rank; ck[i]=False; sw[i]=0
+                elif rank>=2:                               # back to cooked-ish → that was just a flicker, not a swap
+                    sw[i]=0
             if rank>=3 and not ck[i]: ck[i]=True; changed=True  # row visibly reached cooked
         elif la[i]>0:                                      # empty, and it was loaded → candidate removal
             if oa[i]==0: oa[i]=now; changed=True           # start the "off" timer
             elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
                 # credit if it was up long enough to be cooked, OR the camera saw it actually reach cooked (R/O).
                 if oa[i]-la[i]>=min_cook or ck[i]: credit+=1
-                la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; changed=True  # consume this shelf
+                la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
-    if credit>0 and bool((db.get("rotcam_config") or {}).get("auto_count")): rot_put_on(credit)
+    if credit>0 and bool((db.get("rotcam_config") or {}).get("auto_count",True)): rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
 def _hm_to_min(s,d):
     try: h,m=str(s).split(":"); return int(h)*60+int(m)
@@ -1758,9 +1763,9 @@ def _hm_to_min(s,d):
 def rotcam_loop():
     while True:
         cfg=_rotcam_cfg()
-        try: iv=max(3,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display)
+        try: iv=max(1,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display) — allow fast sampling to catch rows coming off
         except Exception: iv=120
-        try: bench_iv=max(3,int(cfg.get("bench_interval",6) or 6))     # bench cadence (faster → catches each row as it lands)
+        try: bench_iv=max(1,int(cfg.get("bench_interval",6) or 6))     # loop wake cadence (also bench)
         except Exception: bench_iv=6
         nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
         a=_hm_to_min(cfg.get("active_start"),595)   # default 09:55
