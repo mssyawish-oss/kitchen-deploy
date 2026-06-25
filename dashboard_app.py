@@ -1748,7 +1748,9 @@ def _rotcam_apply(rows):
                 # credit if it was up long enough to be cooked, OR the camera saw it actually reach cooked (R/O).
                 if oa[i]-la[i]>=min_cook or ck[i]: credit+=1
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; changed=True  # consume this shelf
-    if credit>0: rot_put_on(credit)                        # +birds_per_row per genuinely-cooked row that came off
+    # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
+    # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
+    if credit>0 and bool((db.get("rotcam_config") or {}).get("auto_count")): rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
 def _hm_to_min(s,d):
     try: h,m=str(s).split(":"); return int(h)*60+int(m)
@@ -1814,7 +1816,7 @@ def api_rotcam_config():
     if "bench_zone" in d and isinstance(d["bench_zone"],(list,tuple)) and len(d["bench_zone"])==4:
         try: cfg["bench_zone"]=[max(0.0,min(1.0,float(x))) for x in d["bench_zone"]]
         except Exception: pass
-    for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled"):
+    for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","auto_count"):
         if bk in d: cfg[bk]=bool(d[bk])
     with data_lock: db["rotcam_config"]=cfg; save_data(db)
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled") and cfg.get("gemini_key") and _rotcam_rtsp())})
@@ -2156,7 +2158,7 @@ def get_db():
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
     rc=snap.get("rotcam_config") or {}
-    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset")}  # no pass/key
+    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
     safe["rotcam_public"]["bench_user"]=rc.get("bench_user","")   # username is not secret — show it so it can be verified
     safe["rotcam_public"]["bench_has_pass"]=bool((rc.get("bench_pass") or "").strip() or (rc.get("bench_rtsp_url") or "").strip())
