@@ -285,6 +285,7 @@ def _rot_save():       # persist live counts so a server restart doesn't reset t
         snap["shelf_loaded_at"]=list(ROTCAM.get("shelf_loaded_at") or [])
         snap["shelf_off_at"]=list(ROTCAM.get("shelf_off_at") or [])
         snap["shelf_cooked"]=list(ROTCAM.get("shelf_cooked") or [])
+        snap["shelf_max_rank"]=list(ROTCAM.get("shelf_max_rank") or [])
         snap["shelf_saved_at"]=time.time()
     except Exception: pass
     try:
@@ -1266,10 +1267,11 @@ ROTCAM={"cooking":0,"hist":[],"last_count":None,"last_ts":0,"error":""}
 try:
     _rls=db.get("rot_live") or {}
     if _rls.get("shelf_saved_at") and (time.time()-float(_rls["shelf_saved_at"]))<1800:
-        _la=_rls.get("shelf_loaded_at"); _oa=_rls.get("shelf_off_at"); _ck=_rls.get("shelf_cooked")
+        _la=_rls.get("shelf_loaded_at"); _oa=_rls.get("shelf_off_at"); _ck=_rls.get("shelf_cooked"); _mr=_rls.get("shelf_max_rank")
         if isinstance(_la,list) and len(_la)==6: ROTCAM["shelf_loaded_at"]=[float(x) for x in _la]
         if isinstance(_oa,list) and len(_oa)==6: ROTCAM["shelf_off_at"]=[float(x) for x in _oa]
         if isinstance(_ck,list) and len(_ck)==6: ROTCAM["shelf_cooked"]=[bool(x) for x in _ck]
+        if isinstance(_mr,list) and len(_mr)==6: ROTCAM["shelf_max_rank"]=[int(x) for x in _mr]
 except Exception: pass
 # --- Gemini usage tracking (rough estimate; Google's Spend page is the source of truth) ---
 _GEM_COST_PER_CALL=0.0002   # ~one downscaled image + prompt on gemini-2.5-flash (estimate, USD)
@@ -1700,7 +1702,7 @@ def _rotcam_read():
 def _rot_min_cook_secs():
     try: return max(0,int((db.get("rotisserie") or {}).get("min_cook_min",35)))*60
     except Exception: return 35*60
-_ROT_OFF_CONFIRM=45   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
+_ROT_OFF_CONFIRM=30   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1719,23 +1721,33 @@ def _rotcam_apply(rows):
     la=ROTCAM.setdefault("shelf_loaded_at",[0,0,0,0,0,0])   # when each shelf first went loaded
     oa=ROTCAM.setdefault("shelf_off_at",[0,0,0,0,0,0])      # when each shelf first read empty (after being loaded)
     ck=ROTCAM.setdefault("shelf_cooked",[False,False,False,False,False,False])  # has this shelf visibly reached cooked (R/O) this load?
+    mr=ROTCAM.setdefault("shelf_max_rank",[0,0,0,0,0,0])    # highest doneness rank seen this load (cooking only goes up)
     if len(la)!=6: la=ROTCAM["shelf_loaded_at"]=[0,0,0,0,0,0]
     if len(oa)!=6: oa=ROTCAM["shelf_off_at"]=[0,0,0,0,0,0]
     if len(ck)!=6: ck=ROTCAM["shelf_cooked"]=[False,False,False,False,False,False]
+    if len(mr)!=6: mr=ROTCAM["shelf_max_rank"]=[0,0,0,0,0,0]
     done=ROTCAM.get("done","") or ""                       # per-shelf doneness letters 0/N/A/R/O (if doneness read on)
+    _RANK={"N":1,"A":2,"R":3,"O":4}                         # chickens only cook FORWARD, so rank only goes up
     min_cook=_rot_min_cook_secs(); credit=0; changed=False
     for i in range(6):
         if confirmed[i]=="1":                              # loaded
             oa[i]=0
-            if la[i]==0: la[i]=now; changed=True
-            if i<len(done) and done[i] in ("R","O") and not ck[i]: ck[i]=True; changed=True  # row visibly reached cooked
+            rank=_RANK.get(done[i] if i<len(done) else "",0)
+            if la[i]==0:                                   # newly loaded
+                la[i]=now; mr[i]=rank; changed=True
+            elif mr[i]>=3 and rank==1:
+                # FAST SWAP: shelf was Ready/Overdone and now reads raw → a cooked row was pulled and a fresh raw
+                # one put on the SAME shelf with no empty gap. Credit the cooked row that left; track the new one.
+                credit+=1; la[i]=now; mr[i]=rank; ck[i]=False; changed=True
+            elif rank>mr[i]:
+                mr[i]=rank; changed=True
+            if rank>=3 and not ck[i]: ck[i]=True; changed=True  # row visibly reached cooked
         elif la[i]>0:                                      # empty, and it was loaded → candidate removal
             if oa[i]==0: oa[i]=now; changed=True           # start the "off" timer
             elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
                 # credit if it was up long enough to be cooked, OR the camera saw it actually reach cooked (R/O).
-                # the doneness path also lets a row credit right after a restart (when its load-timer was reset).
                 if oa[i]-la[i]>=min_cook or ck[i]: credit+=1
-                la[i]=0; oa[i]=0; ck[i]=False; changed=True  # consume this shelf
+                la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; changed=True  # consume this shelf
     if credit>0: rot_put_on(credit)                        # +birds_per_row per genuinely-cooked row that came off
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
 def _hm_to_min(s,d):
