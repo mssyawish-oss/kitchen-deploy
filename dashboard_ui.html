@@ -2018,15 +2018,17 @@ function renderRotCreditLog(rot){
   if(_camLogOpen&&!items.length){
     body='<div style="margin-top:6px;border:1px dashed var(--border2);border-radius:10px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.5;">No rows detected coming off yet. Each time the camera sees a shelf empty it adds a box here — <b style="color:var(--green)">green</b> when it counted the row (+4), <b style="color:var(--amber)">amber</b> when it skipped it (with the reason). Tap a box to open the photos.</div>';
   } else if(_camLogOpen){
-    body='<div style="margin-top:6px;font-size:10.5px;color:var(--muted);margin-bottom:6px;">One box per row the camera saw come off. Tap a box to open its photos &amp; details.</div>'
+    body='<div style="margin-top:6px;font-size:10.5px;color:var(--muted);margin-bottom:6px;line-height:1.5;">One box per row the camera saw come off — each has a <b>#number</b> you can quote to flag a wrong read. Tap a box to open its photos. <b>Shelf 1 = top rack, shelf 6 = bottom.</b></div>'
       +'<div style="display:flex;flex-direction:column;gap:7px;">'+items.map(function(e){
       const isC=(e.credited!==false);
       const open=_camEntryOpen.has(e.id);
       const t=new Date(e.ts*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
       const shelf=(e.shelf!=null)?e.shelf:((e.shelves||[]).join(', '));
       const badge=isC?'<span style="color:#19e36b;font-weight:800;white-space:nowrap;">✓ +'+(e.birds||4)+'</span>':'<span style="color:var(--amber);font-weight:800;white-space:nowrap;">✗ not counted</span>';
+      const numTag=(e.num!=null)?'<span style="font-family:var(--font-mono);font-size:12px;font-weight:800;color:var(--text);background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:2px 7px;white-space:nowrap;">#'+e.num+'</span>':'';
+      const shelfTip=(shelf===1?' (top)':(shelf===6?' (bottom)':''));
       const headRow='<div onclick="toggleCamEntry('+e.id+')" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 12px;">'
-        +badge+'<span style="font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;">shelf '+shelf+'</span>'
+        +numTag+badge+'<span style="font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;">shelf '+shelf+shelfTip+'</span>'
         +'<span style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">· '+t+' ('+_agoShort(e.ts)+' ago)</span>'
         +'<span style="margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap;">'+(open?'▲ close':'▼ open')+'</span></div>';
       let detail='';

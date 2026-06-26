@@ -1874,6 +1874,7 @@ def _rotcam_log_event(ev,jpeg):
                "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),
                "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
         with rot_lock:
+            seq=int(db.get("rotcam_credit_seq",0))+1; db["rotcam_credit_seq"]=seq; entry["num"]=seq   # stable, ever-increasing # the owner can quote ("box #47 read wrong")
             log=db.get("rotcam_credit_log",[]); log.append(entry); db["rotcam_credit_log"]=log[-60:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])
         try:                                                     # prune screenshot folders that fell off the log
             import shutil; base=os.path.join(BASE_DIR,"rotcam_credits")
