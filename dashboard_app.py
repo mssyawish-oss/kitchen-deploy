@@ -1902,10 +1902,11 @@ def rotcam_loop():
                     jpeg,gerr=_rotcam_grab()
                     if gerr:
                         ROTCAM["error"]=gerr; jpeg=None
-                        if "429" in gerr or "quota" in gerr.lower(): time.sleep(900); continue
+                        if "429" in gerr or "quota" in gerr.lower(): time.sleep(60); continue
                 if jpeg:
                     ROTCAM["error"]=""
-                    if cfg.get("bench_enabled",False):                  # BENCH auto-count
+                    if cfg.get("bench_enabled",False) and time.time()-ROTCAM.get("last_bench_ts",0)>=bench_iv:   # BENCH auto-count on its OWN slower timer (don't run it every fast shelf pass)
+                        ROTCAM["last_bench_ts"]=time.time()
                         try:
                             if _bench_rtsp():                           # dedicated side-angle bench camera (always sees the bench)
                                 # Tapo allows ONE connection. Reuse the live-feed stream frame if it's fresh
@@ -1929,12 +1930,12 @@ def rotcam_loop():
                             _rg=ROTCAM.setdefault("frame_ring",[]); _rg.append((time.time(),_bo.getvalue())); ROTCAM["frame_ring"]=_rg[-16:]
                         except Exception: pass
                         rows,cerr=_rotcam_count(jpeg)
-                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(900); continue
+                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
                         if not cerr:
                             evs=_rotcam_apply(rows)
                             for ev in (evs or []): _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
             except Exception as e: ROTCAM["error"]=str(e)
-        time.sleep(bench_iv)
+        time.sleep(max(1,min(iv,bench_iv)))   # wake at the FASTER cadence so a 1s shelf interval is actually honoured (was capped at bench_iv)
 
 @app.route("/api/rotcam_config",methods=["POST"])
 def api_rotcam_config():
