@@ -1783,18 +1783,20 @@ def _rotcam_apply(rows):
                 la[i]=now; mr[i]=rank; sw[i]=0; changed=True
             else:
                 if rank>mr[i]: mr[i]=rank; changed=True
-                if mr[i]>=3 and rank==1:                    # was Ready/Overdone, now reads raw → likely a swap
-                    sw[i]+=1; changed=True
-                    if sw[i]>=_ROT_SWAP_CONFIRM:           # raw held for a few reads → genuine swap, credit the cooked row that left
-                        credit+=1; la[i]=now; mr[i]=rank; ck[i]=False; sw[i]=0
+                if mr[i]>=3 and rank==1:                    # was Ready/Overdone, now reads raw.
+                    sw[i]+=1; changed=True                  # doneness is too noisy (glare flips R<->N) to CREDIT a swap;
+                    if sw[i]>=_ROT_SWAP_CONFIRM:            # if raw holds, just treat it as a fresh raw row and
+                        la[i]=now; mr[i]=rank; ck[i]=False; sw[i]=0   # restart its cook dwell — NO credit here
                 elif rank>=2:                               # back to cooked-ish → that was just a flicker, not a swap
                     sw[i]=0
             if rank>=3 and not ck[i]: ck[i]=True; changed=True  # row visibly reached cooked
         elif la[i]>0:                                      # empty, and it was loaded → candidate removal
             if oa[i]==0: oa[i]=now; changed=True           # start the "off" timer
             elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
-                # credit if it was up long enough to be cooked, OR the camera saw it actually reach cooked (R/O).
-                if oa[i]-la[i]>=min_cook or ck[i]: credit+=1
+                # Credit ONLY on the trustworthy physical signal: the shelf stayed loaded for a real cook
+                # (>= min_cook) and then actually emptied. Doneness (ck) is too noisy to credit on, so it's
+                # no longer a shortcut — this is what stops the glare/flicker phantom +4s.
+                if oa[i]-la[i]>=min_cook: credit+=1
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
