@@ -56,9 +56,12 @@ body.light .probe-no-data,body.light .timer-display.idle{color:#9aa3b2;}
 html,body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:16px;height:100vh;height:100dvh;overflow:hidden;touch-action:manipulation;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
 body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.05),transparent 60%),radial-gradient(900px 500px at 100% 110%,rgba(96,165,250,.05),transparent 55%);}
 .font-mono,#clock,.probe-temp,.timer-display,.pieces-count{font-variant-numeric:tabular-nums;}
-::-webkit-scrollbar{width:9px;height:9px;}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px;}
-::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar{width:16px;height:16px;}
+::-webkit-scrollbar-thumb{background:var(--amber-dim);border-radius:10px;border:3px solid transparent;background-clip:padding-box;min-height:48px;}
+::-webkit-scrollbar-thumb:active{background:var(--amber);}
+::-webkit-scrollbar-track{background:rgba(255,255,255,.05);border-radius:10px;}
+/* smooth touch/swipe scrolling everywhere that scrolls (tablet) */
+.page,.modal,[style*="overflow"]{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
 ::selection{background:rgba(251,191,36,.3);}
 .app-shell{display:flex;flex-direction:row;height:100vh;height:100dvh;}
 .main-col{flex:1;display:flex;flex-direction:column;min-width:0;height:100vh;height:100dvh;}
