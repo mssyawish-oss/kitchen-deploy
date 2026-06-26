@@ -1899,12 +1899,15 @@ def rotcam_loop():
         open_now=a<=mins<b   # only count during the active window → controls cost
         if cfg.get("enabled") and open_now and (cfg.get("gemini_key") or "").strip() and _rotcam_rtsp():
             try:
-                jpeg=ROTCAM.get("frame")                                # reuse the live-feed frame if fresh, else grab one
+                jpeg=ROTCAM.get("frame")                                # reuse the persistent puller's in-memory frame (instant)
                 if not (jpeg and (time.time()-ROTCAM.get("frame_ts",0))<8):
-                    jpeg,gerr=_rotcam_grab()
-                    if gerr:
-                        ROTCAM["error"]=gerr; jpeg=None
-                        if "429" in gerr or "quota" in gerr.lower(): time.sleep(60); continue
+                    if _rotcam_analysis_active():                       # puller owns the single camera connection — don't open a 2nd; wait for its next frame
+                        jpeg=None; time.sleep(0.3)
+                    else:
+                        jpeg,gerr=_rotcam_grab()
+                        if gerr:
+                            ROTCAM["error"]=gerr; jpeg=None
+                            if "429" in gerr or "quota" in gerr.lower(): time.sleep(60); continue
                 if jpeg:
                     ROTCAM["error"]=""
                     if cfg.get("bench_enabled",False) and time.time()-ROTCAM.get("last_bench_ts",0)>=bench_iv:   # BENCH auto-count on its OWN slower timer (don't run it every fast shelf pass)
@@ -2058,11 +2061,20 @@ def api_benchcam_test():
 # --- live feed: one persistent ffmpeg pulls MJPEG and keeps the latest frame ready, so
 #     requests are served instantly (no ~2s per-grab connect) → near-live, not laggy.
 #     The stream only runs while a viewer is actually watching (last_want kept fresh by polling). ---
+def _rotcam_analysis_active():
+    # true when the counting loop needs frames (camera on + inside the active window). The persistent MJPEG
+    # puller then keeps running EVEN WITH NOBODY watching the live feed, so each shelf-check reuses an in-memory
+    # frame instantly instead of opening a fresh ~8s ffmpeg connection every time.
+    cfg=_rotcam_cfg()
+    if not (cfg.get("enabled") and (cfg.get("gemini_key") or "").strip() and _rotcam_rtsp()): return False
+    nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
+    a=_hm_to_min(cfg.get("active_start"),595); b=_hm_to_min(cfg.get("active_end"),1200)
+    return a<=mins<b
 def rotcam_stream_loop():
     import subprocess
     while True:
-        if (time.time()-ROTCAM.get("last_want",0))>20 or not _rotcam_rtsp():
-            time.sleep(1); continue   # nobody watching → don't burn the camera/CPU
+        if not _rotcam_rtsp() or ((time.time()-ROTCAM.get("last_want",0))>20 and not _rotcam_analysis_active()):
+            time.sleep(1); continue   # nobody watching AND not counting → don't burn the camera/CPU
         url=_rotcam_rtsp(); p=None
         try:
             p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
@@ -2070,7 +2082,7 @@ def rotcam_stream_loop():
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
             ROTCAM["error"]=""; buf=b""
             while True:
-                if (time.time()-ROTCAM.get("last_want",0))>20: break   # viewer left → stop
+                if (time.time()-ROTCAM.get("last_want",0))>20 and not _rotcam_analysis_active(): break   # viewer left AND not counting → stop
                 chunk=p.stdout.read(65536)
                 if not chunk: break
                 buf+=chunk
