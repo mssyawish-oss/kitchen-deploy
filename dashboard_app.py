@@ -2247,6 +2247,14 @@ def get_db():
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
     try: safe["backend_update_pending"]=os.path.exists(PENDING_FILE)
     except Exception: safe["backend_update_pending"]=False
+    try:                                       # deploy-pipeline health, so a stalled auto-deploy is visible on screen
+        ds={}; dsp=os.path.join(BASE_DIR,"deploy-status.json")
+        if os.path.exists(dsp):
+            with open(dsp,encoding="utf-8") as f: ds=json.load(f) or {}
+        try: built=int(os.stat(os.path.join(BASE_DIR,"dashboard_ui.html")).st_mtime)
+        except Exception: built=0
+        safe["deploy_status"]={"last_run":ds.get("last_run"),"head":ds.get("head"),"head_msg":ds.get("head_msg"),"built":built,"now":int(time.time())}
+    except Exception: safe["deploy_status"]={"now":int(time.time())}
     _ct=ROTCAM.get("calls_today",0); _tt=ROTCAM.get("calls_total",0)
     safe["rotcam_usage"]={"today":_ct,"cost_today":round(_ct*_GEM_COST_PER_CALL,2),"total":_tt,"cost_total":round(_tt*_GEM_COST_PER_CALL,2),"per_call":_GEM_COST_PER_CALL}
     return jsonify(safe)

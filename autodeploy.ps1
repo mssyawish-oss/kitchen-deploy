@@ -26,6 +26,15 @@ Set-Location $repo
 & $git fetch origin main 2>$null
 & $git reset --hard origin/main 2>$null     # match latest published version
 
+# Heartbeat: every run, record that the auto-deploy fired + which commit it synced to, so the
+# dashboard's System screen can show "auto-update last ran X ago" and flag a stalled pipeline.
+try {
+  $head = (& $git rev-parse --short HEAD 2>$null)
+  $hmsg = (& $git log -1 --pretty=%s 2>$null)
+  $hb = [ordered]@{ last_run = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); head = "$head"; head_msg = "$hmsg" }
+  ($hb | ConvertTo-Json -Compress) | Out-File -FilePath (Join-Path $app "deploy-status.json") -Encoding ascii -Force
+} catch { }
+
 $ui = Join-Path $repo "dashboard_ui.html"
 $appfile = Join-Path $repo "dashboard_app.py"
 $liveUi = Join-Path $app "dashboard_ui.html"

@@ -19,8 +19,15 @@ echo Getting the deploy folder...
 if exist "%SYNC%" ( cd /d "%SYNC%" & git pull ) else ( git clone %REPO% "%SYNC%" )
 
 echo.
-echo Registering the auto-deploy task (checks every 3 minutes)...
-schtasks /Create /F /TN "KitchenDashboardAutoDeploy" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File \"%SYNC%\autodeploy.ps1\"" /SC MINUTE /MO 3 /RL HIGHEST
+echo Registering the auto-deploy task (checks every 3 minutes, hardened)...
+REM Run as SYSTEM so it fires even when nobody is logged in (the #1 cause of it silently stalling).
+schtasks /Create /F /TN "KitchenDashboardAutoDeploy" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File \"%SYNC%\autodeploy.ps1\"" /SC MINUTE /MO 3 /RL HIGHEST /RU SYSTEM
+
+echo Hardening the task (run if a check was missed, don't skip on battery/sleep, retry on failure)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$t=Get-ScheduledTask -TaskName 'KitchenDashboardAutoDeploy'; $s=$t.Settings; $s.StartWhenAvailable=$true; $s.DisallowStartIfOnBatteries=$false; $s.StopIfGoingOnBatteries=$false; $s.ExecutionTimeLimit='PT10M'; $s.RestartCount=3; $s.RestartInterval='PT1M'; Set-ScheduledTask -TaskName 'KitchenDashboardAutoDeploy' -Settings $s | Out-Null; Write-Host 'Task hardened.'"
+
+echo Running one deploy check right now...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC%\autodeploy.ps1"
 
 echo.
 echo ============================================================
