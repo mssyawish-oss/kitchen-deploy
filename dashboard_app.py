@@ -311,7 +311,8 @@ def rot_state():
         prog=[(min(100,int(round((nowt-la[i])/ck*100))) if (i<len(lv) and lv[i]=="1" and i<len(la) and la[i]>0) else -1) for i in range(6)]
         return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
-                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat","")}
+                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
+                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:]}   # camera-credit audit trail (newest last) for the on-screen log + debug shots
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
@@ -1775,7 +1776,7 @@ def _rotcam_apply(rows):
     if len(sw)!=6: sw=ROTCAM["shelf_swap_streak"]=[0,0,0,0,0,0]
     done=ROTCAM.get("done","") or ""                       # per-shelf doneness letters 0/N/A/R/O (if doneness read on)
     _RANK={"N":1,"A":2,"R":3,"O":4}                         # chickens only cook FORWARD, so rank only goes up
-    min_cook=_rot_min_cook_secs(); credit=0; changed=False
+    min_cook=_rot_min_cook_secs(); credit=0; changed=False; credited_shelves=[]
     for i in range(6):
         if confirmed[i]=="1":                              # loaded
             oa[i]=0
@@ -1800,12 +1801,52 @@ def _rotcam_apply(rows):
                 #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
                 # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
                 seen_person=(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW
-                if oa[i]-la[i]>=min_cook and seen_person: credit+=1
+                if oa[i]-la[i]>=min_cook and seen_person: credit+=1; credited_shelves.append(i)
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
-    if credit>0 and bool((db.get("rotcam_config") or {}).get("auto_count",True)): rot_put_on(credit)
+    auto=bool((db.get("rotcam_config") or {}).get("auto_count",True))
+    if credit>0 and auto: rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
+    return credited_shelves if (credit>0 and auto) else []   # let the loop log+screenshot exactly the shelves that credited
+def _rotcam_log_credit(shelves,jpeg):
+    # Record an audit entry + a few screenshots EVERY time the camera adds stock, so the owner can see
+    # exactly what it saw when it credited (debugging). Saves into rotcam_credits/<id>/ and logs to db.
+    try:
+        from PIL import Image, ImageDraw; import io, base64
+        c=_rot_cfg(); bpr=c["bpr"]; now=time.time(); eid=int(now)
+        d=os.path.join(BASE_DIR,"rotcam_credits",str(eid)); os.makedirs(d,exist_ok=True); shots=[]
+        comp=ROTCAM.get("last_comp")                              # the 6-strip the AI actually judged
+        if isinstance(comp,str) and comp.startswith("data:"):
+            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append("comp.jpg")
+            except Exception: pass
+        if jpeg:                                                  # full frame with the shelf boxes drawn; credited shelf in amber
+            try:
+                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; dr=ImageDraw.Draw(im); cal=_rot_cal6()
+                for i in range(6):
+                    x1,y1,x2,y2=_rot_rect_px(cal[i],W,H); hot=i in shelves; col=(255,170,30) if hot else (0,255,0)
+                    dr.rectangle([x1,y1,x2,y2],outline=col,width=5 if hot else 2)
+                    dr.text((x1+6,y1+4),("shelf %d  +%d"%(i+1,bpr)) if hot else ("shelf %d"%(i+1)),fill=col)
+                if im.width>1100: im=im.resize((1100,int(im.height*1100/im.width)))
+                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append("boxes.jpg")
+            except Exception: pass
+        ring=ROTCAM.get("frame_ring",[])                          # a few recent frames spanning the removal
+        picks=([ring[0],ring[len(ring)//2],ring[-1]] if len(ring)>=3 else list(ring))
+        for n,item in enumerate(picks,1):
+            try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append("seq%d.jpg"%n)
+            except Exception: pass
+        entry={"id":eid,"ts":int(now),"birds":len(shelves)*bpr,"rows":len(shelves),"shelves":[i+1 for i in shelves],
+               "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),
+               "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
+        with rot_lock:
+            log=db.get("rotcam_credit_log",[]); log.append(entry); db["rotcam_credit_log"]=log[-50:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])
+        try:                                                      # prune screenshot folders that fell off the 50-entry log
+            import shutil; base=os.path.join(BASE_DIR,"rotcam_credits")
+            for nm in os.listdir(base):
+                if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
+        except Exception: pass
+        save_data(db)
+    except Exception: pass
 def _hm_to_min(s,d):
     try: h,m=str(s).split(":"); return int(h)*60+int(m)
     except Exception: return d
@@ -1846,9 +1887,18 @@ def rotcam_loop():
                         except Exception: pass
                     if ROTCAM.pop("force_shelf",False) or time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count: on the timer, OR immediately when the bench just saw a row land
                         ROTCAM["last_shelf_ts"]=time.time()
+                        try:                                       # roll a short buffer of recent frames for credit screenshots
+                            from PIL import Image as _Im; import io as _io
+                            _im=_Im.open(_io.BytesIO(jpeg)).convert("RGB")
+                            if _im.width>800: _im=_im.resize((800,int(_im.height*800/_im.width)))
+                            _bo=_io.BytesIO(); _im.save(_bo,"JPEG",quality=70)
+                            _rg=ROTCAM.setdefault("frame_ring",[]); _rg.append((time.time(),_bo.getvalue())); ROTCAM["frame_ring"]=_rg[-16:]
+                        except Exception: pass
                         rows,cerr=_rotcam_count(jpeg)
                         if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(900); continue
-                        if not cerr: _rotcam_apply(rows)
+                        if not cerr:
+                            cred=_rotcam_apply(rows)
+                            if cred: _rotcam_log_credit(cred,jpeg)   # camera just added stock → log it + save what it saw
             except Exception as e: ROTCAM["error"]=str(e)
         time.sleep(bench_iv)
 
@@ -1929,6 +1979,15 @@ def api_rotcam_calib():
         out=io.BytesIO(); im.save(out,"JPEG",quality=80)
         return Response(out.getvalue(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
     except Exception as e: return Response("render error: "+str(e),status=500)
+
+@app.route("/api/rotcam_credit_shot")
+def api_rotcam_credit_shot():
+    # serve a saved credit-event screenshot: /api/rotcam_credit_shot?id=<eventid>&n=boxes.jpg
+    eid=re.sub(r"[^0-9]","",request.args.get("id","")); nm=re.sub(r"[^a-zA-Z0-9_.]","",request.args.get("n",""))
+    if not eid or not nm or ".." in nm: return Response("bad request",status=400)
+    p=os.path.join(BASE_DIR,"rotcam_credits",eid,nm)
+    if not os.path.exists(p): return Response("not found",status=404)
+    return send_file(p,mimetype="image/jpeg")
 
 @app.route("/api/rotcam_test",methods=["POST"])
 def api_rotcam_test():
