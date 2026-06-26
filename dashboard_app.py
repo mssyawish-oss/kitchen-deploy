@@ -1842,7 +1842,7 @@ def _rotcam_log_credit(shelves,jpeg):
         d=os.path.join(BASE_DIR,"rotcam_credits",str(eid)); os.makedirs(d,exist_ok=True); shots=[]
         comp=ROTCAM.get("last_comp")                              # the 6-strip the AI actually judged
         if isinstance(comp,str) and comp.startswith("data:"):
-            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append("comp.jpg")
+            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append({"n":"comp.jpg","ts":eid})
             except Exception: pass
         if jpeg:                                                  # full frame with the shelf boxes drawn; credited shelf in amber
             try:
@@ -1852,12 +1852,12 @@ def _rotcam_log_credit(shelves,jpeg):
                     dr.rectangle([x1,y1,x2,y2],outline=col,width=5 if hot else 2)
                     dr.text((x1+6,y1+4),("shelf %d  +%d"%(i+1,bpr)) if hot else ("shelf %d"%(i+1)),fill=col)
                 if im.width>1100: im=im.resize((1100,int(im.height*1100/im.width)))
-                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append("boxes.jpg")
+                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append({"n":"boxes.jpg","ts":eid})
             except Exception: pass
-        ring=ROTCAM.get("frame_ring",[])                          # a few recent frames spanning the removal
+        ring=ROTCAM.get("frame_ring",[])                          # a few recent frames spanning the removal (each carries its own capture time)
         picks=([ring[0],ring[len(ring)//2],ring[-1]] if len(ring)>=3 else list(ring))
         for n,item in enumerate(picks,1):
-            try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append("seq%d.jpg"%n)
+            try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append({"n":"seq%d.jpg"%n,"ts":int(item[0])})
             except Exception: pass
         entry={"id":eid,"ts":int(now),"birds":len(shelves)*bpr,"rows":len(shelves),"shelves":[i+1 for i in shelves],
                "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),

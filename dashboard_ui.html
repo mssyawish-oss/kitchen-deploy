@@ -1982,6 +1982,12 @@ let _camLogSig='';let _camLogOpen=false;
 function toggleCamLog(){_camLogOpen=!_camLogOpen;_camLogSig='';renderRotCreditLog(window._lastRot||{});}
 function _shotBig(src){let o=document.getElementById('shot-big');if(!o){o=document.createElement('div');o.id='shot-big';o.style.cssText='position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:14px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="'+src+'" style="max-width:96vw;max-height:92vh;border-radius:10px;background:#000;">';o.style.display='flex';}
 function _agoShort(ts){const s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m';return Math.floor(s/3600)+'h';}
+function _shotInfo(n){
+  if(n.indexOf('comp')>=0)return{label:'What the AI read',desc:'Your 6 shelves cropped out and stacked into strips — this exact picture is what the AI grades (empty / raw / almost / ready / overdone). It looks zoomed in because it is just the shelf crops, not the full oven.'};
+  if(n.indexOf('boxes')>=0)return{label:'Full view + shelf boxes',desc:'The whole camera frame with the 6 shelf boxes drawn. The AMBER box is the row it counted as removed. If the green boxes do not line up with the chickens, adjust them in Camera settings → Shelf box calibration.'};
+  if(n.indexOf('seq')>=0)return{label:'Live camera frame',desc:'The actual camera a few seconds apart around the moment it counted — earliest first. Watch the row leave the shelf.'};
+  return{label:'Photo',desc:''};
+}
 function renderRotCreditLog(rot){
   const el=document.getElementById('rl-camlog');if(!el)return;window._lastRot=rot;
   const log=(rot&&rot.credit_log)||[];
@@ -2001,11 +2007,23 @@ function renderRotCreditLog(rot){
       const t=new Date(e.ts*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
       const shelves=(e.shelves||[]).join(', ');
       const person=e.person?'👤 saw someone at the oven':'⚠ no person seen';
-      const thumbs=(e.shots||[]).map(function(n){const u='/api/rotcam_credit_shot?id='+e.id+'&n='+n;return '<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="height:56px;border-radius:6px;border:1px solid var(--border2);cursor:pointer;background:#000;">';}).join('');
+      const shots=(e.shots||[]).map(function(s){return (typeof s==='string')?{n:s,ts:null}:s;});
+      const thumbs=shots.map(function(sh,idx){const n=sh.n,info=_shotInfo(n),u='/api/rotcam_credit_shot?id='+e.id+'&n='+n;
+        const ts=sh.ts||e.ts;const tl=ts?new Date(ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+        return '<div style="flex:0 0 auto;width:170px;">'
+          +'<div style="position:relative;">'
+            +'<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="width:170px;height:104px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;">'
+            +'<div style="position:absolute;top:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:5px;">'+(idx+1)+'</div>'
+            +(tl?'<div style="position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:600;padding:1px 6px;border-radius:5px;">🕒 '+tl+'</div>':'')
+          +'</div>'
+          +'<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px;">'+(idx+1)+'. '+info.label+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);line-height:1.35;margin-top:1px;">'+info.desc+'</div>'
+        +'</div>';}).join('');
       return '<div style="border:1px solid var(--border2);border-radius:10px;padding:9px 11px;">'
         +'<div style="font-size:13px;font-weight:700;color:var(--green);">+'+e.birds+' ('+e.rows+' row'+(e.rows===1?'':'s')+') · shelf '+shelves+' <span style="color:var(--muted);font-weight:600;">· '+t+' ('+_agoShort(e.ts)+' ago)</span></div>'
         +'<div style="font-size:11.5px;color:var(--muted);margin:2px 0 6px;">'+person+' · stock after: '+e.avail_after+'</div>'
-        +'<div style="display:flex;gap:6px;overflow-x:auto;">'+(thumbs||'<span style="font-size:11px;color:var(--muted)">no images</span>')+'</div></div>';
+        +'<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">All '+shots.length+' photos below are from this one count (one row coming off). Tap any to enlarge.</div>'
+        +'<div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;">'+(thumbs||'<span style="font-size:11px;color:var(--muted)">no images</span>')+'</div></div>';
     }).join('')+'</div>';
   }
   el.innerHTML=head+body;
