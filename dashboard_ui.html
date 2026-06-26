@@ -1047,21 +1047,27 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="rc-preview" style="margin-top:8px;"></div>
     <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px;">
       <div class="label" style="margin-bottom:2px;">Shelf box calibration</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Line each green box up with its shelf. Pick a row to fine-tune just that one, or "All rows" to move/size them together.</div>
-      <div id="rc-calib" style="margin-bottom:8px;"></div>
-      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-        <span style="font-size:12px;color:var(--muted);">Adjusting:</span>
-        <select class="input" id="rc-cal-row" style="width:auto;background:var(--surface2);" onchange="_refreshCalib()">
-          <option value="-1">All rows</option><option value="0">Row 1</option><option value="1">Row 2</option><option value="2">Row 3</option><option value="3">Row 4</option><option value="4">Row 5</option><option value="5">Row 6</option>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;"><b>Drag</b> a green box to move it; <b>drag a corner handle</b> to resize. Each box is independent. Zoom in to line them up exactly, then Save.</div>
+      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="font-size:12px;color:var(--muted);">Zoom</span>
+        <button class="btn" onclick="calZoom(-1)">&minus;</button>
+        <span id="rc-zoom-lbl" style="font-size:12px;min-width:42px;text-align:center;">100%</span>
+        <button class="btn" onclick="calZoom(1)">+</button>
+        <span style="font-size:11px;color:var(--muted);margin-left:6px;">drag the photo to pan when zoomed in</span>
+      </div>
+      <div id="rc-cal-wrap" style="position:relative;overflow:auto;max-height:62vh;border:1px solid var(--border2);border-radius:8px;background:#111;-webkit-overflow-scrolling:touch;">
+        <div id="rc-cal-stage" style="position:relative;width:100%;min-height:180px;transform-origin:0 0;">
+          <img id="rc-cal-img" draggable="false" style="display:block;width:100%;user-select:none;-webkit-user-drag:none;">
+        </div>
+      </div>
+      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0;">
+        <span style="font-size:12px;color:var(--muted);">Fine-tune row:</span>
+        <select class="input" id="rc-cal-row" style="width:auto;background:var(--surface2);" onchange="_calHi()">
+          <option value="0">Row 1</option><option value="1">Row 2</option><option value="2">Row 3</option><option value="3">Row 4</option><option value="4">Row 5</option><option value="5">Row 6</option>
         </select>
+        <button class="btn" onclick="calNudge(0,-1)">&#9650;</button><button class="btn" onclick="calNudge(0,1)">&#9660;</button><button class="btn" onclick="calNudge(-1,0)">&#9664;</button><button class="btn" onclick="calNudge(1,0)">&#9654;</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div><div class="label" style="margin-bottom:4px;">Move</div><div class="row" style="gap:4px;"><button class="btn" onclick="calMove(0,-1)">&#9650;</button><button class="btn" onclick="calMove(0,1)">&#9660;</button><button class="btn" onclick="calMove(-1,0)">&#9664;</button><button class="btn" onclick="calMove(1,0)">&#9654;</button></div></div>
-        <div><div class="label" style="margin-bottom:4px;">Height</div><div class="row" style="gap:4px;"><button class="btn" onclick="calHeight(1)">Taller</button><button class="btn" onclick="calHeight(-1)">Shorter</button></div></div>
-        <div><div class="label" style="margin-bottom:4px;">Width (all)</div><div class="row" style="gap:4px;"><button class="btn" onclick="calWidth(1)">Wider</button><button class="btn" onclick="calWidth(-1)">Narrower</button></div></div>
-        <div><div class="label" style="margin-bottom:4px;">Diagonal (all)</div><div class="row" style="gap:4px;"><button class="btn" onclick="calSkew(-1)">Lean &#9664;</button><button class="btn" onclick="calSkew(1)">Lean &#9654;</button></div></div>
-      </div>
-      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
+      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_refreshCalBg()">Refresh photo</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
     </div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:4px;">Bench camera — 2nd Tapo, side angle (for stock auto-count)</div>
@@ -1577,24 +1583,40 @@ const br=(document.getElementById('rc-bench-rtsp')||{}).value;if(br&&br.trim())b
 function rcStatus(m,c){const e=document.getElementById('rc-status');e.textContent=m;e.style.color='var(--'+(c||'muted')+')';}
 const _CAL_DEF_BOXES=[[0.005,0.155],[0.165,0.300],[0.328,0.453],[0.465,0.580],[0.590,0.695],[0.705,0.795]];
 const _CAL_DEF_X=[0.21,0.81];
-let _cal={boxes:JSON.parse(JSON.stringify(_CAL_DEF_BOXES)),box_x:_CAL_DEF_X.slice(),box_offset:0,box_skew:0};
 function _cl(v){return Math.max(0,Math.min(1,v));}
-function _calRow(){const s=document.getElementById('rc-cal-row');return s?parseInt(s.value):-1;}
+function _calDefault6(){return _CAL_DEF_BOXES.map(p=>[_CAL_DEF_X[0],p[0],_CAL_DEF_X[1],p[1]]);}
+let _cal6=_calDefault6();let _calZoom=1;let _calDrag=null;
+function _calRow(){const s=document.getElementById('rc-cal-row');return s?parseInt(s.value):0;}
+function _legacyTo6(boxes,bx,off,skew){const out=[];for(let i=0;i<6;i++){let a=_cl(boxes[i][0]+off),b=_cl(boxes[i][1]+off);if(b<a){const t=a;a=b;b=t;}const sh=skew*(i-2.5);let x1=_cl(bx[0]+sh),x2=_cl(bx[1]+sh);if(x2<x1){const t=x1;x1=x2;x2=t;}out.push([x1,a,x2,b]);}return out;}
 function openCalib(){const c=appData.rotcam_public||{};
-  _cal.boxes=(Array.isArray(c.boxes)&&c.boxes.length===6)?c.boxes.map(p=>[+p[0],+p[1]]):JSON.parse(JSON.stringify(_CAL_DEF_BOXES));
-  _cal.box_x=(Array.isArray(c.box_x)&&c.box_x.length===2)?[+c.box_x[0],+c.box_x[1]]:_CAL_DEF_X.slice();
-  _cal.box_offset=parseFloat(c.box_offset)||0;_cal.box_skew=parseFloat(c.box_skew)||0;_refreshCalib();}
-function _refreshCalib(){const el=document.getElementById('rc-calib');if(!el)return;
-  fetch('/api/rotcam_calib',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_cal)}).then(r=>r.blob()).then(b=>{const u=URL.createObjectURL(b);el.innerHTML='<img src="'+u+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);" onload="URL.revokeObjectURL(this.src)">';}).catch(()=>{el.innerHTML='<div style="font-size:12px;color:var(--muted);">Camera preview unavailable.</div>';});}
-function calMove(dx,dy){const r=_calRow();
-  if(dx)_cal.box_x=[_cl(_cal.box_x[0]+dx*0.01),_cl(_cal.box_x[1]+dx*0.01)];
-  if(dy){if(r<0)_cal.box_offset=Math.max(-0.3,Math.min(0.3,_cal.box_offset+dy*0.01));else _cal.boxes[r]=[_cl(_cal.boxes[r][0]+dy*0.01),_cl(_cal.boxes[r][1]+dy*0.01)];}
-  _refreshCalib();}
-function calHeight(d){const r=_calRow(),adj=p=>[_cl(p[0]-d*0.006),_cl(p[1]+d*0.006)];if(r<0)_cal.boxes=_cal.boxes.map(adj);else _cal.boxes[r]=adj(_cal.boxes[r]);_refreshCalib();}
-function calWidth(d){_cal.box_x=[_cl(_cal.box_x[0]-d*0.006),_cl(_cal.box_x[1]+d*0.006)];_refreshCalib();}
-function calSkew(d){_cal.box_skew=Math.max(-0.3,Math.min(0.3,_cal.box_skew+d*0.006));_refreshCalib();}
-function calReset(){_cal={boxes:JSON.parse(JSON.stringify(_CAL_DEF_BOXES)),box_x:_CAL_DEF_X.slice(),box_offset:0,box_skew:0};_refreshCalib();}
-function saveCal(){fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_cal)}).then(r=>r.json()).then(d=>{rcStatus(d.ok?'Calibration saved.':'Error saving.',d.ok?'green':'red');loadAppData();}).catch(()=>rcStatus('Could not save calibration.','red'));}
+  if(Array.isArray(c.boxes6)&&c.boxes6.length===6){_cal6=c.boxes6.map(r=>[+r[0],+r[1],+r[2],+r[3]]);}
+  else{const boxes=(Array.isArray(c.boxes)&&c.boxes.length===6)?c.boxes.map(p=>[+p[0],+p[1]]):JSON.parse(JSON.stringify(_CAL_DEF_BOXES));const bx=(Array.isArray(c.box_x)&&c.box_x.length===2)?[+c.box_x[0],+c.box_x[1]]:_CAL_DEF_X.slice();_cal6=_legacyTo6(boxes,bx,parseFloat(c.box_offset)||0,parseFloat(c.box_skew)||0);}
+  _calZoom=1;_refreshCalBg();}
+function _refreshCalBg(){const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
+  const note=document.getElementById('rc-cal-note');if(note)note.remove();
+  fetch('/api/rotcam_calib?clean=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clean:true})}).then(r=>r.ok?r.blob():Promise.reject()).then(b=>{if(img._u)URL.revokeObjectURL(img._u);img._u=URL.createObjectURL(b);img.onload=function(){_applyZoom();_renderCalBoxes();};img.src=img._u;}).catch(()=>{img.removeAttribute('src');_applyZoom();_renderCalBoxes();if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Camera photo unavailable right now — line the boxes up once the live frame loads.';wrap.insertBefore(n,wrap.firstChild);}});}
+function _applyZoom(){const st=document.getElementById('rc-cal-stage');if(st)st.style.width=(_calZoom*100)+'%';const l=document.getElementById('rc-zoom-lbl');if(l)l.textContent=Math.round(_calZoom*100)+'%';}
+function calZoom(d){_calZoom=Math.max(1,Math.min(4,+(_calZoom+d*0.25).toFixed(2)));_applyZoom();}
+function _renderCalBoxes(){const st=document.getElementById('rc-cal-stage');if(!st)return;st.querySelectorAll('.cal-box').forEach(x=>x.remove());const sel=_calRow();
+  for(let i=0;i<6;i++){const r=_cal6[i];const d=document.createElement('div');d.className='cal-box';d.dataset.i=i;
+    d.style.cssText='position:absolute;box-sizing:border-box;border:2px solid '+(i===sel?'#ffd23f':'#19e36b')+';background:'+(i===sel?'rgba(255,210,63,.14)':'rgba(25,227,107,.08)')+';left:'+(r[0]*100)+'%;top:'+(r[1]*100)+'%;width:'+((r[2]-r[0])*100)+'%;height:'+((r[3]-r[1])*100)+'%;touch-action:none;cursor:move;z-index:5;';
+    d.innerHTML='<span style="position:absolute;top:0;left:3px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 4px #000;pointer-events:none;">'+(i+1)+'</span>';
+    ['nw','ne','sw','se'].forEach(h=>{const hd=document.createElement('div');hd.dataset.h=h;const pos={nw:'top:-8px;left:-8px;',ne:'top:-8px;right:-8px;',sw:'bottom:-8px;left:-8px;',se:'bottom:-8px;right:-8px;'}[h];hd.style.cssText='position:absolute;width:18px;height:18px;background:#fff;border:2px solid #19e36b;border-radius:4px;'+pos+'touch-action:none;cursor:'+((h==='nw'||h==='se')?'nwse-resize':'nesw-resize')+';z-index:6;';hd.addEventListener('pointerdown',ev=>_calStart(ev,i,h));d.appendChild(hd);});
+    d.addEventListener('pointerdown',ev=>_calStart(ev,i,'move'));
+    st.appendChild(d);}}
+function _calStart(ev,i,mode){ev.preventDefault();ev.stopPropagation();const st=document.getElementById('rc-cal-stage');if(!st)return;const rect=st.getBoundingClientRect();
+  _calDrag={i:i,mode:mode,px:ev.clientX,py:ev.clientY,w:rect.width||1,h:rect.height||1,start:_cal6[i].slice()};
+  const s=document.getElementById('rc-cal-row');if(s)s.value=i;_renderCalBoxes();
+  window.addEventListener('pointermove',_calMove);window.addEventListener('pointerup',_calEnd);window.addEventListener('pointercancel',_calEnd);}
+function _calMove(ev){if(!_calDrag)return;const g=_calDrag,dx=(ev.clientX-g.px)/g.w,dy=(ev.clientY-g.py)/g.h,MIN=0.02;let r=g.start.slice();
+  if(g.mode==='move'){const w=r[2]-r[0],h=r[3]-r[1];let nx=Math.min(_cl(r[0]+dx),1-w),ny=Math.min(_cl(r[1]+dy),1-h);r=[nx,ny,nx+w,ny+h];}
+  else{if(g.mode.indexOf('w')>=0)r[0]=Math.min(_cl(r[0]+dx),r[2]-MIN);if(g.mode.indexOf('e')>=0)r[2]=Math.max(_cl(r[2]+dx),r[0]+MIN);if(g.mode.indexOf('n')>=0)r[1]=Math.min(_cl(r[1]+dy),r[3]-MIN);if(g.mode.indexOf('s')>=0)r[3]=Math.max(_cl(r[3]+dy),r[1]+MIN);}
+  _cal6[g.i]=r;const el=document.querySelector('.cal-box[data-i="'+g.i+'"]');if(el){el.style.left=(r[0]*100)+'%';el.style.top=(r[1]*100)+'%';el.style.width=((r[2]-r[0])*100)+'%';el.style.height=((r[3]-r[1])*100)+'%';}}
+function _calEnd(){if(!_calDrag)return;_calDrag=null;window.removeEventListener('pointermove',_calMove);window.removeEventListener('pointerup',_calEnd);window.removeEventListener('pointercancel',_calEnd);}
+function _calHi(){_renderCalBoxes();}
+function calNudge(dx,dy){const i=_calRow();if(i<0)return;const s=0.004;let r=_cal6[i].slice();const w=r[2]-r[0],h=r[3]-r[1];let nx=Math.min(_cl(r[0]+dx*s),1-w),ny=Math.min(_cl(r[1]+dy*s),1-h);_cal6[i]=[nx,ny,nx+w,ny+h];_renderCalBoxes();}
+function calReset(){_cal6=_calDefault6();_renderCalBoxes();}
+function saveCal(){fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes6:_cal6})}).then(r=>r.json()).then(d=>{rcStatus(d.ok?'Calibration saved.':'Error saving.',d.ok?'green':'red');loadAppData();}).catch(()=>rcStatus('Could not save calibration.','red'));}
 function saveRotcam(){rcStatus('Saving…','muted');return fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_rotcamBody())}).then(r=>r.json()).then(d=>{rcStatus(d.ok?(d.enabled?'Saved — auto-count ON.':'Saved (off — fill in camera + key, then tick on).'):'Error.',d.ok?'green':'red');loadAppData();return d;});}
 function testRotcam(){rcStatus('Grabbing a frame and counting…','muted');document.getElementById('rc-preview').innerHTML='';saveRotcam().then(()=>fetch('/api/rotcam_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok){rcStatus('Detected '+d.rows+' row(s) of chickens. &#10003;','green');}else rcStatus('Could not count: '+(d.error||'unknown'),'red');if(d.preview)document.getElementById('rc-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);">';}));}
 function testBenchcam(){const s=document.getElementById('rc-bench-status');if(s){s.textContent='Grabbing bench frame and counting…';s.style.color='var(--muted)';}document.getElementById('rc-bench-preview').innerHTML='';saveRotcam().then(()=>fetch('/api/benchcam_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(s){if(d.ok){s.textContent='Bench: '+(d.bench_rows==null?'no clear count (blocked/empty)':d.bench_rows+' row(s) of cooked chickens')+' ✓';s.style.color='var(--green)';}else{s.textContent='Could not read bench cam: '+(d.error||'unknown');s.style.color='var(--red)';}}if(d.preview)document.getElementById('rc-bench-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:8px;border:1px solid var(--border2);">';}).catch(()=>{if(s){s.textContent='Test failed.';s.style.color='var(--red)';}}));}

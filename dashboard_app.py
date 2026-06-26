@@ -1380,8 +1380,8 @@ def _rotcam_save_crops(jpeg,donepat):
             gap=60 if cls in ("ready","overdone") else 240   # collect ready/overdone every 1 min, others every 4 min
             if now-seen.get(cls,0)<gap: continue
             if im is None:
-                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; cal=_rot_cal()
-            x1,y1,x2,y2=_rot_box_px(i,W,H,*cal)
+                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; cal=_rot_cal6()
+            x1,y1,x2,y2=_rot_rect_px(cal[i],W,H)
             if x2-x1<2 or y2-y1<2: continue
             seen[cls]=now
             d=os.path.join(BASE_DIR,"rotcam_dataset",cls); os.makedirs(d,exist_ok=True)
@@ -1411,6 +1411,27 @@ def _rot_box_px(i,W,H,boxes,bx,off,skew):
     x1=_clamp01(bx[0]+sh); x2=_clamp01(bx[1]+sh)
     if x2<x1: x1,x2=x2,x1
     return int(W*x1),int(H*a),int(W*x2),int(H*b)
+def _rot_cal6():
+    # 6 fully-independent shelf rectangles [x1,y1,x2,y2] in fractions. If the owner has dragged/resized them
+    # (rotcam_config.boxes6) use those; otherwise derive them from the legacy per-row/offset/skew calibration.
+    rc=db.get("rotcam_config") or {}
+    b6=rc.get("boxes6")
+    if isinstance(b6,list) and len(b6)==6 and all(isinstance(r,(list,tuple)) and len(r)==4 for r in b6):
+        return [[_clamp01(r[0]),_clamp01(r[1]),_clamp01(r[2]),_clamp01(r[3])] for r in b6]
+    boxes,bx,off,skew=_rot_cal(); out=[]
+    for i in range(6):
+        a=_clamp01(boxes[i][0]+off); b=_clamp01(boxes[i][1]+off)
+        if b<a: a,b=b,a
+        sh=skew*(i-2.5)
+        x1=_clamp01(bx[0]+sh); x2=_clamp01(bx[1]+sh)
+        if x2<x1: x1,x2=x2,x1
+        out.append([x1,a,x2,b])
+    return out
+def _rot_rect_px(r,W,H):
+    x1=_clamp01(r[0]); y1=_clamp01(r[1]); x2=_clamp01(r[2]); y2=_clamp01(r[3])
+    if x2<x1: x1,x2=x2,x1
+    if y2<y1: y1,y2=y2,y1
+    return int(W*x1),int(H*y1),int(W*x2),int(H*y2)
 def _rot_boxes():   # legacy helper kept for any other callers: per-shelf (top,bottom) with the vertical offset
     boxes,bx,off,skew=_rot_cal()
     return [(_clamp01(a+off),_clamp01(b+off)) for (a,b) in boxes]
@@ -1419,9 +1440,9 @@ def _rotcam_boxes_composite(jpeg):
     try:
         from PIL import Image, ImageDraw; import io
         im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
-        cal=_rot_cal(); cw=640; gap=6; strips=[]
+        cal=_rot_cal6(); cw=640; gap=6; strips=[]
         for i in range(6):
-            x1,y1,x2,y2=_rot_box_px(i,W,H,*cal)
+            x1,y1,x2,y2=_rot_rect_px(cal[i],W,H)
             c=im.crop((x1,y1,x2,y2))
             if c.width<2 or c.height<2: c=Image.new("RGB",(cw,8),(15,15,15))
             c=c.resize((cw,max(1,int(c.height*cw/max(1,c.width)))))
@@ -1846,6 +1867,10 @@ def api_rotcam_config():
     if isinstance(d.get("box_x"),list) and len(d["box_x"])==2:
         try: cfg["box_x"]=[max(0.0,min(1.0,float(d["box_x"][0]))),max(0.0,min(1.0,float(d["box_x"][1])))]
         except Exception: pass
+    if isinstance(d.get("boxes6"),list) and len(d["boxes6"])==6 and all(isinstance(r,(list,tuple)) and len(r)==4 for r in d["boxes6"]):
+        try: cfg["boxes6"]=[[max(0.0,min(1.0,float(r[0]))),max(0.0,min(1.0,float(r[1]))),max(0.0,min(1.0,float(r[2]))),max(0.0,min(1.0,float(r[3])))] for r in d["boxes6"]]
+        except Exception: pass
+    if d.get("boxes6")=="clear": cfg.pop("boxes6",None)   # revert to legacy slider calibration
     if "box_skew" in d:
         try: cfg["box_skew"]=max(-0.3,min(0.3,float(d["box_skew"])))
         except Exception: pass
@@ -1859,27 +1884,42 @@ def api_rotcam_config():
 
 @app.route("/api/rotcam_calib",methods=["GET","POST"])
 def api_rotcam_calib():
-    # live frame with the 6 shelf boxes drawn, using the supplied (live editor) or saved calibration.
-    boxes,bx,off,skew=_rot_cal()
+    # live frame for the calibration editor.
+    #  - ?clean=1  → the bare frame, no boxes drawn (the drag-and-resize editor paints its own HTML boxes on top).
+    #  - otherwise → the frame with the 6 shelf boxes drawn (used by the old slider preview / fallback).
+    # POST body may carry boxes6 (6×[x1,y1,x2,y2]) to preview live edits, else legacy boxes/box_x/box_offset/box_skew.
     d=request.get_json(silent=True) or {}
-    if isinstance(d.get("boxes"),list) and len(d["boxes"])==6: boxes=d["boxes"]
-    if isinstance(d.get("box_x"),list) and len(d["box_x"])==2: bx=d["box_x"]
-    try:
-        if "box_offset" in d: off=float(d["box_offset"])
-        if "box_skew" in d: skew=float(d["box_skew"])
-        if request.args.get("off") is not None: off=float(request.args.get("off"))   # backward compat
-    except Exception: pass
+    clean=(request.args.get("clean") in ("1","true","yes")) or bool(d.get("clean"))
+    rects=None
+    if isinstance(d.get("boxes6"),list) and len(d["boxes6"])==6:
+        try: rects=[[float(r[0]),float(r[1]),float(r[2]),float(r[3])] for r in d["boxes6"]]
+        except Exception: rects=None
+    if rects is None and not clean:
+        boxes,bx,off,skew=_rot_cal()
+        if isinstance(d.get("boxes"),list) and len(d["boxes"])==6: boxes=d["boxes"]
+        if isinstance(d.get("box_x"),list) and len(d["box_x"])==2: bx=d["box_x"]
+        try:
+            if "box_offset" in d: off=float(d["box_offset"])
+            if "box_skew" in d: skew=float(d["box_skew"])
+            if request.args.get("off") is not None: off=float(request.args.get("off"))   # backward compat
+        except Exception: pass
+        rects=[]
+        for i in range(6):
+            x1,y1,x2,y2=_rot_box_px(i,1,1,boxes,bx,off,skew)
+            rects.append([min(x1,x2),min(y1,y2),max(x1,x2),max(y1,y2)])
     jpeg=ROTCAM.get("frame")
     if not (jpeg and (time.time()-ROTCAM.get("frame_ts",0))<8):
         jpeg,err=_rotcam_grab()
         if err or not jpeg: return Response("camera error: "+(err or "no frame"),status=502)
     try:
         from PIL import Image, ImageDraw; import io
-        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; dr=ImageDraw.Draw(im)
-        for i in range(6):
-            x1,y1,x2,y2=_rot_box_px(i,W,H,boxes,bx,off,skew)
-            dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
-            dr.text((x1+5,y1+3),"shelf %d"%(i+1),fill=(0,255,0))
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        if not clean and rects:
+            dr=ImageDraw.Draw(im)
+            for i in range(6):
+                x1,y1,x2,y2=_rot_rect_px(rects[i],W,H)
+                dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                dr.text((x1+5,y1+3),"shelf %d"%(i+1),fill=(0,255,0))
         out=io.BytesIO(); im.save(out,"JPEG",quality=80)
         return Response(out.getvalue(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
     except Exception as e: return Response("render error: "+str(e),status=500)
@@ -2200,7 +2240,7 @@ def get_db():
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
     rc=snap.get("rotcam_config") or {}
-    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew")}  # no pass/key
+    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew","boxes6")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
     safe["rotcam_public"]["bench_user"]=rc.get("bench_user","")   # username is not secret — show it so it can be verified
     safe["rotcam_public"]["bench_has_pass"]=bool((rc.get("bench_pass") or "").strip() or (rc.get("bench_rtsp_url") or "").strip())
