@@ -2078,7 +2078,42 @@ def api_rotcam_credit_shot():
 @app.route("/api/rotcam_trace")
 def api_rotcam_trace():
     return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
-                    "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash")})
+                    "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash"),
+                    "corrections":len(db.get("rotcam_corrections",[]) or [])})
+
+@app.route("/api/rotcam_correct",methods=["POST"])
+def api_rotcam_correct():
+    # Save a human ground-truth label for a frame (the owner correcting what the AI saw). Stores the frame +
+    # the full scene label + what the AI had said, into rotcam_labels/ → training data for the local model + few-shot.
+    import json as _json
+    d=request.get_json(silent=True) or {}
+    try: tid=int(d.get("id",0))
+    except Exception: tid=0
+    if not tid: return jsonify({"ok":False,"error":"no frame id"})
+    try:
+        def _i(v):
+            try: return max(0,int(v))
+            except Exception: return 0
+        shelves=[]
+        for s in (d.get("shelves") or [])[:6]:
+            shelves.append({"occ":("loaded" if (s or {}).get("occ")=="loaded" else "empty"),
+                            "cooked_pct":max(0,min(100,_i((s or {}).get("cooked_pct"))))})
+        tr=next((r for r in (ROTCAM.get("trace") or []) if r.get("id")==tid),None)
+        lab={"id":tid,"ts":int(time.time()),"shelves":shelves,
+             "door_open":bool(d.get("door_open")),"person":bool(d.get("person")),"glare":bool(d.get("glare")),
+             "activity":str(d.get("activity") or "")[:50],"rows_off":_i(d.get("rows_off")),"rows_on":_i(d.get("rows_on")),
+             "notes":str(d.get("notes") or "")[:400],
+             "ai_raw":(tr or {}).get("raw",""),"ai_levels":(tr or {}).get("levels",""),"ai_done":(tr or {}).get("done","")}
+        ld=os.path.join(BASE_DIR,"rotcam_labels"); os.makedirs(ld,exist_ok=True)
+        img=(ROTCAM.get("trace_img") or {}).get(tid)
+        if img: open(os.path.join(ld,"%d.jpg"%tid),"wb").write(img)
+        open(os.path.join(ld,"%d.json"%tid),"w",encoding="utf-8").write(_json.dumps(lab,ensure_ascii=False))
+        with data_lock:
+            cl=[c for c in (db.get("rotcam_corrections",[]) or []) if c.get("id")!=tid]; cl.append(lab)
+            db["rotcam_corrections"]=cl[-500:]; save_data(db)
+        return jsonify({"ok":True,"count":len(db.get("rotcam_corrections",[]))})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
 
 @app.route("/api/rotcam_trace_shot")
 def api_rotcam_trace_shot():
