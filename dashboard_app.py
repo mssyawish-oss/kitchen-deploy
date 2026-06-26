@@ -412,6 +412,25 @@ def _is_delivery_src(src):
     if not _exclude_delivery(): return False
     s=(src or "").lower().replace(" ","")
     return any(k in s for k in ("uber","doordash","menulog","deliveroo"))
+def _exclude_online(): return db.get("nowait_exclude_online",True)!=False   # website (Square Online) orders aren't a counter-waiter; excluded by default
+def _is_online_src(src):
+    if not _exclude_online(): return False
+    s=(src or "").lower().replace(" ","")
+    return any(k in s for k in ("squareonline","online","ecom","website","webstore"))
+def _nowait_days():
+    d=db.get("nowait_days")
+    return [int(x) for x in d if str(x).strip()!=""] if isinstance(d,list) and len(d) else [0,1,2,3,4,5,6]   # weekdays the alarm is active, Mon=0..Sun=6
+def _nowait_active_now():
+    # the hand-out ALARM only sounds on the selected days + within the active time window (orders still show, just no alarm)
+    nowt=datetime.now().astimezone()
+    if nowt.weekday() not in _nowait_days(): return False
+    st=(db.get("nowait_start") or "").strip(); en=(db.get("nowait_end") or "").strip()
+    if st and en:
+        cur=nowt.hour*60+nowt.minute; a=_hm_to_min(st,0); b=_hm_to_min(en,1440)
+        if a==b: return True                          # equal start/end = no time restriction
+        if a<b:  return a<=cur<b
+        return cur>=a or cur<b                         # window crosses midnight (e.g. 18:00–02:00)
+    return True
 def _wait_reset():
     today=datetime.now().astimezone().date().isoformat()
     if WAIT_LIVE["day"]!=today: WAIT_LIVE.update({"day":today,"orders":{},"done":set(),"acked":set()})
@@ -444,8 +463,8 @@ def wait_state():
         out.append({"oid":oid,"name":o.get("name",""),"items":o["items"],"src":o.get("src",""),"t":o.get("t",""),
                     "mins":mins,"late":mins>=thr,"kind":kind,"acked":oid in WAIT_LIVE["acked"]})
     out.sort(key=lambda x:x["mins"],reverse=True)
-    return {"orders":out,"alarm":any(o["late"] and not o["acked"] for o in out),"enabled":True,
-            "alarm_min":_nowait_alarm_min(),"wait_alarm_min":_wait_alarm_min()}
+    return {"orders":out,"alarm":(_nowait_active_now() and any(o["late"] and not o["acked"] for o in out)),"enabled":True,
+            "alarm_min":_nowait_alarm_min(),"wait_alarm_min":_wait_alarm_min(),"active_now":_nowait_active_now()}
 
 def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
     # → per order: (id, bbq whole-bird equiv, fried pcs, scheduled_bool, due_datetime)
@@ -540,7 +559,7 @@ def square_poll_loop():
                     if _nowait_on():
                         open_ids=set()
                         for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in open_orders:
-                            if nowait and _due(s,d,c) and not fulfilled and not _is_delivery_src(src):
+                            if nowait and _due(s,d,c) and not fulfilled and not _is_delivery_src(src) and not _is_online_src(src):
                                 # start the wait timer from when the order first reaches our kitchen queue
                                 # (matches the pass KDS), NOT Square's created_at — a pre-order/tab can be
                                 # "created" long before it ever fires to the kitchen. Scheduled orders still
@@ -1221,6 +1240,11 @@ def api_nowait_config():
     with data_lock:
         if "enabled" in d: db["nowait_enabled"]=bool(d["enabled"])
         if "exclude_delivery" in d: db["nowait_exclude_delivery"]=bool(d["exclude_delivery"])
+        if "exclude_online" in d: db["nowait_exclude_online"]=bool(d["exclude_online"])
+        if "days" in d and isinstance(d["days"],list):
+            db["nowait_days"]=sorted({int(x) for x in d["days"] if isinstance(x,(int,float)) and 0<=int(x)<=6})
+        if "start" in d: db["nowait_start"]=str(d["start"]).strip()
+        if "end" in d: db["nowait_end"]=str(d["end"]).strip()
         if "items" in d and isinstance(d["items"],list):
             db["nowait_items"]=[str(x).strip() for x in d["items"] if str(x).strip()]
         if "wait_items" in d and isinstance(d["wait_items"],list):
