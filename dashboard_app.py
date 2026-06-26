@@ -1363,8 +1363,8 @@ _ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, n
                   "hanging DOWN from the shelf above while its own spit rod is bare, that strip is EMPTY = 0. "
                   "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
                   "0 N A R O, JOINED TOGETHER with NO spaces, commas or separators, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
-                  "strip5 overdone, strip6 empty). If a PERSON or object blocks a strip so you cannot see it, reply with the "
-                  "single word BLOCKED.")
+                  "strip5 overdone, strip6 empty). If a PERSON, a hand or arm reaching in, or any object blocks a strip so "
+                  "you cannot see it — or the oven door is open — reply with the single word BLOCKED.")
 _DONE_LABELS={"N":"not_ready","A":"almost_ready","R":"ready","O":"overdone"}
 def _rotcam_save_crops(jpeg,donepat):
     # auto-build the on-spit training set: save each loaded row's strip into rotcam_dataset/<class>/, throttled per
@@ -1484,7 +1484,7 @@ def _rotcam_count(jpeg):
         txtc=re.sub(r"[\s,;/|.\-]+","",txt)          # collapse spaces/separators: the model sometimes replies "O R A N N N"
         if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
             dm=re.search(r"[0NAROnaro]{6}",txtc)
-            if "block" in txt.lower() and not dm: return None,"view blocked (skipped)"
+            if "block" in txt.lower() and not dm: ROTCAM["last_blocked_ts"]=time.time(); return None,"view blocked — someone at the oven"
             if dm:
                 done=dm.group().upper(); ROTCAM["done"]=done
                 ROTCAM["levels"]="".join("0" if c=="0" else "1" for c in done)   # derive occupancy from doneness
@@ -1493,7 +1493,7 @@ def _rotcam_count(jpeg):
             # no doneness pattern parsed → fall through to plain occupancy parsing below
         mm=re.search(r"[01]{6}",txtc)                # per-level pattern e.g. 111100 → count the loaded levels
         if "block" in txt.lower() and not mm:        # someone standing in front → skip this read, don't touch stock
-            return None,"view blocked (skipped)"
+            ROTCAM["last_blocked_ts"]=time.time(); return None,"view blocked — someone at the oven"
         if mm:
             ROTCAM["levels"]=mm.group()
             return mm.group().count("1"),None
@@ -1747,6 +1747,7 @@ def _rot_min_cook_secs():
     except Exception: return 35*60
 _ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
 _ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
+_ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1793,10 +1794,13 @@ def _rotcam_apply(rows):
         elif la[i]>0:                                      # empty, and it was loaded → candidate removal
             if oa[i]==0: oa[i]=now; changed=True           # start the "off" timer
             elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
-                # Credit ONLY on the trustworthy physical signal: the shelf stayed loaded for a real cook
-                # (>= min_cook) and then actually emptied. Doneness (ck) is too noisy to credit on, so it's
-                # no longer a shortcut — this is what stops the glare/flicker phantom +4s.
-                if oa[i]-la[i]>=min_cook: credit+=1
+                # Credit ONLY when it's genuinely a person removing a cooked row — all three must hold:
+                #  (1) the shelf cooked long enough to be real (loaded >= min_cook),
+                #  (2) it then actually emptied and stayed empty (>= off-confirm, handled above), and
+                #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
+                # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
+                seen_person=(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW
+                if oa[i]-la[i]>=min_cook and seen_person: credit+=1
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
