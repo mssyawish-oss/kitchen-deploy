@@ -1800,7 +1800,7 @@ def _rotcam_apply(rows):
     if len(sw)!=6: sw=ROTCAM["shelf_swap_streak"]=[0,0,0,0,0,0]
     done=ROTCAM.get("done","") or ""                       # per-shelf doneness letters 0/N/A/R/O (if doneness read on)
     _RANK={"N":1,"A":2,"R":3,"O":4}                         # chickens only cook FORWARD, so rank only goes up
-    min_cook=_rot_min_cook_secs(); credit=0; changed=False; credited_shelves=[]
+    min_cook=_rot_min_cook_secs(); credit=0; changed=False; events=[]
     for i in range(6):
         if confirmed[i]=="1":                              # loaded
             oa[i]=0
@@ -1825,46 +1825,56 @@ def _rotcam_apply(rows):
                 #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
                 # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
                 seen_person=(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW
-                if oa[i]-la[i]>=min_cook and seen_person: credit+=1; credited_shelves.append(i)
+                cooked_long=(oa[i]-la[i]>=min_cook)
+                if cooked_long and seen_person:                # genuine person-removal of a cooked row → count it
+                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — cooked row, someone at the oven took it"})
+                else:                                          # a shelf emptied but we DON'T count it — log why so misses are visible
+                    why=("didn’t see anyone at the oven when it emptied" if not seen_person
+                         else "shelf wasn’t loaded long enough to be a finished cook")
+                    events.append({"shelf":i,"credited":False,"reason":why})
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
     auto=bool((db.get("rotcam_config") or {}).get("auto_count",True))
     if credit>0 and auto: rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
-    return credited_shelves if (credit>0 and auto) else []   # let the loop log+screenshot exactly the shelves that credited
-def _rotcam_log_credit(shelves,jpeg):
-    # Record an audit entry + a few screenshots EVERY time the camera adds stock, so the owner can see
-    # exactly what it saw when it credited (debugging). Saves into rotcam_credits/<id>/ and logs to db.
+    return events if auto else []   # the loop logs+screenshots every detected removal (counted or skipped) so misses are visible
+def _rotcam_log_event(ev,jpeg):
+    # Log EVERY detected shelf-removal (counted OR skipped) with a few screenshots, so the owner sees each
+    # row that comes off — and when it isn't counted, exactly why. Saves into rotcam_credits/<id>/.
     try:
         from PIL import Image, ImageDraw; import io, base64
-        c=_rot_cfg(); bpr=c["bpr"]; now=time.time(); eid=int(now)
+        c=_rot_cfg(); bpr=c["bpr"]; now=time.time(); shelf=int(ev.get("shelf",0)); credited=bool(ev.get("credited"))
+        eid=int(now)*10+shelf                                    # unique per shelf so two emptying at once don't collide
         d=os.path.join(BASE_DIR,"rotcam_credits",str(eid)); os.makedirs(d,exist_ok=True); shots=[]
-        comp=ROTCAM.get("last_comp")                              # the 6-strip the AI actually judged
+        comp=ROTCAM.get("last_comp")                             # the 6-strip the AI actually judged
         if isinstance(comp,str) and comp.startswith("data:"):
-            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append({"n":"comp.jpg","ts":eid})
+            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append({"n":"comp.jpg","ts":int(now)})
             except Exception: pass
-        if jpeg:                                                  # full frame with the shelf boxes drawn; credited shelf in amber
+        if jpeg:                                                 # full frame with the boxes; this shelf amber if counted, red if skipped
             try:
                 im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; dr=ImageDraw.Draw(im); cal=_rot_cal6()
+                hotcol=(255,170,30) if credited else (255,95,95)
                 for i in range(6):
-                    x1,y1,x2,y2=_rot_rect_px(cal[i],W,H); hot=i in shelves; col=(255,170,30) if hot else (0,255,0)
+                    x1,y1,x2,y2=_rot_rect_px(cal[i],W,H); hot=(i==shelf); col=hotcol if hot else (0,255,0)
                     dr.rectangle([x1,y1,x2,y2],outline=col,width=5 if hot else 2)
-                    dr.text((x1+6,y1+4),("shelf %d  +%d"%(i+1,bpr)) if hot else ("shelf %d"%(i+1)),fill=col)
+                    lbl=("shelf %d  +%d"%(i+1,bpr)) if (hot and credited) else (("shelf %d  (not counted)"%(i+1)) if hot else ("shelf %d"%(i+1)))
+                    dr.text((x1+6,y1+4),lbl,fill=col)
                 if im.width>1100: im=im.resize((1100,int(im.height*1100/im.width)))
-                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append({"n":"boxes.jpg","ts":eid})
+                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append({"n":"boxes.jpg","ts":int(now)})
             except Exception: pass
-        ring=ROTCAM.get("frame_ring",[])                          # a few recent frames spanning the removal (each carries its own capture time)
+        ring=ROTCAM.get("frame_ring",[])                         # recent frames spanning the removal (each keeps its real capture time)
         picks=([ring[0],ring[len(ring)//2],ring[-1]] if len(ring)>=3 else list(ring))
         for n,item in enumerate(picks,1):
             try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append({"n":"seq%d.jpg"%n,"ts":int(item[0])})
             except Exception: pass
-        entry={"id":eid,"ts":int(now),"birds":len(shelves)*bpr,"rows":len(shelves),"shelves":[i+1 for i in shelves],
+        entry={"id":eid,"ts":int(now),"credited":credited,"shelf":shelf+1,"shelves":[shelf+1],
+               "rows":(1 if credited else 0),"birds":(bpr if credited else 0),"reason":ev.get("reason",""),
                "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),
                "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
         with rot_lock:
-            log=db.get("rotcam_credit_log",[]); log.append(entry); db["rotcam_credit_log"]=log[-50:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])
-        try:                                                      # prune screenshot folders that fell off the 50-entry log
+            log=db.get("rotcam_credit_log",[]); log.append(entry); db["rotcam_credit_log"]=log[-60:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])
+        try:                                                     # prune screenshot folders that fell off the log
             import shutil; base=os.path.join(BASE_DIR,"rotcam_credits")
             for nm in os.listdir(base):
                 if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
@@ -1921,8 +1931,8 @@ def rotcam_loop():
                         rows,cerr=_rotcam_count(jpeg)
                         if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(900); continue
                         if not cerr:
-                            cred=_rotcam_apply(rows)
-                            if cred: _rotcam_log_credit(cred,jpeg)   # camera just added stock → log it + save what it saw
+                            evs=_rotcam_apply(rows)
+                            for ev in (evs or []): _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
             except Exception as e: ROTCAM["error"]=str(e)
         time.sleep(bench_iv)
 

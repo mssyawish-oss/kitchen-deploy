@@ -1984,46 +1984,60 @@ function _shotBig(src){let o=document.getElementById('shot-big');if(!o){o=docume
 function _agoShort(ts){const s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m';return Math.floor(s/3600)+'h';}
 function _shotInfo(n){
   if(n.indexOf('comp')>=0)return{label:'What the AI read',desc:'Your 6 shelves cropped out and stacked into strips — this exact picture is what the AI grades (empty / raw / almost / ready / overdone). It looks zoomed in because it is just the shelf crops, not the full oven.'};
-  if(n.indexOf('boxes')>=0)return{label:'Full view + shelf boxes',desc:'The whole camera frame with the 6 shelf boxes drawn. The AMBER box is the row it counted as removed. If the green boxes do not line up with the chickens, adjust them in Camera settings → Shelf box calibration.'};
-  if(n.indexOf('seq')>=0)return{label:'Live camera frame',desc:'The actual camera a few seconds apart around the moment it counted — earliest first. Watch the row leave the shelf.'};
+  if(n.indexOf('boxes')>=0)return{label:'Full view + shelf boxes',desc:'The whole camera frame with the 6 shelf boxes. The highlighted box is this shelf — amber if it counted, red if it skipped. If the boxes don’t line up with the chickens, fix them in Camera settings → Shelf box calibration.'};
+  if(n.indexOf('seq')>=0)return{label:'Live camera frame',desc:'The real camera a few seconds apart around this moment — earliest first. The exact time is on the photo itself (the camera’s own watermark).'};
   return{label:'Photo',desc:''};
+}
+let _camEntryOpen=new Set();
+function toggleCamEntry(id){if(_camEntryOpen.has(id))_camEntryOpen.delete(id);else _camEntryOpen.add(id);_camLogSig='';renderRotCreditLog(window._lastRot||{});}
+function _camEntryTiles(e){
+  const shots=(e.shots||[]).map(function(s){return (typeof s==='string')?{n:s}:s;});
+  return shots.map(function(sh,idx){const n=sh.n,info=_shotInfo(n),u='/api/rotcam_credit_shot?id='+e.id+'&n='+n;
+    return '<div style="flex:0 0 auto;width:170px;">'
+      +'<div style="position:relative;">'
+        +'<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="width:170px;height:104px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;">'
+        +'<div style="position:absolute;top:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:5px;">'+(idx+1)+'</div>'
+      +'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px;">'+(idx+1)+'. '+info.label+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);line-height:1.35;margin-top:1px;">'+info.desc+'</div>'
+    +'</div>';}).join('');
 }
 function renderRotCreditLog(rot){
   const el=document.getElementById('rl-camlog');if(!el)return;window._lastRot=rot;
   const log=(rot&&rot.credit_log)||[];
   if(!rot||!rot.cam){el.style.display='none';el.innerHTML='';_camLogSig='';return;}   // only hidden when the camera is off
   el.style.display='';
-  const sig=log.map(e=>e.id).join(',')+'|'+_camLogOpen;
+  const counted=log.filter(function(e){return e.credited!==false;}).length, skipped=log.length-counted;
+  const sig=log.map(function(e){return e.id+(_camEntryOpen.has(e.id)?'*':'');}).join(',')+'|'+_camLogOpen;
   if(sig===_camLogSig)return;_camLogSig=sig;
   const items=log.slice().reverse();
   const head='<div onclick="toggleCamLog()" style="cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text);padding:9px 11px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;">'
-    +'<span>📷 Camera count log</span><span style="color:var(--muted);font-weight:600;">('+log.length+')</span>'
-    +'<span style="margin-left:auto;color:var(--muted);">'+(_camLogOpen?'▲ hide':(log.length?'▼ show what it saw':'▼ details'))+'</span></div>';
+    +'<span>📷 Camera count log</span><span style="color:var(--muted);font-weight:600;">('+counted+' counted'+(skipped?(' · '+skipped+' skipped'):'')+')</span>'
+    +'<span style="margin-left:auto;color:var(--muted);">'+(_camLogOpen?'▲ hide':'▼ show')+'</span></div>';
   let body='';
   if(_camLogOpen&&!items.length){
-    body='<div style="margin-top:6px;border:1px dashed var(--border2);border-radius:10px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.5;">No camera credits yet today. When the camera counts a cooked row onto stock, it appears here with the time, shelf, whether it saw someone at the oven, and screenshots of exactly what it saw.</div>';
+    body='<div style="margin-top:6px;border:1px dashed var(--border2);border-radius:10px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.5;">No rows detected coming off yet. Each time the camera sees a shelf empty it adds a box here — <b style="color:var(--green)">green</b> when it counted the row (+4), <b style="color:var(--amber)">amber</b> when it skipped it (with the reason). Tap a box to open the photos.</div>';
   } else if(_camLogOpen){
-    body='<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">'+items.map(function(e){
+    body='<div style="margin-top:6px;font-size:10.5px;color:var(--muted);margin-bottom:6px;">One box per row the camera saw come off. Tap a box to open its photos &amp; details.</div>'
+      +'<div style="display:flex;flex-direction:column;gap:7px;">'+items.map(function(e){
+      const isC=(e.credited!==false);
+      const open=_camEntryOpen.has(e.id);
       const t=new Date(e.ts*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-      const shelves=(e.shelves||[]).join(', ');
-      const person=e.person?'👤 saw someone at the oven':'⚠ no person seen';
-      const shots=(e.shots||[]).map(function(s){return (typeof s==='string')?{n:s,ts:null}:s;});
-      const thumbs=shots.map(function(sh,idx){const n=sh.n,info=_shotInfo(n),u='/api/rotcam_credit_shot?id='+e.id+'&n='+n;
-        const ts=sh.ts||e.ts;const tl=ts?new Date(ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
-        return '<div style="flex:0 0 auto;width:170px;">'
-          +'<div style="position:relative;">'
-            +'<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="width:170px;height:104px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;">'
-            +'<div style="position:absolute;top:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:5px;">'+(idx+1)+'</div>'
-            +(tl?'<div style="position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:600;padding:1px 6px;border-radius:5px;">🕒 '+tl+'</div>':'')
-          +'</div>'
-          +'<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px;">'+(idx+1)+'. '+info.label+'</div>'
-          +'<div style="font-size:10px;color:var(--muted);line-height:1.35;margin-top:1px;">'+info.desc+'</div>'
-        +'</div>';}).join('');
-      return '<div style="border:1px solid var(--border2);border-radius:10px;padding:9px 11px;">'
-        +'<div style="font-size:13px;font-weight:700;color:var(--green);">+'+e.birds+' ('+e.rows+' row'+(e.rows===1?'':'s')+') · shelf '+shelves+' <span style="color:var(--muted);font-weight:600;">· '+t+' ('+_agoShort(e.ts)+' ago)</span></div>'
-        +'<div style="font-size:11.5px;color:var(--muted);margin:2px 0 6px;">'+person+' · stock after: '+e.avail_after+'</div>'
-        +'<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">All '+shots.length+' photos below are from this one count (one row coming off). Tap any to enlarge.</div>'
-        +'<div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;">'+(thumbs||'<span style="font-size:11px;color:var(--muted)">no images</span>')+'</div></div>';
+      const shelf=(e.shelf!=null)?e.shelf:((e.shelves||[]).join(', '));
+      const badge=isC?'<span style="color:#19e36b;font-weight:800;white-space:nowrap;">✓ +'+(e.birds||4)+'</span>':'<span style="color:var(--amber);font-weight:800;white-space:nowrap;">✗ not counted</span>';
+      const headRow='<div onclick="toggleCamEntry('+e.id+')" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 12px;">'
+        +badge+'<span style="font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;">shelf '+shelf+'</span>'
+        +'<span style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">· '+t+' ('+_agoShort(e.ts)+' ago)</span>'
+        +'<span style="margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap;">'+(open?'▲ close':'▼ open')+'</span></div>';
+      let detail='';
+      if(open){
+        detail='<div style="padding:0 12px 12px;">'
+          +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px;">'+(e.person?'👤 someone was at the oven':'⚠ no one seen at the oven')+' · stock after: '+e.avail_after+(isC?'':' (unchanged)')+'</div>'
+          +(!isC&&e.reason?'<div style="font-size:11.5px;color:var(--amber);background:rgba(240,160,40,.09);border:1px solid rgba(240,160,40,.3);border-radius:8px;padding:7px 10px;margin-bottom:9px;"><b>Not counted because:</b> '+e.reason+'</div>':'')
+          +'<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">Photos from this moment (tap any to enlarge):</div>'
+          +'<div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;">'+(_camEntryTiles(e)||'<span style="font-size:11px;color:var(--muted)">no images</span>')+'</div></div>';
+      }
+      return '<div style="border:1px solid '+(isC?'var(--border2)':'rgba(240,160,40,.35)')+';border-radius:10px;overflow:hidden;background:var(--surface2);">'+headRow+detail+'</div>';
     }).join('')+'</div>';
   }
   el.innerHTML=head+body;
