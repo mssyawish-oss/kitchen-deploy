@@ -1940,7 +1940,9 @@ def rotcam_loop():
                             evs=_rotcam_apply(rows)
                             for ev in (evs or []): _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
             except Exception as e: ROTCAM["error"]=str(e)
-        time.sleep(max(1,min(iv,bench_iv)))   # wake at the FASTER cadence so a 1s shelf interval is actually honoured (was capped at bench_iv)
+        # while actively counting, the Gemini call already paces the loop (~2-3s) — don't add a full extra
+        # second on top; just yield briefly. Only sleep the full cadence when idle (window closed / disabled).
+        time.sleep(0.1 if (open_now and cfg.get("enabled") and (cfg.get("gemini_key") or "").strip()) else max(1,min(iv,bench_iv)))
 
 @app.route("/api/rotcam_config",methods=["POST"])
 def api_rotcam_config():
