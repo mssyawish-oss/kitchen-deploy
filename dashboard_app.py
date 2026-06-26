@@ -1508,6 +1508,7 @@ def _rotcam_count(jpeg):
         cand=(data.get("candidates") or [{}])[0]
         parts=((cand.get("content") or {}).get("parts")) or []
         txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
+        ROTCAM["last_raw"]=(txt or "").strip()           # exact words the AI replied — for the debug inspector
         if not txt: return None,"Gemini returned no answer (finish: %s)"%cand.get("finishReason","?")
         txtc=re.sub(r"[\s,;/|.\-]+","",txt)          # collapse spaces/separators: the model sometimes replies "O R A N N N"
         if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
@@ -1783,12 +1784,15 @@ def _rotcam_apply(rows):
         # no valid per-shelf pattern → just track the cooking count for display; do NOT credit (too unreliable)
         h=ROTCAM["hist"]; h.append(rows); ROTCAM["hist"]=h[-4:]
         if len(h)>=2 and h[-1]==h[-2]: ROTCAM["cooking"]=h[-1]
+        ROTCAM["last_decision"]="no clean 6-shelf read this frame — not counting"
         return
     # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then run a per-shelf DWELL state
     # machine. A row only credits if it was loaded continuously long enough to be a real cook (>= min_cook) AND
     # is then sustained-empty (not a momentary glare/occlusion flicker). This stops the over-count (e.g. 72).
     ph=ROTCAM.get("pat_hist",[]); ph.append(pat); ROTCAM["pat_hist"]=ph[-3:]
-    if not (len(ph)>=2 and ph[-1]==ph[-2]): return       # wait for two matching reads
+    if not (len(ph)>=2 and ph[-1]==ph[-2]):
+        ROTCAM["last_decision"]="read "+pat+" — waiting for the next read to agree before acting (anti-flicker)"
+        return       # wait for two matching reads
     confirmed=ph[-1]; now=time.time()
     ROTCAM["cooking_pat"]=confirmed; ROTCAM["cooking"]=confirmed.count("1")
     la=ROTCAM.setdefault("shelf_loaded_at",[0,0,0,0,0,0])   # when each shelf first went loaded
@@ -1839,6 +1843,11 @@ def _rotcam_apply(rows):
     auto=bool((db.get("rotcam_config") or {}).get("auto_count",True))
     if credit>0 and auto: rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
+    bpr=_rot_cfg().get("bpr",4)
+    if events:
+        ROTCAM["last_decision"]="; ".join((("✓ COUNTED shelf %d (+%d)"%(e["shelf"]+1,bpr)) if e["credited"] else ("✗ skipped shelf %d"%(e["shelf"]+1))) for e in events)
+    else:
+        ROTCAM["last_decision"]="confirmed read "+confirmed+" — no shelf completed a removal this frame"
     return events if auto else []   # the loop logs+screenshots every detected removal (counted or skipped) so misses are visible
 def _rotcam_log_event(ev,jpeg):
     # Log EVERY detected shelf-removal (counted OR skipped) with a few screenshots, so the owner sees each
@@ -1882,6 +1891,39 @@ def _rotcam_log_event(ev,jpeg):
                 if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
         except Exception: pass
         save_data(db)
+    except Exception: pass
+def _rotcam_add_trace(jpeg,events,cerr):
+    # Per-frame debug record for the Settings inspector: the frame + exactly what the AI replied + what we
+    # parsed per shelf + the decision the logic made. Lets the owner see WHERE the AI is going wrong.
+    try:
+        now=time.time(); tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
+        la=ROTCAM.get("shelf_loaded_at",[0]*6); oa=ROTCAM.get("shelf_off_at",[0]*6)
+        _DN={"0":"empty","N":"raw","A":"almost","R":"ready","O":"overdone"}
+        cred={e["shelf"] for e in (events or []) if e.get("credited")}
+        skip={e["shelf"] for e in (events or []) if not e.get("credited")}
+        bpr=_rot_cfg().get("bpr",4); shelves=[]
+        for i in range(6):
+            occ=("loaded" if (i<len(lv) and lv[i]=="1") else ("empty" if lv else "?"))
+            done=_DN.get(dn[i],"") if i<len(dn) else ""
+            note=""
+            if occ=="loaded" and i<len(la) and la[i]: note="cooking %dm"%int((now-la[i])/60)
+            elif occ=="empty" and i<len(oa) and oa[i]: note="empty %ds"%int(now-oa[i])
+            if i in cred: note="✓ COUNTED +%d"%bpr
+            elif i in skip: note="✗ not counted"
+            shelves.append({"i":i+1,"occ":occ,"done":done,"note":note})
+        rec={"id":tid,"ts":int(now),"raw":(ROTCAM.get("last_raw","") or "")[:140],
+             "levels":lv,"done":dn,"decision":(cerr or ROTCAM.get("last_decision","")),"shelves":shelves}
+        tr=ROTCAM.setdefault("trace",[]); tr.append(rec); ROTCAM["trace"]=tr[-60:]
+        if jpeg:
+            from PIL import Image; import io
+            im=Image.open(io.BytesIO(jpeg)).convert("RGB")
+            if im.width>520: im=im.resize((520,int(im.height*520/im.width)))
+            bo=io.BytesIO(); im.save(bo,"JPEG",quality=68)
+            imgs=ROTCAM.setdefault("trace_img",{}); imgs[tid]=bo.getvalue()
+            keep={r["id"] for r in ROTCAM["trace"]}
+            for k in list(imgs.keys()):
+                if k not in keep: imgs.pop(k,None)
     except Exception: pass
 def _hm_to_min(s,d):
     try: h,m=str(s).split(":"); return int(h)*60+int(m)
@@ -1935,10 +1977,12 @@ def rotcam_loop():
                             _rg=ROTCAM.setdefault("frame_ring",[]); _rg.append((time.time(),_bo.getvalue())); ROTCAM["frame_ring"]=_rg[-16:]
                         except Exception: pass
                         rows,cerr=_rotcam_count(jpeg)
-                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
+                        evs=[]
                         if not cerr:
-                            evs=_rotcam_apply(rows)
-                            for ev in (evs or []): _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
+                            evs=_rotcam_apply(rows) or []
+                            for ev in evs: _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
+                        _rotcam_add_trace(jpeg,evs,cerr)   # per-frame debug trace → Settings inspector
+                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
             except Exception as e: ROTCAM["error"]=str(e)
         # while actively counting, the Gemini call already paces the loop (~2-3s) — don't add a full extra
         # second on top; just yield briefly. Only sleep the full cadence when idle (window closed / disabled).
@@ -2030,6 +2074,19 @@ def api_rotcam_credit_shot():
     p=os.path.join(BASE_DIR,"rotcam_credits",eid,nm)
     if not os.path.exists(p): return Response("not found",status=404)
     return send_file(p,mimetype="image/jpeg")
+
+@app.route("/api/rotcam_trace")
+def api_rotcam_trace():
+    return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
+                    "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash")})
+
+@app.route("/api/rotcam_trace_shot")
+def api_rotcam_trace_shot():
+    try: i=int(re.sub(r"[^0-9]","",request.args.get("id","0")) or 0)
+    except Exception: return Response("bad",status=400)
+    img=(ROTCAM.get("trace_img") or {}).get(i)
+    if not img: return Response("not found",status=404)
+    return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"max-age=3600"})   # immutable per id → cache, no flicker
 
 @app.route("/api/rotcam_test",methods=["POST"])
 def api_rotcam_test():

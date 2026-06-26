@@ -1097,6 +1097,14 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_refreshCalBg()">Refresh photo</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
     </div>
     <div class="divider"></div>
+    <div class="label" style="margin-bottom:2px;">🔬 AI Debug — what the camera sees on every check</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">A live trace of every analysis: the exact frame, the AI's raw reply, what we read per shelf, and the decision the logic made — so you can see precisely where it's going wrong and what to adjust.</div>
+    <div class="row" style="gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="rc-trace-btn" onclick="toggleTrace()">&#9654; Start live trace</button>
+      <span id="rc-trace-model" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
+    </div>
+    <div id="rc-trace"></div>
+    <div class="divider"></div>
     <div class="label" style="margin-bottom:4px;">Bench camera — 2nd Tapo, side angle (for stock auto-count)</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">A 2nd camera aimed at the unloading bench. When set, auto-count watches <b>this</b> camera — it always sees the bench wherever it rolls, and reads rows side-by-side or stacked. Fill in its <b>Camera Account</b> login (Tapo app → Settings → Advanced), exactly like the rotisserie camera above.</div>
     <div class="grid-2"><div><div class="label">Bench camera IP</div><input class="input" id="rc-bench-ip" placeholder="192.168.0.113"></div><div><div class="label">Stream</div><select class="input" id="rc-bench-stream" style="background:var(--surface2);"><option value="stream1">stream1 (HD)</option><option value="stream2">stream2 (low-res)</option></select></div></div>
@@ -2043,6 +2051,45 @@ function renderRotCreditLog(rot){
     }).join('')+'</div>';
   }
   el.innerHTML=head+body;
+}
+// --- AI debug inspector (Settings → Camera): live per-frame trace of what the AI sees + decides ---
+let _traceTimer=null,_traceLastId=null;
+function toggleTrace(){
+  const btn=document.getElementById('rc-trace-btn');
+  if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;if(btn)btn.innerHTML='&#9654; Start live trace';return;}
+  if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
+}
+function renderRotTrace(){
+  const el=document.getElementById('rc-trace');if(!el)return;
+  const modal=document.getElementById('settings-modal');
+  if(modal&&!modal.classList.contains('open')){if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;const b=document.getElementById('rc-trace-btn');if(b)b.innerHTML='&#9654; Start live trace';}return;}
+  fetch('/api/rotcam_trace',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    const ml=document.getElementById('rc-trace-model');if(ml)ml.textContent=d.model?('model: '+d.model):'';
+    const tr=(d.trace||[]).slice().reverse().slice(0,25);   // newest first, cap 25
+    if(!tr.length){el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No checks captured yet — the camera records a trace every time it analyses a frame (during the active window 09:55–20:00).</div>';return;}
+    if(tr[0].id===_traceLastId)return;_traceLastId=tr[0].id;   // nothing new → don't rebuild (no flicker)
+    el.innerHTML=tr.map(function(r){
+      const t=new Date(r.ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const shot='/api/rotcam_trace_shot?id='+r.id;
+      const grid=(r.shelves||[]).map(function(s){
+        const oc=s.occ==='loaded'?'#19e36b':(s.occ==='empty'?'#8a93a6':'#f0a93a');
+        const nc=(s.note&&s.note.indexOf('COUNTED')>=0)?'#19e36b':((s.note&&s.note.indexOf('not counted')>=0)?'var(--amber)':'var(--muted)');
+        return '<div style="display:flex;gap:8px;align-items:baseline;font-size:11px;padding:1px 0;">'
+          +'<span style="width:46px;color:var(--muted);">shelf '+s.i+'</span>'
+          +'<span style="width:52px;font-weight:700;color:'+oc+';">'+s.occ+'</span>'
+          +'<span style="width:58px;color:var(--muted);">'+(s.done||'')+'</span>'
+          +'<span style="color:'+nc+';">'+(s.note||'')+'</span></div>';
+      }).join('');
+      return '<div style="border:1px solid var(--border2);border-radius:10px;padding:9px;margin-bottom:8px;display:flex;gap:11px;flex-wrap:wrap;">'
+        +'<img src="'+shot+'" loading="lazy" onclick="_shotBig(\''+shot+'\')" style="width:160px;height:100px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;flex:0 0 auto;">'
+        +'<div style="flex:1;min-width:180px;">'
+          +'<div style="font-size:11px;color:var(--muted);margin-bottom:3px;">'+t+' &middot; check #'+r.id+'</div>'
+          +'<div style="font-size:11.5px;margin-bottom:5px;"><span style="color:var(--muted);">AI replied:</span> <span style="font-family:var(--font-mono);color:var(--text);background:var(--surface2);padding:1px 6px;border-radius:5px;">'+(r.raw||'(none)').replace(/[<>]/g,'')+'</span></div>'
+          +grid
+          +'<div style="font-size:11.5px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border2);"><span style="color:var(--muted);">Decision:</span> <b>'+(r.decision||'').replace(/[<>]/g,'')+'</b></div>'
+        +'</div></div>';
+    }).join('');
+  }).catch(()=>{});
 }
 // --- rotisserie live feed: continuous MJPEG stream (smooth like a webcam), in its own card next to the count ---
 function _rotcamCfgd(){return !!(appData.rotcam_public&&appData.rotcam_public.ip);}
