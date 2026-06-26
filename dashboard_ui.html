@@ -1965,16 +1965,18 @@ function _agoShort(ts){const s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<6
 function renderRotCreditLog(rot){
   const el=document.getElementById('rl-camlog');if(!el)return;window._lastRot=rot;
   const log=(rot&&rot.credit_log)||[];
-  if(!rot||!rot.cam||!log.length){el.style.display='none';el.innerHTML='';_camLogSig='';return;}
+  if(!rot||!rot.cam){el.style.display='none';el.innerHTML='';_camLogSig='';return;}   // only hidden when the camera is off
   el.style.display='';
   const sig=log.map(e=>e.id).join(',')+'|'+_camLogOpen;
   if(sig===_camLogSig)return;_camLogSig=sig;
   const items=log.slice().reverse();
   const head='<div onclick="toggleCamLog()" style="cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text);padding:9px 11px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;">'
     +'<span>📷 Camera count log</span><span style="color:var(--muted);font-weight:600;">('+log.length+')</span>'
-    +'<span style="margin-left:auto;color:var(--muted);">'+(_camLogOpen?'▲ hide':'▼ show what it saw')+'</span></div>';
+    +'<span style="margin-left:auto;color:var(--muted);">'+(_camLogOpen?'▲ hide':(log.length?'▼ show what it saw':'▼ details'))+'</span></div>';
   let body='';
-  if(_camLogOpen){
+  if(_camLogOpen&&!items.length){
+    body='<div style="margin-top:6px;border:1px dashed var(--border2);border-radius:10px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.5;">No camera credits yet today. When the camera counts a cooked row onto stock, it appears here with the time, shelf, whether it saw someone at the oven, and screenshots of exactly what it saw.</div>';
+  } else if(_camLogOpen){
     body='<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">'+items.map(function(e){
       const t=new Date(e.ts*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
       const shelves=(e.shelves||[]).join(', ');
