@@ -1388,8 +1388,11 @@ _ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, n
                   "hanging DOWN from the shelf above while its own spit rod is bare, that strip is EMPTY = 0. "
                   "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
                   "0 N A R O, JOINED TOGETHER with NO spaces, commas or separators, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
-                  "strip5 overdone, strip6 empty). If a PERSON, a hand or arm reaching in, or any object blocks a strip so "
-                  "you cannot see it — or the oven door is open — reply with the single word BLOCKED.")
+                  "strip5 overdone, strip6 empty). Someone may be standing in front of the oven, but the LEFT and RIGHT "
+                  "ends of every shelf almost always stay visible past them — judge each strip from whatever part you CAN "
+                  "see (the visible ends alone clearly show whether that shelf is EMPTY or has chickens on it). Do NOT reply "
+                  "BLOCKED just because a person, hand or arm is partly in the way. ONLY reply with the single word BLOCKED "
+                  "if the ENTIRE image is so completely obscured that you cannot see ANY part of ANY shelf.")
 _DONE_LABELS={"N":"not_ready","A":"almost_ready","R":"ready","O":"overdone"}
 def _rotcam_save_crops(jpeg,donepat):
     # auto-build the on-spit training set: save each loaded row's strip into rotcam_dataset/<class>/, throttled per
@@ -1824,14 +1827,12 @@ def _rotcam_apply(rows):
                 #  (2) it then actually emptied and stayed empty (>= off-confirm, handled above), and
                 #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
                 # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
-                seen_person=(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW
                 cooked_long=(oa[i]-la[i]>=min_cook)
-                if cooked_long and seen_person:                # genuine person-removal of a cooked row → count it
-                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — cooked row, someone at the oven took it"})
-                else:                                          # a shelf emptied but we DON'T count it — log why so misses are visible
-                    why=("didn’t see anyone at the oven when it emptied" if not seen_person
-                         else "shelf wasn’t loaded long enough to be a finished cook")
-                    events.append({"shelf":i,"credited":False,"reason":why})
+                if cooked_long:                                # shelf was loaded long enough to be a finished cook, then went empty → a cooked row came off
+                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — shelf was loaded long enough to be a finished cook, then went empty"})
+                else:                                          # emptied too soon to be a finished cook — log it (with the real minutes) so early-pulls/misreads are visible
+                    mins=int(max(0,oa[i]-la[i])/60)
+                    events.append({"shelf":i,"credited":False,"reason":"shelf had only been loaded ~%d min (needs ~%d min to count as a finished cook)"%(mins,int(min_cook/60))})
                 la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
