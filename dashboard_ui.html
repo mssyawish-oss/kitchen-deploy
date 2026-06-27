@@ -564,7 +564,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .alert-card.active-now:not(.rt-done){animation:rl-warn 1.4s infinite;}
 .recipe-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow);transition:filter .12s;}
 .recipe-card:hover{filter:brightness(1.1);}
-.recipe-name{font-size:15px;font-weight:600;}
+.recipe-name{font-size:15px;font-weight:600;text-transform:uppercase;}
 .recipe-content{white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:10px;}
 .recipe-back{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:5px 14px;border-radius:7px;cursor:pointer;font-size:12px;margin-bottom:12px;}
 .busy-indicator{border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;box-shadow:var(--shadow);}
@@ -2670,15 +2670,15 @@ function renderRecipesPage(){const recipes=appData.recipes||[];const list=docume
   const chipBox=document.getElementById('recipe-filter-chips');
   if(chipBox)chipBox.innerHTML=(recipes.length&&cats.length)?['All',...cats].map(c=>`<div class="filter-chip ${recipeFilter===c?'on':''}" onclick="setRecipeFilter('${c.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">${c}</div>`).join(''):'';
   if(recipes.length===0){list.innerHTML='';empty.style.display='block';return;}empty.style.display='none';
-  list.innerHTML=recipes.map((r,i)=>({r,i})).filter(o=>recipeFilter==='All'||(o.r.category||'Other')===recipeFilter).map(({r,i})=>`<div class="recipe-card" onclick="openRecipe(${i})"><div class="recipe-name">${r.name}</div><div style="margin-top:6px;">${r.category?`<span class="tag tag-amber">${r.category}</span>`:''}</div></div>`).join('');}
+  list.innerHTML=recipes.map((r,i)=>({r,i})).filter(o=>recipeFilter==='All'||(o.r.category||'Other')===recipeFilter).map(({r,i})=>`<div class="recipe-card" onclick="openRecipe(${i})"><div class="recipe-name">${r.name}</div><div style="margin-top:6px;">${r.category?`<span class="tag tag-amber" style="text-transform:uppercase;">${r.category}</span>`:''}</div></div>`).join('');}
 function openRecipe(i){const r=(appData.recipes||[])[i];if(!r)return;
   let o=document.getElementById('recipe-view-modal');
   if(!o){o=document.createElement('div');o.id='recipe-view-modal';o.className='modal-overlay';document.body.appendChild(o);}
   const body=(r.body||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   o.innerHTML='<div class="modal" style="max-width:780px;width:96vw;max-height:92vh;display:flex;flex-direction:column;">'
-    +'<div class="modal-header"><div class="modal-title" style="font-size:25px;">'+(r.name||'Recipe').replace(/[<>]/g,'')+'</div><button class="modal-close" onclick="closeRecipeView()">Close</button></div>'
-    +(r.category?'<span class="tag tag-amber" style="align-self:flex-start;margin-bottom:12px;font-size:13px;">'+r.category.replace(/[<>]/g,'')+'</span>':'')
-    +'<div style="white-space:pre-wrap;line-height:1.7;font-size:20px;color:var(--text);overflow-y:auto;flex:1;padding:2px;-webkit-overflow-scrolling:touch;">'+body+'</div>'
+    +'<div class="modal-header"><div class="modal-title" style="font-size:25px;text-transform:uppercase;">'+(r.name||'Recipe').replace(/[<>]/g,'')+'</div><button class="modal-close" onclick="closeRecipeView()">Close</button></div>'
+    +(r.category?'<span class="tag tag-amber" style="align-self:flex-start;margin-bottom:12px;font-size:13px;text-transform:uppercase;">'+r.category.replace(/[<>]/g,'')+'</span>':'')
+    +'<div style="white-space:pre-wrap;line-height:1.7;font-size:20px;color:var(--text);overflow-y:auto;flex:1;padding:2px;-webkit-overflow-scrolling:touch;text-transform:uppercase;">'+body+'</div>'
     +'<div class="row" style="gap:8px;margin-top:16px;flex-shrink:0;"><button class="btn" style="flex:1;font-size:16px;padding:13px;" onclick="closeRecipeView();editRecipe('+i+')">Edit</button><button class="btn btn-danger" style="flex:1;font-size:16px;padding:13px;" onclick="closeRecipeView();deleteRecipe('+i+')">Delete</button></div>'
     +'</div>';
   o.classList.add('open');}
