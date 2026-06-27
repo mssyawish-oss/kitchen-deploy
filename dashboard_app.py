@@ -1384,6 +1384,11 @@ _ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, n
                   "IMPORTANT: the bright glare can make RAW chicken look golden. If a strip's chickens look pale, white or pink "
                   "ANYWHERE, it is NOT ready — use N or A, never R. Only answer R when the skin is clearly an EVEN golden-brown "
                   "all over with NO pale or pink areas. When unsure between two states, choose the LESS cooked one. "
+                  "TOP-LIGHT NOTE: a lamp above the oven lights the TOP strips (1 and 2) more strongly, so their cooked "
+                  "skin can look pale or washed-out — that paleness is from the bright LIGHT, not from being raw. Judge the "
+                  "brown COLOUR through the brightness: golden-brown skin under strong light is still READY. The top shelf "
+                  "is closest to the heat and cooks FASTEST, so it should rarely read LESS cooked than the strip directly "
+                  "below it. Only call a TOP strip not-ready if it is genuinely PINK or WHITE with NO browning at all. "
                   "Judge ONLY chickens sitting on THIS strip's own spit: if a strip shows just the bottoms/legs of chickens "
                   "hanging DOWN from the shelf above while its own spit rod is bare, that strip is EMPTY = 0. "
                   "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
@@ -1475,6 +1480,18 @@ def _rotcam_boxes_composite(jpeg):
             if c.width<2 or c.height<2: c=Image.new("RGB",(cw,8),(15,15,15))
             c=c.resize((cw,max(1,int(c.height*cw/max(1,c.width)))))
             strips.append(c)
+        # Even out the top-light wash-out: a lamp above makes the TOP shelves brighter, so cooked chicken up
+        # there looks pale/raw to the camera while the dimmer bottom shelves look more done. Normalise each
+        # strip's brightness toward the median so the AI compares cook COLOUR fairly, not lighting.
+        if (db.get("rotcam_config") or {}).get("even_lighting",True) and len(strips)>=2:
+            try:
+                from PIL import ImageEnhance, ImageStat
+                means=[max(1.0,ImageStat.Stat(s.convert("L")).mean[0]) for s in strips]
+                tgt=sorted(means)[len(means)//2]                       # median brightness across the shelves
+                for i,s in enumerate(strips):
+                    f=max(0.7,min(1.4,tgt/means[i]))                   # clamp so we never over-correct
+                    if abs(f-1.0)>0.05: strips[i]=ImageEnhance.Brightness(s).enhance(f)
+            except Exception: pass
         comp=Image.new("RGB",(cw,sum(s.height for s in strips)+gap*(len(strips)+1)),(15,15,15))
         dr=ImageDraw.Draw(comp); y=gap
         for i,s in enumerate(strips,1):
