@@ -307,15 +307,15 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* fit the whole TEMP screen — keep it to one screen without clipping */
 #page-probes>#rot-live{flex:0 0 auto;max-height:32vh;}
 #page-probes .pb-sec .probe-card,#page-probes .pb-sec .timer-card{min-height:0;padding:6px 10px;gap:3px;}
-#page-probes .pb-sec .gauge{width:min(64px,8.5vh);}
-#page-probes .pb-sec .gauge .timer-display{font-size:clamp(12px,2.5vh,17px);line-height:1;letter-spacing:0;}   /* MM:SS — sized to stay inside the ring on the small packed gauge */
-#page-probes .pb-sec .gauge .timer-display.tlong{font-size:clamp(9px,1.9vh,12px);}                            /* H:MM:SS is 7 chars — shrink so it still fits the ring */
+#page-probes .pb-sec .gauge{width:100%;max-width:170px;}
+#page-probes .pb-sec .gauge .timer-display{font-size:clamp(18px,3.2vh,26px);line-height:1;letter-spacing:.05em;}   /* MM:SS — wider digits in the rectangle box */
+#page-probes .pb-sec .gauge .timer-display.tlong{font-size:clamp(14px,2.6vh,20px);}                              /* H:MM:SS is 7 chars — a touch smaller but still wide */
 #page-probes .pb-sec .gauge-sub{font-size:7px;}
 #page-probes .pb-sec .probe-ic{display:none;}   /* drop the decorative thermometer icon when packing 4 probes + 4 batches onto one screen */
 #page-probes .pb-sec .probe-temp,#page-probes .pb-sec .probe-no-data{font-size:clamp(26px,5vh,40px);}
 #page-probes .pb-split .sec-head{margin:1px 2px 0;font-size:11px;}
 #page-probes .probe-card,#page-probes .timer-card{justify-content:flex-start;gap:8px;}
-#page-probes .gauge{width:min(108px,15vh);}
+#page-probes .gauge{width:100%;max-width:190px;}
 #page-probes .probe-ic{width:min(44px,7vh);height:min(44px,7vh);flex-shrink:0;}
 #page-probes .gauge{flex-shrink:0;}
 #page-probes .probe-badge,#page-probes .rl-chip{flex-shrink:0;}
@@ -453,10 +453,13 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 :root{--gauge-track:rgba(255,255,255,.07);}
 body.light{--gauge-track:rgba(20,30,50,.12);}
 .ac0{--acc:var(--amber);}.ac1{--acc:var(--blue);}.ac2{--acc:var(--purple);}.ac3{--acc:var(--green);}
-.gauge{width:clamp(96px,11vw,138px);aspect-ratio:1;border-radius:50%;margin:2px auto 4px;display:flex;align-items:center;justify-content:center;transition:background .9s linear;flex:0 0 auto;}
-.gauge-inner{width:82%;height:82%;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:inset 0 1px 5px rgba(0,0,0,.5);overflow:hidden;}
-.gauge .timer-display{font-size:clamp(16px,2vw,24px);margin:0;}
-.gauge-sub{font-size:8px;letter-spacing:.14em;color:var(--muted);font-family:var(--font-body);font-weight:700;}
+/* batch-timer display: a rectangular box (not a ring) with the countdown + a bottom progress bar */
+.gauge{width:100%;max-width:170px;margin:2px auto 4px;display:flex;flex-direction:column;align-items:stretch;justify-content:center;flex:0 0 auto;position:relative;background:var(--surface);border:2px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:inset 0 1px 5px rgba(0,0,0,.45);}
+.gauge-inner{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:9px 8px 7px;}
+.gauge .timer-display{font-size:clamp(22px,2.6vw,32px);margin:0;letter-spacing:.06em;font-variant-numeric:tabular-nums;}   /* wider digits */
+.gauge-sub{font-size:8px;letter-spacing:.16em;color:var(--muted);font-family:var(--font-body);font-weight:700;}
+.tbar{height:7px;width:100%;background:var(--gauge-track);flex:0 0 auto;}
+.tbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .9s linear,background .6s;}
 .timer-status.st-ready,.timer-status.st-run{color:var(--green);}
 .timer-status.st-pause{color:var(--amber);}
 .timer-status.st-exp{color:var(--red);}
@@ -591,7 +594,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 #page-probes .probes-grid,#page-probes .timers-grid{gap:10px;}
 #page-probes .probe-card{padding:7px 11px;gap:4px;}
 #page-probes .timer-card{padding:7px 11px;gap:4px;}
-#page-probes .gauge{width:min(80px,11vh);margin:0 auto;}
+#page-probes .gauge{width:100%;max-width:180px;margin:0 auto;}
 #page-probes #rot-live .rl-card{padding:11px;gap:8px;}
 /* ---- Products-off warning banner ---- */
 .prodoff-banner{display:block;background:#221317;border:1px solid #5b2330;border-radius:14px;padding:14px 16px;margin-bottom:12px;}
@@ -659,7 +662,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   #page-probes.active{height:auto;min-height:100%;padding:10px;}
   .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
   .timers-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-  #page-probes .gauge{width:min(120px,26vw);}
+  #page-probes .gauge{width:100%;max-width:200px;}
   .rot-timeline{grid-template-columns:1fr 1fr;}
   .grid-3{grid-template-columns:1fr 1fr;}
   /* Checklist: let it scroll on a phone, single column */
@@ -1632,7 +1635,7 @@ function renderTimers(){
     return `<div class="timer-card ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
       <input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label this timer…">
       <div class="timer-status ${t.expired?'st-exp':t.running?'st-run':t.remaining<t.total?'st-pause':'st-ready'}"><span class="s-dot ${sDot}"></span>${t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'&#10003; Ready'}</div>
-      <div class="gauge" id="tg${t.id}" style="background:conic-gradient(${arc} ${pct.toFixed(1)}%, var(--gauge-track) 0);"><div class="gauge-inner"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="gauge-sub">REMAINING</div></div></div>
+      <div class="gauge" id="tg${t.id}"><div class="gauge-inner"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="gauge-sub">REMAINING</div></div><div class="tbar"><i id="tb${t.id}" style="width:${pct.toFixed(1)}%;background:${arc};"></i></div></div>
       <div class="adj-row"><button class="adj-btn" onclick="adj(${t.id},-300)">-5m</button><button class="adj-btn" onclick="adj(${t.id},-600)">-10m</button><button class="adj-btn" onclick="adj(${t.id},300)">+5m</button><button class="adj-btn" onclick="adj(${t.id},600)">+10m</button></div>
       <div class="action-row">${t.running?`<button class="action-btn btn-pause" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`:`<button class="action-btn btn-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}<button class="action-btn btn-end" onclick="endT(${t.id})">&#9632; End</button></div>
       ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
@@ -1644,7 +1647,7 @@ function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause'
 function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;renderTimers();postTimer(id,'end');}
 function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
-function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}if(g){const arc=t.expired?'var(--red)':'var(--acc)';g.style.background='conic-gradient('+arc+' '+pct.toFixed(1)+'%, var(--gauge-track) 0)';}}
+function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',use_by_minutes:'ps-useby',quality_minutes:'ps-quality',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',bbq_pieces:'ps-bbqpcs',fried_pieces:'ps-friedpcs',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});}
 function saveProbeSettingsFromModal(){const s={almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),quality_minutes:parseInt(document.getElementById('ps-quality').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),bbq_pieces:parseInt(document.getElementById('ps-bbqpcs').value),fried_pieces:parseInt(document.getElementById('ps-friedpcs').value),printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
 function fillCameraSettings(){const c=appData.camera_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('cam-ip',c.ip);set('cam-port',c.port);set('cam-channel',c.channel);set('cam-url',c.url_override);document.getElementById('cam-user').value='';document.getElementById('cam-pass').value='';const en=document.getElementById('cam-enabled');if(en)en.checked=!!c.enabled;const ph=appData.camera_public&&appData.camera_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('cam-user').placeholder=ph||'admin';document.getElementById('cam-pass').placeholder=ph||'camera password';document.getElementById('cam-status').textContent='';document.getElementById('cam-preview').innerHTML='';
