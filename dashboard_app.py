@@ -1515,6 +1515,39 @@ def _rotcam_boxes_composite(jpeg):
         out=io.BytesIO(); comp.save(out,"JPEG",quality=78); return out.getvalue()
     except Exception:
         return None
+_DONE_PCT={"0":0,"N":10,"A":50,"R":90,"O":100}
+def _rotcam_corr_guidance():
+    # Turn the owner's saved ground-truth corrections into a short instruction the model reads on every call —
+    # this is how the saved labels actually get USED: systematic bias + a couple of recent worked examples.
+    try:
+        cors=(db.get("rotcam_corrections",[]) or [])[-12:]
+        if not cors: return ""
+        derr=[]; focc=0; ftot=0
+        for c in cors:
+            sh=c.get("shelves") or []; aidn=(c.get("ai_done") or ""); ailv=(c.get("ai_levels") or "")
+            for i,s in enumerate(sh):
+                tocc=1 if (s or {}).get("occ")=="loaded" else 0
+                aocc=1 if (i<len(ailv) and ailv[i]=="1") else 0
+                if tocc!=aocc: focc+=1
+                ftot+=1
+                if tocc and i<len(aidn) and aidn[i] in _DONE_PCT:
+                    derr.append(_DONE_PCT[aidn[i]]-int((s or {}).get("cooked_pct",0)))   # +ve = AI over-stated doneness
+        lines=["OPERATOR FEEDBACK — the human has corrected your past reads %d times; do not repeat these mistakes:"%len(cors)]
+        if derr:
+            avg=sum(derr)/len(derr)
+            if avg>=12: lines.append("- You tend to OVER-state how cooked rows are. Read doneness LOWER / more conservatively.")
+            elif avg<=-12: lines.append("- You tend to UNDER-state how cooked rows are. Read doneness HIGHER.")
+        if ftot and focc/ftot>=0.2: lines.append("- You sometimes misjudge whether a shelf is loaded. Look at the spit ends past any person; only call a shelf empty when the rod is clearly bare.")
+        ex=[]
+        for c in reversed(cors):
+            a=(c.get("activity") or "").strip(); n=(c.get("notes") or "").strip()
+            if c.get("rows_off"): ex.append("truth: %d row(s) came OFF that time%s"%(c.get("rows_off"),(" ("+a+")" if a else "")))
+            elif n: ex.append("note: "+n[:90])
+            if len(ex)>=2: break
+        for e in ex: lines.append("- "+e)
+        return "\n".join(lines) if len(lines)>1 else ""
+    except Exception: return ""
+
 def _rotcam_count(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key: return None,"No Gemini API key configured"
@@ -1526,6 +1559,8 @@ def _rotcam_count(jpeg):
         ROTCAM["last_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
     else:
         img=_downscale_jpeg(jpeg); prompt=cfg.get("prompt") or _ROT_PROMPT   # fallback: whole frame
+    _gd=_rotcam_corr_guidance()
+    if _gd: prompt=(prompt or "")+"\n\n"+_gd   # feed the owner's saved corrections back into every read
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
     gencfg={"temperature":0,"maxOutputTokens":64}
     if "2.5" in model or "thinking" in model.lower():
@@ -1810,7 +1845,7 @@ _ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long befor
 _ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
 _ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
 _ROT_AFTER_SECS=15       # after the AI auto-counts a row OFF, keep grabbing frames for this long so the owner sees what happened next
-_ROT_AFTER_EVERY=3       # take one follow-up "what happened after" frame every N seconds across that window
+_ROT_AFTER_EVERY=5       # take one follow-up "what happened after" frame (with its own AI read) every N seconds across that window
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1926,55 +1961,78 @@ def _rotcam_log_event(ev,jpeg):
                 if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
         except Exception: pass
         save_data(db)
-        if credited:   # the AI counted a row off ON ITS OWN → keep snapping the scene for the next 15s so the owner sees what happened after
-            ROTCAM.setdefault("auto_jobs",[]).append({"id":eid,"dir":d,"start":now,"until":now+_ROT_AFTER_SECS,"next":now+_ROT_AFTER_EVERY,"n":0})
+        if credited:   # the AI counted a row off ON ITS OWN → log frame #1 (the moment) + keep reading the scene for 15s after
+            _rotcam_auto_trace_add(eid,1,0,jpeg,"✓ AUTO-COUNTED shelf %d (+%d) — %s"%(shelf+1,bpr,ev.get("reason","")),[{"shelf":shelf,"credited":True}])
+            ROTCAM.setdefault("auto_jobs",[]).append({"id":eid,"dir":d,"shelf":shelf+1,"start":now,"until":now+_ROT_AFTER_SECS,"next":now+_ROT_AFTER_EVERY,"n":1})
     except Exception: pass
 
+def _rotcam_trace_shelves(events):
+    # Per-shelf read snapshot from the CURRENT ROTCAM state — shared by the live trace and the auto trace so
+    # both show identical info (occupancy, doneness, and the note/decision per shelf).
+    now=time.time(); lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
+    la=ROTCAM.get("shelf_loaded_at",[0]*6); oa=ROTCAM.get("shelf_off_at",[0]*6)
+    _DN={"0":"empty","N":"raw","A":"almost","R":"ready","O":"overdone"}
+    cred={e["shelf"] for e in (events or []) if e.get("credited")}
+    skip={e["shelf"] for e in (events or []) if not e.get("credited")}
+    bpr=_rot_cfg().get("bpr",4); shelves=[]
+    for i in range(6):
+        occ=("loaded" if (i<len(lv) and lv[i]=="1") else ("empty" if lv else "?"))
+        done=_DN.get(dn[i],"") if i<len(dn) else ""
+        note=""
+        if occ=="loaded" and i<len(la) and la[i]: note="cooking %dm"%int((now-la[i])/60)
+        elif occ=="empty" and i<len(oa) and oa[i]: note="empty %ds"%int(now-oa[i])
+        if i in cred: note="✓ COUNTED +%d"%bpr
+        elif i in skip: note="✗ not counted"
+        shelves.append({"i":i+1,"occ":occ,"done":done,"note":note})
+    return shelves,lv,dn
+
+def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None):
+    # One PERSISTENT auto-trace frame: same shape as a live-trace record (id/raw/levels/done/shelves/decision),
+    # plus eid/n/after so the inspector can show the ordered reel. Image saved to disk → survives restarts.
+    try:
+        now=time.time(); tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        shelves,lv,dn=_rotcam_trace_shelves(events)
+        rec={"id":tid,"eid":int(eid),"n":int(n),"after":int(after),"ts":int(now),
+             "raw":(ROTCAM.get("last_raw","") or "")[:140],"levels":lv,"done":dn,
+             "decision":decision,"shelves":shelves,"img":"auto%d.jpg"%int(n)}
+        d=os.path.join(BASE_DIR,"rotcam_credits",str(int(eid))); os.makedirs(d,exist_ok=True)
+        if jpeg:
+            from PIL import Image as _I; import io as _io
+            im=_I.open(_io.BytesIO(jpeg)).convert("RGB")
+            if im.width>640: im=im.resize((640,int(im.height*640/im.width)))
+            bo=_io.BytesIO(); im.save(bo,"JPEG",quality=72); open(os.path.join(d,rec["img"]),"wb").write(bo.getvalue())
+            ROTCAM.setdefault("trace_img",{})[tid]=bo.getvalue()   # fast in-memory serve; disk is the durable copy
+        with rot_lock:
+            at=db.get("rotcam_auto_trace",[]); at.append(rec); db["rotcam_auto_trace"]=at[-300:]; save_data(db)
+        return tid
+    except Exception: return None
+
 def _rotcam_auto_after_tick():
-    # While an auto-count's 15s window is open, drop a fresh frame into its folder every few seconds and
-    # append it to that credit entry's shots — the persistent "what happened after the AI counted it" reel.
+    # While an auto-count's 15s window is open, grab a fresh frame every few seconds, RUN A FULL AI READ on it,
+    # and store it as an ordered persistent auto-trace frame — so each frame shows what the AI saw + did, just
+    # like the manual trace. The read is isolated so it never disturbs the main counter's anti-flicker.
     js=ROTCAM.get("auto_jobs") or []
     if not js: return
     now=time.time(); frame=ROTCAM.get("frame"); fresh=bool(frame) and (now-ROTCAM.get("frame_ts",0))<10
-    keep=[]; changed=False
-    for j in js:
-        try:
-            if fresh and now>=j["next"]:
-                j["n"]+=1; n=j["n"]; fn="after%d.jpg"%n
-                from PIL import Image as _I; import io as _io
-                im=_I.open(_io.BytesIO(frame)).convert("RGB")
-                if im.width>900: im=im.resize((900,int(im.height*900/im.width)))
-                bo=_io.BytesIO(); im.save(bo,"JPEG",quality=78); open(os.path.join(j["dir"],fn),"wb").write(bo.getvalue())
-                with rot_lock:
-                    for e in db.get("rotcam_credit_log",[]):
-                        if e.get("id")==j["id"]: e.setdefault("shots",[]).append({"n":fn,"ts":int(now),"after":int(now-j["start"])}); break
-                changed=True; j["next"]=now+_ROT_AFTER_EVERY
-        except Exception: pass
-        if now<j["until"]: keep.append(j)
-    ROTCAM["auto_jobs"]=keep
-    if changed:
-        try: save_data(db)
-        except Exception: pass
+    due=[j for j in js if now>=j["next"]]
+    if due and fresh:
+        snap={k:ROTCAM.get(k) for k in ("last_raw","last_comp","levels","done","last_blocked_ts")}   # protect the live counter
+        try: rows,cerr=_rotcam_count(frame)   # one read serves every job due this tick
+        except Exception: cerr="read error"
+        for j in due:
+            j["n"]=int(j.get("n",1))+1; n=j["n"]; after=int(now-j["start"])
+            dec=("watching +%ds after auto-count of shelf %s — AI now reads %s"%(after,j.get("shelf","?"),ROTCAM.get("levels","") or "?")) if not cerr \
+                else ("watching +%ds after auto-count of shelf %s — %s"%(after,j.get("shelf","?"),cerr))
+            _rotcam_auto_trace_add(j["id"],n,after,frame,dec)
+            j["next"]=now+_ROT_AFTER_EVERY
+        for k,v in snap.items(): ROTCAM[k]=v   # restore — the main loop's next read must see ITS own sequence
+    ROTCAM["auto_jobs"]=[j for j in js if now<j["until"]]
 def _rotcam_add_trace(jpeg,events,cerr):
     # Per-frame debug record for the Settings inspector: the frame + exactly what the AI replied + what we
     # parsed per shelf + the decision the logic made. Lets the owner see WHERE the AI is going wrong.
     try:
         now=time.time(); tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
-        lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
-        la=ROTCAM.get("shelf_loaded_at",[0]*6); oa=ROTCAM.get("shelf_off_at",[0]*6)
-        _DN={"0":"empty","N":"raw","A":"almost","R":"ready","O":"overdone"}
-        cred={e["shelf"] for e in (events or []) if e.get("credited")}
-        skip={e["shelf"] for e in (events or []) if not e.get("credited")}
-        bpr=_rot_cfg().get("bpr",4); shelves=[]
-        for i in range(6):
-            occ=("loaded" if (i<len(lv) and lv[i]=="1") else ("empty" if lv else "?"))
-            done=_DN.get(dn[i],"") if i<len(dn) else ""
-            note=""
-            if occ=="loaded" and i<len(la) and la[i]: note="cooking %dm"%int((now-la[i])/60)
-            elif occ=="empty" and i<len(oa) and oa[i]: note="empty %ds"%int(now-oa[i])
-            if i in cred: note="✓ COUNTED +%d"%bpr
-            elif i in skip: note="✗ not counted"
-            shelves.append({"i":i+1,"occ":occ,"done":done,"note":note})
+        shelves,lv,dn=_rotcam_trace_shelves(events)
         rec={"id":tid,"ts":int(now),"raw":(ROTCAM.get("last_raw","") or "")[:140],
              "levels":lv,"done":dn,"decision":(cerr or ROTCAM.get("last_decision","")),"shelves":shelves}
         tr=ROTCAM.setdefault("trace",[]); tr.append(rec); ROTCAM["trace"]=tr[-60:]
@@ -2142,11 +2200,17 @@ def api_rotcam_credit_shot():
 @app.route("/api/rotcam_trace")
 def api_rotcam_trace():
     cor=db.get("rotcam_corrections",[]) or []
-    auto=[e for e in (db.get("rotcam_credit_log",[]) or []) if e.get("credited")][-30:]   # AUTO-AI: rows the camera counted off by itself (persisted, survives restarts)
+    sess={}                                              # AUTO-AI: persistent ordered trace frames, grouped into one session per counted row
+    for f in (db.get("rotcam_auto_trace",[]) or []): sess.setdefault(f.get("eid"),[]).append(f)
+    auto_sessions=[]
+    for eid in sorted(sess.keys(),key=lambda x:(x or 0),reverse=True)[:20]:
+        frames=sorted(sess[eid],key=lambda x:x.get("n",0))
+        shelf=next((fr.get("shelves") for fr in frames),None)
+        auto_sessions.append({"eid":eid,"ts":frames[0].get("ts"),"shelf":frames[0].get("decision",""),"frames":frames})
     return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
                     "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash"),
                     "corrections":len(cor),"corrected_ids":[c.get("id") for c in cor],
-                    "auto_log":list(reversed(auto))})   # newest first
+                    "auto_sessions":auto_sessions})
 
 @app.route("/api/rotcam_corrections")
 def api_rotcam_corrections():
@@ -2171,6 +2235,8 @@ def api_rotcam_correct():
             shelves.append({"occ":("loaded" if (s or {}).get("occ")=="loaded" else "empty"),
                             "cooked_pct":max(0,min(100,_i((s or {}).get("cooked_pct"))))})
         tr=next((r for r in (ROTCAM.get("trace") or []) if r.get("id")==tid),None)
+        af=None
+        if tr is None: af=next((f for f in (db.get("rotcam_auto_trace",[]) or []) if f.get("id")==tid),None); tr=af   # correcting a persistent AUTO-trace frame
         lab={"id":tid,"ts":int(time.time()),"shelves":shelves,
              "door_open":bool(d.get("door_open")),"person":bool(d.get("person")),"glare":bool(d.get("glare")),
              "activity":str(d.get("activity") or "")[:50],"rows_off":_i(d.get("rows_off")),"rows_on":_i(d.get("rows_on")),
@@ -2178,6 +2244,9 @@ def api_rotcam_correct():
              "ai_raw":(tr or {}).get("raw",""),"ai_levels":(tr or {}).get("levels",""),"ai_done":(tr or {}).get("done","")}
         ld=os.path.join(BASE_DIR,"rotcam_labels"); os.makedirs(ld,exist_ok=True)
         img=(ROTCAM.get("trace_img") or {}).get(tid)
+        if img is None and af:                                 # auto-trace image lives on disk
+            p=os.path.join(BASE_DIR,"rotcam_credits",str(af.get("eid")),af.get("img",""))
+            if os.path.exists(p): img=open(p,"rb").read()
         if img: open(os.path.join(ld,"%d.jpg"%tid),"wb").write(img)
         open(os.path.join(ld,"%d.json"%tid),"w",encoding="utf-8").write(_json.dumps(lab,ensure_ascii=False))
         with data_lock:
@@ -2192,8 +2261,12 @@ def api_rotcam_trace_shot():
     try: i=int(re.sub(r"[^0-9]","",request.args.get("id","0")) or 0)
     except Exception: return Response("bad",status=400)
     img=(ROTCAM.get("trace_img") or {}).get(i)
-    if not img: return Response("not found",status=404)
-    return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})   # trace_id resets on restart → must not serve a stale cached frame for a reused id
+    if img: return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})   # trace_id resets on restart → must not serve a stale cached frame for a reused id
+    af=next((f for f in (db.get("rotcam_auto_trace",[]) or []) if f.get("id")==i),None)   # auto-trace frames persist on disk → serve those after a restart
+    if af:
+        p=os.path.join(BASE_DIR,"rotcam_credits",str(af.get("eid")),af.get("img",""))
+        if os.path.exists(p): return send_file(p,mimetype="image/jpeg")
+    return Response("not found",status=404)
 
 @app.route("/api/rotcam_test",methods=["POST"])
 def api_rotcam_test():
