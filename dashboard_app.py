@@ -1844,8 +1844,8 @@ def _rot_min_cook_secs():
 _ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
 _ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
 _ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
-_ROT_AFTER_SECS=15       # after the AI auto-counts a row OFF, keep grabbing frames for this long so the owner sees what happened next
-_ROT_AFTER_EVERY=5       # take one follow-up "what happened after" frame (with its own AI read) every N seconds across that window
+_ROT_AFTER_SECS=30       # after the AI auto-counts a row OFF, keep reading the scene for this long so the owner sees what happened next
+_ROT_AFTER_EVERY=2       # try a fresh full AI read this often during that window — with ~2-3s Gemini latency this is effectively back-to-back (max precision; cost is not a concern per owner)
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -2003,7 +2003,7 @@ def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None):
             bo=_io.BytesIO(); im.save(bo,"JPEG",quality=72); open(os.path.join(d,rec["img"]),"wb").write(bo.getvalue())
             ROTCAM.setdefault("trace_img",{})[tid]=bo.getvalue()   # fast in-memory serve; disk is the durable copy
         with rot_lock:
-            at=db.get("rotcam_auto_trace",[]); at.append(rec); db["rotcam_auto_trace"]=at[-300:]; save_data(db)
+            at=db.get("rotcam_auto_trace",[]); at.append(rec); db["rotcam_auto_trace"]=at[-600:]; save_data(db)
         return tid
     except Exception: return None
 

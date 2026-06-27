@@ -1130,7 +1130,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="rc-trace"></div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:2px;">🤖 Auto-AI captures — every row the camera counted off by itself</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Each time the AI decides a row came off, it records a <b>full trace at that exact moment</b> (frame 1) and then re-reads the scene every 5&nbsp;seconds for ~15&nbsp;seconds after (frames 2–4) — each frame shows what it saw and what it did, just like the live trace, and each can be corrected. These are <b>saved on the server</b> and survive restarts (most recent 20 events). Your corrections are fed back into every future read.</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Each time the AI decides a row came off, it records a <b>full trace at that exact moment</b> (frame 1) and then re-reads the scene <b>continuously</b> (a fresh read every ~2–3&nbsp;seconds) for ~30&nbsp;seconds after — each frame shows what it saw and what it did, just like the live trace, and each can be corrected. These are <b>saved on the server</b> and survive restarts (most recent 20 events). Every correction you make — here or on the live trace — is fed back into every future read.</div>
     <div class="row" style="gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
       <button class="btn" id="rc-auto-btn" onclick="loadAutoCaps()">&#8635; Load auto-AI captures</button>
       <span id="rc-auto-count" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
