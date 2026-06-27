@@ -1113,6 +1113,57 @@ def api_cam_snap(cid):
     data,err=_snap_from(cam)
     if err: return Response(err,status=503)
     return Response(data,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+def _cam_rtsp_url(cam):
+    # RTSP URL for a store camera so we can stream it LIVE: explicit rtsp_url wins, else build a Dahua-style URL
+    # from the camera's ip/login/channel (reusing the saved recorder login). subtype=1 = lighter substream.
+    cam=cam or {}
+    rtsp=(cam.get("rtsp_url") or "").strip()
+    if rtsp: return rtsp
+    base=db.get("camera_config",{}) or {}
+    ip=str(cam.get("ip","")).strip() or str(base.get("ip","")).strip()
+    if not ip: return ""
+    user=(cam.get("user","") or "") or (base.get("user","") or ""); pw=(cam.get("pass","") or "") or (base.get("pass","") or "")
+    ch=int(cam.get("channel") or 1); sub=int(cam.get("substream",1))
+    auth=("%s:%s@"%(urllib.parse.quote(user),urllib.parse.quote(pw))) if user else ""
+    return "rtsp://%s%s:554/cam/realmonitor?channel=%d&subtype=%d"%(auth,ip,ch,sub)
+@app.route("/api/cam_stream/<cid>")
+def api_cam_stream(cid):
+    # smooth live MJPEG (multipart/x-mixed-replace) for ONE store camera, on demand — ffmpeg runs only while the
+    # browser holds this connection (closes → GeneratorExit → ffmpeg killed). Same proven path as the rotcam feed.
+    cam=_cam_by_id(cid)
+    if not cam: return Response("not found",status=404)
+    url=_cam_rtsp_url(cam)
+    if not url: return Response("camera has no RTSP/stream URL",status=404)
+    sub="0" if (request.args.get("hd")=="1") else "1"   # enlarge can ask for HD mainstream
+    url=re.sub(r"subtype=\d+","subtype="+sub,url)
+    import subprocess
+    def gen():
+        p=None
+        try:
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
+                               stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
+            buf=b""; start=time.time(); got=False
+            while True:
+                chunk=p.stdout.read(65536)
+                if not chunk: break
+                buf+=chunk
+                while True:
+                    s=buf.find(b"\xff\xd8")
+                    if s<0: break
+                    e=buf.find(b"\xff\xd9",s+2)
+                    if e<0: break
+                    fr=buf[s:e+2]; buf=buf[e+2:]; got=True
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "+str(len(fr)).encode()+b"\r\n\r\n"+fr+b"\r\n"
+                if len(buf)>4*10**6: buf=buf[-10**6:]
+                if not got and (time.time()-start)>12: break   # never produced a frame → give up
+        except Exception: pass
+        finally:
+            if p:
+                try: p.kill()
+                except Exception: pass
+    return Response(gen(),mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control":"no-store","Connection":"close"})
 @app.route("/api/cam_test",methods=["POST"])
 def api_cam_test():
     d=request.get_json(silent=True) or {}
