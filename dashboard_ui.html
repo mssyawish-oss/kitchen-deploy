@@ -197,7 +197,7 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .ra-row[data-state=spinning] .ra-chk:nth-child(4){animation-delay:-1.95s;}
 .ra-row[data-state=stopped] .ra-chk{filter:drop-shadow(0 2px 2px rgba(0,0,0,.45)) saturate(.55) brightness(.82);}
 @keyframes ra-spin{from{transform:perspective(220px) rotateX(0deg);}to{transform:perspective(220px) rotateX(360deg);}}
-.ra-tag{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:clamp(8px,1.7vw,11px);font-weight:800;padding:3px 9px;border-radius:7px;letter-spacing:.03em;white-space:nowrap;}
+.ra-tag{flex-shrink:0;box-sizing:border-box;width:clamp(94px,14vw,140px);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:clamp(8px,1.7vw,11px);font-weight:800;padding:3px 9px;border-radius:7px;letter-spacing:.03em;white-space:nowrap;overflow:hidden;}
 .ra-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
 .ra-tag.stop .ra-dot{border-radius:2px;}
 .ra-tag.spin{color:#bbf7d0;background:rgba(22,163,74,.25);}
