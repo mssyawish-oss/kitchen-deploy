@@ -1017,6 +1017,10 @@ def api_camera_config():
     d=request.get_json(silent=True) or {}
     key="camera_config_cl" if str(d.get("which") or "").strip().lower()=="cl" else "camera_config"   # 'cl' = checklist camera
     cfg=db.get(key,{}) or {}
+    if key=="camera_config_cl" and d.get("copy_from_main"):          # reuse the main camera's stored IP/login (server-side; no creds over the wire)
+        main=db.get("camera_config",{}) or {}
+        for k in ("ip","port","user","pass","url_override"):
+            if main.get(k) not in (None,""): cfg[k]=main.get(k)
     for k in ("ip","user","pass","url_override"):
         if k in d: cfg[k]=str(d[k]).strip()
     for k in ("channel","port"):
