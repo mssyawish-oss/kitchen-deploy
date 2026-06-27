@@ -1809,6 +1809,8 @@ def _rot_min_cook_secs():
 _ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
 _ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
 _ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
+_ROT_AFTER_SECS=15       # after the AI auto-counts a row OFF, keep grabbing frames for this long so the owner sees what happened next
+_ROT_AFTER_EVERY=3       # take one follow-up "what happened after" frame every N seconds across that window
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1911,6 +1913,7 @@ def _rotcam_log_event(ev,jpeg):
             try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append({"n":"seq%d.jpg"%n,"ts":int(item[0])})
             except Exception: pass
         entry={"id":eid,"ts":int(now),"credited":credited,"shelf":shelf+1,"shelves":[shelf+1],
+               "auto":bool(credited),"source":("auto-ai" if credited else "skip"),   # credited = the AI decided a row came off by itself
                "rows":(1 if credited else 0),"birds":(bpr if credited else 0),"reason":ev.get("reason",""),
                "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),
                "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
@@ -1923,7 +1926,35 @@ def _rotcam_log_event(ev,jpeg):
                 if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
         except Exception: pass
         save_data(db)
+        if credited:   # the AI counted a row off ON ITS OWN → keep snapping the scene for the next 15s so the owner sees what happened after
+            ROTCAM.setdefault("auto_jobs",[]).append({"id":eid,"dir":d,"start":now,"until":now+_ROT_AFTER_SECS,"next":now+_ROT_AFTER_EVERY,"n":0})
     except Exception: pass
+
+def _rotcam_auto_after_tick():
+    # While an auto-count's 15s window is open, drop a fresh frame into its folder every few seconds and
+    # append it to that credit entry's shots — the persistent "what happened after the AI counted it" reel.
+    js=ROTCAM.get("auto_jobs") or []
+    if not js: return
+    now=time.time(); frame=ROTCAM.get("frame"); fresh=bool(frame) and (now-ROTCAM.get("frame_ts",0))<10
+    keep=[]; changed=False
+    for j in js:
+        try:
+            if fresh and now>=j["next"]:
+                j["n"]+=1; n=j["n"]; fn="after%d.jpg"%n
+                from PIL import Image as _I; import io as _io
+                im=_I.open(_io.BytesIO(frame)).convert("RGB")
+                if im.width>900: im=im.resize((900,int(im.height*900/im.width)))
+                bo=_io.BytesIO(); im.save(bo,"JPEG",quality=78); open(os.path.join(j["dir"],fn),"wb").write(bo.getvalue())
+                with rot_lock:
+                    for e in db.get("rotcam_credit_log",[]):
+                        if e.get("id")==j["id"]: e.setdefault("shots",[]).append({"n":fn,"ts":int(now),"after":int(now-j["start"])}); break
+                changed=True; j["next"]=now+_ROT_AFTER_EVERY
+        except Exception: pass
+        if now<j["until"]: keep.append(j)
+    ROTCAM["auto_jobs"]=keep
+    if changed:
+        try: save_data(db)
+        except Exception: pass
 def _rotcam_add_trace(jpeg,events,cerr):
     # Per-frame debug record for the Settings inspector: the frame + exactly what the AI replied + what we
     # parsed per shelf + the decision the logic made. Lets the owner see WHERE the AI is going wrong.
@@ -2016,6 +2047,7 @@ def rotcam_loop():
                         _rotcam_add_trace(jpeg,evs,cerr)   # per-frame debug trace → Settings inspector
                         if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
             except Exception as e: ROTCAM["error"]=str(e)
+        _rotcam_auto_after_tick()   # append "what happened after" frames to any in-progress auto-count capture
         # while actively counting, the Gemini call already paces the loop (~2-3s) — don't add a full extra
         # second on top; just yield briefly. Only sleep the full cadence when idle (window closed / disabled).
         time.sleep(0.1 if (open_now and cfg.get("enabled") and (cfg.get("gemini_key") or "").strip()) else max(1,min(iv,bench_iv)))
@@ -2110,9 +2142,11 @@ def api_rotcam_credit_shot():
 @app.route("/api/rotcam_trace")
 def api_rotcam_trace():
     cor=db.get("rotcam_corrections",[]) or []
+    auto=[e for e in (db.get("rotcam_credit_log",[]) or []) if e.get("credited")][-30:]   # AUTO-AI: rows the camera counted off by itself (persisted, survives restarts)
     return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
                     "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash"),
-                    "corrections":len(cor),"corrected_ids":[c.get("id") for c in cor]})
+                    "corrections":len(cor),"corrected_ids":[c.get("id") for c in cor],
+                    "auto_log":list(reversed(auto))})   # newest first
 
 @app.route("/api/rotcam_corrections")
 def api_rotcam_corrections():

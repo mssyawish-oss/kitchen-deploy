@@ -1129,6 +1129,14 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div id="rc-trace"></div>
     <div class="divider"></div>
+    <div class="label" style="margin-bottom:2px;">🤖 Auto-AI captures — every row the camera counted off by itself</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Each time the AI decides a row came off the rotisserie, it auto-snaps the scene at that exact moment and keeps shooting for ~15&nbsp;seconds after — so you can see what it was looking at and what happened next. These are <b>saved on the server</b> and survive restarts (kept: most recent 30).</div>
+    <div class="row" style="gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+      <button class="btn" id="rc-auto-btn" onclick="loadAutoCaps()">&#8635; Load auto-AI captures</button>
+      <span id="rc-auto-count" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
+    </div>
+    <div id="rc-auto"></div>
+    <div class="divider"></div>
     <div class="label" style="margin-bottom:4px;">Bench camera — 2nd Tapo, side angle (for stock auto-count)</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">A 2nd camera aimed at the unloading bench. When set, auto-count watches <b>this</b> camera — it always sees the bench wherever it rolls, and reads rows side-by-side or stacked. Fill in its <b>Camera Account</b> login (Tapo app → Settings → Advanced), exactly like the rotisserie camera above.</div>
     <div class="grid-2"><div><div class="label">Bench camera IP</div><input class="input" id="rc-bench-ip" placeholder="192.168.0.113"></div><div><div class="label">Stream</div><select class="input" id="rc-bench-stream" style="background:var(--surface2);"><option value="stream1">stream1 (HD)</option><option value="stream2">stream2 (low-res)</option></select></div></div>
@@ -2101,6 +2109,7 @@ function renderRotTrace(){
     window._lastTrace=d.trace||[];
     const corrected=new Set(d.corrected_ids||[]);
     const ml=document.getElementById('rc-trace-model');if(ml)ml.textContent=(d.model?('model: '+d.model):'')+(d.corrections?('  ·  '+d.corrections+' corrections saved'):'');
+    renderAutoCaptures(d.auto_log||[]);   // keep the persistent auto-AI captures fresh too
     const tr=(d.trace||[]).slice().reverse().slice(0,25);   // newest first, cap 25
     if(!tr.length){el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No checks captured yet — the camera records a trace every time it analyses a frame (during the active window 09:55–20:00).</div>';return;}
     const _tsig=tr[0].id+'|'+(d.corrected_ids||[]).length;   // include corrections so a just-saved one shows its ✓ badge
@@ -2129,6 +2138,36 @@ function renderRotTrace(){
     }).join('');
   }).catch(()=>{});
 }
+// --- AUTO-AI captures: persistent reel of every row the camera counted off by itself (the moment + 15s after) ---
+let _autoSig='';
+function _autoShotLabel(s){if(s&&s.after!=null)return '+'+s.after+'s';const n=(s&&s.n)||'';if(n.indexOf('comp')>=0)return 'strips';if(n.indexOf('boxes')>=0)return 'at count';if(n.indexOf('seq')>=0)return 'before';return '';}
+function renderAutoCaptures(list){
+  const el=document.getElementById('rc-auto');if(!el)return;
+  list=list||[];const cnt=document.getElementById('rc-auto-count');if(cnt)cnt.textContent=list.length?(list.length+' saved'):'';
+  if(!list.length){if(_autoSig!=='empty'){_autoSig='empty';el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No auto-captures yet — the moment the camera counts a row off by itself, it shows up here with the frame it decided on plus the next ~15&nbsp;seconds.</div>';}return;}
+  const sig=list.map(function(e){return e.id+':'+((e.shots||[]).length);}).join(',');
+  if(sig===_autoSig)return;_autoSig=sig;
+  el.innerHTML=list.map(function(e){
+    const dt=new Date((e.ts||0)*1000);
+    const tm=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · '+dt.toLocaleDateString([],{day:'2-digit',month:'2-digit'});
+    const sh=(e.shelves&&e.shelves.length)?('shelf '+e.shelves.join(', ')):('shelf '+(e.shelf||'?'));
+    const thumbs=(e.shots||[]).map(function(s){
+      const u='/api/rotcam_credit_shot?id='+e.id+'&n='+s.n;
+      return '<div style="flex:0 0 auto;text-align:center;">'
+        +'<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="width:118px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);cursor:pointer;background:#000;display:block;">'
+        +'<div style="font-size:9px;color:var(--muted);margin-top:2px;font-family:var(--font-mono);">'+_autoShotLabel(s)+'</div></div>';
+    }).join('');
+    return '<div style="border:1px solid rgba(25,227,107,.4);border-radius:10px;padding:9px;margin-bottom:8px;background:rgba(25,227,107,.05);">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
+        +'<span style="font-size:10px;font-weight:800;letter-spacing:.05em;color:#0b0c10;background:#19e36b;padding:2px 8px;border-radius:999px;">🤖 AUTO AI</span>'
+        +'<span style="font-size:12.5px;font-weight:700;color:var(--text);">'+sh+' counted off'+(e.birds?(' &middot; +'+e.birds+' birds'):'')+'</span>'
+        +'<span style="font-size:11px;color:var(--muted);margin-left:auto;font-family:var(--font-mono);">'+tm+'</span></div>'
+      +'<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:3px;">'+(thumbs||'<span style="font-size:11px;color:var(--muted);">(capturing frames…)</span>')+'</div>'
+      +(e.reason?('<div style="font-size:11px;color:var(--muted);margin-top:5px;">'+String(e.reason).replace(/[<>]/g,'')+'</div>'):'')
+      +'</div>';
+  }).join('');
+}
+function loadAutoCaps(){const b=document.getElementById('rc-auto-btn');if(b)b.textContent='Loading…';_autoSig='';fetch('/api/rotcam_trace',{cache:'no-store'}).then(r=>r.json()).then(function(d){renderAutoCaptures(d.auto_log||[]);if(b)b.innerHTML='&#8635; Reload auto-AI captures';}).catch(function(){if(b)b.innerHTML='&#8635; Load auto-AI captures';});}
 // --- correction / labelling tool: tap a frame, tell it the TRUTH, it saves as training data ---
 const _COR_ACTS=['nothing happening','loading 1 row on','loading 2+ rows on','took 1 row off','took 2 rows off','took 3+ rows off','opened the door, did nothing','closed the door','other (see notes)'];
 const _DNPCT={empty:0,raw:10,almost:50,ready:90,overdone:100};
