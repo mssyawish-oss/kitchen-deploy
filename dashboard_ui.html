@@ -566,6 +566,35 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .recipe-card:hover{filter:brightness(1.1);}
 .recipe-name{font-size:15px;font-weight:600;text-transform:uppercase;}
 .recipe-content{white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:10px;}
+/* Team / labour board */
+.team-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.team-chip{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border2);border-radius:999px;padding:8px 14px;cursor:pointer;font-size:14px;color:var(--muted);transition:all .12s;user-select:none;}
+.team-chip .tc-dot{width:9px;height:9px;border-radius:50%;background:var(--border2);flex-shrink:0;}
+.team-chip.on{background:rgba(25,227,107,.13);border-color:rgba(25,227,107,.5);color:var(--text);font-weight:600;}
+.team-chip.on .tc-dot{background:#19e36b;box-shadow:0 0 7px #19e36b;}
+.team-chip .tc-role{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;}
+.station-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);cursor:pointer;transition:border-color .12s;min-height:78px;display:flex;flex-direction:column;justify-content:space-between;}
+.station-card:hover{border-color:var(--acc);}
+.station-card.filled{border-color:rgba(25,227,107,.4);}
+.station-name{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.station-who{font-size:20px;font-weight:700;color:var(--text);margin-top:8px;}
+.station-who.empty{color:var(--border2);font-weight:500;font-size:15px;}
+.station-x{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;}
+/* Sales & service board */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);}
+.kpi-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.kpi-value{font-size:30px;font-weight:800;color:var(--text);margin-top:5px;font-variant-numeric:tabular-nums;line-height:1.05;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:3px;}
+.kpi-bar{height:7px;border-radius:4px;background:var(--gauge-track);margin-top:9px;overflow:hidden;}
+.kpi-bar i{display:block;height:100%;border-radius:4px;background:var(--acc);transition:width .6s;}
+.heat-row{display:flex;gap:3px;align-items:flex-end;}
+.heat-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.heat-cell{width:100%;border-radius:3px;background:var(--surface2);}
+.heat-hr{font-size:9px;color:var(--muted);font-family:var(--font-mono);}
+.sales-sec{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow);}
+.sales-sec h3{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text);margin:0 0 10px;}
 .recipe-back{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:5px 14px;border-radius:7px;cursor:pointer;font-size:12px;margin-bottom:12px;}
 .busy-indicator{border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;box-shadow:var(--shadow);}
 .busy-indicator.busy{background:var(--green-bg);border:2px solid var(--green);}
@@ -788,6 +817,18 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="cameras-grid" class="cam-grid"></div>
       <div id="cameras-empty" class="empty-state">No cameras added yet.<br>Tap <b>Manage</b> &rarr; <b>Camera</b> tab &rarr; <b>Store Cameras</b> to add them.</div>
     </div>
+    <div class="page" id="page-sales">
+      <div class="page-header"><div class="page-title">Sales &amp; Service</div><div class="row" style="gap:6px;"><button class="btn" onclick="renderSalesPage()">Refresh</button></div></div>
+      <div id="sales-body"></div>
+    </div>
+    <div class="page" id="page-team">
+      <div class="page-header"><div class="page-title">Team — Today</div><div class="row" style="gap:6px;"><button class="btn" onclick="resetTeam()">Clear shift</button></div></div>
+      <div class="sec-head" style="margin:2px 2px 8px;"><span>Who's on</span></div>
+      <div style="font-size:12px;color:var(--muted);margin:0 2px 8px;">Tap a name to mark them on shift. Then assign each station below.</div>
+      <div id="team-onshift" class="team-chips"></div>
+      <div class="sec-head" style="margin:16px 2px 8px;"><span>Stations</span><button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto;" onclick="addStation()">+ Station</button></div>
+      <div id="team-stations" class="team-grid"></div>
+    </div>
   </div>
   <nav class="bottom-nav" id="bottom-nav">
     <button class="nav-btn active" data-page="probes" onclick="navTo('probes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg><span>Temp</span></div></button>
@@ -797,6 +838,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="nav-btn" data-page="recipes" onclick="navTo('recipes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 14a4 4 0 0 1-1-7.86A5 5 0 0 1 15.4 4.6 4.5 4.5 0 0 1 17.5 14"/><path d="M6.5 14v6h11v-6"/><path d="M6.5 17.2h11"/></svg><span>Recipes</span></div></button>
     <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
+    <button class="nav-btn" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
+    <button class="nav-btn" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
   </nav>
   </div>
 </div>
@@ -1527,7 +1570,7 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras'};const isCam=(page==='cameras');requirePin(isCam?'Manager Code':'Enter Code',isCam?'Cameras need a Manager or Admin PIN':'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},isCam?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();}
+function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras'};const isCam=(page==='cameras');requirePin(isCam?'Manager Code':'Enter Code',isCam?'Cameras need a Manager or Admin PIN':'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},isCam?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
 function renderCamerasPage(){
@@ -2985,6 +3028,39 @@ function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so i
 
 // ── HANDOVER NOTES ──
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// ===== Team / labour board (who's on + station assignment) =====
+const _DEF_STATIONS=['Register','Drive-Thru / Phone','Fryer','Rotisserie','Packing','Sides & Drinks','Dishes / Cleaning','Float / Runner'];
+function _labour(){
+  const today=_prepToday();let L=appData.labour;
+  if(!L||typeof L!=='object')L={};
+  if(L.day!==today){L={day:today,on:[],assign:{},stations:(L.stations&&L.stations.length?L.stations:_DEF_STATIONS.slice())};appData.labour=L;saveKeys(['labour']);}
+  if(!Array.isArray(L.stations)||!L.stations.length)L.stations=_DEF_STATIONS.slice();
+  if(!Array.isArray(L.on))L.on=[];
+  if(!L.assign||typeof L.assign!=='object')L.assign={};
+  appData.labour=L;return L;
+}
+function renderTeamPage(){
+  const L=_labour(),staff=(appData.staff||[]);
+  const chips=document.getElementById('team-onshift');if(!chips)return;
+  chips.innerHTML=staff.length?staff.map(function(s,i){const on=L.on.indexOf(s.name)>=0;return '<div class="team-chip'+(on?' on':'')+'" onclick="toggleOnShift('+i+')"><span class="tc-dot"></span><span>'+esc(s.name||'?')+'</span>'+(s.role?'<span class="tc-role">'+esc(s.role)+'</span>':'')+'</div>';}).join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>';
+  const grid=document.getElementById('team-stations');
+  grid.innerHTML=L.stations.map(function(st,i){const who=L.assign[st]||'';return '<div class="station-card'+(who?' filled':'')+'" onclick="assignStation('+i+')"><div class="station-name"><span>'+esc(st)+'</span><button class="station-x" onclick="event.stopPropagation();removeStation('+i+')">&times;</button></div><div class="station-who'+(who?'':' empty')+'">'+(who?esc(who):'tap to assign')+'</div></div>';}).join('');
+}
+function toggleOnShift(i){const L=_labour(),s=(appData.staff||[])[i];if(!s||!s.name)return;const k=L.on.indexOf(s.name);if(k>=0){L.on.splice(k,1);Object.keys(L.assign).forEach(st=>{if(L.assign[st]===s.name)delete L.assign[st];});}else L.on.push(s.name);appData.labour=L;saveKeys(['labour']);renderTeamPage();}
+function assignStation(i){
+  const L=_labour(),st=L.stations[i];if(!st)return;
+  if(!L.on.length){_toast("Mark who's on shift first (tap a name above).");return;}
+  let o=document.getElementById('station-pick');if(!o){o=document.createElement('div');o.id='station-pick';o.className='modal-overlay';o.style.zIndex='710';document.body.appendChild(o);}
+  o.innerHTML='<div class="modal" style="max-width:360px;width:92vw;"><div class="modal-header"><div class="modal-title">'+esc(st)+'</div><button class="modal-close" onclick="document.getElementById(\'station-pick\').classList.remove(\'open\')">Close</button></div><div style="display:flex;flex-direction:column;gap:8px;">'
+    +L.on.map(function(nm,oi){return '<button class="btn" style="justify-content:flex-start;font-size:15px;padding:12px;" onclick="setStation('+i+','+oi+')">'+esc(nm)+'</button>';}).join('')
+    +'<button class="btn btn-danger" style="font-size:14px;padding:10px;" onclick="setStation('+i+',-1)">Unassign</button></div></div>';
+  o.classList.add('open');
+}
+function setStation(i,oi){const L=_labour(),st=L.stations[i];if(st){if(oi<0)delete L.assign[st];else{const nm=L.on[oi];if(nm)L.assign[st]=nm;}}appData.labour=L;saveKeys(['labour']);const o=document.getElementById('station-pick');if(o)o.classList.remove('open');renderTeamPage();}
+function addStation(){const nm=prompt('New station name:');if(!nm||!nm.trim())return;const L=_labour();L.stations.push(nm.trim().slice(0,30));appData.labour=L;saveKeys(['labour']);renderTeamPage();}
+function removeStation(i){const L=_labour(),st=L.stations[i];if(!st)return;if(!confirm('Remove station "'+st+'"?'))return;L.stations.splice(i,1);delete L.assign[st];appData.labour=L;saveKeys(['labour']);renderTeamPage();}
+function resetTeam(){if(!confirm("Clear today's shift — who's on AND all station assignments?"))return;const L=_labour();L.on=[];L.assign={};appData.labour=L;saveKeys(['labour']);renderTeamPage();}
+function renderSalesPage(){const el=document.getElementById('sales-body');if(el)el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Sales &amp; service board — coming together…</div>';}
 function fmtNoteTime(iso){try{return new Date(iso).toLocaleString('en-AU',{weekday:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 function updateNotesBadge(){const b=document.getElementById('notes-badge');if(!b)return;const n=(appData.handover_notes||[]).length;b.textContent=n;b.className=n>0?'show':'';}
 function openNotesModal(){document.getElementById('note-text').value='';document.getElementById('note-who').value='';renderNotes();openModal('notes-modal');}
