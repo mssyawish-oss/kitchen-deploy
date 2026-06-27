@@ -1021,6 +1021,10 @@ def api_camera_config():
         main=db.get("camera_config",{}) or {}
         for k in ("ip","port","user","pass","url_override"):
             if main.get(k) not in (None,""): cfg[k]=main.get(k)
+        try: _ch=int(d.get("channel"))
+        except Exception: _ch=None
+        if _ch is not None and cfg.get("url_override"):              # main URL hard-codes ITS channel — swap in the checklist channel so it isn't the same lens
+            cfg["url_override"]=re.sub(r'channel=\d+','channel=%d'%_ch,cfg["url_override"])
     for k in ("ip","user","pass","url_override"):
         if k in d: cfg[k]=str(d[k]).strip()
     for k in ("channel","port"):
