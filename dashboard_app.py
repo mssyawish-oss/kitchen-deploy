@@ -2077,9 +2077,15 @@ def api_rotcam_credit_shot():
 
 @app.route("/api/rotcam_trace")
 def api_rotcam_trace():
+    cor=db.get("rotcam_corrections",[]) or []
     return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
                     "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash"),
-                    "corrections":len(db.get("rotcam_corrections",[]) or [])})
+                    "corrections":len(cor),"corrected_ids":[c.get("id") for c in cor]})
+
+@app.route("/api/rotcam_corrections")
+def api_rotcam_corrections():
+    # the saved ground-truth labels (AI-said vs owner-truth) — for review + tuning
+    return jsonify({"corrections":(db.get("rotcam_corrections",[]) or [])[-200:]})
 
 @app.route("/api/rotcam_correct",methods=["POST"])
 def api_rotcam_correct():
