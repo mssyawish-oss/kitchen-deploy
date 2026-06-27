@@ -544,11 +544,13 @@ def square_poll_loop():
                         eff=d if (s and d) else c
                         if eff is None: return False   # no determinable time → don't count/alarm (was True: let undated stale orders slip through)
                         return now>=eff-timedelta(minutes=15) and eff.astimezone().date()==today
-                    rb=fb=0.0;rids=[];fids=[]
+                    rb=fb=0.0;rids=[];fids=[];_pass=set()
                     with rot_lock: _rseen=set(ROT_LIVE["seen"])      # snapshot under the lock → no double-count race vs rot_deduct mutating 'seen'
                     with fry_lock: _fseen=set(FRY_LIVE["seen"])
                     for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in orders:
+                        if oid in _pass: continue                    # the SAME order can be in BOTH the OPEN and COMPLETED lists this poll → count it once
                         if not _due(s,d,c): continue
+                        _pass.add(oid)
                         db_=b if (b>0 and oid not in _rseen) else 0
                         dp_=p if (p>0 and oid not in _fseen) else 0
                         if db_: rb+=db_;rids.append(oid)
@@ -2144,7 +2146,7 @@ def api_rotcam_trace_shot():
     except Exception: return Response("bad",status=400)
     img=(ROTCAM.get("trace_img") or {}).get(i)
     if not img: return Response("not found",status=404)
-    return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"max-age=3600"})   # immutable per id → cache, no flicker
+    return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})   # trace_id resets on restart → must not serve a stale cached frame for a reused id
 
 @app.route("/api/rotcam_test",methods=["POST"])
 def api_rotcam_test():

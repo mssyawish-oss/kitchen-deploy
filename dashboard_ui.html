@@ -268,7 +268,7 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 .rl-adj{display:flex;gap:6px;}
 .rl-mini{flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px;font-size:14px;cursor:pointer;}
 .rl-mini.rl-set{flex:1.4;font-weight:700;color:var(--amber);}
-.rl-right{display:none;}
+.rl-right{display:flex;justify-content:flex-end;margin-top:6px;}   /* fried card source line (rotisserie card uses .rl-foot-src instead) */
 .rl-msg{font-size:14px;color:var(--amber);font-weight:600;}
 .rl-src{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-top:3px;}
 .rl-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;}
@@ -1365,6 +1365,7 @@ function silenceOneAlarm(key){if(key==='probe'){Object.keys(_probeAlarms).forEac
   else if(key==='orders'){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}
   else if(key==='service'){if(typeof silenceAlarm==='function')silenceAlarm();}
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
+  else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
   _updateFlash();}
 setInterval(_updateFlash,400);
@@ -1374,7 +1375,7 @@ let _silenceSeen=0,_applyingRemoteSilence=false;
 function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
 function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(ts){if(!ts)return;if(!_silenceSeen){_silenceSeen=ts;return;}if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
-function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffSilenced=_prepToday();}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
@@ -2069,7 +2070,8 @@ function renderRotTrace(){
     const ml=document.getElementById('rc-trace-model');if(ml)ml.textContent=(d.model?('model: '+d.model):'')+(d.corrections?('  ·  '+d.corrections+' corrections saved'):'');
     const tr=(d.trace||[]).slice().reverse().slice(0,25);   // newest first, cap 25
     if(!tr.length){el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No checks captured yet — the camera records a trace every time it analyses a frame (during the active window 09:55–20:00).</div>';return;}
-    if(tr[0].id===_traceLastId)return;_traceLastId=tr[0].id;   // nothing new → don't rebuild (no flicker)
+    const _tsig=tr[0].id+'|'+(d.corrected_ids||[]).length;   // include corrections so a just-saved one shows its ✓ badge
+    if(_tsig===_traceLastId)return;_traceLastId=_tsig;        // nothing new → don't rebuild (no flicker)
     el.innerHTML=tr.map(function(r){
       const t=new Date(r.ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
       const shot='/api/rotcam_trace_shot?id='+r.id;
@@ -2304,8 +2306,8 @@ function _camSpinCheck(){
   }
   const any=stoppedRows.length>0;
   if(banner){banner.classList.toggle('show',any);if(any)banner.textContent=(stoppedRows.length>1?'ROWS ':'ROW ')+stoppedRows.join(', ')+' NOT SPINNING';}
-  if(any&&!window._rotStopAlarm){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
-  else if(!any&&window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
+  if(any&&!window._rotStopAlarm&&!window._rotStopAcked){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
+  else if(!any){window._rotStopAcked=false;if(window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}}
 }
 function _doneForRow(row){
   const p=probeData[row],st=((probeStates[row]||{}).status)||'idle';
@@ -2393,7 +2395,7 @@ function checkProductsOff(){
   if(appData.products_off_enabled===false){b.style.display='none';b.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');return;}
   fetch('/api/products_offline').then(r=>r.json()).then(d=>{
     if(!d.ok||!d.off||!d.off.length){b.style.display='none';b.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');return;}
-    const now=new Date(),mins=now.getHours()*60+now.getMinutes(),today=now.toISOString().slice(0,10);
+    const now=new Date(),mins=now.getHours()*60+now.getMinutes(),today=_prepToday();   // LOCAL date (UTC rolls over mid-arvo in AU)
     const afterOpen=mins>=(9*60+55);                    // from 9:55am
     const alarmOn=afterOpen&&(_prodOffSilenced!==today);
     const rows=d.off.map(p=>{
@@ -2419,8 +2421,8 @@ function checkProductsOff(){
 }
 let _prodOffExpandDay=null;   // the day the user chose to expand the banner; otherwise it stays minimised
 function prodOffMinimise(){_prodOffExpandDay=null;checkProductsOff();}
-function prodOffExpand(){_prodOffExpandDay=new Date().toISOString().slice(0,10);checkProductsOff();}
-function silenceProductsOff(){_prodOffSilenced=new Date().toISOString().slice(0,10);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();_broadcastSilence();}
+function prodOffExpand(){_prodOffExpandDay=_prepToday();checkProductsOff();}
+function silenceProductsOff(){_prodOffSilenced=_prepToday();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();_broadcastSilence();}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}
@@ -2533,7 +2535,7 @@ function renderRecipesPage(){const recipes=appData.recipes||[];const list=docume
   const cats=[];recipes.forEach(r=>{const c=r.category||'Other';if(!cats.includes(c))cats.push(c);});
   if(recipeFilter!=='All'&&!cats.includes(recipeFilter))recipeFilter='All';
   const chipBox=document.getElementById('recipe-filter-chips');
-  if(chipBox)chipBox.innerHTML=(recipes.length&&cats.length)?['All',...cats].map(c=>`<div class="filter-chip ${recipeFilter===c?'on':''}" onclick="setRecipeFilter('${c.replace(/'/g,'')}')">${c}</div>`).join(''):'';
+  if(chipBox)chipBox.innerHTML=(recipes.length&&cats.length)?['All',...cats].map(c=>`<div class="filter-chip ${recipeFilter===c?'on':''}" onclick="setRecipeFilter('${c.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">${c}</div>`).join(''):'';
   if(recipes.length===0){list.innerHTML='';empty.style.display='block';return;}empty.style.display='none';
   list.innerHTML=recipes.map((r,i)=>({r,i})).filter(o=>recipeFilter==='All'||(o.r.category||'Other')===recipeFilter).map(({r,i})=>`<div class="recipe-card" onclick="openRecipe(${i})"><div class="recipe-name">${r.name}</div><div style="margin-top:6px;">${r.category?`<span class="tag tag-amber">${r.category}</span>`:''}</div></div>`).join('');}
 function openRecipe(i){const r=(appData.recipes||[])[i];if(!r)return;const detail=document.getElementById('recipe-detail');document.getElementById('recipe-list').style.display='none';document.getElementById('recipe-empty').style.display='none';detail.innerHTML=`<button class="recipe-back" onclick="renderRecipesPage()">&#8592; Back</button><div class="row-between"><div><div style="font-size:18px;font-weight:700;">${r.name}</div>${r.category?`<span class="tag tag-amber" style="margin-top:6px;display:inline-block;">${r.category}</span>`:''}</div><span><button class="btn" style="margin-right:6px;" onclick="editRecipe(${i})">Edit</button><button class="btn btn-danger" onclick="deleteRecipe(${i})">Delete</button></span></div><div class="recipe-content" style="white-space:pre-wrap;line-height:1.5;">${(r.body||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;detail.style.display='block';}
