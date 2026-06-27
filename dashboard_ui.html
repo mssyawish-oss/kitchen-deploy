@@ -1028,6 +1028,23 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="saveCameraConfig('cl')">Save Checklist Camera</button><button class="btn" style="flex:1;" onclick="testCamera('cl')">Test</button></div>
     <div id="cam2-status" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
     <div id="cam2-preview" style="margin-top:8px;"></div>
+    <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px;">
+      <div class="label" style="margin-bottom:2px;">🔍 Focus area (zoom)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Zoom every checklist photo onto one spot. Tap <b>Load view</b>, then <b>click the photo</b> where you want it focused and set the zoom — the green box is exactly what each photo will capture.</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;">
+        <button class="btn" onclick="loadFocusView()">Load view</button>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;flex:1;min-width:160px;">Zoom <input type="range" id="cam2-zoom" min="1" max="5" step="0.1" value="1" oninput="drawFocusBox()" style="flex:1;"> <span id="cam2-zoom-val" style="font-family:var(--font-mono);min-width:34px;">1.0×</span></label>
+      </div>
+      <div id="cam2-focus-wrap" style="position:relative;margin-top:8px;display:none;width:100%;max-width:420px;user-select:none;">
+        <img id="cam2-focus-img" style="width:100%;display:block;border-radius:8px;border:1px solid var(--border2);background:#000;cursor:crosshair;" onclick="setFocusCenter(event)">
+        <div id="cam2-focus-box" style="position:absolute;border:2px solid #19e36b;box-shadow:0 0 0 9999px rgba(0,0,0,.45);pointer-events:none;border-radius:3px;display:none;"></div>
+      </div>
+      <div class="row" style="gap:6px;margin-top:8px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="saveFocus()">Save focus area</button>
+        <button class="btn" style="flex:1;" onclick="clearFocus()">Reset (no zoom)</button>
+      </div>
+      <div id="cam2-focus-status" style="font-size:12px;margin-top:6px;min-height:15px;"></div>
+    </div>
     <div class="divider"></div>
     <div class="section-title">Recent Task Photos</div>
     <div id="photo-log" style="display:flex;flex-wrap:wrap;gap:8px;max-height:230px;overflow-y:auto;"></div>
@@ -1666,6 +1683,35 @@ function fillCameraSettings(){const c=appData.camera_public||{};const set=(id,v)
   const c2=appData.camera_cl_public||{};set('cam2-ip',c2.ip);set('cam2-port',c2.port);set('cam2-channel',c2.channel);set('cam2-url',c2.url_override);const ph2=c2.ip?'(unchanged — leave blank to keep)':'';const u2=document.getElementById('cam2-user');if(u2){u2.value='';u2.placeholder=ph2||'admin';}const p2=document.getElementById('cam2-pass');if(p2){p2.value='';p2.placeholder=ph2||'camera password';}const e2=document.getElementById('cam2-enabled');if(e2)e2.checked=!!c2.enabled;const s2=document.getElementById('cam2-status');if(s2)s2.textContent='';const pv2=document.getElementById('cam2-preview');if(pv2)pv2.innerHTML='';
   renderPhotoLog();}
 function camStatus(msg,col,which){const e=document.getElementById(which==='cl'?'cam2-status':'cam-status');if(!e)return;e.textContent=msg;e.style.color='var(--'+(col||'muted')+')';}
+// --- checklist camera FOCUS AREA (zoom): click to set centre, slider for zoom, green box = what each photo captures ---
+let _focus={cx:0.5,cy:0.5};
+function loadFocusView(){
+  const st=document.getElementById('cam2-focus-status');st.style.color='var(--muted)';st.textContent='Loading view…';
+  const c=(appData.camera_cl_public&&appData.camera_cl_public.crop)||{};
+  document.getElementById('cam2-zoom').value=c.zoom||1;_focus={cx:(c.cx!=null?c.cx:0.5),cy:(c.cy!=null?c.cy:0.5)};
+  fetch('/api/camera_test?cam=cl&full=1',{method:'POST'}).then(r=>r.json()).then(function(d){
+    if(d.ok&&d.preview){const wrap=document.getElementById('cam2-focus-wrap');wrap.style.display='block';const im=document.getElementById('cam2-focus-img');im.onload=function(){drawFocusBox();};im.src=d.preview;st.textContent='Click the photo to set the focus centre, then set the zoom.';}
+    else{st.style.color='var(--red)';st.textContent='Could not load: '+(d.error||'save & enable the checklist camera first');}
+  }).catch(function(){st.style.color='var(--red)';st.textContent='Could not reach server.';});
+}
+function setFocusCenter(ev){const im=ev.target,r=im.getBoundingClientRect();_focus.cx=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));_focus.cy=Math.max(0,Math.min(1,(ev.clientY-r.top)/r.height));drawFocusBox();}
+function drawFocusBox(){
+  const z=parseFloat((document.getElementById('cam2-zoom')||{}).value)||1;
+  const vl=document.getElementById('cam2-zoom-val');if(vl)vl.textContent=z.toFixed(1)+'×';
+  const box=document.getElementById('cam2-focus-box'),im=document.getElementById('cam2-focus-img');
+  if(!box||!im||!im.clientWidth)return;
+  if(z<=1.01){box.style.display='none';return;}
+  const w=im.clientWidth/z,h=im.clientHeight/z;
+  let x=_focus.cx*im.clientWidth-w/2,y=_focus.cy*im.clientHeight-h/2;
+  x=Math.max(0,Math.min(im.clientWidth-w,x));y=Math.max(0,Math.min(im.clientHeight-h,y));
+  box.style.display='block';box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
+}
+function saveFocus(){
+  const z=parseFloat((document.getElementById('cam2-zoom')||{}).value)||1;
+  const st=document.getElementById('cam2-focus-status');st.style.color='var(--muted)';st.textContent='Saving…';
+  fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({which:'cl',crop:{zoom:z,cx:_focus.cx,cy:_focus.cy}})}).then(r=>r.json()).then(function(d){if(d.ok){st.style.color='var(--green)';st.textContent=z>1.01?('Saved — checklist photos now zoom '+z.toFixed(1)+'× on that spot.'):'Saved — no zoom (full frame).';loadAppData();}else{st.style.color='var(--red)';st.textContent='Could not save.';}}).catch(function(){st.style.color='var(--red)';st.textContent='Could not reach server.';});
+}
+function clearFocus(){const zEl=document.getElementById('cam2-zoom');if(zEl)zEl.value=1;_focus={cx:0.5,cy:0.5};drawFocusBox();fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({which:'cl',crop:{}})}).then(r=>r.json()).then(function(){const st=document.getElementById('cam2-focus-status');st.style.color='var(--green)';st.textContent='Zoom cleared — full frame.';loadAppData();});}
 function fillRotcam(){const c=appData.rotcam_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('rc-ip',c.ip);set('rc-interval',c.interval||60);const st=document.getElementById('rc-stream');if(st)st.value=c.stream||'stream1';const en=document.getElementById('rc-enabled');if(en)en.checked=!!c.enabled;const setck=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};setck('rc-feed',c.feed_enabled);setck('rc-spin',c.spin_enabled);setck('rc-doneness',c.doneness_enabled);const _ac=document.getElementById('rc-autocount');if(_ac)_ac.checked=(c.auto_count!==false);const _rb=document.getElementById('rc-bench');if(_rb)_rb.checked=(c.bench_enabled===true);document.getElementById('rc-user').value='';document.getElementById('rc-pass').value='';document.getElementById('rc-key').value='';const ph=appData.rotcam_has_key?'(saved — leave blank to keep)':'AIza…';document.getElementById('rc-key').placeholder=ph;document.getElementById('rc-pass').placeholder=appData.rotcam_public&&appData.rotcam_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('rc-status').textContent='';document.getElementById('rc-preview').innerHTML='';const _bip=document.getElementById('rc-bench-ip');if(_bip)_bip.value=c.bench_ip||'';const _bst=document.getElementById('rc-bench-stream');if(_bst)_bst.value=c.bench_stream||'stream1';const _bu=document.getElementById('rc-bench-user');if(_bu){_bu.value=c.bench_user||'';_bu.placeholder='camera account user';}const _bpw=document.getElementById('rc-bench-pass');if(_bpw){_bpw.value='';_bpw.placeholder=c.bench_has_pass?'(saved — leave blank to keep)':'enter camera account password';}const _brt=document.getElementById('rc-bench-rtsp');if(_brt){_brt.value='';_brt.placeholder='rtsp://user:pass@192.168.0.113:554/stream1';}const _bs=document.getElementById('rc-bench-status');if(_bs)_bs.textContent=c.bench_configured?'Bench camera is set.':'';const _bp=document.getElementById('rc-bench-preview');if(_bp)_bp.innerHTML='';openCalib();
   const u=appData.rotcam_usage||{};const uel=document.getElementById('rc-usage');
   if(uel)uel.innerHTML=(u.total!=null)?('Gemini usage (estimate): <b>'+u.today+'</b> checks today ≈ <b>$'+(u.cost_today||0).toFixed(2)+'</b> &middot; <b>'+u.total+'</b> total ≈ <b>$'+(u.cost_total||0).toFixed(2)+'</b><br><span style="opacity:.65">Rough estimate — see Google AI Studio &rarr; Spend for the exact bill.</span>'):'';}

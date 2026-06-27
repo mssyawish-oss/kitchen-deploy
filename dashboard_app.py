@@ -948,7 +948,22 @@ PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)
 except Exception: pass
 
-def _camera_snapshot(cfg_key="camera_config"):
+def _crop_jpeg(data,cr):
+    # Zoom into a focused area of the frame. cr={zoom>1, cx, cy} where cx,cy are the focus CENTRE (0..1).
+    try:
+        z=max(1.0,min(8.0,float(cr.get("zoom",1) or 1)))
+        if z<=1.01: return data
+        from PIL import Image; import io
+        cx=max(0.0,min(1.0,float(cr.get("cx",0.5)))); cy=max(0.0,min(1.0,float(cr.get("cy",0.5))))
+        im=Image.open(io.BytesIO(data)); im.load()
+        if im.mode!="RGB": im=im.convert("RGB")
+        W,H=im.size; cw=W/z; chh=H/z
+        x=min(max(0.0,cx*W-cw/2),W-cw); y=min(max(0.0,cy*H-chh/2),H-chh)
+        im=im.crop((int(x),int(y),int(x+cw),int(y+chh)))
+        out=io.BytesIO(); im.save(out,"JPEG",quality=88); return out.getvalue()
+    except Exception: return data
+
+def _camera_snapshot(cfg_key="camera_config",apply_crop=True):
     cfg=db.get(cfg_key,{}) or {}
     if not cfg.get("ip"): return None,"No camera configured"
     ip=str(cfg["ip"]).strip(); port=cfg.get("port") or 80; ch=cfg.get("channel") or 1
@@ -961,7 +976,9 @@ def _camera_snapshot(cfg_key="camera_config"):
         opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
             urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=cam_ctx))
         with opener.open(urllib.request.Request(url),timeout=8) as r: data=r.read()
-        if data[:2]==b"\xff\xd8": return data,None
+        if data[:2]==b"\xff\xd8":
+            if apply_crop and (cfg.get("crop") or {}): data=_crop_jpeg(data,cfg["crop"])   # focus every photo on the chosen area
+            return data,None
         return None,"Camera did not return a photo (%d bytes) — check the address/login."%len(data)
     except Exception as e:
         return None,str(e)
@@ -1036,13 +1053,22 @@ def api_camera_config():
             try: cfg[k]=int(d[k])
             except Exception: pass
     if "enabled" in d: cfg["enabled"]=bool(d["enabled"])
+    if "crop" in d:                                                  # focus area / zoom for checklist photos
+        cr=d.get("crop") or {}
+        if not cr: cfg.pop("crop",None)
+        else:
+            try: cfg["crop"]={"zoom":max(1.0,min(8.0,float(cr.get("zoom",1) or 1))),
+                              "cx":max(0.0,min(1.0,float(cr.get("cx",0.5)))),
+                              "cy":max(0.0,min(1.0,float(cr.get("cy",0.5))))}
+            except Exception: pass
     with data_lock: db[key]=cfg; save_data(db)
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled") and cfg.get("ip"))})
 
 @app.route("/api/camera_test",methods=["POST"])
 def api_camera_test():
     which=(request.args.get("cam") or (request.get_json(silent=True) or {}).get("cam") or "").strip().lower()
-    data,err=_camera_snapshot("camera_config_cl" if which=="cl" else "camera_config")
+    full=request.args.get("full")=="1"     # uncropped frame for the focus-area setup overlay
+    data,err=_camera_snapshot("camera_config_cl" if which=="cl" else "camera_config",apply_crop=not full)
     if err: return jsonify({"ok":False,"error":err})
     import base64
     return jsonify({"ok":True,"preview":"data:image/jpeg;base64,"+base64.b64encode(data).decode()})
@@ -2691,7 +2717,7 @@ def get_db():
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
     cl=snap.get("camera_config_cl") or {}                              # separate CHECKLIST camera
     safe["camera_cl_enabled"]=bool(cl.get("enabled") and cl.get("ip"))
-    safe["camera_cl_public"]={k:cl.get(k) for k in ("ip","port","channel","url_override","enabled")}
+    safe["camera_cl_public"]={k:cl.get(k) for k in ("ip","port","channel","url_override","enabled","crop")}
     rc=snap.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew","boxes6")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
