@@ -1520,10 +1520,10 @@ let _stockSaveT=null;function saveStockSoon(){clearTimeout(_stockSaveT);_stockSa
 // pull shared data from the server and refresh the current screen — so changes on another device appear here.
 // skips when a popup is open or you're typing, so it never wipes work in progress.
 async function refreshShared(){
-  if([...document.querySelectorAll('.modal-overlay')].some(m=>getComputedStyle(m).display!=='none'))return;
-  const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'))return;
-  await loadAppData();
+  const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'))return;   // don't yank data out from under someone typing
+  await loadAppData();   // ALWAYS pull the latest — never get stuck on stale data behind an open popup on another screen
   if(appData.ui&&appData.ui.theme&&((appData.ui.theme==='light')!==document.body.classList.contains('light')))applyTheme(appData.ui.theme,false);
+  if([...document.querySelectorAll('.modal-overlay')].some(m=>getComputedStyle(m).display!=='none'))return;   // a popup is open here → data's now fresh, just don't repaint behind it (it'll show when closed)
   const active=document.querySelector('.page.active');if(!active)return;
   const id=active.id;
   if(id==='page-stock')renderStockPage();
