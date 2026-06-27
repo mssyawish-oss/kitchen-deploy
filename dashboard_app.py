@@ -944,8 +944,8 @@ PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)
 except Exception: pass
 
-def _camera_snapshot():
-    cfg=db.get("camera_config",{}) or {}
+def _camera_snapshot(cfg_key="camera_config"):
+    cfg=db.get(cfg_key,{}) or {}
     if not cfg.get("ip"): return None,"No camera configured"
     ip=str(cfg["ip"]).strip(); port=cfg.get("port") or 80; ch=cfg.get("channel") or 1
     user=cfg.get("user","") or ""; pw=cfg.get("pass","") or ""
@@ -1002,7 +1002,8 @@ def api_prep_image(pid):
 
 @app.route("/api/capture",methods=["POST"])
 def api_capture():
-    data,err=_camera_snapshot()
+    which=(request.args.get("cam") or (request.get_json(silent=True) or {}).get("cam") or "").strip().lower()
+    data,err=_camera_snapshot("camera_config_cl" if which=="cl" else "camera_config")   # 'cl' = the separate checklist camera
     if err: return jsonify({"ok":False,"error":err})
     name="t%d_%s.jpg"%(int(time.time()*1000),_secrets.token_hex(3))
     try:
@@ -1013,7 +1014,9 @@ def api_capture():
 
 @app.route("/api/camera_config",methods=["POST"])
 def api_camera_config():
-    d=request.get_json(silent=True) or {}; cfg=db.get("camera_config",{}) or {}
+    d=request.get_json(silent=True) or {}
+    key="camera_config_cl" if str(d.get("which") or "").strip().lower()=="cl" else "camera_config"   # 'cl' = checklist camera
+    cfg=db.get(key,{}) or {}
     for k in ("ip","user","pass","url_override"):
         if k in d: cfg[k]=str(d[k]).strip()
     for k in ("channel","port"):
@@ -1021,12 +1024,13 @@ def api_camera_config():
             try: cfg[k]=int(d[k])
             except Exception: pass
     if "enabled" in d: cfg["enabled"]=bool(d["enabled"])
-    with data_lock: db["camera_config"]=cfg; save_data(db)
+    with data_lock: db[key]=cfg; save_data(db)
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled") and cfg.get("ip"))})
 
 @app.route("/api/camera_test",methods=["POST"])
 def api_camera_test():
-    data,err=_camera_snapshot()
+    which=(request.args.get("cam") or (request.get_json(silent=True) or {}).get("cam") or "").strip().lower()
+    data,err=_camera_snapshot("camera_config_cl" if which=="cl" else "camera_config")
     if err: return jsonify({"ok":False,"error":err})
     import base64
     return jsonify({"ok":True,"preview":"data:image/jpeg;base64,"+base64.b64encode(data).decode()})
@@ -2464,7 +2468,7 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","rotcam_config","cameras")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras")}
     safe["cameras_public"]=[]
     for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
@@ -2473,6 +2477,9 @@ def get_db():
     cc=snap.get("camera_config") or {}
     safe["camera_enabled"]=bool(cc.get("enabled") and cc.get("ip"))   # boolean only
     safe["camera_public"]={k:cc.get(k) for k in ("ip","port","channel","url_override","enabled")}  # no user/pass
+    cl=snap.get("camera_config_cl") or {}                              # separate CHECKLIST camera
+    safe["camera_cl_enabled"]=bool(cl.get("enabled") and cl.get("ip"))
+    safe["camera_cl_public"]={k:cl.get(k) for k in ("ip","port","channel","url_override","enabled")}
     rc=snap.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew","boxes6")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
