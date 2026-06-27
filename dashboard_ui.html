@@ -1971,10 +1971,11 @@ function renderRotLive(rot){
   const alvl=updateStockAlert('bbq',lvl);
   const cerr=(rot.cam_err||'').trim();
   const showErr=rot.cam&&cerr&&!/block|skip/i.test(cerr);   // ignore the normal transient "view blocked" reads
-  const sig=[avail,rot.sold_today,rot.square,alvl,rot.rows_cooking,rot.cam,showErr?cerr:''].join('|');
+  const nCook=(rot.levels&&/^[01]{6}$/.test(rot.levels))?rot.levels.split('').filter(c=>c==='1').length:(rot.rows_cooking||0);   // count from the SAME live pattern the animation shows → badge & animation always match
+  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,showErr?cerr:''].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
   const camErrHtml=showErr?`<div class="rl-camerr" title="${cerr.replace(/"/g,'&quot;')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Camera not counting: ${cerr.length>54?cerr.slice(0,54)+'…':cerr}</span></div>`:'';
-  const cookHtml=rot.cam?`<span class="rl-cooking">${rot.rows_cooking||0} ${(rot.rows_cooking||0)===1?'row':'rows'} cooking</span>`:'';
+  const cookHtml=rot.cam?`<span class="rl-cooking">${nCook} ${nCook===1?'row':'rows'} cooking</span>`:'';
   const numCol=alvl==='crit'?'var(--red)':'var(--amber)';
   const lowPill=alvl==='none'?'':`<div class="rl-lowpill ${alvl}">Cook more</div>`;
   el.innerHTML=`<div class="rl-card ${alvl==='crit'?'crit':alvl==='warn'?'warn':''}" onclick="ackStock('bbq')"><div class="rl-top"><div class="rl-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 23a7 7 0 0 0 7-7c0-2.2-1.1-4.1-2.7-5.8-.5 1.1-1.3 1.9-2.1 2.2.6-2.4-.4-4.9-2.8-7-.3 2.7-2.1 4.1-3.5 5.6A7 7 0 0 0 5 16a7 7 0 0 0 7 7Z"/></svg></div><div class="rl-tag">ROTISSERIE</div>${cookHtml}</div>
