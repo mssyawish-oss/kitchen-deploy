@@ -27,8 +27,13 @@ def save_data(data):
     # compact (no indent → much smaller/faster write) + atomic replace so a crash mid-write can't corrupt the file.
     # Serialized: parallel auto-trace reads can call this concurrently, so one dump/replace at a time.
     with _save_lock:
+        s=None
+        for _try in range(5):
+            try: s=json.dumps(data,separators=(",",":")); break
+            except RuntimeError: time.sleep(0.02)   # another thread mutated a dict mid-dump → retry
+            except Exception as e: print(f"Save error:{e}"); return
+        if s is None: return                          # couldn't get a clean snapshot this round; next save catches up
         try:
-            s=json.dumps(data,separators=(",",":"))
             tmp=DATA_FILE+".tmp"
             with open(tmp,"w",encoding="utf-8") as f: f.write(s)
             os.replace(tmp,DATA_FILE)
@@ -395,6 +400,77 @@ def _parse_dt(s):
     try: return datetime.fromisoformat(s.replace("Z","+00:00"))
     except Exception: return None
 
+# ── Sales board: persistent per-day stats ($ / orders / hourly / top sellers) + live speed-of-service ──
+SOS_LIVE={"day":None,"open":{},"times":[],"done":set()}   # order→ready timing (in-memory; resets daily / on restart)
+def _sales_stat_roll(today):
+    st=db.setdefault("sales_stats",{})
+    cur=st.get("today")
+    if cur and cur.get("date") and cur["date"]!=today:                       # new day → archive yesterday's final
+        hist=st.setdefault("history",{}); hist[cur["date"]]={k:cur.get(k) for k in ("date","sales","orders","bbq","fried","hourly")}
+        for k in sorted(hist.keys())[:-70]: hist.pop(k,None)                 # keep ~10 weeks of history
+        cur=None
+    if not cur or cur.get("date")!=today:
+        cur={"date":today,"sales":0.0,"orders":0,"bbq":0.0,"fried":0.0,"hourly":{},"items":{},"seen":[]}
+        st["today"]=cur
+    return cur
+def _sales_stat_add(oid,eff,total,allitems,bbq,fried):
+    # accumulate ONE order into today's board, self-deduping (the same order is re-seen every poll while OPEN)
+    today=datetime.now().astimezone().date().isoformat()
+    cur=_sales_stat_roll(today)
+    seen=cur.setdefault("seen",[])
+    if oid in seen: return False
+    seen.append(oid)
+    if len(seen)>3000: del seen[:len(seen)-3000]
+    cur["sales"]=round(cur.get("sales",0)+(total or 0),2); cur["orders"]=cur.get("orders",0)+1
+    cur["bbq"]=round(cur.get("bbq",0)+(bbq or 0),2); cur["fried"]=round(cur.get("fried",0)+(fried or 0),2)
+    h=str((eff or datetime.now().astimezone()).astimezone().hour)
+    hb=cur["hourly"].setdefault(h,{"sales":0.0,"orders":0,"bbq":0.0,"fried":0.0})
+    hb["sales"]=round(hb["sales"]+(total or 0),2); hb["orders"]+=1
+    hb["bbq"]=round(hb["bbq"]+(bbq or 0),2); hb["fried"]=round(hb["fried"]+(fried or 0),2)
+    it=cur["items"]
+    for nm,qty in (allitems or []):
+        if nm: it[nm]=round(it.get(nm,0)+(qty or 0),2)
+    if len(it)>400:
+        for k in sorted(it,key=it.get)[:len(it)-400]: it.pop(k,None)
+    return True
+def _sos_track(oid,created,fulfilled,src):
+    # speed of service: time from when an order first appears in OUR queue to when it's marked ready/done
+    if _is_delivery_src(src): return                                        # courier pickups aren't a counter waiter
+    today=datetime.now().astimezone().date().isoformat()
+    if SOS_LIVE["day"]!=today: SOS_LIVE.update({"day":today,"open":{},"times":[],"done":set()})
+    if oid in SOS_LIVE["done"]: return
+    if not fulfilled:
+        if oid not in SOS_LIVE["open"]: SOS_LIVE["open"][oid]=time.time()    # first time we see it waiting
+    else:
+        start=SOS_LIVE["open"].pop(oid,None)
+        if start is not None:
+            dur=(time.time()-start)/60.0
+            if 0<=dur<=120: SOS_LIVE["times"].append(round(dur,1)); SOS_LIVE["times"]=SOS_LIVE["times"][-200:]
+        SOS_LIVE["done"].add(oid)
+def _sos_summary():
+    t=SOS_LIVE.get("times") or []
+    return {"avg_min":(round(sum(t)/len(t),1) if t else None),"served":len(t),"waiting":len(SOS_LIVE.get("open") or {})}
+def _cook_plan():
+    # "put X chickens on now": forecast NEXT hour's rotisserie demand (same weekday in history) vs current stock
+    now=datetime.now().astimezone(); dow=now.weekday(); nexth=(now.hour+1)%24
+    st=db.get("sales_stats",{}) or {}; hist=st.get("history",{}) or {}; vals=[]
+    for date,day in hist.items():
+        try: dd=datetime.fromisoformat(str(date))
+        except Exception: continue
+        if dd.weekday()!=dow: continue
+        hb=(day.get("hourly") or {}).get(str(nexth)) or {}
+        vals.append(float(hb.get("bbq",0) or 0))
+    if vals: exp=sum(vals)/len(vals); have=True
+    else:                                                   # no matching history yet → fall back to today's current-hour pace
+        th=((st.get("today") or {}).get("hourly") or {}).get(str(now.hour)) or {}
+        exp=float(th.get("bbq",0) or 0); have=False
+    try:
+        with rot_lock: cur=float(ROT_LIVE.get("available",0))
+    except Exception: cur=0.0
+    bpr=_rot_cfg().get("bpr",4) or 4; suggest=max(0.0,exp-cur)
+    return {"next_hour":nexth,"expected":round(exp,1),"current_stock":round(cur,1),
+            "suggest_birds":int(round(suggest)),"suggest_rows":int(-(-suggest//bpr)),"have_history":have,"samples":len(vals)}
+
 # ── "Hand out now" alarm: orders containing a ready-now item (salad, whole chicken…) ──
 DEFAULT_NOWAIT=["SALAD","BBQ CHICKEN","WHOLE CHICKEN","DINNER PACK"]
 WAIT_LIVE={"day":None,"orders":{},"done":set(),"acked":set()}
@@ -486,11 +562,12 @@ def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
         allo+=data.get("orders") or [];cursor=data.get("cursor")
         if not cursor: break
     for o in allo:
-        oid=o.get("id");birds=0.0;pcs=0.0;matched=[];now_items=[];w_items=[]
+        oid=o.get("id");birds=0.0;pcs=0.0;matched=[];now_items=[];w_items=[];all_li=[]
         for li in o.get("line_items") or []:
             name=(li.get("name") or "").strip();var=(li.get("variation_name") or "").strip();key=name+"|"+var
             try: q=float(li.get("quantity") or 0)
             except Exception: q=0
+            if name: all_li.append((name+((" "+var) if var else ""),q))   # every item (for top-sellers)
             hit=False
             if key in bm: birds+=q*bm[key];hit=True
             if key in fm: pcs+=q*fm[key];hit=True
@@ -520,7 +597,9 @@ def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
         # is bumped/completed on the KDS (COMPLETED only happens at final pickup), so PREPARED clears it too.
         fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
         oname=(o.get("ticket_name") or "").strip() or rname or (o.get("reference_id") or "").strip() or ("#"+(oid or "")[-5:])
-        out.append((oid,birds,pcs,sched,due,created,matched,src,nowait,oname,fulfilled,kind))
+        try: total=float((o.get("total_money") or {}).get("amount") or 0)/100.0   # order $ value (Square gives cents)
+        except Exception: total=0.0
+        out.append((oid,birds,pcs,sched,due,created,matched,src,nowait,oname,fulfilled,kind,total,all_li))
     return out
 
 def square_poll_loop():
@@ -549,13 +628,15 @@ def square_poll_loop():
                         eff=d if (s and d) else c
                         if eff is None: return False   # no determinable time → don't count/alarm (was True: let undated stale orders slip through)
                         return now>=eff-timedelta(minutes=15) and eff.astimezone().date()==today
-                    rb=fb=0.0;rids=[];fids=[];_pass=set()
+                    rb=fb=0.0;rids=[];fids=[];_pass=set();_stat_dirty=False
                     with rot_lock: _rseen=set(ROT_LIVE["seen"])      # snapshot under the lock → no double-count race vs rot_deduct mutating 'seen'
                     with fry_lock: _fseen=set(FRY_LIVE["seen"])
-                    for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in orders:
+                    for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind,total,allitems) in orders:
                         if oid in _pass: continue                    # the SAME order can be in BOTH the OPEN and COMPLETED lists this poll → count it once
                         if not _due(s,d,c): continue
                         _pass.add(oid)
+                        if _sales_stat_add(oid,(d if (s and d) else c),total,allitems,b,p): _stat_dirty=True   # sales $ / items / hourly (self-dedups per day)
+                        _sos_track(oid,c,fulfilled,src)              # speed-of-service: order→ready timing
                         db_=b if (b>0 and oid not in _rseen) else 0
                         dp_=p if (p>0 and oid not in _fseen) else 0
                         if db_: rb+=db_;rids.append(oid)
@@ -565,7 +646,7 @@ def square_poll_loop():
                     # clear ones that left OPEN or whose fulfillment was completed on the pass KDS
                     if _nowait_on():
                         open_ids=set()
-                        for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind) in open_orders:
+                        for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind,total,allitems) in open_orders:
                             if nowait and _due(s,d,c) and not fulfilled and not _is_delivery_src(src) and not _is_online_src(src):
                                 # start the wait timer from when the order first reaches our kitchen queue
                                 # (matches the pass KDS), NOT Square's created_at — a pre-order/tab can be
@@ -575,6 +656,7 @@ def square_poll_loop():
                         wait_autoclear(open_ids)
                     if rids: rot_deduct(rb,rids)
                     if fids: fry_deduct(fb,fids)
+                    if _stat_dirty: save_data(db)   # persist the sales board (once per poll, after counting)
             except Exception as e: print(f"sales-poll:{e}")
         else:
             square_status["configured"]=False
@@ -2706,7 +2788,7 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats")}
     safe["cameras_public"]=[]
     for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
@@ -2773,6 +2855,22 @@ def api_fry_live(): return jsonify(fry_state())
 def api_sales_feed():
     items=list(reversed(SALES_FEED.get("items",[])))
     return jsonify({"items":items,"bbq_total":round(sum(i["bbq"] for i in items),2),"fried_total":round(sum(i["fried"] for i in items)),"count":len(items)})
+
+@app.route("/api/sales_board")
+def api_sales_board():
+    st=db.get("sales_stats",{}) or {}; today=st.get("today") or {}
+    items=today.get("items") or {}
+    top=sorted(items.items(),key=lambda kv:-(kv[1] or 0))[:8]
+    orders=int(today.get("orders",0) or 0); sales=float(today.get("sales",0) or 0)
+    try: target=float(db.get("sales_target",0) or 0)
+    except Exception: target=0.0
+    return jsonify({"date":today.get("date"),"sales":round(sales,2),"orders":orders,
+        "avg":round(sales/orders,2) if orders else 0,"target":target,
+        "bbq":round(float(today.get("bbq",0) or 0),1),"fried":round(float(today.get("fried",0) or 0),1),
+        "hourly":today.get("hourly") or {},"top":[{"name":n,"qty":q} for n,q in top],
+        "sos":_sos_summary(),"cook":_cook_plan(),
+        "busy":square_status.get("busy"),"last30":square_status.get("sales_last_30min"),
+        "configured":bool(square_status.get("configured"))})
 
 @app.route("/api/fry_put_on",methods=["POST"])
 def api_fry_put_on():

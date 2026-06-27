@@ -3060,7 +3060,66 @@ function setStation(i,oi){const L=_labour(),st=L.stations[i];if(st){if(oi<0)dele
 function addStation(){const nm=prompt('New station name:');if(!nm||!nm.trim())return;const L=_labour();L.stations.push(nm.trim().slice(0,30));appData.labour=L;saveKeys(['labour']);renderTeamPage();}
 function removeStation(i){const L=_labour(),st=L.stations[i];if(!st)return;if(!confirm('Remove station "'+st+'"?'))return;L.stations.splice(i,1);delete L.assign[st];appData.labour=L;saveKeys(['labour']);renderTeamPage();}
 function resetTeam(){if(!confirm("Clear today's shift — who's on AND all station assignments?"))return;const L=_labour();L.on=[];L.assign={};appData.labour=L;saveKeys(['labour']);renderTeamPage();}
-function renderSalesPage(){const el=document.getElementById('sales-body');if(el)el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Sales &amp; service board — coming together…</div>';}
+// ===== Sales & service board (Square KPIs + speed of service + cook plan) =====
+let _salesTimer=null;
+function renderSalesPage(){
+  const el=document.getElementById('sales-body');if(!el)return;
+  if(!el.dataset.loaded)el.innerHTML='<div style="color:var(--muted);padding:16px;">Loading…</div>';
+  fetch('/api/sales_board',{cache:'no-store'}).then(r=>r.json()).then(function(d){
+    el.dataset.loaded='1';
+    if(!d.configured){el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Square isn\'t connected yet — set it up in <b>Settings → Sales/Square</b> to see live sales here.</div>';return;}
+    el.innerHTML=_salesHTML(d);
+  }).catch(()=>{if(!el.dataset.loaded)el.innerHTML='<div class="empty-state" style="padding:30px;">Could not load the sales board.</div>';});
+  if(_salesTimer)clearInterval(_salesTimer);
+  _salesTimer=setInterval(()=>{const pg=document.getElementById('page-sales');if(pg&&pg.classList.contains('active'))renderSalesPage();else{clearInterval(_salesTimer);_salesTimer=null;}},15000);
+}
+function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
+function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
+function _salesHTML(d){
+  const tgt=d.target||0,pct=tgt>0?Math.min(100,(d.sales/tgt)*100):0;
+  // KPI cards
+  let kpi='<div class="kpi-grid">';
+  kpi+='<div class="kpi-card"><div class="kpi-label">Sales today</div><div class="kpi-value">'+_money(d.sales)+'</div>'
+      +(tgt>0?'<div class="kpi-bar"><i style="width:'+pct.toFixed(0)+'%;background:'+(pct>=100?'#19e36b':'var(--acc)')+';"></i></div><div class="kpi-sub">'+pct.toFixed(0)+'% of '+_money(tgt)+' target · <a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">edit</a></div>'
+            :'<div class="kpi-sub"><a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">set a daily target</a></div>')+'</div>';
+  kpi+='<div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value">'+(d.orders||0)+'</div><div class="kpi-sub">avg '+_money(d.avg)+' / order</div></div>';
+  kpi+='<div class="kpi-card"><div class="kpi-label">Right now</div><div class="kpi-value" style="color:'+(d.busy?'var(--amber)':'var(--text)')+';">'+(d.last30||0)+'</div><div class="kpi-sub">orders last 30 min'+(d.busy?' · BUSY':'')+'</div></div>';
+  kpi+='<div class="kpi-card"><div class="kpi-label">Chickens sold</div><div class="kpi-value">'+Math.round(d.bbq||0)+'<span style="font-size:15px;color:var(--muted);"> bbq</span></div><div class="kpi-sub">'+Math.round(d.fried||0)+' fried pcs</div></div>';
+  kpi+='</div>';
+  // Speed of service + Cook plan side by side
+  const s=d.sos||{},c=d.cook||{};
+  let sos='<div class="sales-sec"><h3>Speed of service</h3><div class="kpi-grid" style="margin:0;">'
+    +'<div class="kpi-card"><div class="kpi-label">Avg order → ready</div><div class="kpi-value">'+(s.avg_min!=null?s.avg_min+'<span style="font-size:15px;color:var(--muted);"> min</span>':'—')+'</div><div class="kpi-sub">'+(s.served||0)+' served today</div></div>'
+    +'<div class="kpi-card"><div class="kpi-label">Waiting now</div><div class="kpi-value" style="color:'+((s.waiting||0)>3?'var(--amber)':'var(--text)')+';">'+(s.waiting||0)+'</div><div class="kpi-sub">orders in the queue</div></div>'
+    +'</div></div>';
+  const suggest=c.suggest_rows||0;
+  let cook='<div class="sales-sec"><h3>Cook plan — next hour</h3>'
+    +'<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">'
+    +'<div style="background:'+(suggest>0?'linear-gradient(180deg,#fbab3e,#f3850f)':'var(--surface2)')+';color:'+(suggest>0?'#0b0c10':'var(--muted)')+';border-radius:14px;padding:14px 20px;text-align:center;min-width:150px;">'
+    +'<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Put on now</div>'
+    +'<div style="font-size:34px;font-weight:800;line-height:1.1;margin-top:3px;">'+(suggest>0?(suggest+' row'+(suggest>1?'s':'')):'✓ enough')+'</div>'
+    +(suggest>0?'<div style="font-size:12px;font-weight:700;">≈ '+(c.suggest_birds||0)+' chickens</div>':'')+'</div>'
+    +'<div style="font-size:13px;color:var(--muted);line-height:1.7;">'
+    +'Forecast next hour: <b style="color:var(--text);">'+(c.expected!=null?c.expected:'—')+'</b> chickens<br>'
+    +'In stock now: <b style="color:var(--text);">'+(c.current_stock!=null?c.current_stock:'—')+'</b><br>'
+    +'<span style="font-size:11px;">'+(c.have_history?('based on '+(c.samples||0)+' past '+_dowName()):'building history — uses today\'s pace until ~2 weeks of data')+'</span></div>'
+    +'</div></div>';
+  // hourly heatmap (sales by hour)
+  const hourly=d.hourly||{};let hrs=[];for(let h=6;h<=22;h++)hrs.push(h);
+  let mx=1;hrs.forEach(h=>{const v=(hourly[h]||{}).sales||0;if(v>mx)mx=v;});
+  let heat='<div class="sales-sec"><h3>Sales by hour</h3><div class="heat-row">'+hrs.map(function(h){
+    const v=(hourly[h]||{}).sales||0;const ht=6+Math.round((v/mx)*64);const on=v>0;
+    return '<div class="heat-col"><div class="heat-cell" style="height:'+ht+'px;background:'+(on?'var(--acc)':'var(--surface2)')+';opacity:'+(on?(0.45+0.55*(v/mx)):1)+';" title="'+_money(v)+'"></div><div class="heat-hr">'+((h%12)||12)+(h<12?'a':'p')+'</div></div>';
+  }).join('')+'</div></div>';
+  // top sellers
+  const top=d.top||[];
+  let ts='<div class="sales-sec"><h3>Top sellers today</h3>'+(top.length?top.map(function(t,i){
+    const w=top[0].qty?Math.max(8,(t.qty/top[0].qty)*100):0;
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;"><span style="width:18px;color:var(--muted);font-size:12px;">'+(i+1)+'</span><div style="flex:1;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px;"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">'+esc(t.name)+'</span><b>'+(Math.round(t.qty*10)/10)+'</b></div><div class="kpi-bar" style="margin:0;"><i style="width:'+w+'%;"></i></div></div></div>';
+  }).join(''):'<div style="color:var(--muted);font-size:13px;">No sales counted yet today.</div>')+'</div>';
+  return kpi+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">'+sos+cook+'</div>'+heat+ts;
+}
+function _dowName(){return ['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'][(new Date().getDay()+6)%7];}
 function fmtNoteTime(iso){try{return new Date(iso).toLocaleString('en-AU',{weekday:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 function updateNotesBadge(){const b=document.getElementById('notes-badge');if(!b)return;const n=(appData.handover_notes||[]).length;b.textContent=n;b.className=n>0?'show':'';}
 function openNotesModal(){document.getElementById('note-text').value='';document.getElementById('note-who').value='';renderNotes();openModal('notes-modal');}
