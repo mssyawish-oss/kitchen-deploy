@@ -135,9 +135,10 @@ def compose_daily_report():
     L.append("")
     L.append(f"Avg cook time:  BBQ {avg_cook_time('bbq',settings['bbq_drop_minutes'])} min   Fried {avg_cook_time('fried',settings['fried_drop_minutes'])} min")
     L.append("")
-    tasks=db.get("packdown_tasks",[]);done={}
+    tasks=db.get("packdown_tasks",[]);last={}
     for e in db.get("packdown_log",[]):
-        if e.get("time","")[:10]==today and e.get("done"): done[e.get("taskId")]=e
+        if e.get("time","")[:10]==today and e.get("taskId"): last[e.get("taskId")]=e   # append-only log → keep the LAST entry per task
+    done={tid:e for tid,e in last.items() if e.get("done")}   # count only tasks whose FINAL state is done (a tick later un-ticked = NOT done)
     L.append(f"PACKDOWN: {len(done)}/{len(tasks)} tasks completed")
     miss=[t for t in tasks if t.get("id") not in done]
     if miss:

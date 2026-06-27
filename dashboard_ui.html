@@ -299,7 +299,11 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
 @media(min-width:900px){
   #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 0 auto;}
 }
-body.hide-fried #rl-fry,body.hide-fried #batches-head,body.hide-fried #timers-grid{display:none!important;}   /* Settings → hide fried-chicken batches + stock */
+body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the fried-chicken STOCK card only; batch cook timers stay (owner uses them) */
+.pb-split{display:flex;gap:14px;align-items:stretch;flex:1 0 auto;min-height:0;}   /* Probes | Batches side by side */
+.pb-sec{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
+.pb-sec .probes-grid,.pb-sec .timers-grid{grid-template-columns:repeat(2,minmax(0,1fr));}   /* 2 cards wide within each half */
+@media(max-width:760px){.pb-split{flex-direction:column;flex:0 0 auto;gap:8px;}}
 #page-probes .probe-card,#page-probes .timer-card{justify-content:flex-start;gap:8px;}
 #page-probes .gauge{width:min(108px,15vh);}
 #page-probes .probe-ic{width:min(44px,7vh);height:min(44px,7vh);flex-shrink:0;}
@@ -735,10 +739,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
-      <div class="sec-head"><span>Probes</span></div>
-      <div class="probes-grid" id="probes-grid"></div>
-      <div class="sec-head" id="batches-head"><span>Batches</span></div>
-      <div class="timers-grid" id="timers-grid"></div>
+      <div class="pb-split">
+        <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
+        <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div class="timers-grid" id="timers-grid"></div></div>
+      </div>
     </div>
     <div class="page" id="page-stock">
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="resetStockCounts()">Reset counts</button><button class="btn" onclick="openStockAdmin()">Setup</button><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button></div></div>
@@ -1433,13 +1437,15 @@ function _runCapQueue(){
   const to=setTimeout(()=>{if(ctrl)try{ctrl.abort();}catch(e){}},9000);
   fetch('/api/capture',{method:'POST',signal:ctrl?ctrl.signal:undefined}).then(r=>r.json()).then(d=>{clearTimeout(to);if(d&&d.ok&&d.photo)_attachPhoto(ts,d.photo);}).catch(()=>{clearTimeout(to);}).finally(()=>{_capRunning=false;_runCapQueue();});
 }
+let _lastTs=0;
+function _nextTs(){let t=Date.now();if(t<=_lastTs)t=_lastTs+1;_lastTs=t;return t;}   // strictly-increasing UNIQUE id → two completions in the same ms can't share one photo (stays numeric for sort/date)
 function completeWithProof(title,sub,onDone){
   if(appData.camera_enabled){
-    const rec={time:nowTime(),ts:Date.now()};   // mark done INSTANTLY — the photo attaches a moment later in the background
+    const rec={time:nowTime(),ts:_nextTs()};   // mark done INSTANTLY — the photo attaches a moment later in the background
     onDone(rec);
     _queueCapture(rec.ts);
   } else {
-    requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:Date.now()});});
+    requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:_nextTs()});});
   }
 }
 function showCaptureOverlay(){let c=document.getElementById('capture-chip');if(!c){c=document.createElement('div');c.id='capture-chip';c.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:rgba(20,22,30,.96);border:1px solid var(--border2);color:var(--text);font-size:16px;font-weight:600;padding:14px 22px;border-radius:14px;box-shadow:0 12px 44px rgba(0,0,0,.55);display:flex;align-items:center;gap:11px;pointer-events:none;';c.innerHTML='<span class="cap-spin"></span>Saving…';document.body.appendChild(c);}c.style.display='flex';}
@@ -1878,7 +1884,7 @@ function renderPackdownPage(){
   const sections={};tasks.forEach(t=>{const s=t.section||'General';if(!sections[s])sections[s]=[];sections[s].push(t);});
   list.innerHTML='<div class="pd-columns">'+Object.entries(sections).map(([sec,items])=>`<div class="pd-section"><div class="pd-sec-head">${sec}</div>${items.map(t=>{const state=(appData.packdown_checks||{})[t.id]||{done:false};const due=t.remind_at&&!state.done&&!packdownDueDismissed[t.id]&&nowHHMM()>=t.remind_at;return `<div class="task-item ${due?'due':''}"><div class="task-check ${state.done?'done':''}" onclick="toggleTask('${t.id}')">${state.done?'&#10003;':''}</div><div style="flex:1;"><div class="task-name ${state.done?'done':''}">${t.name}</div>${t.remind_at?`<div class="task-reminder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${t.remind_at}</div>`:''} ${proofHtml(state)}</div></div>`;}).join('')}</div>`).join('')+'</div>';
 }
-function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||Date.now()});appData.packdown_log=appData.packdown_log.slice(-500);}
+function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
 function toggleTask(taskId){
   appData.packdown_checks=appData.packdown_checks||{};
   const cur=appData.packdown_checks[taskId]||{done:false};
