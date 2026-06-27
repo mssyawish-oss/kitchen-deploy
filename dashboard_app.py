@@ -22,14 +22,17 @@ def load_data():
     except Exception as e: print(f"Load error:{e}")
     return {"suppliers":[],"products":[],"recipes":[],"packdown_tasks":[],"packdown_log":[],"service_alerts":[],"quiet_jobs":[],"email_config":{},"staff":[]}
 
+_save_lock=threading.RLock()
 def save_data(data):
-    # compact (no indent → much smaller/faster write) + atomic replace so a crash mid-write can't corrupt the file
-    try:
-        s=json.dumps(data,separators=(",",":"))
-        tmp=DATA_FILE+".tmp"
-        with open(tmp,"w",encoding="utf-8") as f: f.write(s)
-        os.replace(tmp,DATA_FILE)
-    except Exception as e: print(f"Save error:{e}")
+    # compact (no indent → much smaller/faster write) + atomic replace so a crash mid-write can't corrupt the file.
+    # Serialized: parallel auto-trace reads can call this concurrently, so one dump/replace at a time.
+    with _save_lock:
+        try:
+            s=json.dumps(data,separators=(",",":"))
+            tmp=DATA_FILE+".tmp"
+            with open(tmp,"w",encoding="utf-8") as f: f.write(s)
+            os.replace(tmp,DATA_FILE)
+        except Exception as e: print(f"Save error:{e}")
 
 db = load_data()
 probe_temps={1:None,2:None,3:None,4:None}
@@ -269,6 +272,7 @@ def query_square_recent(cfg,minutes=30):
 # ── LIVE ROTISSERIE STOCK ── available birds = (loaded & finished) − (sold via Square)
 ROT_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[]}
 rot_lock=threading.Lock()
+_gem_lock=threading.Lock()                                # guards the Gemini usage counter + auto-trace id allocation (parallel reads)
 _rl0=db.get("rot_live")                                   # restore across restarts so the count is NOT lost
 if isinstance(_rl0,dict):
     for _k in ("day","available","sold_today","seen"):
@@ -1319,11 +1323,13 @@ _gem_u=db.get("rotcam_usage") or {}
 ROTCAM["calls_today"]=_gem_u.get("calls_today",0); ROTCAM["calls_day"]=_gem_u.get("calls_day","")
 ROTCAM["calls_total"]=_gem_u.get("calls_total",0)
 def _gem_count_call():
-    today=datetime.now().astimezone().date().isoformat()
-    if ROTCAM.get("calls_day")!=today: ROTCAM["calls_day"]=today; ROTCAM["calls_today"]=0
-    ROTCAM["calls_today"]=ROTCAM.get("calls_today",0)+1
-    ROTCAM["calls_total"]=ROTCAM.get("calls_total",0)+1
-    if ROTCAM["calls_total"]%10==0:   # persist occasionally so the meter survives restarts
+    with _gem_lock:                   # parallel reads call this concurrently — keep the meter exact
+        today=datetime.now().astimezone().date().isoformat()
+        if ROTCAM.get("calls_day")!=today: ROTCAM["calls_day"]=today; ROTCAM["calls_today"]=0
+        ROTCAM["calls_today"]=ROTCAM.get("calls_today",0)+1
+        ROTCAM["calls_total"]=ROTCAM.get("calls_total",0)+1
+        persist=(ROTCAM["calls_total"]%10==0)
+    if persist:   # persist occasionally so the meter survives restarts
         try:
             with data_lock:
                 db["rotcam_usage"]={"calls_today":ROTCAM["calls_today"],"calls_day":ROTCAM["calls_day"],"calls_total":ROTCAM["calls_total"]}
@@ -1548,15 +1554,18 @@ def _rotcam_corr_guidance():
         return "\n".join(lines) if len(lines)>1 else ""
     except Exception: return ""
 
-def _rotcam_count(jpeg):
+def _rotcam_gemini_read(jpeg):
+    # PURE read — sends the frame to Gemini and parses it, WITHOUT touching shared ROTCAM counting state.
+    # Safe to call from many threads at once (parallel auto-trace reads). Returns a result dict.
+    out={"raw":"","levels":"","done":"","count":None,"blocked":False,"comp_b64":None,"err":None}
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
-    if not key: return None,"No Gemini API key configured"
-    _gem_count_call()                 # track usage/cost
+    if not key: out["err"]="No Gemini API key configured"; return out
+    _gem_count_call()                 # track usage/cost (thread-safe)
     comp=_rotcam_boxes_composite(jpeg)
     done_mode=bool(cfg.get("doneness_enabled")) and comp is not None   # read colour/doneness per row in the same call
     if comp is not None:
         img=comp; prompt=(_ROT_DONE_PROMPT if done_mode else (cfg.get("prompt") or _ROT_BOX_PROMPT))   # per-box strips (preferred)
-        ROTCAM["last_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
+        out["comp_b64"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
     else:
         img=_downscale_jpeg(jpeg); prompt=cfg.get("prompt") or _ROT_PROMPT   # fallback: whole frame
     _gd=_rotcam_corr_guidance()
@@ -1575,33 +1584,45 @@ def _rotcam_count(jpeg):
         cand=(data.get("candidates") or [{}])[0]
         parts=((cand.get("content") or {}).get("parts")) or []
         txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
-        ROTCAM["last_raw"]=(txt or "").strip()           # exact words the AI replied — for the debug inspector
-        if not txt: return None,"Gemini returned no answer (finish: %s)"%cand.get("finishReason","?")
+        out["raw"]=(txt or "").strip()
+        if not txt: out["err"]="Gemini returned no answer (finish: %s)"%cand.get("finishReason","?"); return out
         txtc=re.sub(r"[\s,;/|.\-]+","",txt)          # collapse spaces/separators: the model sometimes replies "O R A N N N"
         if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
             dm=re.search(r"[0NAROnaro]{6}",txtc)
-            if "block" in txt.lower() and not dm: ROTCAM["last_blocked_ts"]=time.time(); return None,"view blocked — someone at the oven"
+            if "block" in txt.lower() and not dm: out["blocked"]=True; out["err"]="view blocked — someone at the oven"; return out
             if dm:
-                done=dm.group().upper(); ROTCAM["done"]=done
-                ROTCAM["levels"]="".join("0" if c=="0" else "1" for c in done)   # derive occupancy from doneness
-                _rotcam_save_crops(jpeg,done)        # auto-collect on-spit training crops, labelled by doneness
-                return ROTCAM["levels"].count("1"),None
+                out["done"]=dm.group().upper()
+                out["levels"]="".join("0" if c=="0" else "1" for c in out["done"])   # derive occupancy from doneness
+                out["count"]=out["levels"].count("1"); return out
             # no doneness pattern parsed → fall through to plain occupancy parsing below
         mm=re.search(r"[01]{6}",txtc)                # per-level pattern e.g. 111100 → count the loaded levels
         if "block" in txt.lower() and not mm:        # someone standing in front → skip this read, don't touch stock
-            ROTCAM["last_blocked_ts"]=time.time(); return None,"view blocked — someone at the oven"
-        if mm:
-            ROTCAM["levels"]=mm.group()
-            return mm.group().count("1"),None
+            out["blocked"]=True; out["err"]="view blocked — someone at the oven"; return out
+        if mm: out["levels"]=mm.group(); out["count"]=mm.group().count("1"); return out
         m=re.search(r"\d+",txt)                       # fallback: a plain count
-        if not m: return None,"Gemini reply had no count: "+txt[:40]
-        return int(m.group()),None
+        if not m: out["err"]="Gemini reply had no count: "+txt[:40]; return out
+        out["count"]=int(m.group()); return out
     except Exception as e:
         rd=getattr(e,"read",None)
         if rd:
-            try: return None,"Gemini error: "+e.read().decode()[:140]
+            try: out["err"]="Gemini error: "+e.read().decode()[:140]; return out
             except Exception: pass
-        return None,str(e)
+        out["err"]=str(e); return out
+
+def _rotcam_count(jpeg):
+    # Stateful wrapper for the MAIN counter: do a read, then apply it to shared ROTCAM state (as before).
+    r=_rotcam_gemini_read(jpeg)
+    if r.get("comp_b64") is not None: ROTCAM["last_comp"]=r["comp_b64"]
+    if r.get("raw"): ROTCAM["last_raw"]=r["raw"]
+    if r.get("blocked"): ROTCAM["last_blocked_ts"]=time.time()
+    if r.get("err"): return None,r["err"]
+    if r.get("done"):
+        ROTCAM["done"]=r["done"]; ROTCAM["levels"]=r["levels"]
+        _rotcam_save_crops(jpeg,r["done"])           # auto-collect on-spit training crops, labelled by doneness
+        return r["count"],None
+    if r.get("levels"): ROTCAM["levels"]=r["levels"]; return r["count"],None
+    if r.get("count") is not None: return r["count"],None
+    return None,"no read"
 # ===== UNLOADING-BENCH WATCHER =====================================================
 # Cooked rows are ALWAYS placed on the stainless bench (bottom of frame) before going to
 # the warmer. Counting loaded shelves can't catch removals (staff slide rows up + stand in
@@ -1845,7 +1866,7 @@ _ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long befor
 _ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
 _ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
 _ROT_AFTER_SECS=30       # after the AI auto-counts a row OFF, keep reading the scene for this long so the owner sees what happened next
-_ROT_AFTER_EVERY=2       # try a fresh full AI read this often during that window — with ~2-3s Gemini latency this is effectively back-to-back (max precision; cost is not a concern per owner)
+# (after-window read cadence is _ROT_AFTER_GRAB; reads run in parallel — see _rotcam_auto_session)
 def _rotcam_apply(rows):
     ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
     pat=ROTCAM.get("levels","")
@@ -1954,22 +1975,22 @@ def _rotcam_log_event(ev,jpeg):
                "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
         with rot_lock:
             seq=int(db.get("rotcam_credit_seq",0))+1; db["rotcam_credit_seq"]=seq; entry["num"]=seq   # stable, ever-increasing # the owner can quote ("box #47 read wrong")
-            log=db.get("rotcam_credit_log",[]); log.append(entry); db["rotcam_credit_log"]=log[-60:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])
+            log=list(db.get("rotcam_credit_log",[]) or []); log.append(entry); db["rotcam_credit_log"]=log[-60:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])   # copy-on-write (parallel saves)
         try:                                                     # prune screenshot folders that fell off the log
             import shutil; base=os.path.join(BASE_DIR,"rotcam_credits")
             for nm in os.listdir(base):
                 if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
         except Exception: pass
         save_data(db)
-        if credited:   # the AI counted a row off ON ITS OWN → log frame #1 (the moment) + keep reading the scene for 15s after
+        if credited:   # the AI counted a row off ON ITS OWN → log frame #1 (the moment), then a PARALLEL read session for 30s after
             _rotcam_auto_trace_add(eid,1,0,jpeg,"✓ AUTO-COUNTED shelf %d (+%d) — %s"%(shelf+1,bpr,ev.get("reason","")),[{"shelf":shelf,"credited":True}])
-            ROTCAM.setdefault("auto_jobs",[]).append({"id":eid,"dir":d,"shelf":shelf+1,"start":now,"until":now+_ROT_AFTER_SECS,"next":now+_ROT_AFTER_EVERY,"n":1})
+            threading.Thread(target=_rotcam_auto_session,args=(eid,shelf+1,now),daemon=True).start()
     except Exception: pass
 
-def _rotcam_trace_shelves(events):
-    # Per-shelf read snapshot from the CURRENT ROTCAM state — shared by the live trace and the auto trace so
-    # both show identical info (occupancy, doneness, and the note/decision per shelf).
-    now=time.time(); lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
+def _rotcam_trace_shelves_from(lv,dn,events):
+    # Build the per-shelf read display from EXPLICIT levels/doneness strings (so a parallel read uses ITS OWN
+    # result, not shared ROTCAM state). Cooking-time notes read ROTCAM timing arrays (read-only, fine).
+    now=time.time(); lv=lv or ""; dn=dn or ""
     la=ROTCAM.get("shelf_loaded_at",[0]*6); oa=ROTCAM.get("shelf_off_at",[0]*6)
     _DN={"0":"empty","N":"raw","A":"almost","R":"ready","O":"overdone"}
     cred={e["shelf"] for e in (events or []) if e.get("credited")}
@@ -1984,16 +2005,23 @@ def _rotcam_trace_shelves(events):
         if i in cred: note="✓ COUNTED +%d"%bpr
         elif i in skip: note="✗ not counted"
         shelves.append({"i":i+1,"occ":occ,"done":done,"note":note})
-    return shelves,lv,dn
+    return shelves
+def _rotcam_trace_shelves(events):
+    lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
+    return _rotcam_trace_shelves_from(lv,dn,events),lv,dn
 
-def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None):
+def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None,lv=None,dn=None,raw=None):
     # One PERSISTENT auto-trace frame: same shape as a live-trace record (id/raw/levels/done/shelves/decision),
     # plus eid/n/after so the inspector can show the ordered reel. Image saved to disk → survives restarts.
+    # When lv/dn/raw are passed (parallel reads) the frame reflects THAT read; otherwise it uses ROTCAM state.
     try:
-        now=time.time(); tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
-        shelves,lv,dn=_rotcam_trace_shelves(events)
+        now=time.time()
+        if lv is None: lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""; raw=ROTCAM.get("last_raw","") or ""
+        shelves=_rotcam_trace_shelves_from(lv,dn,events)
+        with _gem_lock:                                  # atomic id allocation across parallel reads
+            tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
         rec={"id":tid,"eid":int(eid),"n":int(n),"after":int(after),"ts":int(now),
-             "raw":(ROTCAM.get("last_raw","") or "")[:140],"levels":lv,"done":dn,
+             "raw":(raw or "")[:140],"levels":lv or "","done":dn or "",
              "decision":decision,"shelves":shelves,"img":"auto%d.jpg"%int(n)}
         d=os.path.join(BASE_DIR,"rotcam_credits",str(int(eid))); os.makedirs(d,exist_ok=True)
         if jpeg:
@@ -2003,35 +2031,53 @@ def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None):
             bo=_io.BytesIO(); im.save(bo,"JPEG",quality=72); open(os.path.join(d,rec["img"]),"wb").write(bo.getvalue())
             ROTCAM.setdefault("trace_img",{})[tid]=bo.getvalue()   # fast in-memory serve; disk is the durable copy
         with rot_lock:
-            at=db.get("rotcam_auto_trace",[]); at.append(rec); db["rotcam_auto_trace"]=at[-600:]; save_data(db)
+            at=list(db.get("rotcam_auto_trace",[]) or []); at.append(rec); db["rotcam_auto_trace"]=at[-600:]   # copy-on-write so a concurrent save dump never sees a mutating list
+            save_data(db)
         return tid
     except Exception: return None
 
-def _rotcam_auto_after_tick():
-    # While an auto-count's 15s window is open, grab a fresh frame every few seconds, RUN A FULL AI READ on it,
-    # and store it as an ordered persistent auto-trace frame — so each frame shows what the AI saw + did, just
-    # like the manual trace. The read is isolated so it never disturbs the main counter's anti-flicker.
-    js=ROTCAM.get("auto_jobs") or []
-    if not js: return
-    now=time.time(); frame=ROTCAM.get("frame"); fresh=bool(frame) and (now-ROTCAM.get("frame_ts",0))<10
-    due=[j for j in js if now>=j["next"]]
-    if due and fresh:
-        snap={k:ROTCAM.get(k) for k in ("last_raw","last_comp","levels","done","last_blocked_ts")}   # protect the live counter
-        try: rows,cerr=_rotcam_count(frame)   # one read serves every job due this tick
-        except Exception: cerr="read error"
-        for j in due:
-            j["n"]=int(j.get("n",1))+1; n=j["n"]; after=int(now-j["start"])
-            dec=("watching +%ds after auto-count of shelf %s — AI now reads %s"%(after,j.get("shelf","?"),ROTCAM.get("levels","") or "?")) if not cerr \
-                else ("watching +%ds after auto-count of shelf %s — %s"%(after,j.get("shelf","?"),cerr))
-            _rotcam_auto_trace_add(j["id"],n,after,frame,dec)
-            j["next"]=now+_ROT_AFTER_EVERY
-        for k,v in snap.items(): ROTCAM[k]=v   # restore — the main loop's next read must see ITS own sequence
-    ROTCAM["auto_jobs"]=[j for j in js if now<j["until"]]
+_ROT_AFTER_GRAB=1.0      # during the after-window, dispatch a fresh read this often; PARALLEL pool absorbs the per-read latency
+_ROT_READ_WORKERS=6      # concurrent Gemini reads in the auto-trace pool (cost is not a concern per owner; capped to avoid 429s)
+_ROT_READ_POOL_REF=[None]
+def _rot_read_pool():
+    if _ROT_READ_POOL_REF[0] is None:
+        import concurrent.futures
+        _ROT_READ_POOL_REF[0]=concurrent.futures.ThreadPoolExecutor(max_workers=_ROT_READ_WORKERS,thread_name_prefix="rotread")
+    return _ROT_READ_POOL_REF[0]
+def _rotcam_session_frame(eid,n,after,jpeg,shelf):
+    # One PARALLEL follow-up read: pure Gemini read (no shared-state writes) → persist as an ordered auto-trace frame.
+    try:
+        r=_rotcam_gemini_read(jpeg)
+        lv=r.get("levels") or ""; dn=r.get("done") or ""
+        if r.get("err") and not lv: dec="watching +%ds after auto-count of shelf %s — %s"%(after,shelf,r.get("err"))
+        else: dec="watching +%ds after auto-count of shelf %s — AI reads %s"%(after,shelf,lv or "?")
+        _rotcam_auto_trace_add(eid,n,after,jpeg,dec,None,lv,dn,(r.get("raw") or ""))
+    except Exception: pass
+def _rotcam_auto_session(eid,shelf,start_ts):
+    # Own thread for _ROT_AFTER_SECS after a row is counted off: densely grab UNIQUE camera frames and read them
+    # IN PARALLEL, so frame density beats the single-call Gemini latency. Reads are pure → main counter untouched.
+    try:
+        pool=_rot_read_pool(); futs=[]; n=1; seen=set()
+        end=start_ts+_ROT_AFTER_SECS; nxt=start_ts+_ROT_AFTER_GRAB
+        while time.time()<end:
+            now=time.time()
+            if now>=nxt:
+                frame=ROTCAM.get("frame"); fts=ROTCAM.get("frame_ts",0)
+                if frame and (now-fts)<10 and fts not in seen:   # one read per real camera frame; skip duplicates
+                    seen.add(fts); n+=1
+                    futs.append(pool.submit(_rotcam_session_frame,eid,n,int(now-start_ts),frame,shelf))
+                nxt=now+_ROT_AFTER_GRAB
+            time.sleep(0.12)
+        for f in futs:                                           # let in-flight reads finish writing
+            try: f.result(timeout=45)
+            except Exception: pass
+    except Exception: pass
 def _rotcam_add_trace(jpeg,events,cerr):
     # Per-frame debug record for the Settings inspector: the frame + exactly what the AI replied + what we
     # parsed per shelf + the decision the logic made. Lets the owner see WHERE the AI is going wrong.
     try:
-        now=time.time(); tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        now=time.time()
+        with _gem_lock: tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid   # shared counter (parallel auto reads)
         shelves,lv,dn=_rotcam_trace_shelves(events)
         rec={"id":tid,"ts":int(now),"raw":(ROTCAM.get("last_raw","") or "")[:140],
              "levels":lv,"done":dn,"decision":(cerr or ROTCAM.get("last_decision","")),"shelves":shelves}
@@ -2105,7 +2151,7 @@ def rotcam_loop():
                         _rotcam_add_trace(jpeg,evs,cerr)   # per-frame debug trace → Settings inspector
                         if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
             except Exception as e: ROTCAM["error"]=str(e)
-        _rotcam_auto_after_tick()   # append "what happened after" frames to any in-progress auto-count capture
+        # after-count capture now runs in its OWN parallel thread per credited row (_rotcam_auto_session) — not here
         # while actively counting, the Gemini call already paces the loop (~2-3s) — don't add a full extra
         # second on top; just yield briefly. Only sleep the full cadence when idle (window closed / disabled).
         time.sleep(0.1 if (open_now and cfg.get("enabled") and (cfg.get("gemini_key") or "").strip()) else max(1,min(iv,bench_iv)))
