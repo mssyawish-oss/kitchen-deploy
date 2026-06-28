@@ -2930,6 +2930,36 @@ def api_sales_board():
         "busy":square_status.get("busy"),"last30":square_status.get("sales_last_30min"),
         "configured":bool(square_status.get("configured"))})
 
+@app.route("/api/delivery_gross")
+def api_delivery_gross():
+    # Uber/DoorDash GROSS sales from Square orders for a date window (UTC ISO start/end) — for the Weekly Books
+    # 30% payout estimate. Split by order source.name (same field the live counting uses for delivery).
+    cfg=db.get("square_config",{}) or {}; token=(cfg.get("access_token") or "").strip(); loc=(cfg.get("location_id") or "").strip()
+    if not token or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    start=request.args.get("start"); end=request.args.get("end")
+    if not start or not end: return jsonify({"ok":False,"error":"start & end (ISO UTC) required"})
+    out={"uber":0.0,"doordash":0.0,"uber_orders":0,"doordash_orders":0}; cursor=None
+    try:
+        for _ in range(20):
+            q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":start,"end_at":end}},
+               "state_filter":{"states":["OPEN","COMPLETED"]}}},"limit":500}
+            if cursor: q["cursor"]=cursor
+            req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(q).encode(),
+                headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            for o in data.get("orders") or []:
+                src=((o.get("source") or {}).get("name") or "").lower()
+                tot=float((o.get("total_money") or {}).get("amount") or 0)/100.0
+                if "uber" in src: out["uber"]+=tot; out["uber_orders"]+=1
+                elif "door" in src: out["doordash"]+=tot; out["doordash_orders"]+=1
+            cursor=data.get("cursor")
+            if not cursor: break
+        out["uber"]=round(out["uber"],2); out["doordash"]=round(out["doordash"],2)
+        return jsonify({"ok":True,**out})
+    except Exception as e:
+        try: return jsonify({"ok":False,"error":e.read().decode()[:200]})
+        except Exception: return jsonify({"ok":False,"error":str(e)})
+
 @app.route("/api/import_square_team",methods=["POST"])
 def api_import_square_team():
     # Pull ACTIVE team members + their hourly wage from Square. NOTE: Square does NOT expose POS passcodes via the
