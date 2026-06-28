@@ -456,7 +456,11 @@ def _sos_summary():
 def _cook_plan():
     # "put X chickens on now": forecast NEXT hour's rotisserie demand (same weekday in history) vs current stock
     now=datetime.now().astimezone(); dow=now.weekday(); nexth=(now.hour+1)%24
-    st=db.get("sales_stats",{}) or {}; hist=st.get("history",{}) or {}; vals=[]
+    st=db.get("sales_stats",{}) or {}; vals=[]
+    hist={}
+    for _ in range(3):                                      # snapshot history (poll thread may rewrite it at midnight rollover)
+        try: hist=dict(st.get("history",{}) or {}); break
+        except RuntimeError: continue
     for date,day in hist.items():
         try: dd=datetime.fromisoformat(str(date))
         except Exception: continue
@@ -470,9 +474,9 @@ def _cook_plan():
     try:
         with rot_lock: cur=float(ROT_LIVE.get("available",0))
     except Exception: cur=0.0
-    bpr=_rot_cfg().get("bpr",4) or 4; suggest=max(0.0,exp-cur)
+    bpr=_rot_cfg().get("bpr",4) or 4; sb=int(round(max(0.0,exp-cur)))   # whole birds to put on
     return {"next_hour":nexth,"expected":round(exp,1),"current_stock":round(cur,1),
-            "suggest_birds":int(round(suggest)),"suggest_rows":int(-(-suggest//bpr)),"have_history":have,"samples":len(vals)}
+            "suggest_birds":sb,"suggest_rows":int(-(-sb//bpr)),"have_history":have,"samples":len(vals)}   # rows derived from birds so they agree
 
 # ── "Hand out now" alarm: orders containing a ready-now item (salad, whole chicken…) ──
 DEFAULT_NOWAIT=["SALAD","BBQ CHICKEN","WHOLE CHICKEN","DINNER PACK"]
@@ -1779,7 +1783,7 @@ def _rotcam_count(jpeg):
     # Stateful wrapper for the MAIN counter: do a read, then apply it to shared ROTCAM state (as before).
     r=_rotcam_gemini_read(jpeg)
     if r.get("comp_b64") is not None: ROTCAM["last_comp"]=r["comp_b64"]
-    if r.get("raw"): ROTCAM["last_raw"]=r["raw"]
+    ROTCAM["last_raw"]=r.get("raw","")   # always reflect the latest reply (even empty) — matches the old behaviour
     if r.get("blocked"): ROTCAM["last_blocked_ts"]=time.time()
     if r.get("err"): return None,r["err"]
     if r.get("done"):

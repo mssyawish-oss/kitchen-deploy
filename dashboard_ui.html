@@ -3113,10 +3113,10 @@ function importSquareTeam(){
   fetch('/api/import_square_team',{method:'POST'}).then(r=>r.json()).then(function(d){
     if(!d.ok){if(st){st.textContent=d.error||'Import failed.';st.style.color='var(--red)';}return;}
     appData.staff=appData.staff||[];let added=0,updated=0;
-    (d.members||[]).forEach(function(m){
+    (d.members||[]).forEach(function(m,mi){
       let s=(m.square_id&&appData.staff.find(x=>x.square_id===m.square_id))||appData.staff.find(x=>(x.name||'').toLowerCase()===(m.name||'').toLowerCase());
-      if(s){s.square_id=m.square_id;if(m.hourly_rate)s.hourly_rate=m.hourly_rate;if(m.email)s.email=m.email;if(m.title&&!s.role)s.role=_roleFromTitle(m.title);updated++;}
-      else{appData.staff.push({name:m.name,pin:'',role:_roleFromTitle(m.title),hourly_rate:m.hourly_rate||0,square_id:m.square_id,email:m.email||''});added++;}
+      if(s){if(!s.id)s.id='staff_'+Date.now()+'_'+mi;s.square_id=m.square_id;if(m.hourly_rate)s.hourly_rate=m.hourly_rate;if(m.email)s.email=m.email;if(m.title&&!s.role)s.role=_roleFromTitle(m.title);updated++;}
+      else{appData.staff.push({id:'staff_'+Date.now()+'_'+mi,name:m.name,pin:'',role:_roleFromTitle(m.title),hourly_rate:m.hourly_rate||0,square_id:m.square_id,email:m.email||''});added++;}
     });
     saveKeys(['staff']);renderTeamPage();
     const need=(appData.staff||[]).filter(s=>!s.pin).length;
