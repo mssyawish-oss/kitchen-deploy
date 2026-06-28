@@ -565,6 +565,7 @@ function load(){
       localStorage.setItem(KEY+'_aprMayReal','1'); save();
     }
     ensureFixedOH();
+    reconcileEstimates();   // a real Uber/DoorDash payout always supersedes its 30% estimate
     dedupeMark();
     pruneFuturePayouts();
   }catch(e){ TX=seedTx(); }
@@ -733,7 +734,7 @@ function wageRowHTML(t){
   }
   return rowHTML(t);
 }
-function isAutoTx(t){ return t.src==='sync' || t.src==='bill' || t.src==='embed'; }
+function isAutoTx(t){ return t.src==='sync' || t.src==='bill' || t.src==='embed' || t.src==='est'; }
 function rowHTML(t){
   const auto=isAutoTx(t);
   const isExp = t.type==='expense';
@@ -751,7 +752,7 @@ function rowHTML(t){
   const verify=payoutLink(t);
   return `<div class="txrow ${auto?'synced':''}">
     <input class="cat" placeholder="Category" value="${(t.cat||'').replace(/"/g,'&quot;')}" oninput="editCat('${t.id}',this.value)">
-    ${auto?'<span class="badge">AUTO</span>':''}${bkt}${rec}
+    ${t.src==='est'?'<span class="badge" style="background:#fef3c7;color:#92400e;border-color:#fcd34d" title="Estimated from Square gross minus 30% — replaced by the real payout when it lands">EST −30%</span>':(auto?'<span class="badge">AUTO</span>':'')}${(t.est!=null&&t.src!=='est')?('<span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac" title="vs the 30% estimate">est '+fmt(t.est)+' · diff '+((t.amt-t.est)>=0?'+':'')+fmt(t.amt-t.est)+'</span>'):''}${bkt}${rec}
     <input class="amt" type="number" step="0.01" placeholder="0" value="${t.amt||''}" oninput="editAmt('${t.id}',this.value)">
     ${(t.recur==='monthly'||t.recur==='fortnightly')?`<span class="pct" style="margin-left:0;white-space:nowrap">≈${fmt(weeklyVal(t))}/wk</span>`:''}
     ${verify?`<a href="${verify}" target="_blank" rel="noopener" class="pct" style="margin-left:0;white-space:nowrap;color:#0369a1;font-weight:600" title="Open this week's payout email in Gmail to confirm">verify ↗</a>`:''}
@@ -1105,6 +1106,27 @@ function setSyncLine(cat,amt,type){
   if(t){ t.amt=Math.round(amt*100)/100; t.type=type; }
   else TX.push({id:uid(),date:curKey(),type,cat,amt:Math.round(amt*100)/100,src:'sync'});
 }
+// DELIVERY ESTIMATE: payout ≈ Square gross − 30% (the platform's cut). Books an estimate income line for the
+// current week ONLY when no real payout is booked yet; the real payout (email/pinned) always wins.
+function bookEstimate(cat,gross){
+  const k=curKey(), est=Math.round((gross||0)*0.70*100)/100;
+  const real=TX.find(x=>weekKey(x.date)===k && x.cat===cat && x.src!=='est');   // a real payout already exists
+  if(real){ if(est>0) real.est=est; TX=TX.filter(t=>!(weekKey(t.date)===k && t.cat===cat && t.src==='est')); return; }
+  let e=TX.find(x=>weekKey(x.date)===k && x.cat===cat && x.src==='est');
+  if(est>0){ if(e){ e.amt=est; e.gross=Math.round(gross*100)/100; } else TX.push({id:uid(),date:k,type:'income',cat:cat,amt:est,src:'est',gross:Math.round(gross*100)/100}); }
+  else if(e){ TX=TX.filter(t=>t!==e); }
+}
+// the real payout always wins: drop any estimate line whose week+platform already has a real payout (and keep
+// the estimate value on the real line so the row can show the difference).
+function reconcileEstimates(){
+  let ch=false;
+  ['Uber Eats (net payout)','DoorDash (net payout)'].forEach(function(cat){
+    const w={}; TX.forEach(t=>{ if(t.cat===cat)(w[weekKey(t.date)]=w[weekKey(t.date)]||[]).push(t); });
+    Object.keys(w).forEach(function(k){ const real=w[k].find(t=>t.src!=='est'), est=w[k].find(t=>t.src==='est');
+      if(real&&est){ if(real.est==null&&est.gross!=null) real.est=Math.round(est.gross*0.70*100)/100; TX=TX.filter(t=>t!==est); ch=true; } });
+  });
+  if(ch) save();
+}
 
 // ── Sync status panel: shows each source's state so you can see when it has finished searching ──
 const SYNC_SOURCES=[['dep','Bank deposits'],['cash','Cash sales'],['wage','Wages'],['uber','Uber Eats'],['dd','DoorDash'],['bills','Invoices']];
@@ -1256,6 +1278,14 @@ async function syncWeek(){
       if(dd>0){ setSyncLine('DoorDash (net payout)',dd); save(); render(); } // never clears an existing line — booked figures stay put
       setDone('dd');
     }catch(e){ setDone('dd'); }
+    // DELIVERY ESTIMATE — fill Uber/DoorDash from Square gross −30% so the week is complete before the payout email lands
+    try{
+      const dStart=new Date(mon).toISOString(), dEnd=new Date(addDays(mon,7)).toISOString();
+      const gres=await fetch('/api/delivery_gross?start='+encodeURIComponent(dStart)+'&end='+encodeURIComponent(dEnd));
+      const gd=await gres.json();
+      if(gd&&gd.ok){ bookEstimate('Uber Eats (net payout)',gd.uber||0); bookEstimate('DoorDash (net payout)',gd.doordash||0); }
+    }catch(e){}
+    reconcileEstimates(); syncDisplayFromTX(); setDone('uber'); setDone('dd'); save(); render();
     const allZero=!(dep>0||cash>0||uber>0||dd>0||wages>0);
     status(`Synced ✓  Deposits ${dep>0?fmt(dep):'—'} · Cash ${cash>0?fmt(cash):'—'} · Uber ${uber>0?fmt(uber):'—'} · DoorDash ${dd>0?fmt(dd):'—'} · Wages ${wages>0?fmt(wages):'—'}.`+(allZero?`  [debug ${_dbg}]`:''));
   }catch(e){ status('Email sync issue: '+(e.message||e)); }
