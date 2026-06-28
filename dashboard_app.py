@@ -409,7 +409,7 @@ def _sales_stat_roll(today):
     st=db.setdefault("sales_stats",{})
     cur=st.get("today")
     if cur and cur.get("date") and cur["date"]!=today:                       # new day → archive yesterday's final
-        hist=st.setdefault("history",{}); hist[cur["date"]]={k:cur.get(k) for k in ("date","sales","orders","bbq","fried","hourly")}
+        hist=st.setdefault("history",{}); hist[cur["date"]]={k:cur.get(k) for k in ("date","sales","orders","bbq","fried","hourly","items")}   # save the FULL day (incl top sellers)
         for k in sorted(hist.keys())[:-70]: hist.pop(k,None)                 # keep ~10 weeks of history
         cur=None
     if not cur or cur.get("date")!=today:
@@ -612,6 +612,13 @@ def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
 def square_poll_loop():
     while True:
         cfg=db.get("square_config",{}) or {}
+        try:                                                  # MIDNIGHT ROLLOVER: archive yesterday's sales board + reset to 0, even with no sales
+            _td=datetime.now().astimezone().date().isoformat()
+            _prev=((db.get("sales_stats") or {}).get("today") or {}).get("date")
+            if _prev and _prev!=_td:
+                _sales_stat_roll(_td); save_data(db)
+                SOS_LIVE.update({"day":_td,"open":{},"times":[],"done":set()})   # reset speed-of-service for the new day too
+        except Exception: pass
         if cfg.get("access_token"):
             square_status["configured"]=True
             try:
