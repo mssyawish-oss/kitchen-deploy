@@ -3102,7 +3102,7 @@ function renderSalesPage(){
   fetch('/api/sales_board',{cache:'no-store'}).then(r=>r.json()).then(function(d){
     el.dataset.loaded='1';
     if(!d.configured){el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Square isn\'t connected yet — set it up in <b>Settings → Sales/Square</b> to see live sales here.</div>';return;}
-    window._lastSales=d;el.innerHTML=_salesHTML(d);
+    window._lastSales=d;el.innerHTML=_salesHTML(d);loadLabourCost();
   }).catch(()=>{if(!el.dataset.loaded)el.innerHTML='<div class="empty-state" style="padding:30px;">Could not load the sales board.</div>';});
   if(_salesTimer)clearInterval(_salesTimer);
   _salesTimer=setInterval(()=>{const pg=document.getElementById('page-sales');if(pg&&pg.classList.contains('active'))renderSalesPage();else{clearInterval(_salesTimer);_salesTimer=null;}},15000);
@@ -3110,7 +3110,7 @@ function renderSalesPage(){
 function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
 function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
 let _salesHidden=(localStorage.getItem('salesHidden')!=='0');   // total sales hidden by default — tap the eye to reveal
-function toggleSalesHidden(){_salesHidden=!_salesHidden;try{localStorage.setItem('salesHidden',_salesHidden?'1':'0');}catch(e){}if(window._lastSales){const el=document.getElementById('sales-body');if(el)el.innerHTML=_salesHTML(window._lastSales);}}
+function toggleSalesHidden(){_salesHidden=!_salesHidden;try{localStorage.setItem('salesHidden',_salesHidden?'1':'0');}catch(e){}if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);const lc=document.getElementById('labour-cost');if(lc){if(window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else loadLabourCost();}}}}
 const _EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const _EYEOFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.2 2.9M6.6 6.6A13.2 13.2 0 0 0 2 11s3.5 7 10 7a10.9 10.9 0 0 0 3.4-.5M3 3l18 18"/><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2"/></svg>';
 function _salesHTML(d){
@@ -3160,9 +3160,27 @@ function _salesHTML(d){
     const w=top[0].qty?Math.max(8,(t.qty/top[0].qty)*100):0;
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;"><span style="width:18px;color:var(--muted);font-size:12px;">'+(i+1)+'</span><div style="flex:1;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px;"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">'+esc(t.name)+'</span><b>'+(Math.round(t.qty*10)/10)+'</b></div><div class="kpi-bar" style="margin:0;"><i style="width:'+w+'%;"></i></div></div></div>';
   }).join(''):'<div style="color:var(--muted);font-size:13px;">No sales counted yet today.</div>')+'</div>';
-  return kpi+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">'+sos+cook+'</div>'+heat+ts;
+  return kpi+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">'+sos+cook+'</div>'+heat+'<div id="labour-cost"></div>'+ts;
 }
 function _dowName(){return ['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'][(new Date().getDay()+6)%7];}
+function loadLabourCost(){const c=document.getElementById('labour-cost');if(!c)return;fetch('/api/labour_cost',{cache:'no-store'}).then(r=>r.json()).then(function(d){window._lastLabour=d;const cc=document.getElementById('labour-cost');if(cc)cc.innerHTML=_labourHTML(d);}).catch(()=>{});}
+function _labourHTML(L){
+  if(!L||!L.ok)return '';
+  if(!L.configured)return '';
+  const m=n=>_salesHidden?'••••':_money(n);
+  const now=L.now||{},td=L.today||{},wk=L.week||{};
+  let h='<div class="sales-sec"><h3>Labour cost</h3><div class="kpi-grid" style="margin:0;">'
+    +'<div class="kpi-card"><div class="kpi-label">Burn rate now</div><div class="kpi-value">'+m(now.burn)+'<span style="font-size:14px;color:var(--muted);">/hr</span></div><div class="kpi-sub">'+(now.heads||0)+' on the clock'+(now.source==='board'?' · from shift board':'')+'</div></div>'
+    +'<div class="kpi-card"><div class="kpi-label">Today</div><div class="kpi-value">'+m(td.cost)+'</div><div class="kpi-sub">'+(td.hours||0)+' hrs'+(L.pct_of_sales!=null?(' · <b style="color:'+(L.pct_of_sales>30?'var(--amber)':'var(--text)')+';">'+L.pct_of_sales+'%</b> of sales'):'')+'</div></div>'
+    +'<div class="kpi-card"><div class="kpi-label">This week</div><div class="kpi-value">'+m(wk.cost)+'</div><div class="kpi-sub">'+(wk.hours||0)+' hrs</div></div>'
+    +'</div>';
+  if(L.people&&L.people.length){
+    h+='<div style="margin-top:10px;">'+L.people.map(p=>'<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border);"><span>'+(p.open?'<span style="color:#19e36b;">●</span> ':'<span style="color:var(--muted);">○</span> ')+esc(p.name)+'</span><span style="color:var(--muted);">'+(p.hours||0)+' hrs · <b style="color:var(--text);">'+m(p.cost)+'</b></span></div>').join('')+'</div>';
+  }
+  if(now.source==='board'&&now.heads>0)h+='<div style="font-size:11px;color:var(--muted);margin-top:6px;">“Burn rate now” is estimated from the shift board — no one is clocked in on Square right now.</div>';
+  if((wk.cost||0)===0&&!(L.people&&L.people.length))h+='<div style="font-size:11px;color:var(--amber);margin-top:6px;">No Square timecards yet — staff need to clock in/out on Square POS for today/weekly cost. The live burn rate still works from the shift board + their rates.</div>';
+  return h+'</div>';
+}
 function fmtNoteTime(iso){try{return new Date(iso).toLocaleString('en-AU',{weekday:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 function updateNotesBadge(){const b=document.getElementById('notes-badge');if(!b)return;const n=(appData.handover_notes||[]).length;b.textContent=n;b.className=n>0?'show':'';}
 function openNotesModal(){document.getElementById('note-text').value='';document.getElementById('note-who').value='';renderNotes();openModal('notes-modal');}

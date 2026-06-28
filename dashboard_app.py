@@ -2918,6 +2918,84 @@ def api_import_square_team():
     out.sort(key=lambda x:x["name"].lower())
     return jsonify({"ok":True,"members":out,"count":len(out),"note":"Square doesn't share POS passcodes — set each person's dashboard PIN manually."})
 
+def _sq_team_wage_map(hdr):
+    wages={}
+    try:
+        cursor=None
+        for _ in range(8):
+            u=SQUARE_BASE+"/v2/labor/team-member-wages?limit=200"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            req=urllib.request.Request(u,headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: wd=json.loads(r.read().decode())
+            for w in (wd.get("team_member_wages") or []):
+                tid=w.get("team_member_id")
+                if tid:
+                    amt=float((w.get("hourly_rate") or {}).get("amount") or 0)/100.0
+                    if tid not in wages or amt>wages[tid]: wages[tid]=amt
+            cursor=wd.get("cursor")
+            if not cursor: break
+    except Exception: pass
+    return wages
+
+@app.route("/api/labour_cost")
+def api_labour_cost():
+    # Labour cost from Square TIMECARDS (real clocked hours x wage): now / today / this week + labour % of sales.
+    # Falls back to the dashboard shift board for the live "$/hr now" burn rate when there are no open clock-ins.
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    now=datetime.now().astimezone(); mid=now.replace(hour=0,minute=0,second=0,microsecond=0)
+    week_start=mid-timedelta(days=now.weekday())
+    smap={}
+    for s in (db.get("staff") or []):
+        if s.get("square_id"): smap[s["square_id"]]={"name":s.get("name") or "?","rate":float(s.get("hourly_rate") or 0)}
+    today_sales=float(((db.get("sales_stats") or {}).get("today") or {}).get("sales",0) or 0)
+    out={"ok":True,"configured":bool(hdr),"now":{"burn":0.0,"heads":0,"source":"none"},
+         "today":{"cost":0.0,"hours":0.0},"week":{"cost":0.0,"hours":0.0},"pct_of_sales":None,
+         "people":[],"sales_today":round(today_sales,2),"note":""}
+    if hdr:
+        wages=_sq_team_wage_map(hdr); cards=[]
+        try:
+            body={"query":{"filter":{"start":{"start_at":week_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}},"limit":200}
+            if loc: body["query"]["filter"]["location_ids"]=[loc]
+            cursor=None
+            for _ in range(12):
+                if cursor: body["cursor"]=cursor
+                req=urllib.request.Request(SQUARE_BASE+"/v2/labor/timecards/search",data=json.dumps(body).encode(),headers=hdr)
+                with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+                cards+=data.get("timecards") or []
+                cursor=data.get("cursor")
+                if not cursor: break
+        except Exception: out["note"]="Couldn't read Square timecards."
+        people={}
+        for tc in cards:
+            tid=tc.get("team_member_id") or ""; s=_parse_dt(tc.get("start_at"))
+            if not s: continue
+            e=_parse_dt(tc.get("end_at")); open_=(e is None); end=e or now
+            hrs=max(0.0,(end-s).total_seconds()/3600.0)
+            for br in (tc.get("breaks") or []):
+                bs=_parse_dt(br.get("start_at")); be=_parse_dt(br.get("end_at"))
+                if bs and be and br.get("is_paid") is False: hrs-=max(0.0,(be-bs).total_seconds()/3600.0)
+            hrs=max(0.0,hrs)
+            rate=float((((tc.get("wage") or {}).get("hourly_rate")) or {}).get("amount") or 0)/100.0
+            if rate<=0: rate=wages.get(tid) or smap.get(tid,{}).get("rate") or 0
+            cost=hrs*rate; today=(s>=mid)
+            out["week"]["hours"]+=hrs; out["week"]["cost"]+=cost
+            if today: out["today"]["hours"]+=hrs; out["today"]["cost"]+=cost
+            if open_: out["now"]["burn"]+=rate; out["now"]["heads"]+=1; out["now"]["source"]="square"
+            nm=smap.get(tid,{}).get("name") or ("…"+tid[-4:] if tid else "?")
+            p=people.setdefault(nm,{"name":nm,"hours":0.0,"cost":0.0,"open":False})
+            if today: p["hours"]+=hrs; p["cost"]+=cost
+            if open_: p["open"]=True
+        out["people"]=sorted([p for p in people.values() if p["hours"]>0 or p["open"]],key=lambda x:-x["cost"])[:20]
+    if out["now"]["heads"]==0:                                  # no open Square clock-ins → estimate live burn from the shift board
+        on=(db.get("labour") or {}).get("on") or []
+        rmap={(s.get("name") or "").lower():float(s.get("hourly_rate") or 0) for s in (db.get("staff") or [])}
+        burn=sum(rmap.get((n or "").lower(),0) for n in on)
+        if burn>0: out["now"]={"burn":round(burn,2),"heads":len(on),"source":"board"}
+    for k in ("today","week"): out[k]["cost"]=round(out[k]["cost"],2); out[k]["hours"]=round(out[k]["hours"],1)
+    out["now"]["burn"]=round(out["now"]["burn"],2)
+    out["pct_of_sales"]=round(out["today"]["cost"]/today_sales*100,1) if today_sales>0 else None
+    for p in out["people"]: p["cost"]=round(p["cost"],2); p["hours"]=round(p["hours"],1)
+    return jsonify(out)
+
 @app.route("/api/fry_put_on",methods=["POST"])
 def api_fry_put_on():
     d=request.get_json(silent=True) or {};fry_put_on(int(d.get("batches",1) or 1));return jsonify(fry_state())
