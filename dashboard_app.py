@@ -2908,16 +2908,24 @@ def api_sales_feed():
 
 @app.route("/api/sales_board")
 def api_sales_board():
-    st=db.get("sales_stats",{}) or {}; today=st.get("today") or {}
+    st=db.get("sales_stats",{}) or {}; today=st.get("today") or {}; hist=st.get("history",{}) or {}
     items=today.get("items") or {}
     top=sorted(items.items(),key=lambda kv:-(kv[1] or 0))[:8]
     orders=int(today.get("orders",0) or 0); sales=float(today.get("sales",0) or 0)
     try: target=float(db.get("sales_target",0) or 0)
     except Exception: target=0.0
-    return jsonify({"date":today.get("date"),"sales":round(sales,2),"orders":orders,
+    now=datetime.now().astimezone(); week_start=(now.date()-timedelta(days=now.weekday()))   # Monday
+    week_sales=sales; recent=[]
+    for date in sorted(hist.keys(),reverse=True):
+        day=hist.get(date) or {}; s=float(day.get("sales",0) or 0)
+        try: dd=datetime.fromisoformat(str(date)).date()
+        except Exception: dd=None
+        if dd and dd>=week_start: week_sales+=s                       # this week's days in history (today added above)
+        if len(recent)<14: recent.append({"date":date,"sales":round(s,2),"orders":int(day.get("orders",0) or 0)})
+    return jsonify({"date":today.get("date"),"sales":round(sales,2),"week_sales":round(week_sales,2),"orders":orders,
         "avg":round(sales/orders,2) if orders else 0,"target":target,
         "bbq":round(float(today.get("bbq",0) or 0),1),"fried":round(float(today.get("fried",0) or 0),1),
-        "hourly":today.get("hourly") or {},"top":[{"name":n,"qty":q} for n,q in top],
+        "hourly":today.get("hourly") or {},"top":[{"name":n,"qty":q} for n,q in top],"history":recent,
         "sos":_sos_summary(),"cook":_cook_plan(),
         "busy":square_status.get("busy"),"last30":square_status.get("sales_last_30min"),
         "configured":bool(square_status.get("configured"))})

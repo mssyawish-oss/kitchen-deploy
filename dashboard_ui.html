@@ -1594,7 +1594,8 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
+function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
+if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
 function renderCamerasPage(){
@@ -3163,21 +3164,23 @@ function renderSalesPage(){
 }
 function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
 function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
-let _salesHidden=(localStorage.getItem('salesHidden')!=='0');   // total sales hidden by default — tap the eye to reveal
-function toggleSalesHidden(){_salesHidden=!_salesHidden;try{localStorage.setItem('salesHidden',_salesHidden?'1':'0');}catch(e){}if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);const lc=document.getElementById('labour-cost');if(lc){if(window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else loadLabourCost();}}}}
+let _salesHidden=true;   // daily + weekly total sales hidden every time you enter; tap the eye to reveal; auto-hides again on leaving the page
+function toggleSalesHidden(){_salesHidden=!_salesHidden;if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);const lc=document.getElementById('labour-cost');if(lc&&window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else if(lc)loadLabourCost();}}}
 const _EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const _EYEOFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.2 2.9M6.6 6.6A13.2 13.2 0 0 0 2 11s3.5 7 10 7a10.9 10.9 0 0 0 3.4-.5M3 3l18 18"/><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2"/></svg>';
 function _salesHTML(d){
   const tgt=d.target||0,pct=tgt>0?Math.min(100,(d.sales/tgt)*100):0;
   const eye='<span onclick="toggleSalesHidden()" title="show/hide sales" style="cursor:pointer;float:right;color:var(--muted);">'+(_salesHidden?_EYEOFF:_EYE)+'</span>';
-  // KPI cards
+  // KPI cards — the EYE hides only the daily + weekly SALES totals; everything else stays visible
   let kpi='<div class="kpi-grid">';
   if(_salesHidden){
     kpi+='<div class="kpi-card"><div class="kpi-label">Sales today '+eye+'</div><div class="kpi-value" style="letter-spacing:4px;color:var(--muted);">••••••</div><div class="kpi-sub">tap the eye to reveal</div></div>';
+    kpi+='<div class="kpi-card"><div class="kpi-label">Sales this week</div><div class="kpi-value" style="letter-spacing:4px;color:var(--muted);">••••••</div><div class="kpi-sub">hidden</div></div>';
   }else{
     kpi+='<div class="kpi-card"><div class="kpi-label">Sales today '+eye+'</div><div class="kpi-value">'+_money(d.sales)+'</div>'
       +(tgt>0?'<div class="kpi-bar"><i style="width:'+pct.toFixed(0)+'%;background:'+(pct>=100?'#19e36b':'var(--acc)')+';"></i></div><div class="kpi-sub">'+pct.toFixed(0)+'% of '+_money(tgt)+' target · <a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">edit</a></div>'
             :'<div class="kpi-sub"><a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">set a daily target</a></div>')+'</div>';
+    kpi+='<div class="kpi-card"><div class="kpi-label">Sales this week</div><div class="kpi-value">'+_money(d.week_sales||0)+'</div><div class="kpi-sub">Mon–today</div></div>';
   }
   kpi+='<div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value">'+(d.orders||0)+'</div><div class="kpi-sub">avg '+_money(d.avg)+' / order</div></div>';
   kpi+='<div class="kpi-card"><div class="kpi-label">Right now</div><div class="kpi-value" style="color:'+(d.busy?'var(--amber)':'var(--text)')+';">'+(d.last30||0)+'</div><div class="kpi-sub">orders last 30 min'+(d.busy?' · BUSY':'')+'</div></div>';
@@ -3214,14 +3217,20 @@ function _salesHTML(d){
     const w=top[0].qty?Math.max(8,(t.qty/top[0].qty)*100):0;
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;"><span style="width:18px;color:var(--muted);font-size:12px;">'+(i+1)+'</span><div style="flex:1;"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px;"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">'+esc(t.name)+'</span><b>'+(Math.round(t.qty*10)/10)+'</b></div><div class="kpi-bar" style="margin:0;"><i style="width:'+w+'%;"></i></div></div></div>';
   }).join(''):'<div style="color:var(--muted);font-size:13px;">No sales counted yet today.</div>')+'</div>';
-  return kpi+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">'+sos+cook+'</div>'+heat+'<div id="labour-cost"></div>'+ts;
+  // recent days history (saved at midnight each day)
+  const hist=d.history||[];
+  let hh='<div class="sales-sec"><h3>Recent days</h3>'+(hist.length?('<div style="display:flex;flex-direction:column;">'+hist.map(function(r){
+    const dt=new Date((r.date||'')+'T12:00:00');const lbl=isNaN(dt)?r.date:(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()]+' '+dt.getDate()+'/'+(dt.getMonth()+1));
+    return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border);"><span>'+esc(lbl)+'</span><span style="color:var(--muted);">'+(r.orders||0)+' orders · <b style="color:var(--text);">'+(_salesHidden?'••••':_money(r.sales))+'</b></span></div>';
+  }).join('')+'</div>'):'<div style="color:var(--muted);font-size:13px;">No saved days yet — the first one is archived at midnight tonight.</div>')+'</div>';
+  return kpi+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">'+sos+cook+'</div>'+heat+'<div id="labour-cost"></div>'+ts+hh;
 }
 function _dowName(){return ['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'][(new Date().getDay()+6)%7];}
 function loadLabourCost(){const c=document.getElementById('labour-cost');if(!c)return;fetch('/api/labour_cost',{cache:'no-store'}).then(r=>r.json()).then(function(d){window._lastLabour=d;const cc=document.getElementById('labour-cost');if(cc)cc.innerHTML=_labourHTML(d);}).catch(()=>{});}
 function _labourHTML(L){
   if(!L||!L.ok)return '';
   if(!L.configured)return '';
-  const m=n=>_salesHidden?'••••':_money(n);
+  const m=n=>_money(n);   // labour cost / hourly rates are NOT hidden by the eye — only sales totals are
   const now=L.now||{},td=L.today||{},wk=L.week||{};
   let h='<div class="sales-sec"><h3>Labour cost</h3><div class="kpi-grid" style="margin:0;">'
     +'<div class="kpi-card"><div class="kpi-label">Burn rate now</div><div class="kpi-value">'+m(now.burn)+'<span style="font-size:14px;color:var(--muted);">/hr</span></div><div class="kpi-sub">'+(now.heads||0)+' on the clock'+(now.source==='board'?' · from shift board':'')+'</div></div>'
