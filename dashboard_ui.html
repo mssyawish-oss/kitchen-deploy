@@ -828,6 +828,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-onshift" class="team-chips"></div>
       <div class="sec-head" style="margin:16px 2px 8px;"><span>Stations</span><button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto;" onclick="addStation()">+ Station</button></div>
       <div id="team-stations" class="team-grid"></div>
+      <div class="sec-head" style="margin:18px 2px 8px;"><span>Staff &amp; pay</span><button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto;" onclick="importSquareTeam()">&#10515; Import from Square</button></div>
+      <div id="team-import-status" style="font-size:12px;margin:0 2px 8px;min-height:15px;color:var(--muted);"></div>
+      <div id="team-roster"></div>
     </div>
   </div>
   <nav class="bottom-nav" id="bottom-nav">
@@ -3046,6 +3049,36 @@ function renderTeamPage(){
   chips.innerHTML=staff.length?staff.map(function(s,i){const on=L.on.indexOf(s.name)>=0;return '<div class="team-chip'+(on?' on':'')+'" onclick="toggleOnShift('+i+')"><span class="tc-dot"></span><span>'+esc(s.name||'?')+'</span>'+(s.role?'<span class="tc-role">'+esc(s.role)+'</span>':'')+'</div>';}).join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>';
   const grid=document.getElementById('team-stations');
   grid.innerHTML=L.stations.map(function(st,i){const who=L.assign[st]||'';return '<div class="station-card'+(who?' filled':'')+'" onclick="assignStation('+i+')"><div class="station-name"><span>'+esc(st)+'</span><button class="station-x" onclick="event.stopPropagation();removeStation('+i+')">&times;</button></div><div class="station-who'+(who?'':' empty')+'">'+(who?esc(who):'tap to assign')+'</div></div>';}).join('');
+  renderTeamRoster();
+}
+function renderTeamRoster(){
+  const el=document.getElementById('team-roster');if(!el)return;const staff=(appData.staff||[]);
+  el.innerHTML=staff.length?staff.map(function(s,i){
+    const rate=s.hourly_rate?('$'+(Math.round(s.hourly_rate*100)/100)+'/hr'):'<span style="color:var(--muted);font-weight:400;">set rate</span>';
+    const pin=s.pin?'<span style="color:#19e36b;">● PIN set</span>':'<span style="color:var(--amber);cursor:pointer;" onclick="setStaffPin('+i+')">✎ set PIN</span>';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);">'
+      +'<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(s.name||'?')+'</div><div style="font-size:11px;color:var(--muted);">'+esc(s.role||'')+(s.square_id?' · <span style="color:var(--cyan);">Square</span>':'')+'</div></div>'
+      +'<div style="font-size:14px;font-weight:700;cursor:pointer;min-width:64px;text-align:right;" onclick="setStaffRate('+i+')" title="tap to edit">'+rate+'</div>'
+      +'<div style="font-size:12px;width:84px;text-align:right;">'+pin+'</div></div>';
+  }).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No staff yet — Import from Square, or add them in Settings → Staff.</div>';
+}
+function _roleFromTitle(t){t=(t||'').toLowerCase();if(t.indexOf('owner')>=0||t.indexOf('admin')>=0)return 'admin';if(t.indexOf('manager')>=0||t.indexOf('supervis')>=0)return 'manager';if(t.indexOf('cashier')>=0||t.indexOf('front')>=0||t.indexOf('counter')>=0)return 'cashier';return 'kitchen';}
+function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Set a 4-digit dashboard PIN for '+s.name+':',s.pin||'');if(v===null)return;const p=(v||'').replace(/\D/g,'').slice(0,4);if(p.length!==4){_toast('PIN must be 4 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();}
+function setStaffRate(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Hourly rate ($) for '+s.name+':',s.hourly_rate||'');if(v===null)return;s.hourly_rate=Math.max(0,parseFloat(v)||0);saveKeys(['staff']);renderTeamPage();}
+function importSquareTeam(){
+  const st=document.getElementById('team-import-status');if(st){st.textContent='Importing from Square…';st.style.color='var(--muted)';}
+  fetch('/api/import_square_team',{method:'POST'}).then(r=>r.json()).then(function(d){
+    if(!d.ok){if(st){st.textContent=d.error||'Import failed.';st.style.color='var(--red)';}return;}
+    appData.staff=appData.staff||[];let added=0,updated=0;
+    (d.members||[]).forEach(function(m){
+      let s=(m.square_id&&appData.staff.find(x=>x.square_id===m.square_id))||appData.staff.find(x=>(x.name||'').toLowerCase()===(m.name||'').toLowerCase());
+      if(s){s.square_id=m.square_id;if(m.hourly_rate)s.hourly_rate=m.hourly_rate;if(m.email)s.email=m.email;if(m.title&&!s.role)s.role=_roleFromTitle(m.title);updated++;}
+      else{appData.staff.push({name:m.name,pin:'',role:_roleFromTitle(m.title),hourly_rate:m.hourly_rate||0,square_id:m.square_id,email:m.email||''});added++;}
+    });
+    saveKeys(['staff']);renderTeamPage();
+    const need=(appData.staff||[]).filter(s=>!s.pin).length;
+    if(st){st.innerHTML='Imported '+added+' new, updated '+updated+' &middot; '+(d.count||0)+' from Square. '+(need?('<b style="color:var(--amber);">'+need+' still need a PIN</b> — Square doesn\'t share its passcodes, so tap “set PIN”.'):'All have PINs ✓');st.style.color='var(--green)';}
+  }).catch(()=>{if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 function toggleOnShift(i){const L=_labour(),s=(appData.staff||[])[i];if(!s||!s.name)return;const k=L.on.indexOf(s.name);if(k>=0){L.on.splice(k,1);Object.keys(L.assign).forEach(st=>{if(L.assign[st]===s.name)delete L.assign[st];});}else L.on.push(s.name);appData.labour=L;saveKeys(['labour']);renderTeamPage();}
 function assignStation(i){
@@ -3069,20 +3102,29 @@ function renderSalesPage(){
   fetch('/api/sales_board',{cache:'no-store'}).then(r=>r.json()).then(function(d){
     el.dataset.loaded='1';
     if(!d.configured){el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Square isn\'t connected yet — set it up in <b>Settings → Sales/Square</b> to see live sales here.</div>';return;}
-    el.innerHTML=_salesHTML(d);
+    window._lastSales=d;el.innerHTML=_salesHTML(d);
   }).catch(()=>{if(!el.dataset.loaded)el.innerHTML='<div class="empty-state" style="padding:30px;">Could not load the sales board.</div>';});
   if(_salesTimer)clearInterval(_salesTimer);
   _salesTimer=setInterval(()=>{const pg=document.getElementById('page-sales');if(pg&&pg.classList.contains('active'))renderSalesPage();else{clearInterval(_salesTimer);_salesTimer=null;}},15000);
 }
 function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
 function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
+let _salesHidden=(localStorage.getItem('salesHidden')!=='0');   // total sales hidden by default — tap the eye to reveal
+function toggleSalesHidden(){_salesHidden=!_salesHidden;try{localStorage.setItem('salesHidden',_salesHidden?'1':'0');}catch(e){}if(window._lastSales){const el=document.getElementById('sales-body');if(el)el.innerHTML=_salesHTML(window._lastSales);}}
+const _EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _EYEOFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.2 2.9M6.6 6.6A13.2 13.2 0 0 0 2 11s3.5 7 10 7a10.9 10.9 0 0 0 3.4-.5M3 3l18 18"/><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2"/></svg>';
 function _salesHTML(d){
   const tgt=d.target||0,pct=tgt>0?Math.min(100,(d.sales/tgt)*100):0;
+  const eye='<span onclick="toggleSalesHidden()" title="show/hide sales" style="cursor:pointer;float:right;color:var(--muted);">'+(_salesHidden?_EYEOFF:_EYE)+'</span>';
   // KPI cards
   let kpi='<div class="kpi-grid">';
-  kpi+='<div class="kpi-card"><div class="kpi-label">Sales today</div><div class="kpi-value">'+_money(d.sales)+'</div>'
+  if(_salesHidden){
+    kpi+='<div class="kpi-card"><div class="kpi-label">Sales today '+eye+'</div><div class="kpi-value" style="letter-spacing:4px;color:var(--muted);">••••••</div><div class="kpi-sub">tap the eye to reveal</div></div>';
+  }else{
+    kpi+='<div class="kpi-card"><div class="kpi-label">Sales today '+eye+'</div><div class="kpi-value">'+_money(d.sales)+'</div>'
       +(tgt>0?'<div class="kpi-bar"><i style="width:'+pct.toFixed(0)+'%;background:'+(pct>=100?'#19e36b':'var(--acc)')+';"></i></div><div class="kpi-sub">'+pct.toFixed(0)+'% of '+_money(tgt)+' target · <a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">edit</a></div>'
             :'<div class="kpi-sub"><a onclick="setSalesTarget()" style="color:var(--cyan);cursor:pointer;">set a daily target</a></div>')+'</div>';
+  }
   kpi+='<div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value">'+(d.orders||0)+'</div><div class="kpi-sub">avg '+_money(d.avg)+' / order</div></div>';
   kpi+='<div class="kpi-card"><div class="kpi-label">Right now</div><div class="kpi-value" style="color:'+(d.busy?'var(--amber)':'var(--text)')+';">'+(d.last30||0)+'</div><div class="kpi-sub">orders last 30 min'+(d.busy?' · BUSY':'')+'</div></div>';
   kpi+='<div class="kpi-card"><div class="kpi-label">Chickens sold</div><div class="kpi-value">'+Math.round(d.bbq||0)+'<span style="font-size:15px;color:var(--muted);"> bbq</span></div><div class="kpi-sub">'+Math.round(d.fried||0)+' fried pcs</div></div>';

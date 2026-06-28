@@ -2872,6 +2872,52 @@ def api_sales_board():
         "busy":square_status.get("busy"),"last30":square_status.get("sales_last_30min"),
         "configured":bool(square_status.get("configured"))})
 
+@app.route("/api/import_square_team",methods=["POST"])
+def api_import_square_team():
+    # Pull ACTIVE team members + their hourly wage from Square. NOTE: Square does NOT expose POS passcodes via the
+    # API (security), so access codes/PINs can't be imported — names + hourly rates only.
+    hdr=_sq_headers()
+    if not hdr: return jsonify({"ok":False,"error":"Square isn't connected (add the access token in Settings)."})
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    members=[]
+    try:
+        body={"query":{"filter":{"status":"ACTIVE"}},"limit":200}
+        if loc: body["query"]["filter"]["location_ids"]=[loc]
+        cursor=None
+        for _ in range(6):
+            if cursor: body["cursor"]=cursor
+            req=urllib.request.Request(SQUARE_BASE+"/v2/team-members/search",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            members+=data.get("team_members") or []
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        try: return jsonify({"ok":False,"error":"team fetch: "+e.read().decode()[:160]})
+        except Exception: return jsonify({"ok":False,"error":"team fetch: "+str(e)})
+    wages={}                                                  # team_member_id -> (hourly $, title)
+    try:
+        cursor=None
+        for _ in range(8):
+            u=SQUARE_BASE+"/v2/labor/team-member-wages?limit=200"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            req=urllib.request.Request(u,headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: wd=json.loads(r.read().decode())
+            for w in (wd.get("team_member_wages") or []):
+                tid=w.get("team_member_id")
+                if not tid: continue
+                amt=float((w.get("hourly_rate") or {}).get("amount") or 0)/100.0
+                if tid not in wages or amt>wages[tid][0]: wages[tid]=(amt,w.get("title") or "")   # keep the top wage as the rep rate
+            cursor=wd.get("cursor")
+            if not cursor: break
+    except Exception: pass
+    out=[]
+    for m in members:
+        nm=((m.get("given_name") or "")+" "+(m.get("family_name") or "")).strip() or (m.get("email_address") or "").split("@")[0]
+        tid=m.get("id"); rate,title=wages.get(tid,(0.0,""))
+        out.append({"square_id":tid,"name":nm,"email":m.get("email_address") or "",
+                    "hourly_rate":round(rate,2),"title":title,"is_owner":bool(m.get("is_owner"))})
+    out.sort(key=lambda x:x["name"].lower())
+    return jsonify({"ok":True,"members":out,"count":len(out),"note":"Square doesn't share POS passcodes — set each person's dashboard PIN manually."})
+
 @app.route("/api/fry_put_on",methods=["POST"])
 def api_fry_put_on():
     d=request.get_json(silent=True) or {};fry_put_on(int(d.get("batches",1) or 1));return jsonify(fry_state())
