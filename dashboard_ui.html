@@ -1193,6 +1193,16 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="btn btn-primary" id="rc-trace-btn" onclick="toggleTrace()">&#9654; Start live trace</button>
       <span id="rc-trace-model" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
     </div>
+    <div id="rc-live-wrap" style="display:none;margin-bottom:12px;">
+      <div style="position:relative;border-radius:10px;overflow:hidden;background:#000;border:1px solid var(--border2);">
+        <img id="rc-live" alt="" style="width:100%;display:block;max-height:320px;object-fit:contain;background:#000;">
+        <span style="position:absolute;top:8px;left:8px;background:rgba(220,38,38,.92);color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:6px;letter-spacing:.04em;">● LIVE</span>
+        <button class="btn btn-primary" style="position:absolute;bottom:8px;right:8px;font-size:13px;padding:9px 14px;" onclick="captureNow()">&#128247; Grab &amp; correct now</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:8px 2px 4px;">Recent frames (~½s apart) — tap the exact one where a row came off to correct it:</div>
+      <div id="rc-capstrip" style="display:flex;gap:5px;overflow-x:auto;padding-bottom:5px;"></div>
+      <canvas id="rc-capcanvas" style="display:none;"></canvas>
+    </div>
     <div id="rc-trace"></div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:2px;">🤖 Auto-AI captures — every row the camera counted off by itself</div>
@@ -2206,13 +2216,41 @@ function renderRotCreditLog(rot){
 let _traceTimer=null,_traceLastId=null;
 function toggleTrace(){
   const btn=document.getElementById('rc-trace-btn');
-  if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;if(btn)btn.innerHTML='&#9654; Start live trace';return;}
-  if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
+  if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;_stopLiveCap();if(btn)btn.innerHTML='&#9654; Start live trace';return;}
+  if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;_startLiveCap();renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
 }
+let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={};
+function _startLiveCap(){
+  const w=document.getElementById('rc-live-wrap');if(w)w.style.display='block';
+  const im=document.getElementById('rc-live');if(im)im.src='/api/rotcam_stream?t='+Date.now();
+  _capStrip=[];_capMap={};const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
+  if(_liveCapTimer)clearInterval(_liveCapTimer);
+  _liveCapTimer=setInterval(_grabFrame,500);   // a fresh correctable frame every ~½ second
+}
+function _stopLiveCap(){
+  if(_liveCapTimer){clearInterval(_liveCapTimer);_liveCapTimer=null;}
+  const im=document.getElementById('rc-live');if(im)im.src='';
+  const w=document.getElementById('rc-live-wrap');if(w)w.style.display='none';
+}
+function _grabFrame(){
+  const im=document.getElementById('rc-live'),cv=document.getElementById('rc-capcanvas'),strip=document.getElementById('rc-capstrip');
+  if(!im||!cv||!strip||!im.naturalWidth)return;
+  try{
+    cv.width=im.naturalWidth;cv.height=im.naturalHeight;cv.getContext('2d').drawImage(im,0,0);
+    const url=cv.toDataURL('image/jpeg',0.7);const lid='cap_'+(++_capSeq);_capMap[lid]={url:url};
+    const d=new Date(),t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+    if(strip.firstChild&&strip.firstChild.dataset&&strip.firstChild.dataset.ph)strip.innerHTML='';
+    const div=document.createElement('div');div.style.cssText='flex:0 0 auto;text-align:center;cursor:pointer;';div.onclick=function(){openCorrect(lid);};
+    div.innerHTML='<img src="'+url+'" style="width:96px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:#000;"><div style="font-size:9px;color:var(--muted);font-family:var(--font-mono);">'+t+'</div>';
+    strip.insertBefore(div,strip.firstChild);_capStrip.unshift(lid);
+    while(_capStrip.length>40){const drop=_capStrip.pop();delete _capMap[drop];if(strip.lastChild)strip.removeChild(strip.lastChild);}
+  }catch(e){}
+}
+function captureNow(){_grabFrame();if(_capStrip.length)openCorrect(_capStrip[0]);}
 function renderRotTrace(){
   const el=document.getElementById('rc-trace');if(!el)return;
   const modal=document.getElementById('settings-modal');
-  if(modal&&!modal.classList.contains('open')){if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;const b=document.getElementById('rc-trace-btn');if(b)b.innerHTML='&#9654; Start live trace';}return;}
+  if(modal&&!modal.classList.contains('open')){if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;_stopLiveCap();const b=document.getElementById('rc-trace-btn');if(b)b.innerHTML='&#9654; Start live trace';}return;}
   fetch('/api/rotcam_trace',{cache:'no-store'}).then(r=>r.json()).then(d=>{
     window._lastTrace=d.trace||[];
     const corrected=new Set(d.corrected_ids||[]);
@@ -2280,11 +2318,13 @@ function loadAutoCaps(){const b=document.getElementById('rc-auto-btn');if(b)b.te
 const _COR_ACTS=['nothing happening','loading 1 row on','loading 2+ rows on','took 1 row off','took 2 rows off','took 3+ rows off','opened the door, did nothing','closed the door','other (see notes)'];
 const _DNPCT={empty:0,raw:10,almost:50,ready:90,overdone:100};
 function openCorrect(id){
-  const r=(window._lastTrace||[]).find(function(x){return x.id===id;})||(window._autoFrames||[]).find(function(x){return x.id===id;});if(!r){_toast&&_toast('Frame expired — pick a newer one');return;}
+  const isCap=(typeof id==='string'&&id.indexOf('cap_')===0);
+  let r,shot;
+  if(isCap){const c=_capMap[id];if(!c){_toast&&_toast('That frame scrolled off — grab a newer one');return;}r={shelves:[{},{},{},{},{},{}],raw:'(live capture)',decision:'tell it the truth about this exact moment'};shot=c.url;}
+  else{r=(window._lastTrace||[]).find(function(x){return x.id===id;})||(window._autoFrames||[]).find(function(x){return x.id===id;});if(!r){_toast&&_toast('Frame expired — pick a newer one');return;}shot='/api/rotcam_trace_shot?id='+id;}
   let o=document.getElementById('correct-modal');
   if(!o){o=document.createElement('div');o.id='correct-modal';o.className='modal-overlay';o.style.zIndex='720';document.body.appendChild(o);}
-  const shot='/api/rotcam_trace_shot?id='+id;
-  const shelfRows=(r.shelves||[]).map(function(s,i){
+  const shelfRows=((r.shelves&&r.shelves.length)?r.shelves:[{},{},{},{},{},{}]).map(function(s,i){
     const pct=(_DNPCT[s.done]!=null)?_DNPCT[s.done]:(s.occ==='loaded'?50:0);
     let opts='';for(let p=0;p<=100;p+=10){opts+='<option value="'+p+'"'+(p===pct?' selected':'')+'>'+p+'%</option>';}
     return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;">'
@@ -2295,7 +2335,7 @@ function openCorrect(id){
   }).join('');
   const actOpts=_COR_ACTS.map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
   o.innerHTML='<div class="modal" style="max-width:580px;width:100%;max-height:92vh;overflow:auto;">'
-    +'<div class="modal-header"><div class="modal-title">Tell it the truth · frame #'+id+'</div><button class="modal-close" onclick="closeCorrect()">Close</button></div>'
+    +'<div class="modal-header"><div class="modal-title">Tell it the truth · '+(isCap?'live capture':'frame #'+id)+'</div><button class="modal-close" onclick="closeCorrect()">Close</button></div>'
     +'<div style="padding:2px;">'
     +'<img src="'+shot+'" style="width:100%;border-radius:8px;border:1px solid var(--border2);margin-bottom:6px;background:#000;">'
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">AI read: <b>'+(r.raw||'?').replace(/[<>]/g,'')+'</b> → '+(r.decision||'').replace(/[<>]/g,'')+'</div>'
@@ -2309,7 +2349,7 @@ function openCorrect(id){
     +'<select class="input" id="cor-activity" style="width:100%;margin-bottom:10px;background:var(--surface2);">'+actOpts+'</select>'
     +'<div class="label" style="margin-bottom:4px;">Notes (optional)</div>'
     +'<input class="input" id="cor-notes" placeholder="anything else useful for accuracy" style="width:100%;margin-bottom:12px;">'
-    +'<button class="btn btn-primary" style="width:100%;" onclick="saveCorrect('+id+')">✓ Save correction (teaches the camera)</button>'
+    +'<button class="btn btn-primary" style="width:100%;" onclick="saveCorrect('+JSON.stringify(id)+')">✓ Save correction (teaches the camera)</button>'
     +'<div id="cor-status" style="font-size:12px;margin-top:7px;text-align:center;min-height:15px;"></div>'
     +'</div></div>';
   o.classList.add('open');
@@ -2321,9 +2361,11 @@ function saveCorrect(id){
   const a=document.getElementById('cor-activity').value;
   const rows_off=a.indexOf('took 1')>=0?1:(a.indexOf('took 2')>=0?2:(a.indexOf('took 3')>=0?3:0));
   const rows_on=a.indexOf('loading 1')>=0?1:(a.indexOf('loading 2')>=0?2:0);
+  const isCap=(typeof id==='string'&&id.indexOf('cap_')===0);
   const body={id:id,shelves:shelves,door_open:document.getElementById('cor-door').checked,person:document.getElementById('cor-person').checked,glare:document.getElementById('cor-glare').checked,activity:a,rows_off:rows_off,rows_on:rows_on,notes:document.getElementById('cor-notes').value};
+  if(isCap){body.img=(_capMap[id]||{}).url;delete body.id;}
   const st=document.getElementById('cor-status');st.textContent='Saving…';st.style.color='var(--muted)';
-  fetch('/api/rotcam_correct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
+  fetch(isCap?'/api/rotcam_correct_img':'/api/rotcam_correct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
     if(d.ok){st.textContent='✓ Saved — '+d.count+' corrections collected so far';st.style.color='var(--green)';setTimeout(closeCorrect,1000);}
     else{st.textContent='Error: '+(d.error||'?');st.style.color='var(--red)';}
   }).catch(function(){st.textContent='Could not save.';st.style.color='var(--red)';});

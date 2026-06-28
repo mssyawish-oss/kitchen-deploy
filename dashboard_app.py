@@ -2461,6 +2461,38 @@ def api_rotcam_correct():
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)})
 
+@app.route("/api/rotcam_correct_img",methods=["POST"])
+def api_rotcam_correct_img():
+    # Save a ground-truth label for a frame the OWNER grabbed live (uploaded JPEG, no AI prediction). Same store
+    # as /api/rotcam_correct (rotcam_labels/ + db corrections) so it feeds the same training + prompt feedback loop.
+    import json as _json, base64 as _b
+    d=request.get_json(silent=True) or {}
+    img=(d.get("img") or "")
+    if not img.startswith("data:image"): return jsonify({"ok":False,"error":"no image"})
+    try: raw=_b.b64decode(img.split(",",1)[1])
+    except Exception: return jsonify({"ok":False,"error":"bad image"})
+    if not raw or len(raw)>4*1024*1024: return jsonify({"ok":False,"error":"image empty/too big"})
+    try:
+        def _i(v):
+            try: return max(0,int(v))
+            except Exception: return 0
+        with _gem_lock: tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        shelves=[]
+        for s in (d.get("shelves") or [])[:6]:
+            shelves.append({"occ":("loaded" if (s or {}).get("occ")=="loaded" else "empty"),"cooked_pct":max(0,min(100,_i((s or {}).get("cooked_pct"))))})
+        lab={"id":tid,"ts":int(time.time()),"shelves":shelves,
+             "door_open":bool(d.get("door_open")),"person":bool(d.get("person")),"glare":bool(d.get("glare")),
+             "activity":str(d.get("activity") or "")[:50],"rows_off":_i(d.get("rows_off")),"rows_on":_i(d.get("rows_on")),
+             "notes":str(d.get("notes") or "")[:400],"ai_raw":"","ai_levels":"","ai_done":"","source":"live-capture"}
+        ld=os.path.join(BASE_DIR,"rotcam_labels"); os.makedirs(ld,exist_ok=True)
+        open(os.path.join(ld,"%d.jpg"%tid),"wb").write(raw)
+        open(os.path.join(ld,"%d.json"%tid),"w",encoding="utf-8").write(_json.dumps(lab,ensure_ascii=False))
+        with data_lock:
+            cl=[c for c in (db.get("rotcam_corrections",[]) or [])]; cl.append(lab); db["rotcam_corrections"]=cl[-500:]; save_data(db)
+        return jsonify({"ok":True,"count":len(db.get("rotcam_corrections",[]))})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
 @app.route("/api/rotcam_trace_shot")
 def api_rotcam_trace_shot():
     try: i=int(re.sub(r"[^0-9]","",request.args.get("id","0")) or 0)
