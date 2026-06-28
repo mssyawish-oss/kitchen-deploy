@@ -2458,6 +2458,12 @@ function toggleBenchMin(ev){if(ev)ev.stopPropagation();_benchMin=!_benchMin;try{
 function applyRotView(){const w=document.querySelector('#rl-cam .cam-wrap');if(w)w.classList.toggle('show-anim',(window._rotViewMode||'anim')==='anim');const lbl=document.getElementById('ra-toggle-lbl');if(lbl)lbl.textContent=(window._rotViewMode==='anim'?'Cam view':'Animated');const hint=document.querySelector('#rl-cam .rl-camhint');if(hint)hint.textContent=(window._rotViewMode==='anim'?'live rotisserie status · tap to enlarge cam':'tap to enlarge');}
 function toggleRotView(ev){if(ev)ev.stopPropagation();window._rotViewMode=(window._rotViewMode==='anim'?'cam':'anim');try{localStorage.setItem('rotViewMode',window._rotViewMode);}catch(e){}applyRotView();renderRotAnim();}
 const _CHICK_SVG='<div class="ra-chk"></div>';
+function _doneFromPct(p){   // doneness label DERIVED from the cook-time % so the label and the number never disagree
+  if(p>=115)return {txt:'OVERDONE',cls:'done-over'};
+  if(p>=90)return {txt:'READY',cls:'done-ready'};
+  if(p>=70)return {txt:'Almost',cls:'done-almost'};
+  return {txt:'Not ready',cls:'done-not'};
+}
 function renderRotAnim(){
   const host=document.getElementById('rot-anim');if(!host)return;
   if(!host.dataset.built){let h='';for(let r=0;r<6;r++){h+='<div class="ra-row" id="ra-row-'+r+'"><div class="ra-num">'+(r+1)+'</div><div class="ra-spit" id="ra-spit-'+r+'"><span class="ra-mount l"></span><div class="ra-birds" id="ra-birds-'+r+'"></div><span class="ra-mount r"></span></div><div class="ra-tag" id="ra-tag-'+r+'"></div></div>';}host.innerHTML=h;host.dataset.built='1';}
@@ -2468,17 +2474,12 @@ function renderRotAnim(){
     const row=document.getElementById('ra-row-'+r);if(row&&row.getAttribute('data-state')!==state)row.setAttribute('data-state',state);
     const birds=document.getElementById('ra-birds-'+r);const want=loaded?4:0;
     if(birds&&birds.children.length!==want){birds.innerHTML=want?_CHICK_SVG.repeat(want):'';}
-    const done=(window._rotDone&&window._rotDone.length===6)?window._rotDone[r]:'';
     const prog=(window._rotProg&&window._rotProg.length===6)?window._rotProg[r]:-1;
     let txt,cls;if(!loaded){txt='Empty';cls='empty';}
-    else if(done==='R'){txt='READY';cls='done-ready';}
-    else if(done==='O'){txt='OVERDONE';cls='done-over';}
-    else if(done==='A'){txt='Almost';cls='done-almost';}
-    else if(done==='N'){txt='Not ready';cls='done-not';}
     else if(state==='stopped'){txt='STOPPED';cls='stop';}
+    else if(prog>=0){const dn=_doneFromPct(prog);txt=dn.txt+' · '+prog+'%';cls=dn.cls;}   // label DERIVED from the cook-time % so they always agree (and respect top-down cooking)
     else if(state==='spinning'){txt='Spinning';cls='spin';}
     else{txt='Loaded';cls='load';}
-    if(loaded&&prog>=0&&cls!=='stop')txt+=' · '+prog+'%';   // how-cooked % (time in oven vs expected cook time)
     const tag=document.getElementById('ra-tag-'+r);if(tag&&tag.dataset.k!==cls+'|'+txt){tag.dataset.k=cls+'|'+txt;tag.className='ra-tag '+cls;tag.innerHTML='<span class="ra-dot"></span>'+txt;}
   }
 }

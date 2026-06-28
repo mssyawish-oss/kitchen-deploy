@@ -318,7 +318,10 @@ def rot_state():
     with rot_lock:
         _rot_reset_if_needed()
         lv=ROTCAM.get("levels","") or ""; la=ROTCAM.get("shelf_loaded_at") or []; ck=_rot_cook_secs(); nowt=time.time()
-        prog=[(min(100,int(round((nowt-la[i])/ck*100))) if (i<len(lv) and lv[i]=="1" and i<len(la) and la[i]>0) else -1) for i in range(6)]
+        prog=[(min(125,int(round((nowt-la[i])/ck*100))) if (i<len(lv) and lv[i]=="1" and i<len(la) and la[i]>0) else -1) for i in range(6)]
+        # rows cook TOP-DOWN (row 1 loaded first) → a lower shelf can NEVER read more cooked than the shelf above it
+        for i in range(1,6):
+            if prog[i]>=0 and prog[i-1]>=0 and prog[i]>prog[i-1]: prog[i]=prog[i-1]
         return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
                 "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
@@ -1569,6 +1572,10 @@ _ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, n
                   "brown COLOUR through the brightness: golden-brown skin under strong light is still READY. The top shelf "
                   "is closest to the heat and cooks FASTEST, so it should rarely read LESS cooked than the strip directly "
                   "below it. Only call a TOP strip not-ready if it is genuinely PINK or WHITE with NO browning at all. "
+                  "COOKING ORDER (very important): chickens are ALWAYS loaded from the TOP shelf downward and the top cooks "
+                  "first, so doneness ALWAYS decreases from strip 1 (most cooked) down to strip 6 (least cooked). A lower "
+                  "strip is NEVER more cooked than a strip above it. If a lower strip looks more browned than a higher one, "
+                  "you have mis-read one of them — re-judge so the cooked order runs 1 >= 2 >= 3 >= 4 >= 5 >= 6 (empty shelves aside). "
                   "Judge ONLY chickens sitting on THIS strip's own spit: if a strip shows just the bottoms/legs of chickens "
                   "hanging DOWN from the shelf above while its own spit rod is bare, that strip is EMPTY = 0. "
                   "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
