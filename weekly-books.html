@@ -103,7 +103,7 @@
 <body>
 <div class="wrap">
   <div class="apphead">
-    <div class="logo">BC</div>
+    <div class="logo">🐔</div>
     <div>
       <h1>Weekly Books</h1>
       <div class="sub2">Bruno's Chicken Shop · weekly profit &amp; loss</div>
@@ -114,9 +114,9 @@
 
   <div class="toolbar">
     <button class="sync" id="syncBtn" onclick="syncWeek()">⟳ Sync from Square</button>
-    <button class="sync" id="billBtn" onclick="loadBills()" style="background:#7c3aed">Load invoices</button>
+    <button class="sync" id="billBtn" onclick="loadBills()" style="background:#7c3aed">⬇ Load invoices</button>
     <button class="ghost" onclick="goToday()">This week</button>
-    <button class="ghost" id="viewBtn" onclick="toggleView()">Month view</button>
+    <button class="ghost" id="viewBtn" onclick="toggleView()">📅 Month view</button>
     <span id="status"></span>
   </div>
 
@@ -130,7 +130,7 @@
 
   <div id="weekView">
   <div class="card" id="liveCard">
-    <h2><span>Live &amp; day-by-day</span><button class="ghost" style="padding:4px 10px;font-size:11px" onclick="refreshSelected()">⟳ update</button></h2>
+    <h2><span>⚡ Live & day-by-day</span><button class="ghost" style="padding:4px 10px;font-size:11px" onclick="refreshSelected()">⟳ update</button></h2>
     <div id="lvDays" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"></div>
     <div class="summary">
       <div class="row"><span id="lvSalesLbl">Sales (last 60 min)</span><span class="v pos2" id="lvSales">—</span></div>
@@ -364,7 +364,23 @@ const BILLS_DATA=[
  {d:'2026-06-13',v:'Fresho produce',a:160.11,i:'F54840244',f:'1zE6CZN3x0IPNfhrqhluNSsCRmfsBQgiM'},
  {d:'2026-06-15',v:'Baiada Poultry',a:2054.40,i:'U817970',f:'1hyHDVfh-PI95sfuc7CUOyw5kvI3n9mnw'},
  {d:'2026-06-15',v:'United Foodservice',a:2747.25,i:'SI490794',f:'15Vcb7NGA_FLjx3TtK9eJm7jK50_FLJPF'},
- {d:'2026-06-15',v:'Fresho produce',a:245.46,i:'F54894878',f:'14FyqEABESwVBc0oCOq0VQ6prjSzEIut4'}
+ {d:'2026-06-15',v:'Fresho produce',a:245.46,i:'F54894878',f:'14FyqEABESwVBc0oCOq0VQ6prjSzEIut4'},
+ {d:'2026-06-15',v:"G & W Packaging",a:551.87,i:'INV-50236',f:'1CplleWxJCHn5wqP7qO-8UY3v3O0UlVln'},
+ {d:'2026-06-16',v:"Fresho produce",a:234.69,i:'F54948447',f:'1sJzLr9XdQM3gE2xXOgq8qQUEwDGGu4Ro'},
+ {d:'2026-06-16',v:"Fresho produce",a:28.00,i:'F54912479',f:'1grP3AGHHidXW9AyknJumy23kjNLyuyLW'},
+ {d:'2026-06-16',v:"Asahi drinks",a:397.87,i:'9018441905',f:'1W_5yHPbUVxzLMyQugwY1NL7yOOcHTMWs'},
+ {d:'2026-06-16',v:"G & W Packaging",a:3553.00,i:'INV-50297',f:'1IhO-BHd2BDtNcnCG6kYaSSIXJnpsi6rX'},
+ {d:'2026-06-17',v:"Poultry Plus",a:255.00,i:'PP564730',f:'186bPbe5qjD3Jg6jZC_Eg0Z1QegahZfwV'},
+ {d:'2026-06-18',v:"Baiada Poultry",a:894.80,i:'U819302',f:'1PcU1Bw75ijqIvtjuZnuOd2f72UJtA62g'},
+ {d:'2026-06-18',v:"CFM cooking oil",a:281.50,i:'INV-142400',f:'1l-jawt4gpJtvGA2LSw41BjhrnDfwkXpG'},
+ {d:'2026-06-18',v:"Fresho produce",a:176.12,i:'F55017107',f:'1BHM3FoVibzg0n_OVYrugYyDbDwXG_-Bg'},
+ {d:'2026-06-19',v:"United Foodservice",a:3025.95,i:'SI491852',f:'1MaMevmq_2X7_fwZIqEFNNAQZ5aONRMSe'},
+ {d:'2026-06-19',v:"Poultry Plus",a:575.00,i:'PP564992',f:'1s6onBkjFEHCdud8WzpCZXbh04DO0pdBu'},
+ {d:'2026-06-19',v:"Melbourne Meat",a:285.00,i:'F54789908',f:'1Qa1BcIQwZHUkHxUY9JUFLuz4lHXt2PyF'},
+ {d:'2026-06-19',v:"Fresho produce",a:285.33,i:'F55084368',f:'1-rmOjqDJTOwMK7J3AHjZ9hKsPboFzNen'},
+ {d:'2026-06-19',v:"Asahi drinks",a:512.80,i:'9018464459',f:'1xOHcKRA7LBstza8JYWTMbxmAmRrWjZdA'},
+ {d:'2026-06-20',v:"Fresho produce",a:152.45,i:'F55120022',f:'1EdSPeS08fuRxK9XPJl4vK11RmR7p1gpH'},
+ {d:'2026-06-22',v:"Baiada Poultry",a:2054.40,i:'U821723',f:'1ytpZplIpekt5uaU6dv0S8tyR0w9cbhsm'}
 ];
 const BILLS_IDX={}; BILLS_DATA.forEach(function(b){ BILLS_IDX[b.i]=b; });
 function ensureBills(){
@@ -378,12 +394,16 @@ function ensureBills(){
 function loadBills(){ ensureBills(); ensureHist(); render(); status('Loaded '+BILLS_DATA.length+' supplier invoices (30 Mar onward).'); }
 // Your fixed overheads (the recurring amounts you set), applied to every April & May week as weekly values.
 // Monthly amounts are spread ÷ 4.33: PoS 322, loans 1816.65, Rent 7659, Accounting 770, Phone 60, Xero 162, Internet 99.
-const FIXED_WEEKS=['2026-03-30','2026-04-06','2026-04-13','2026-04-20','2026-04-27','2026-05-04','2026-05-11','2026-05-18','2026-05-25','2026-06-01','2026-06-08','2026-06-15'];
+const FIXED_WEEKS=['2026-03-30','2026-04-06','2026-04-13','2026-04-20','2026-04-27','2026-05-04','2026-05-11','2026-05-18','2026-05-25','2026-06-01','2026-06-08','2026-06-15','2026-06-22'];
 const FIXED_OH=[['Point of sale',74.31],['loans',419.23],['Rent',1767.46],['Acounting',177.69],['Electricty',600],['Gas',235],['Phone',13.85],['xero',37.38],['internet',22.85],['insurance',344.41],['consulting',750],['gst',2000]];
 function ensureFixedOH(){
   try{
     let ch=false;
-    FIXED_WEEKS.forEach(function(w){ FIXED_OH.forEach(function(o){
+    // EVERY week-Monday from the first overhead week up to THIS week (so recurring overheads always appear,
+    // including the current week — was previously a hard-coded list that stopped at 22 Jun).
+    const start=parseISO('2026-03-30'), end=mondayOf(new Date()); const weeks=[];
+    for(let d=new Date(start); isoOf(d)<=isoOf(end); d=addDays(d,7)) weeks.push(isoOf(d));
+    weeks.forEach(function(w){ FIXED_OH.forEach(function(o){
       const id='oh_'+w+'_'+o[0].replace(/\W+/g,'');
       if(!TX.some(t=>t.id===id)){ TX.push({id:id,date:w,type:'expense',cat:o[0],amt:o[1],bucket:'other',src:'embed'}); ch=true; }
     }); });
@@ -418,7 +438,10 @@ const PAYOUTS_DATA=[
  {w:'2026-05-25',cat:'DoorDash (net payout)',amt:816.14},
  {w:'2026-06-01',cat:'Uber Eats (net payout)',amt:7944.57},
  {w:'2026-06-08',cat:'Uber Eats (net payout)',amt:8462.53},
- {w:'2026-06-01',cat:'DoorDash (net payout)',amt:1158.14}
+ {w:'2026-06-01',cat:'DoorDash (net payout)',amt:1158.14},
+ {w:'2026-06-08',cat:'DoorDash (net payout)',amt:524.37},
+ {w:'2026-06-15',cat:'DoorDash (net payout)',amt:835.62},
+ {w:'2026-06-15',cat:'Uber Eats (net payout)',amt:7015.58}
 ];
 // Weekly wage totals verified directly against Square timecards (paid hours × rate, unpaid breaks deducted)
 const WAGES_DATA=[
@@ -632,7 +655,7 @@ function weekTotals(wkKey){
 function renderMonth(){
   document.getElementById('weekView').style.display='none';
   const mv=document.getElementById('monthView'); mv.style.display='';
-  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='Week view';
+  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='📆 Week view';
   if(!curMonth) curMonth=new Date(curMon.getFullYear(),curMon.getMonth(),1);
   const mNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('wkLabel').childNodes[0].nodeValue=mNames[curMonth.getMonth()];
@@ -698,11 +721,11 @@ function wageRowHTML(t){
       const t1=ds.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
       const t2=x.e?new Date(x.e).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
       return '<div style="display:flex;gap:10px;font-size:12px;color:'+(x.open?'#b45309':'#475569')+';padding:3px 2px;border-bottom:1px dashed #eef2f7">'+
-        '<span style="width:64px">'+day+'</span><span style="flex:1">'+t1+' – '+t2+(x.open?' — no clock-off':'')+'</span>'+
+        '<span style="width:64px">'+day+'</span><span style="flex:1">'+t1+' – '+t2+(x.open?' ⚠ no clock-off':'')+'</span>'+
         '<span>'+(x.h?(x.h.toFixed(1)+'h'):'')+'</span><span style="width:74px;text-align:right;font-variant-numeric:tabular-nums">'+(x.amt?('$'+x.amt.toFixed(2)):'')+'</span></div>';
     }).join('');
     return `<div class="txrow synced staffrow">
-      <span class="staffname" ${sh.length?`style="cursor:pointer" onclick="var d=document.getElementById('${sid}');if(d)d.style.display=d.style.display==='none'?'':'none'" title="Click to see this week's shifts"`:''}>${sh.length?'▸ ':''}${(t.cat||'Staff')}${hasOpen?' <span title="Has a shift with no clock-off" style="color:#b45309;font-weight:800">!</span>':''}</span>
+      <span class="staffname" ${sh.length?`style="cursor:pointer" onclick="var d=document.getElementById('${sid}');if(d)d.style.display=d.style.display==='none'?'':'none'" title="Click to see this week's shifts"`:''}>${sh.length?'▸ ':''}${(t.cat||'Staff')}${hasOpen?' <span title="Has a shift with no clock-off">⚠</span>':''}</span>
       <label class="suptick"><input type="checkbox" ${inc?'checked':''} onchange="toggleSuper('${t.staffId}',this.checked)">super</label>
       <input class="amt" type="number" step="0.01" value="${t.amt||''}" oninput="editAmt('${t.id}',this.value)">
       <button class="del" onclick="delTx('${t.id}')" title="Delete">&times;</button></div>`+
@@ -747,15 +770,24 @@ function payoutLink(t){
   return 'https://mail.google.com/mail/?authuser='+encodeURIComponent(PAYOUT_MAILBOX)+'#search/'+encodeURIComponent(q);
 }
 function setBucket(id,v){ const t=TX.find(x=>x.id===id); if(t){ t.bucket=v; save(); render(); } }
+// Untick / exclude individual invoices (or any embedded line) from the weekly totals — reversible, saved locally.
+var EXCL_KEY='weeklybooks_excluded';
+function _loadExcl(){ try{ return new Set(JSON.parse(localStorage.getItem(EXCL_KEY)||'[]')); }catch(e){ return new Set(); } }
+var EXCLUDED=_loadExcl();
+function isExclId(id){ return EXCLUDED.has(id); }
+function isExcl(t){ return !!(t && EXCLUDED.has(t.id)); }
+function toggleExcl(id){ if(EXCLUDED.has(id)) EXCLUDED.delete(id); else EXCLUDED.add(id); try{ localStorage.setItem(EXCL_KEY, JSON.stringify(Array.from(EXCLUDED))); }catch(e){} render(); }
 // one combined line per supplier — CLICK it to expand the individual invoices, each linking to its PDF
 function groupRowHTML(cat,g,gi){
   const items=(g.items||[]).slice().sort(function(a,b){return a.date<b.date?-1:1;}).map(function(it){
     const b=it.inv&&BILLS_IDX[it.inv];
-    const link=(b&&b.f)?('<a href="https://drive.google.com/file/d/'+b.f+'/view" target="_blank" rel="noopener" style="color:#0369a1;font-weight:600">view invoice</a>')
+    const link=(b&&b.f)?('<a href="https://drive.google.com/file/d/'+b.f+'/view?usp=sharing" target="_blank" rel="noopener" style="color:#0369a1;font-weight:600">view invoice</a>')
                        :'<span style="color:#94a3b8">no copy on file</span>';
     const d=it.date?(it.date.slice(8,10)+'/'+it.date.slice(5,7)):'';
-    return '<div style="display:flex;gap:10px;align-items:baseline;font-size:12px;color:#475569;padding:4px 2px;border-bottom:1px dashed #eef2f7">'+
-      '<span style="width:38px">'+d+'</span><span style="flex:1">'+(it.inv||'—')+'</span>'+
+    const ex=isExclId(it.id);
+    return '<div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#475569;padding:4px 2px;border-bottom:1px dashed #eef2f7;'+(ex?'opacity:.45;text-decoration:line-through':'')+'">'+
+      '<input type="checkbox" '+(ex?'':'checked')+' title="Untick to leave this invoice out of the week\'s totals" onclick="event.stopPropagation();toggleExcl(\''+it.id+'\')" style="cursor:pointer;margin:0">'+
+      '<span style="width:34px">'+d+'</span><span style="flex:1">'+(it.inv||'—')+'</span>'+
       '<span style="font-variant-numeric:tabular-nums">$'+(+it.amt).toFixed(2)+'</span><span style="width:88px;text-align:right">'+link+'</span></div>';
   }).join('');
   return '<div class="txrow synced" style="cursor:pointer" onclick="var d=document.getElementById(\'grp'+gi+'\');var c=document.getElementById(\'grpc'+gi+'\');var o=d.style.display===\'none\';d.style.display=o?\'\':\'none\';c.textContent=o?\'▾\':\'▸\'" title="Click to see the invoices behind this total">'
@@ -770,7 +802,7 @@ function render(focusNew,focusKey){
   if(viewMode==='month'){ renderMonth(); return; }
   document.getElementById('weekView').style.display='';
   document.getElementById('monthView').style.display='none';
-  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='Month view';
+  const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='📅 Month view';
   materializeRecurring();
   dedupeMark();
   pruneFuturePayouts();
@@ -784,7 +816,7 @@ function render(focusNew,focusKey){
   const expAll=wt.filter(t=>t.type==='expense' && bucketOf(t)!=='wage');
   // combine auto-loaded COGS invoices into one line per supplier; manual rows stay individual & editable
   const grp={}; const manualExp=[];
-  expAll.forEach(t=>{ if(isAutoTx(t) && bucketOf(t)==='cogs'){ const k=t.cat||'(supplier)'; const g=grp[k]||(grp[k]={amt:0,items:[]}); g.amt+=(+t.amt||0); g.items.push({inv:t.inv||'',date:t.date,amt:+t.amt||0}); } else manualExp.push(t); });
+  expAll.forEach(t=>{ if(isAutoTx(t) && bucketOf(t)==='cogs'){ const k=t.cat||'(supplier)'; const g=grp[k]||(grp[k]={amt:0,items:[]}); if(!isExcl(t)) g.amt+=(+t.amt||0); g.items.push({id:t.id,inv:t.inv||'',date:t.date,amt:+t.amt||0}); } else manualExp.push(t); });
   const expHtml=Object.keys(grp).sort((a,b)=>grp[b].amt-grp[a].amt).map((k,i)=>groupRowHTML(k,grp[k],i))
     .concat(manualExp.sort(autoFirst).map(rowHTML)).join('');
   document.getElementById('incList').innerHTML=inc.length?inc.map(rowHTML).join(''):'<div class="empty">No income yet — hit Sync, or add a line.</div>';
@@ -802,14 +834,14 @@ function render(focusNew,focusKey){
     let msgs=[];
     if(curKey()>='2026-03-02' && ended){
       const wti=weekTx();
-      if(!wti.some(t=>t.type==='income'&&t.cat==='Uber Eats (net payout)')) msgs.push('No <b>Uber Eats</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
-      if(!wti.some(t=>t.type==='income'&&t.cat==='DoorDash (net payout)')) msgs.push('No <b>DoorDash</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
+      if(!wti.some(t=>t.type==='income'&&t.cat==='Uber Eats (net payout)')) msgs.push('⚠ No <b>Uber Eats</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
+      if(!wti.some(t=>t.type==='income'&&t.cat==='DoorDash (net payout)')) msgs.push('⚠ No <b>DoorDash</b> payout booked for this week — I couldn\'t find its payout email. Tell Claude and we\'ll chase it.');
     }
     if(msgs.length){ ia.style.display=''; ia.innerHTML=msgs.join('<br>'); } else { ia.style.display='none'; }
   }
   // un-clocked-off staff warning (shifts open > 12h)
   const wa=document.getElementById('wageAlert');
-  if(wa){ if(WAGE_ALERTS.length){ wa.style.display=''; wa.innerHTML=WAGE_ALERTS.map(a=>'<b>'+(STAFF[a.id]||'A staff member')+"</b> hasn't clocked off — shift open "+a.hrs+'h. Fix the timecard in Square Teams, then re-sync.').join('<br>'); } else { wa.style.display='none'; } }
+  if(wa){ if(WAGE_ALERTS.length){ wa.style.display=''; wa.innerHTML=WAGE_ALERTS.map(a=>'⚠ <b>'+(STAFF[a.id]||'A staff member')+"</b> hasn't clocked off — shift open "+a.hrs+'h. Fix the timecard in Square Teams, then re-sync.').join('<br>'); } else { wa.style.display='none'; } }
   renderTotals();
   try{ if(!window._syncBusy) syncDisplayFromTX(); renderSyncStatus(); }catch(e){}
   if(focusNew){ const id={income:'incList',wage:'wageList',other:'expList',cogs:'expList'}[focusKey]||'expList'; const list=document.getElementById(id); const ins=list.querySelectorAll('input.cat'); if(ins.length)ins[ins.length-1].focus(); }
@@ -817,7 +849,7 @@ function render(focusNew,focusKey){
 // weekly contribution of a row: monthly bills ÷ 4.33, fortnightly ÷ 2, everything else as-is
 function weeklyVal(t){ return (+t.amt||0)/(t.recur==='monthly'?(52/12):t.recur==='fortnightly'?2:1); }
 function renderTotals(){
-  const wt=weekTx();
+  const wt=weekTx().filter(function(t){return !isExcl(t);});
   const sum=a=>a.reduce((s,t)=>s+weeklyVal(t),0);
   const sales=sum(wt.filter(t=>t.type==='income'));
   const cogs=sum(wt.filter(t=>bucketOf(t)==='cogs'));
@@ -1077,7 +1109,7 @@ function setSyncLine(cat,amt,type){
 // ── Sync status panel: shows each source's state so you can see when it has finished searching ──
 const SYNC_SOURCES=[['dep','Bank deposits'],['cash','Cash sales'],['wage','Wages'],['uber','Uber Eats'],['dd','DoorDash'],['bills','Invoices']];
 let SYNC_STATE={};
-function _weekSum(pred){ return TX.filter(t=>weekKey(t.date)===curKey()).filter(pred).reduce((s,t)=>s+(+t.amt||0),0); }
+function _weekSum(pred){ return TX.filter(t=>weekKey(t.date)===curKey()).filter(pred).filter(function(t){return !isExcl(t);}).reduce((s,t)=>s+(+t.amt||0),0); }
 const _SYNC_PRED={dep:t=>t.cat==='Bank deposits (Square)',cash:t=>t.cat==='Cash sales (Square)',wage:t=>bucketOf(t)==='wage',uber:t=>t.cat==='Uber Eats (net payout)',dd:t=>t.cat==='DoorDash (net payout)',bills:t=>bucketOf(t)==='cogs'};
 function syncDisplayFromTX(){ SYNC_SOURCES.forEach(function(s){ const v=_weekSum(_SYNC_PRED[s[0]]); SYNC_STATE[s[0]]={state:v>0?'done':'none',detail:v>0?fmt(v):'none'}; }); }
 function setBusy(keys){ keys.forEach(function(k){ SYNC_STATE[k]={state:'busy',detail:'searching…'}; }); renderSyncStatus(); }
@@ -1086,7 +1118,7 @@ function renderSyncStatus(){
   const el=document.getElementById('syncStatus'); if(!el) return;
   if(!Object.keys(SYNC_STATE).length){ el.style.display='none'; return; }
   el.style.display='';
-  const ic={busy:'…',done:'✓',none:'–',wait:'·'}, col={busy:'#b45309',done:'#16a34a',none:'#94a3b8',wait:'#cbd5e1'};
+  const ic={busy:'⏳',done:'✓',none:'–',wait:'·'}, col={busy:'#b45309',done:'#16a34a',none:'#94a3b8',wait:'#cbd5e1'};
   const allDone=SYNC_SOURCES.every(function(s){ const v=SYNC_STATE[s[0]]; return v&&(v.state==='done'||v.state==='none'); });
   el.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:9px 11px;margin-bottom:12px;font-size:12px;box-shadow:0 1px 3px rgba(15,23,42,.05)">'
     +'<span style="font-weight:800;color:'+(allDone?'#16a34a':'#b45309')+';margin-right:4px">'+(allDone?'All done ✓':'Searching…')+'</span>'
@@ -1211,15 +1243,13 @@ async function syncWeek(){
       const ds=await call(GSEARCH,{query:dq,pageSize:20});
       const byBrand={};
       for(const th of (ds.threads||[])){
-        const m0=(th.messages&&th.messages[0])||{};
-        const subj=m0.subject||'';                         // subject is already in the search result — no need to fetch the whole email
-        if(subj.indexOf(ddStr)===-1||!BRAND.test(subj)) continue;   // wrong week or a different brand
+        const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
+        const msgs=t.messages||[]; const subj=(msgs[0]&&msgs[0].subject)||'';
+        if(subj.indexOf(ddStr)===-1) continue;
+        if(!BRAND.test(subj)) continue; // only the active brand
         const brand=((subj.match(/payment (?:to|for) (.+?)\s*\(?\d{2}\/\d{2}\/\d{4}/i)||[])[1]||subj).trim();
-        let mm=(m0.snippet||'').match(/payment of \$([0-9,]+\.[0-9]{2})/i);   // the amount sits right in the snippet
-        if(!mm){ try{ const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});   // fallback: read the full body
-            const body=(t.messages||[]).map(m=>[m.htmlBody,m.plaintext_body,m.plaintextBody,m.snippet].filter(Boolean).join(' ')).join(' ');
-            mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
-          }catch(e){} }
+        const body=msgs.map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
+        const mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
         if(mm) byBrand[brand]=parseFloat(mm[1].replace(/,/g,'')); // latest email per brand wins
       }
       dd=Object.values(byBrand).reduce((a,b)=>a+b,0);
@@ -1284,15 +1314,12 @@ async function backfillPrevWeek(){
       const ds=await call(GSEARCH,{query:'(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"',pageSize:20});
       const byBrand={};
       for(const th of (ds.threads||[])){
-        const m0=(th.messages&&th.messages[0])||{};
-        const subj=m0.subject||'';
+        const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
+        const msgs=t.messages||[]; const subj=(msgs[0]&&msgs[0].subject)||'';
         if(subj.indexOf(ddStr)===-1||!BRAND.test(subj)) continue;
         const brand=((subj.match(/payment (?:to|for) (.+?)\s*\(?\d{2}\/\d{2}\/\d{4}/i)||[])[1]||subj).trim();
-        let mm=(m0.snippet||'').match(/payment of \$([0-9,]+\.[0-9]{2})/i);
-        if(!mm){ try{ const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
-            const body=(t.messages||[]).map(m=>[m.htmlBody,m.plaintext_body,m.plaintextBody,m.snippet].filter(Boolean).join(' ')).join(' ');
-            mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
-          }catch(e){} }
+        const body=msgs.map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
+        const mm=body.match(/payment of \$([0-9,]+\.[0-9]{2})/i);
         if(mm) byBrand[brand]=parseFloat(mm[1].replace(/,/g,''));
       }
       const dd=Object.values(byBrand).reduce((a,b)=>a+b,0);
@@ -1302,7 +1329,7 @@ async function backfillPrevWeek(){
   }catch(e){}
 }
 
-// Live indicator: in-store sales (cash + card + online + kiosk) vs wage cost, with a 10am–9pm day chart.
+// ⚡ Live indicator: in-store sales (cash + card + online + kiosk) vs wage cost, with a 10am–9pm day chart.
 // Uber/DoorDash are EXCLUDED here — their real income is booked weekly from their payout statements,
 // because what Square sees for delivery orders is the gross menu price, not what they actually pay out.
 const SQ_LOC='LZ3PM4EK0QSQJ';
