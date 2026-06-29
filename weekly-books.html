@@ -536,6 +536,7 @@ const SHIFTKEY='weeklybooks_shifts';
 function shiftsMap(){ try{return JSON.parse(localStorage.getItem(SHIFTKEY)||'{}');}catch(e){return {};} }
 function shiftsFor(id){ try{ return ((shiftsMap()[curKey()]||{})[id])||[]; }catch(e){ return []; } }
 function load(){
+  window._booksLoading=true;
   try{
     const s=localStorage.getItem(KEY); TX=s?JSON.parse(s):seedTx(); if(!s)save();
     // one-time cleanup: drop the old seed income lines from the original CSV import
@@ -570,6 +571,7 @@ function load(){
     dedupeMark();
     pruneFuturePayouts();
   }catch(e){ TX=seedTx(); }
+  window._booksLoading=false;
 }
 // INVARIANT: Uber/DoorDash payout statements only exist AFTER a week ends (Uber ~midnight Sun, DoorDash Mon).
 // Drop any delivery payout line sitting in a week that hasn't reached its Sunday 10pm yet — whatever created it,
@@ -588,7 +590,7 @@ function save(){ try{localStorage.setItem(KEY,JSON.stringify(TX));}catch(e){} sc
 // trapped in one browser. An empty device auto-pulls the backup; if a device's data diverges from
 // the backup we ASK rather than silently clobber (financial data must never be lost or doubled).
 let _snapTimer=null;
-function schedulePush(){ if(_snapTimer)clearTimeout(_snapTimer); _snapTimer=setTimeout(pushSnap,1500); }
+function schedulePush(){ if(window._booksLoading) return; if(_snapTimer)clearTimeout(_snapTimer); _snapTimer=setTimeout(pushSnap,1500); }  // don't back up the transient mid-load state (load() shrinks TX during cleanup)
 function setCloud(t,warn){ const el=document.getElementById('cloud'); if(el){ el.textContent='☁ '+t; el.style.color=warn?'#b45309':'#94a3b8'; } }
 async function pushSnap(){
   try{
@@ -607,7 +609,8 @@ async function reconcileServer(){
     save(); load(); render(); setCloud('restored · '+srvN+' items'); return;
   }
   if(srvN > TX.length+5) showSnapConflict(srvN,s.ts,srvTx,s.rskip||{});       // server has notably MORE → this device may be missing data; offer restore
-  else { pushSnap(); setCloud('in sync · '+TX.length+' items'); }             // this device is current/richer → just back it up
+  else if(TX.length>=srvN){ pushSnap(); setCloud('in sync · '+TX.length+' items'); }  // only back up when this device is EQUAL or RICHER — never shrink the server copy
+  else setCloud('in sync · '+srvN+' on server');                              // server slightly larger but within tolerance → leave it, don't clobber
 }
 // manual pull — click the ☁ status to fetch the latest backup and choose
 async function manualRestore(){
@@ -797,7 +800,7 @@ function rowHTML(t){
   const verify=payoutLink(t);
   return `<div class="txrow ${auto?'synced':''}">
     <input class="cat" placeholder="Category" value="${(t.cat||'').replace(/"/g,'&quot;')}" oninput="editCat('${t.id}',this.value)">
-    ${t.src==='est'?'<span class="badge" style="background:#fef3c7;color:#92400e;border-color:#fcd34d" title="Estimated from Square gross minus 30% — replaced by the real payout when it lands">EST −30%</span>':(auto?'<span class="badge">AUTO</span>':'')}${(t.est!=null&&t.src!=='est')?('<span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac" title="vs the 30% estimate">est '+fmt(t.est)+' · diff '+((t.amt-t.est)>=0?'+':'')+fmt(t.amt-t.est)+'</span>'):''}${bkt}${rec}
+    ${t.src==='est'?'<span class="badge" style="background:#fef3c7;color:#92400e;border-color:#fcd34d" title="Estimated from Square gross minus 30% — replaced by the real payout when it lands">EST −30%</span>':(auto?'<span class="badge">AUTO</span>':'')}${(t.est!=null&&t.src!=='est'&&t.est>=t.amt*0.4)?('<span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac" title="vs the 30% estimate">est '+fmt(t.est)+' · diff '+((t.amt-t.est)>=0?'+':'')+fmt(t.amt-t.est)+'</span>'):''}${bkt}${rec}
     <input class="amt" type="number" step="0.01" placeholder="0" value="${t.amt||''}" oninput="editAmt('${t.id}',this.value)">
     ${(t.recur==='monthly'||t.recur==='fortnightly')?`<span class="pct" style="margin-left:0;white-space:nowrap">≈${fmt(weeklyVal(t))}/wk</span>`:''}
     ${verify?`<a href="${verify}" target="_blank" rel="noopener" class="pct" style="margin-left:0;white-space:nowrap;color:#0369a1;font-weight:600" title="Open this week's payout email in Gmail to confirm">verify ↗</a>`:''}
@@ -1044,7 +1047,7 @@ async function parseBillAI(text,title){
 `Reply STRICT JSON only: {"type":"monthly|cogs|skip","vendor":"short name","amount":<number>,"invoiceNo":"the invoice/document number if shown","periodStart":"","periodEnd":"","invoiceDate":""}. Title: ${title}`;
   let o=null;
   try{
-    let r=await window.cowork.askClaude(prompt,[(text||'').slice(0,7000)]);
+    let r=await window.cowork.askClaude(prompt,[(text||'').slice(0,30000)]);  // long multi-page invoices put the TOTAL late — 7000 chars cut it off and the invoice was dropped
     if(typeof r!=='string') r=(r&&r.text)||JSON.stringify(r);
     const m=r.match(/\{[\s\S]*\}/);
     if(m){ const j=JSON.parse(m[0]); o={type:j.type||'skip', vendor:j.vendor||title, amt:+j.amount||0, invoiceNo:j.invoiceNo||'', periodStart:j.periodStart||'', periodEnd:j.periodEnd||'', invoiceDate:j.invoiceDate||''}; }
@@ -1077,7 +1080,7 @@ async function syncXeroBills(){
   }catch(e){}
   return n;
 }
-const BILLCACHE='weeklybooks_billCacheV5';
+const BILLCACHE='weeklybooks_billCacheV6';  // V6: bumped to force a fresh full re-read with the wider 30k char window — clears any poisoned 'skip' verdicts that were permanently suppressing a supplier
 async function syncBills(){
   const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
   try{
@@ -1127,8 +1130,8 @@ async function syncBills(){
     files.forEach((f,i)=>{
       const o=results[i];
       if(!o || o.type!=='cogs' || !(o.amt>0)) return;
-      const key=(o.vendor+'|'+(o.invoiceNo||f.id)).toLowerCase().replace(/\s+/g,'');
-      if(seen.has(key)) return; seen.add(key);                        // never book the same invoice twice
+      const key=f.id;                                                 // one Drive file = one invoice. (Keying on vendor+invoiceNo wrongly dropped two real invoices from the same supplier that shared/blanked an invoice number.)
+      if(seen.has(key)) return; seen.add(key);                        // never book the same FILE twice
       const fbWk=weekKey((f.createdTime||'').slice(0,10)||curKey());
       const wk=safeWk(o.invoiceDate, fbWk);
       TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id,inv:o.invoiceNo||''}); cb++;

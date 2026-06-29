@@ -1085,6 +1085,41 @@ def api_books_tx():
         db["books_store"]=b; save_data(db)
     return jsonify({"ok":True,"rev":b["rev"],"count":len(tx)})
 
+@app.route("/api/square_week_test")
+def api_square_week_test():
+    # Diagnostic: replicate Weekly Books' card+cash deposit tally for a week, server-side, to see what
+    # Square ACTUALLY returns. Pass ?start=<ISO>&end=<ISO> as the precise UTC week bounds. (Open like
+    # google_test — Tailscale-private, returns only weekly totals.)
+    cfg=db.get("square_config",{}) or {}
+    token=(cfg.get("access_token") or "").strip()
+    if not token: return jsonify({"ok":False,"error":"no square token"})
+    loc=(cfg.get("location_id") or "").strip()
+    begin=request.args.get("start") or ""; end=request.args.get("end") or ""
+    try:
+        dep=0.0; cash=0.0; ncard=0; ncash=0; ntot=0; src={}; cursor=None; pages=0
+        while pages<60:
+            params={"begin_time":begin,"end_time":end,"limit":100,"sort_order":"ASC"}
+            if loc: params["location_id"]=loc
+            if cursor: params["cursor"]=cursor
+            url=SQUARE_BASE+"/v2/payments?"+urllib.parse.urlencode(params)
+            req=urllib.request.Request(url,headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for p in (data.get("payments") or []):
+                ntot+=1; st=p.get("source_type") or "?"; src[st]=src.get(st,0)+1
+                amt=((p.get("amount_money") or {}).get("amount") or 0); rf=((p.get("refunded_money") or {}).get("amount") or 0)
+                if st=="CASH": cash+=(amt-rf)/100.0; ncash+=1; continue
+                if st!="CARD" or p.get("status")!="COMPLETED": continue
+                fees=sum(((f.get("amount_money") or {}).get("amount") or 0) for f in (p.get("processing_fee") or []))
+                appf=((p.get("app_fee_money") or {}).get("amount") or 0)
+                dep+=(amt-rf-fees-appf)/100.0; ncard+=1
+            cursor=data.get("cursor"); pages+=1
+            if not cursor: break
+        return jsonify({"ok":True,"begin":begin,"end":end,"location":loc or "(all locations)","deposits_card_net":round(dep,2),"cash":round(cash,2),"card_count":ncard,"cash_count":ncash,"total_payments":ntot,"pages":pages,"by_source_type":src})
+    except Exception as e:
+        try: return jsonify({"ok":False,"error":e.read().decode()[:200]})
+        except Exception: return jsonify({"ok":False,"error":str(e)[:200]})
+
 # ── Task-completion photos: grab a still from a Dahua IP camera instead of a PIN ──
 PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)
