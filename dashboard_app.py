@@ -2723,7 +2723,7 @@ def rotcam_stream_loop():
             time.sleep(1); continue   # nobody watching AND not counting → don't burn the camera/CPU
         url=_rotcam_rtsp(); p=None
         try:
-            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-rw_timeout","5000000","-i",url,
                                 "-an","-r","8","-q:v","6","-f","mjpeg","-"],
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
             ROTCAM["error"]=""; buf=b""
