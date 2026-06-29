@@ -1140,6 +1140,18 @@ def api_bills_probe():
         out["united"]=[titles[i] for i,t in enumerate(low) if "united" in t or "zoghaib" in t]
         out["gw"]=[titles[i] for i,t in enumerate(low) if "g&w" in t or "g & w" in t or "gnw" in t or "packag" in t]
         out["baiada"]=[titles[i] for i,t in enumerate(low) if "baiada" in t]
+        out["asahi"]=[titles[i] for i,t in enumerate(low) if "asahi" in t]
+        out["russel"]=[titles[i] for i,t in enumerate(low) if "russel" in t]
+        out["all_titles"]=titles   # full list so I can spot generically-named suppliers
+        def read_tail(idx_list):
+            if not idx_list: return None
+            try:
+                fid=files[idx_list[0]].get("id") or files[idx_list[0]].get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                return {"name":titles[idx_list[0]],"tail":txt[-700:]}
+            except Exception as e: return {"error":str(e)[:150]}
+        out["asahi_sample"]=read_tail([i for i,t in enumerate(low) if "asahi" in t])
+        out["russel_sample"]=read_tail([i for i,t in enumerate(low) if "russel" in t])
         out["si_files"]=[titles[i] for i,t in enumerate(low) if "sales invoice si" in t or "sales invoice" in t][:12]
         out["inv5_files"]=[titles[i] for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t or "inv-5" in t][:12]
         out["sample"]=titles[:50]
