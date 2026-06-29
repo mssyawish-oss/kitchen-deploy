@@ -1055,7 +1055,12 @@ def api_google_test():
             if subj: break
         nt=len(gm.get("threads") or [])
         dr=_drive_search({"query":""}); nf=len(dr.get("files") or [])
-        return jsonify({"ok":True,"detail":"Gmail OK"+((" — found a recent Uber email: \""+subj[:60]+"\"") if subj else (" ("+str(nt)+" Uber thread(s) in 60d)"))+" · Drive OK ("+str(nf)+" files visible)"})
+        # end-to-end: the exact queries Weekly Books runs — the bills folder + the Uber payout-summary search
+        try: bf=len((_drive_search({"query":"parentId = '1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'","pageSize":100}) or {}).get("files") or [])
+        except Exception: bf=-1
+        try: up=len((_gmail_search({"query":"from:uber.com subject:(payment summary) newer_than:40d","pageSize":5}) or {}).get("threads") or [])
+        except Exception: up=-1
+        return jsonify({"ok":True,"detail":"Gmail OK"+((" — found a recent Uber email: \""+subj[:60]+"\"") if subj else (" ("+str(nt)+" Uber thread(s) in 60d)"))+" · Drive OK ("+str(nf)+" files visible)","bills_folder":bf,"uber_payouts":up})
     except Exception as e:
         try: return jsonify({"ok":False,"error":e.read().decode()[:180]})
         except Exception: return jsonify({"ok":False,"error":str(e)[:180]})

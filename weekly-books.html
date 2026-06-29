@@ -114,7 +114,7 @@
 
   <div class="toolbar">
     <button class="sync" id="syncBtn" onclick="syncWeek()">⟳ Sync from Square</button>
-    <button class="sync" id="billBtn" onclick="loadBills()" style="background:#7c3aed">⬇ Load invoices</button>
+    <button class="sync" id="billBtn" onclick="syncBills()" style="background:#7c3aed">⬇ Load invoices</button>
     <button class="ghost" onclick="goToday()">This week</button>
     <button class="ghost" id="viewBtn" onclick="toggleView()">📅 Month view</button>
     <span id="status"></span>
@@ -1051,7 +1051,7 @@ async function syncBills(){
     // 2) classify each, caching the result by file id so future runs only read NEW invoices
     let cache; try{cache=JSON.parse(localStorage.getItem(BILLCACHE)||'{}');}catch(e){cache={};}
     let changed=false;
-    TX=TX.filter(t=>t.src!=='bill'); // clean rebuild each run
+    TX=TX.filter(t=>t.src!=='bill' && t.src!=='embed'); // clean rebuild each run; drop the old embedded seed (Drive is now the source of truth)
     let cb=0, n=0; const seen=new Set();
     for(const f of files){
       n++;
