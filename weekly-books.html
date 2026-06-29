@@ -827,7 +827,8 @@ function toggleExcl(id){ if(EXCLUDED.has(id)) EXCLUDED.delete(id); else EXCLUDED
 function groupRowHTML(cat,g,gi){
   const items=(g.items||[]).slice().sort(function(a,b){return a.date<b.date?-1:1;}).map(function(it){
     const b=it.inv&&BILLS_IDX[it.inv];
-    const link=(b&&b.f)?('<a href="https://drive.google.com/file/d/'+b.f+'/view?usp=sharing" target="_blank" rel="noopener" style="color:#0369a1;font-weight:600">view invoice</a>')
+    const fid=(it.fileId && it.fileId.indexOf('xero:')!==0) ? it.fileId : (b&&b.f ? b.f : '');  // prefer the live Drive fileId; fall back to the old embedded index
+    const link=fid?('<a href="https://drive.google.com/file/d/'+fid+'/view?usp=sharing" target="_blank" rel="noopener" style="color:#0369a1;font-weight:600">view invoice</a>')
                        :'<span style="color:#94a3b8">no copy on file</span>';
     const d=it.date?(it.date.slice(8,10)+'/'+it.date.slice(5,7)):'';
     const ex=isExclId(it.id);
@@ -862,7 +863,7 @@ function render(focusNew,focusKey){
   const expAll=wt.filter(t=>t.type==='expense' && bucketOf(t)!=='wage');
   // combine auto-loaded COGS invoices into one line per supplier; manual rows stay individual & editable
   const grp={}; const manualExp=[];
-  expAll.forEach(t=>{ if(isAutoTx(t) && bucketOf(t)==='cogs'){ const k=t.cat||'(supplier)'; const g=grp[k]||(grp[k]={amt:0,items:[]}); if(!isExcl(t)) g.amt+=(+t.amt||0); g.items.push({id:t.id,inv:t.inv||'',date:t.date,amt:+t.amt||0}); } else manualExp.push(t); });
+  expAll.forEach(t=>{ if(isAutoTx(t) && bucketOf(t)==='cogs'){ const k=t.cat||'(supplier)'; const g=grp[k]||(grp[k]={amt:0,items:[]}); if(!isExcl(t)) g.amt+=(+t.amt||0); g.items.push({id:t.id,inv:t.inv||'',date:t.date,amt:+t.amt||0,fileId:t.fileId||''}); } else manualExp.push(t); });
   const expHtml=Object.keys(grp).sort((a,b)=>grp[b].amt-grp[a].amt).map((k,i)=>groupRowHTML(k,grp[k],i))
     .concat(manualExp.sort(autoFirst).map(rowHTML)).join('');
   document.getElementById('incList').innerHTML=inc.length?inc.map(rowHTML).join(''):'<div class="empty">No income yet — hit Sync, or add a line.</div>';
@@ -1130,7 +1131,7 @@ async function syncBills(){
       if(seen.has(key)) return; seen.add(key);                        // never book the same invoice twice
       const fbWk=weekKey((f.createdTime||'').slice(0,10)||curKey());
       const wk=safeWk(o.invoiceDate, fbWk);
-      TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id}); cb++;
+      TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id,inv:o.invoiceNo||''}); cb++;
     });
     if(changed){ try{localStorage.setItem(BILLCACHE,JSON.stringify(cache));}catch(e){} }
     // Note: G&W and CFM invoices are saved as PDFs in the folder now, so they're booked above —
