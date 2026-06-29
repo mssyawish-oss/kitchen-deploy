@@ -1228,12 +1228,12 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <span id="rc-trace-model" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
     </div>
     <div id="rc-live-wrap" style="display:none;margin-bottom:12px;">
-      <div style="position:relative;border-radius:10px;overflow:hidden;background:#000;border:1px solid var(--border2);">
+      <div id="rc-live-box" style="position:relative;border-radius:10px;overflow:hidden;background:#000;border:1px solid var(--border2);">
         <img id="rc-live" alt="" style="width:100%;display:block;max-height:320px;object-fit:contain;background:#000;">
         <span style="position:absolute;top:8px;left:8px;background:rgba(220,38,38,.92);color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:6px;letter-spacing:.04em;">● LIVE</span>
         <button class="btn btn-primary" style="position:absolute;bottom:8px;right:8px;font-size:13px;padding:9px 14px;" onclick="captureNow()">&#128247; Grab &amp; correct now</button>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin:8px 2px 4px;">Recent frames (~½s apart) — tap the exact one where a row came off to correct it:</div>
+      <div id="rc-capstrip-lbl" style="font-size:11px;color:var(--muted);margin:8px 2px 4px;">Recent frames (~½s apart) — tap the exact one where a row came off to correct it:</div>
       <div id="rc-capstrip" style="display:flex;gap:5px;overflow-x:auto;padding-bottom:5px;"></div>
       <canvas id="rc-capcanvas" style="display:none;"></canvas>
     </div>
@@ -2270,15 +2270,19 @@ function toggleTrace(){
 let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={},_lastFrameUrl='';
 function _startLiveCap(){
   const w=document.getElementById('rc-live-wrap');if(w)w.style.display='block';
+  const box=document.getElementById('rc-live-box');if(box)box.style.display='';   // re-show the live video
   const im=document.getElementById('rc-live');if(im)im.src='/api/rotcam_stream?t='+Date.now();   // desktop MJPEG — smooth (same as the dash card)
-  _capStrip=[];_capMap={};_lastFrameUrl='';const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
+  _capStrip=[];_capMap={};_lastFrameUrl='';
+  const lbl=document.getElementById('rc-capstrip-lbl');if(lbl)lbl.textContent='Recent frames (~½s apart) — tap the exact one where a row came off to correct it:';
+  const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
   if(_liveCapTimer)clearInterval(_liveCapTimer);
   _liveCapTimer=setInterval(_grabFrame,500);   // a fresh correctable frame every ~½ second
 }
 function _stopLiveCap(){
   if(_liveCapTimer){clearInterval(_liveCapTimer);_liveCapTimer=null;}
   const im=document.getElementById('rc-live');if(im)im.src='';
-  const w=document.getElementById('rc-live-wrap');if(w)w.style.display='none';
+  const box=document.getElementById('rc-live-box');if(box)box.style.display='none';   // hide ONLY the live video — KEEP every captured frame on screen so you can still tap to correct
+  const lbl=document.getElementById('rc-capstrip-lbl');if(lbl)lbl.textContent='Trace stopped — '+_capStrip.length+' frame(s) kept. Tap any to correct it:';
 }
 function _grabFrame(){
   const im=document.getElementById('rc-live'),cv=document.getElementById('rc-capcanvas'),strip=document.getElementById('rc-capstrip');
@@ -2294,7 +2298,7 @@ function _grabFrame(){
     const div=document.createElement('div');div.style.cssText='flex:0 0 auto;text-align:center;cursor:pointer;';div.onclick=function(){openCorrect(lid);};
     div.innerHTML='<img src="'+url+'" style="width:96px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:#000;"><div style="font-size:9px;color:var(--muted);font-family:var(--font-mono);">'+t+'</div>';
     strip.insertBefore(div,strip.firstChild);_capStrip.unshift(lid);
-    while(_capStrip.length>40){const drop=_capStrip.pop();delete _capMap[drop];if(strip.lastChild)strip.removeChild(strip.lastChild);}
+    while(_capStrip.length>3000){const drop=_capStrip.pop();delete _capMap[drop];if(strip.lastChild)strip.removeChild(strip.lastChild);}  // keep ALL frames for the session (3000 = ~25 min of changed frames; only a runaway-memory backstop)
   }catch(e){}
 }
 function captureNow(){_grabFrame();if(_capStrip.length)openCorrect(_capStrip[0]);}
