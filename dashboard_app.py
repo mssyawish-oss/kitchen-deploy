@@ -1234,6 +1234,19 @@ def api_bills_probe():
                 ft=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
                 out["fresho_full"]={"name":titles[fr[0]],"text":ft[:2600]}
             except Exception as e: out["fresho_full"]={"err":str(e)[:120]}
+        # ASAHI — vendor + 5-column "AUD Total" amount + date + week
+        ai=[i for i,t in enumerate(low) if "asahi" in t]
+        out["asahi_parsed"]=[]
+        for i in ai[:8]:
+            try:
+                f=files[i]; fid=f.get("id") or f.get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                vend="asahi" in txt.lower()
+                am=_re.search(r"AUD\s+Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})",txt,_re.I)
+                amt=float(am.group(5).replace(",","")) if am else 0
+                pd=_pdate(txt)
+                out["asahi_parsed"].append({"file":titles[i],"asahi":vend,"amount":amt,"date":pd,"week":(_monday(pd) if pd else None)})
+            except Exception as e: out["asahi_parsed"].append({"file":titles[i],"err":str(e)[:80]})
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
