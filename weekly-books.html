@@ -84,9 +84,12 @@
   .ghost{ box-shadow:0 1px 2px rgba(15,23,42,.04); }
   .note{ background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:12px;padding:9px 12px;border-radius:9px;margin-bottom:14px; }
   .weekbar{ border-radius:14px; box-shadow:0 1px 3px rgba(15,23,42,.05); }
-  .card{ border-radius:14px; padding:18px; box-shadow:0 1px 3px rgba(15,23,42,.05); }
-  .card h2{ font-size:12px; letter-spacing:.05em; font-weight:700; color:#64748b; margin-bottom:12px; }
-  .card.hero{ background:linear-gradient(180deg,#ffffff,#fbfcfe); border-color:#dbe3ee; box-shadow:0 6px 22px rgba(15,23,42,.07); }
+  .card{ border-radius:14px; padding:18px; box-shadow:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.03); }
+  .card h2{ font-size:12px; letter-spacing:.05em; font-weight:700; color:#64748b; margin-bottom:12px; text-transform:uppercase; }
+  .card.hero{ background:linear-gradient(180deg,#ffffff,#f6f9fd); border-color:#dbe3ee; box-shadow:0 10px 30px rgba(15,23,42,.10); position:relative; overflow:hidden; padding-top:21px; }
+  .card.hero::before{ content:''; position:absolute; top:0; left:0; right:0; height:4px; background:linear-gradient(90deg,#fb9b24,#16a34a); }
+  .card.hero .summary .row.tot:last-child{ margin:8px -18px -18px; padding:15px 18px 16px; background:#f8fafc; border-radius:0 0 14px 14px; border-top:1px solid #e8edf4; }
+  .card.hero .net{ font-size:27px; }
   .txrow input.cat,.txrow input.amt{ border-radius:8px; border-color:#e3e8f0; padding:8px 9px; }
   .summary .row{ padding:9px 0; border-bottom-color:#f1f5f9; }
   .summary .row.tot{ border-top-color:#e2e8f0; padding-top:12px; }

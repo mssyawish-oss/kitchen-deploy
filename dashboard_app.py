@@ -1096,6 +1096,39 @@ def api_dev_tasks():
     with data_lock: db["dev_tasks"]=tasks; save_data(db)
     return jsonify({"ok":True,"count":len(tasks)})
 
+# ── Weekly-books P&L summary (computed from the central books backup) — shown on the dashboard Sales tab ──
+_BK_COGS=re.compile(r"poultry|baiada|united|russel|pfd|fruit|veg|produce|\bfood\b|packag|asahi|costco|woolworth|woolies|aldi|drink|beverage|meat|fresho|bakery|dairy|cfm|fiesta|\boil\b|chips|bread|coke|milk",re.I)
+_BK_WAGE=re.compile(r"wage|super",re.I)
+def _bk_bucket(t):
+    if t.get("type")!="expense": return None
+    if t.get("bucket"): return t.get("bucket")
+    cat=t.get("cat") or ""
+    if _BK_WAGE.search(cat): return "wage"
+    return "cogs" if _BK_COGS.search(cat) else "other"
+def _bk_weekly(t):
+    try: amt=float(t.get("amt") or 0)
+    except Exception: amt=0.0
+    r=t.get("recur"); div=(52.0/12.0) if r=="monthly" else (2.0 if r=="fortnightly" else 1.0)
+    return amt/div
+def _bk_monday(ds):
+    try:
+        d=datetime.fromisoformat((ds or "")[:10]).date(); return (d-timedelta(days=d.weekday())).isoformat()
+    except Exception: return None
+@app.route("/api/books_summary")
+def api_books_summary():
+    b=db.get("books_store") or {}; tx=b.get("tx") or []
+    today=datetime.now().astimezone().date()
+    monday=(today-timedelta(days=today.weekday())).isoformat()
+    wt=[t for t in tx if _bk_monday(t.get("date"))==monday]
+    def s(pred): return sum(_bk_weekly(t) for t in wt if pred(t))
+    sales=s(lambda t:t.get("type")=="income"); cogs=s(lambda t:_bk_bucket(t)=="cogs")
+    wages=s(lambda t:_bk_bucket(t)=="wage"); other=s(lambda t:_bk_bucket(t)=="other")
+    sup=sum((float(t.get("amt") or 0)*0.12) for t in wt if _bk_bucket(t)=="wage" and t.get("staffId"))
+    wtot=wages+sup; net=sales-cogs-wtot-other
+    return jsonify({"week":monday,"has_data":bool(wt),"updated":b.get("ts") or "",
+                    "sales":round(sales,2),"cogs":round(cogs,2),"wages":round(wtot,2),"other":round(other,2),"net":round(net,2),
+                    "gross":round(sales-cogs,2)})
+
 @app.route("/api/square_week_test")
 def api_square_week_test():
     # Diagnostic: replicate Weekly Books' card+cash deposit tally for a week, server-side, to see what

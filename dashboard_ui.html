@@ -413,6 +413,16 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .devtask.done .devtask-txt{text-decoration:line-through;color:var(--muted);}
 .devtask-del{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;flex-shrink:0;padding:0 4px;}
 .devtask-del:hover{color:var(--red);}
+/* Weekly Books P&L summary on the Sales tab */
+.books-pl-card{background:linear-gradient(135deg,rgba(251,155,36,.08),rgba(25,227,107,.05));border:1px solid var(--border2);border-radius:14px;padding:14px 16px;margin-bottom:14px;}
+.bpl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;}
+.bpl-link{font-size:12px;color:var(--cyan);cursor:pointer;font-weight:600;white-space:nowrap;}
+.bpl-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.bpl-stat{text-align:center;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:9px 6px;}
+.bpl-l{font-size:11px;color:var(--muted);margin-bottom:4px;}
+.bpl-v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1;}
+.bpl-v.pos{color:var(--green);}.bpl-v.neg{color:#f97362;}
+@media(max-width:560px){.bpl-stats{grid-template-columns:repeat(2,1fr);}}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
 .modal-title{font-size:14px;font-weight:700;color:var(--amber);font-family:var(--font-mono);}
 .modal-close{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;}
@@ -3290,7 +3300,7 @@ function renderSalesPage(){
   fetch('/api/sales_board',{cache:'no-store'}).then(r=>r.json()).then(function(d){
     el.dataset.loaded='1';
     if(!d.configured){el.innerHTML='<div class="empty-state" style="padding:40px 10px;">Square isn\'t connected yet — set it up in <b>Settings → Sales/Square</b> to see live sales here.</div>';return;}
-    window._lastSales=d;el.innerHTML=_salesHTML(d);loadLabourCost();
+    window._lastSales=d;el.innerHTML=_salesHTML(d);el.insertAdjacentHTML('afterbegin','<div id="books-pl"></div>');loadBooksPL();loadLabourCost();
   }).catch(()=>{if(!el.dataset.loaded)el.innerHTML='<div class="empty-state" style="padding:30px;">Could not load the sales board.</div>';});
   if(_salesTimer)clearInterval(_salesTimer);
   _salesTimer=setInterval(()=>{const pg=document.getElementById('page-sales');if(pg&&pg.classList.contains('active'))renderSalesPage();else{clearInterval(_salesTimer);_salesTimer=null;}},15000);
@@ -3298,7 +3308,16 @@ function renderSalesPage(){
 function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
 function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
 let _salesHidden=true;   // daily + weekly total sales hidden every time you enter; tap the eye to reveal; auto-hides again on leaving the page
-function toggleSalesHidden(){_salesHidden=!_salesHidden;if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);const lc=document.getElementById('labour-cost');if(lc&&window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else if(lc)loadLabourCost();}}}
+function toggleSalesHidden(){_salesHidden=!_salesHidden;if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);el.insertAdjacentHTML('afterbegin','<div id="books-pl"></div>');_renderBooksPL();const lc=document.getElementById('labour-cost');if(lc&&window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else if(lc)loadLabourCost();}}}
+function loadBooksPL(){fetch('/api/books_summary',{cache:'no-store'}).then(r=>r.json()).then(function(d){window._lastBooksPL=d;_renderBooksPL();}).catch(()=>{});}
+function _renderBooksPL(){const el=document.getElementById('books-pl');if(!el)return;const d=window._lastBooksPL;if(!d){el.innerHTML='';return;}
+  const link='<a class="bpl-link" onclick="openBooks()">Open full books &rarr;</a>';
+  if(!d.has_data){el.innerHTML='<div class="books-pl-card"><div class="bpl-head"><span>&#128214; Weekly Books &middot; this week</span>'+link+'</div><div style="font-size:12px;color:var(--muted);">No books data yet — open Weekly Books once and it\'ll show your week\'s P&amp;L here.</div></div>';return;}
+  const hide=_salesHidden, m=n=>_money(n);
+  const cell=(lbl,n,cls)=>'<div class="bpl-stat"><div class="bpl-l">'+lbl+'</div><div class="bpl-v '+(cls||'')+'">'+(hide?'<span style="letter-spacing:3px;color:var(--muted);">•••</span>':m(n))+'</div></div>';
+  const netCls=(d.net>=0?'pos':'neg');
+  el.innerHTML='<div class="books-pl-card"><div class="bpl-head"><span>&#128214; Weekly Books &middot; this week so far</span>'+link+'</div><div class="bpl-stats">'
+    +cell('Sales',d.sales,'pos')+cell('COGS',-Math.abs(d.cogs),'neg')+cell('Wages',-Math.abs(d.wages),'neg')+cell('Net profit',d.net,netCls)+'</div></div>';}
 const _EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const _EYEOFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:middle;"><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.2 2.9M6.6 6.6A13.2 13.2 0 0 0 2 11s3.5 7 10 7a10.9 10.9 0 0 0 3.4-.5M3 3l18 18"/><path d="M9.6 9.6a3 3 0 0 0 4.2 4.2"/></svg>';
 function _salesHTML(d){
