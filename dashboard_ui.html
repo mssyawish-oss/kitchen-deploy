@@ -251,6 +251,27 @@ body.kiosk .topbar-title{cursor:default;}
 .prep-pick.sel{border-color:var(--amber);background:var(--surface2);}
 .prep-pick .pc-tick{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:var(--amber);color:#1a1205;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;opacity:0;transition:opacity .12s;}
 .prep-pick.sel .pc-tick{opacity:1;}
+/* Prep page: dated header, Today/Yesterday tabs, and 2-up compact cards so a long list fits without scrolling */
+.prep-datehdr{font-size:17px;font-weight:800;color:var(--text);margin:2px 0 4px;}
+.prep-datehdr b{color:var(--amber);}
+.prep-sub{font-size:13px;color:var(--muted);margin-bottom:12px;}
+.prep-sub b{color:var(--text);}
+.prep-tabs{display:flex;gap:8px;margin-bottom:10px;}
+.prep-tab{font-size:13px;font-weight:700;padding:7px 14px;border-radius:9px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;}
+.prep-tab.active{background:var(--amber);border-color:var(--amber);color:#1a1205;}
+.prep-tab.warn{border-color:#ef4444;color:#fff;background:#ef4444;animation:prepFlash 1s ease-in-out infinite;}
+@keyframes prepFlash{0%,100%{opacity:1;}50%{opacity:.45;}}
+.prep-card.missed{opacity:.9;}
+.prep-card.missed .pc-check{border-color:#ef4444;color:#ef4444;}
+.prep-readonly .prep-card{cursor:default;}
+/* 2 compact cards per priority column */
+.prep-col-body{display:grid!important;grid-template-columns:1fr 1fr;gap:7px;align-content:start;}
+.prep-col-body .prep-card .pc-row{padding:6px 8px;gap:7px;}
+.prep-col-body .prep-card .pc-img,.prep-col-body .prep-card .pc-noimg{width:30px;height:30px;border-radius:7px;}
+.prep-col-body .prep-card .pc-name{font-size:12.5px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.22;}
+.prep-col-body .prep-card .pc-check{width:24px;height:24px;font-size:14px;}
+.prep-col-body .prep-col-empty{grid-column:1/-1;}
+@media(max-width:560px){.prep-col-body{grid-template-columns:1fr;}}
 .pp-pri{display:flex;gap:5px;padding:7px 9px 9px;border-top:1px solid var(--border);}
 .pp-pri-btn{flex:1;font-size:11px;font-weight:800;padding:5px 0;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;}
 .rl-card.warn{animation:rl-warn 1s infinite;}
@@ -813,7 +834,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header"><div class="page-title">Today's Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div></div>
+      <div class="page-header"><div class="page-title">Prep</div><div class="row" style="gap:6px;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
     </div>
@@ -1602,7 +1623,7 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs')renderPrepPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
+function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
 if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
@@ -1663,7 +1684,7 @@ async function refreshShared(){
   if(id==='page-stock')renderStockPage();
   else if(id==='page-packdown')renderPackdownPage();
   else if(id==='page-recipes'){const det=document.getElementById('recipe-detail');if(!det||det.style.display!=='block')renderRecipesPage();}  // don't close an open recipe
-  else if(id==='page-jobs')renderPrepPage();
+  else if(id==='page-jobs'){_prepView='today';renderPrepPage();}
   else if(id==='page-service')renderServicePage();
   updateNotesBadge();
 }
@@ -2811,45 +2832,74 @@ function deleteRecipe(i){if(!confirm('Delete?'))return;appData.recipes.splice(i,
 
 // ===== TODAY'S PREP (preset items → morning picks → afternoon checklist w/ photo) =====
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
-function renderPrepPage(){
-  const box=document.getElementById('prep-list');if(!box)return;
-  renderPrepUpcoming();
-  const today=_prepToday();const pt=appData.prep_today||{};const presets=appData.prep_presets||[];
-  const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));   // list persists until rebuilt or reset — does NOT auto-clear daily (so unfinished items stay visible)
-  const done=(pt.done||{});
-  const badge=document.getElementById('jobs-badge');
-  if(!items.length){
-    if(badge)badge.className='nav-badge';
-    box.innerHTML='<div class="empty-state" style="padding:34px 18px;text-align:center;"><div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:13px;color:var(--muted);line-height:1.6;">Tap <b>Set list</b> at the top to choose what needs prepping (and load a saved list if you have one).<br>No items to choose from yet? Tap <b>Items</b> to create them.</div></div>';
-    return;
-  }
-  const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
-  if(badge)badge.className='nav-badge'+(pend>0?' show':'');
+let _prepView='today';
+function setPrepView(v){_prepView=v;renderPrepPage();}
+const _PREP_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const _PREP_MONS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function _prepFullDate(ds){try{const d=new Date(ds+'T12:00:00');return _PREP_DAYS[d.getDay()]+', '+d.getDate()+' '+_PREP_MONS[d.getMonth()];}catch(e){return ds;}}
+// shared 3-column renderer; readonly=true for the Yesterday view (no tapping, marks missed items)
+function _prepColsHTML(items,done,priMap,readonly){
   const now=nowHHMM();
-  const priMap=(pt.pri||{});   // priority is chosen per-day when building the list (can change day to day)
   const groups={high:[],med:[],low:[]};
   items.forEach(p=>{const pr=priMap[p.id]||p.priority||'med';(groups[pr]||groups.med).push(p);});
   Object.values(groups).forEach(arr=>arr.sort((a,b)=>(done[a.id]?1:0)-(done[b.id]?1:0)));
   const card=p=>{
     const d=done[p.id];const pri=priMap[p.id]||p.priority||'med';
     const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:24px;height:24px;color:var(--muted);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
-    const due=p.remind&&!d&&now>=p.remind;
-    const rem=p.remind?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
-    const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; Prepped'+(d.time?' '+d.time:'')+'</span>'):'';
+    const due=!readonly&&p.remind&&!d&&now>=p.remind;
+    const rem=(!readonly&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
+    const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
     const meta=(rem||doneMeta)?('<div class="pc-meta">'+rem+doneMeta+'</div>'):'';
     const pthumb=(d&&d.photo)?('<img class="pc-pthumb" src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')" title="Tap to enlarge">'):'';
-    return '<div class="prep-card pri-'+pri+(d?' done':'')+'" onclick="completePrep(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+meta+'</div>'+pthumb+'<div class="pc-check">'+(d?'&#10003;':'')+'</div></div></div>';
+    const cls='prep-card pri-'+pri+(d?' done':(readonly?' missed':''));
+    const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
+    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+meta+'</div>'+pthumb+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
   };
   const COLS=[['high','High','#ef4444'],['med','Medium','#f59e0b'],['low','Low','#60a5fa']];
-  let html='<div style="font-size:14px;color:var(--muted);margin-bottom:12px;"><b style="color:var(--text);">'+doneN+' of '+items.length+'</b> prepped'+(pend>0?(' · '+pend+' to go'):' · all done ✓')+'</div><div class="prep-cols">';
-  html+=COLS.map(function(c){
+  return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
     const key=c[0],label=c[1],col=c[2];const arr=groups[key];
     const dC=arr.filter(p=>done[p.id]).length;
     const head='<div class="prep-col-head" style="color:'+col+';border-color:'+col+';"><span>'+label+'</span><span class="pcq">'+dC+'/'+arr.length+'</span></div>';
     const body=arr.length?arr.map(card).join(''):'<div class="prep-col-empty">None</div>';
     return '<div class="prep-col"><div class="prep-col-accent" style="background:'+col+';"></div>'+head+'<div class="prep-col-body">'+body+'</div></div>';
   }).join('')+'</div>';
-  box.innerHTML=html;
+}
+function renderPrepPage(){
+  const box=document.getElementById('prep-list');if(!box)return;
+  _promoteScheduledPrep();          // archive yesterday + load any scheduled list, on a new day
+  renderPrepUpcoming();
+  const today=_prepToday();const presets=appData.prep_presets||[];
+  // ── Yesterday tab data ──
+  const yest=appData.prep_yesterday||null;
+  const yItems=yest?((yest.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean)):[];
+  const yDone=yest?(yest.done||{}):{};
+  const yMissed=yItems.filter(p=>!yDone[p.id]).length;
+  let tabs='<div class="prep-tabs"><button class="prep-tab'+(_prepView!=='yesterday'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>';
+  if(yest&&yItems.length){tabs+='<button class="prep-tab'+(_prepView==='yesterday'?' active':'')+((_prepView!=='yesterday'&&yMissed)?' warn':'')+'" onclick="setPrepView(\'yesterday\')">Yesterday'+(yMissed?(' ⚠ '+yMissed+' not done'):' ✓')+'</button>';}
+  tabs+='</div>';
+  // ── Yesterday view ──
+  if(_prepView==='yesterday'&&yest&&yItems.length){
+    const dN=yItems.filter(p=>yDone[p.id]).length;
+    const hdr='<div class="prep-datehdr">Yesterday’s Prep · <b>'+_prepFullDate(yest.date)+'</b></div>';
+    const sub='<div class="prep-sub"><b>'+dN+' of '+yItems.length+'</b> completed'+(yMissed?(' · <span style="color:#ef4444;font-weight:700;">⚠ '+yMissed+' not completed yesterday</span>'):' · all done ✓')+'</div>';
+    box.innerHTML=tabs+hdr+sub+_prepColsHTML(yItems,yDone,yest.pri||{},true);
+    return;
+  }
+  // ── Today view ──
+  const pt=appData.prep_today||{};
+  const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));
+  const done=(pt.done||{});
+  const badge=document.getElementById('jobs-badge');
+  const hdr='<div class="prep-datehdr">Today’s Prep List · <b>'+_prepFullDate(today)+'</b></div>';
+  if(!items.length){
+    if(badge)badge.className='nav-badge';
+    box.innerHTML=tabs+hdr+'<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:13px;color:var(--muted);line-height:1.6;">Tap <b>Set list</b> at the top to choose what needs prepping (and load a saved list if you have one).<br>No items to choose from yet? Tap <b>Items</b> to create them.</div></div>';
+    return;
+  }
+  const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
+  if(badge)badge.className='nav-badge'+(pend>0?' show':'');
+  const sub='<div class="prep-sub"><b>'+doneN+' of '+items.length+'</b> prepped'+(pend>0?(' · '+pend+' to go'):' · all done ✓')+'</div>';
+  box.innerHTML=tabs+hdr+sub+_prepColsHTML(items,done,pt.pri||{},false);
 }
 function completePrep(id){
   const today=_prepToday();appData.prep_today=appData.prep_today||{};
@@ -2875,10 +2925,21 @@ function onPrepBuildDateChange(){let ds=document.getElementById('prep-build-date
   const sb=document.getElementById('prep-build-save');if(sb)sb.textContent=(ds===_prepToday()?'Save today’s prep list':'Schedule prep for '+lbl);
   _loadPrepPicks(ds);renderPrepBuildGrid();}
 function openPrepBuild(dateStr){_prepBuildDate=dateStr||_prepToday();document.getElementById('prep-build-date').value=_prepBuildDate;onPrepBuildDateChange();renderPrepSavedSel();openModal('prep-build-modal');}
-function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled=appData.prep_scheduled||{};const sch=appData.prep_scheduled;let changed=false;
-  if(sch[today]&&(appData.prep_today||{}).date!==today){const s=sch[today];appData.prep_today={date:today,items:s.items||[],pri:s.pri||{},done:{}};delete sch[today];saveKeys(['prep_today','prep_scheduled']);changed=true;}
-  Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});if(changed)saveKeys(['prep_scheduled']);
-  const pg=document.getElementById('page-jobs');if(pg&&pg.classList.contains('active'))renderPrepPage();}
+// Day rollover (data only — no render; renderPrepPage calls this first). On a NEW day: archive the finishing
+// day as "yesterday", then start today fresh with ticks CLEARED — loading the scheduled list if one exists for
+// today, otherwise carrying the same items forward.
+function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled=appData.prep_scheduled||{};const sch=appData.prep_scheduled;const pt=appData.prep_today||{};let changed=false;
+  if(pt.date && pt.date!==today){
+    appData.prep_yesterday={date:pt.date,items:(pt.items||[]).slice(),pri:Object.assign({},pt.pri||{}),done:Object.assign({},pt.done||{})};
+    const s=sch[today];
+    appData.prep_today={date:today,items:((s?s.items:pt.items)||[]).slice(),pri:Object.assign({},(s?s.pri:pt.pri)||{}),done:{}};
+    if(s)delete sch[today];
+    changed=true;
+  }else if(!pt.date && sch[today]){
+    const s=sch[today];appData.prep_today={date:today,items:(s.items||[]).slice(),pri:Object.assign({},s.pri||{}),done:{}};delete sch[today];changed=true;
+  }
+  Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});
+  if(changed)saveKeys(['prep_today','prep_scheduled','prep_yesterday']);}
 function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');if(!el)return;const sch=appData.prep_scheduled||{};const today=_prepToday();
   const dates=Object.keys(sch).filter(d=>d>today&&(sch[d].items||[]).length).sort();
   if(!dates.length){el.style.display='none';el.innerHTML='';return;}
