@@ -1810,17 +1810,16 @@ function openCalib(){const c=appData.rotcam_public||{};
   if(Array.isArray(c.boxes6)&&c.boxes6.length===6){_cal6=c.boxes6.map(r=>[+r[0],+r[1],+r[2],+r[3]]);}
   else{const boxes=(Array.isArray(c.boxes)&&c.boxes.length===6)?c.boxes.map(p=>[+p[0],+p[1]]):JSON.parse(JSON.stringify(_CAL_DEF_BOXES));const bx=(Array.isArray(c.box_x)&&c.box_x.length===2)?[+c.box_x[0],+c.box_x[1]]:_CAL_DEF_X.slice();_cal6=_legacyTo6(boxes,bx,parseFloat(c.box_offset)||0,parseFloat(c.box_skew)||0);}
   _calZoom=1;_startCalLive();}
-let _calLiveTimer=null;
-function _refreshCalBg(){const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
-  if(_calDrag)return;   // don't swap the frame out from under a box you're dragging
-  // poll a fresh cached JPEG directly (cache-busted) — /api/rotcam_frame keeps the puller warm AND returns the
-  // latest frame cheaply. The browser holds the previous frame until the new one loads → no flicker.
-  img.onload=function(){const note=document.getElementById('rc-cal-note');if(note)note.remove();_applyZoom();_renderCalBoxes();};
-  img.onerror=function(){if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Camera frame unavailable right now — it keeps retrying automatically.';wrap.insertBefore(n,wrap.firstChild);}};
-  img.src='/api/rotcam_frame?t='+Date.now();}
-// auto-refresh ~every 0.8s — looks live, and is RELIABLE through Tailscale (the MJPEG stream buffers/stalls there)
-function _startCalLive(){_stopCalLive();_refreshCalBg();_calLiveTimer=setInterval(_refreshCalBg,800);}
-function _stopCalLive(){if(_calLiveTimer){clearInterval(_calLiveTimer);_calLiveTimer=null;}const img=document.getElementById('rc-cal-img');if(img){img.onload=null;img.onerror=null;}}
+let _calLiveTimer=null,_calLiveOn=false;
+// PRELOAD each frame into a separate Image, then swap it in once fully loaded, then schedule the next.
+// (Setting img.src directly on a fixed timer cancels a still-loading 330KB frame → frozen image over Tailscale.)
+function _refreshCalBg(){if(_calDrag){return;}const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
+  const n=new Image();
+  n.onload=function(){const note=document.getElementById('rc-cal-note');if(note)note.remove();img.src=n.src;_applyZoom();_renderCalBoxes();if(_calLiveOn)_calLiveTimer=setTimeout(_refreshCalBg,250);};
+  n.onerror=function(){if(wrap&&!img.getAttribute('src')&&!document.getElementById('rc-cal-note')){const x=document.createElement('div');x.id='rc-cal-note';x.style.cssText='padding:10px;font-size:12px;color:var(--muted);';x.textContent='Camera frame unavailable — retrying…';wrap.insertBefore(x,wrap.firstChild);}if(_calLiveOn)_calLiveTimer=setTimeout(_refreshCalBg,900);};
+  n.src='/api/rotcam_frame?t='+Date.now();}
+function _startCalLive(){_stopCalLive();_calLiveOn=true;_refreshCalBg();}   // self-scheduling loop: next frame fires only after this one loads
+function _stopCalLive(){_calLiveOn=false;if(_calLiveTimer){clearTimeout(_calLiveTimer);_calLiveTimer=null;}}
 function _applyZoom(){const st=document.getElementById('rc-cal-stage');if(st)st.style.width=(_calZoom*100)+'%';const l=document.getElementById('rc-zoom-lbl');if(l)l.textContent=Math.round(_calZoom*100)+'%';}
 function calZoom(d){_calZoom=Math.max(1,Math.min(4,+(_calZoom+d*0.25).toFixed(2)));_applyZoom();}
 function _renderCalBoxes(){const st=document.getElementById('rc-cal-stage');if(!st)return;st.querySelectorAll('.cal-box').forEach(x=>x.remove());const sel=_calRow();
@@ -2248,25 +2247,28 @@ function toggleTrace(){
   if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;_startLiveCap();renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
 }
 let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={},_lastFrameUrl='';
+let _liveCapOn=false;
 function _startLiveCap(){
   const w=document.getElementById('rc-live-wrap');if(w)w.style.display='block';
   _capStrip=[];_capMap={};_lastFrameUrl='';const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
-  if(_liveCapTimer)clearInterval(_liveCapTimer);
-  _liveCapTimer=setInterval(_pollLiveFrame,600);   // poll a fresh cached frame ~every 0.6s — reliable through Tailscale (MJPEG stalls there)
-  _pollLiveFrame();
+  if(_liveCapTimer)clearTimeout(_liveCapTimer);
+  _liveCapOn=true;_pollLiveFrame();   // self-scheduling: PRELOAD each frame, swap it in, then schedule the next (no mid-load cancel over Tailscale)
 }
 function _pollLiveFrame(){
-  const im=document.getElementById('rc-live');if(!im)return;
-  im.onload=function(){_grabFrame();};
-  im.src='/api/rotcam_frame?t='+Date.now();   // /api/rotcam_frame keeps the puller warm + returns the latest cached JPEG cheaply
+  if(!_liveCapOn)return;
+  const im=document.getElementById('rc-live');if(!im){return;}
+  const n=new Image();
+  n.onload=function(){if(!_liveCapOn)return;im.src=n.src;_grabFrame(n);if(_liveCapOn)_liveCapTimer=setTimeout(_pollLiveFrame,300);};
+  n.onerror=function(){if(_liveCapOn)_liveCapTimer=setTimeout(_pollLiveFrame,800);};
+  n.src='/api/rotcam_frame?t='+Date.now();
 }
 function _stopLiveCap(){
-  if(_liveCapTimer){clearInterval(_liveCapTimer);_liveCapTimer=null;}
+  _liveCapOn=false;if(_liveCapTimer){clearTimeout(_liveCapTimer);_liveCapTimer=null;}
   const im=document.getElementById('rc-live');if(im){im.onload=null;im.src='';}
   const w=document.getElementById('rc-live-wrap');if(w)w.style.display='none';
 }
-function _grabFrame(){
-  const im=document.getElementById('rc-live'),cv=document.getElementById('rc-capcanvas'),strip=document.getElementById('rc-capstrip');
+function _grabFrame(src){
+  const im=src||document.getElementById('rc-live'),cv=document.getElementById('rc-capcanvas'),strip=document.getElementById('rc-capstrip');
   if(!im||!cv||!strip||!im.naturalWidth)return;
   try{
     cv.width=im.naturalWidth;cv.height=im.naturalHeight;cv.getContext('2d').drawImage(im,0,0);
