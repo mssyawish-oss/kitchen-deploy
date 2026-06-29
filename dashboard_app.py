@@ -1200,6 +1200,33 @@ def api_bills_probe():
                 dtxt=_re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})", txt, _re.I)
                 out["gw_parsed"].append({"file":titles[i],"gw_vendor":vend,"amount":amt,"date_numeric":(dnum.group(0) if dnum else None),"date_textual":(dtxt.group(0) if dtxt else None)})
             except Exception as e: out["gw_parsed"].append({"file":titles[i],"err":str(e)[:80]})
+        # PRODUCE (Fresho / Fruit Talk) — parse vendor + date (full logic) + the WEEK it lands in, vs the upload-week fallback
+        import datetime as _dt
+        def _monday(ds):
+            try: d=_dt.date.fromisoformat(ds); return (d-_dt.timedelta(days=d.weekday())).isoformat()
+            except Exception: return None
+        _MN={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
+        def _pdate(txt):
+            m=_re.search(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})",txt) or _re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})",txt)
+            if m:
+                d,mo,y=int(m.group(1)),int(m.group(2)),int(m.group(3))
+                if y<100:y+=2000
+                if 1<=mo<=12 and 1<=d<=31: return "%04d-%02d-%02d"%(y,mo,d)
+            m=_re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})",txt,_re.I)
+            if m:
+                d=int(m.group(1));mo=_MN[m.group(2).lower()[:3]];y=int(m.group(3))
+                if 1<=d<=31: return "%04d-%02d-%02d"%(y,mo,d)
+            return None
+        prod=[i for i,t in enumerate(low) if "fresho" in t or "fruit" in t or "talk" in t]
+        out["produce_parsed"]=[]
+        for i in prod[:16]:
+            try:
+                f=files[i]; fid=f.get("id") or f.get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                tl=txt.lower(); vend="Fruit Talk" if ("fruit talk" in tl or "fruittalk" in tl) else ("Fresho" if "fresho" in tl else "?")
+                pd=_pdate(txt); ct=(f.get("createdTime") or "")[:10]
+                out["produce_parsed"].append({"file":titles[i],"vendor":vend,"invoice_date":pd,"week_invoice":(_monday(pd) if pd else None),"createdTime":ct,"week_upload":_monday(ct)})
+            except Exception as e: out["produce_parsed"].append({"file":titles[i],"err":str(e)[:80]})
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
