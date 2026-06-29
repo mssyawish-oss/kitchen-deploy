@@ -1143,15 +1143,18 @@ def api_bills_probe():
         out["asahi"]=[titles[i] for i,t in enumerate(low) if "asahi" in t]
         out["russel"]=[titles[i] for i,t in enumerate(low) if "russel" in t]
         out["all_titles"]=titles   # full list so I can spot generically-named suppliers
-        def read_tail(idx_list):
+        def read_sample(idx_list):
             if not idx_list: return None
             try:
                 fid=files[idx_list[0]].get("id") or files[idx_list[0]].get("fileId")
                 txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                return {"name":titles[idx_list[0]],"tail":txt[-700:]}
+                lw=txt.lower()
+                hits=[k for k in ("russel","poultry","asahi","schweppes","meat merchant","baiada","total","amount due","balance") if k in lw]
+                return {"name":titles[idx_list[0]],"head":txt[:700],"tail":txt[-700:],"hits":hits,"len":len(txt)}
             except Exception as e: return {"error":str(e)[:150]}
-        out["asahi_sample"]=read_tail([i for i,t in enumerate(low) if "asahi" in t])
-        out["russel_sample"]=read_tail([i for i,t in enumerate(low) if "russel" in t])
+        out["asahi_sample"]=read_sample([i for i,t in enumerate(low) if "asahi" in t])
+        out["brunos_inv_sample"]=read_sample([i for i,t in enumerate(low) if "brunos chicken inv" in t or "chicken inv" in t])
+        out["brunos_inv_files"]=[titles[i] for i,t in enumerate(low) if "chicken inv" in t]
         out["si_files"]=[titles[i] for i,t in enumerate(low) if "sales invoice si" in t or "sales invoice" in t][:12]
         out["inv5_files"]=[titles[i] for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t or "inv-5" in t][:12]
         out["sample"]=titles[:50]
