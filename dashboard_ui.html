@@ -402,6 +402,11 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(4,5,10,.985);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:200;align-items:center;justify-content:center;padding:16px;}
 .modal-overlay.open{display:flex;}
 .modal{background:linear-gradient(180deg,#1a1e26,#15181f);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:22px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);}
+/* Settings modal: use (nearly) the whole screen so there's far less scrolling */
+#settings-modal .modal{max-width:1300px;width:96vw;max-height:94vh;}
+/* Live AI trace: live video + decision cards side-by-side on a wide screen */
+.trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
+@media(max-width:820px){.trace-cols{grid-template-columns:1fr;}}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
 .modal-title{font-size:14px;font-weight:700;color:var(--amber);font-family:var(--font-mono);}
 .modal-close{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;}
@@ -1227,6 +1232,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="btn btn-primary" id="rc-trace-btn" onclick="toggleTrace()">&#9654; Start live trace</button>
       <span id="rc-trace-model" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
     </div>
+    <div class="trace-cols">
     <div id="rc-live-wrap" style="display:none;margin-bottom:12px;">
       <div id="rc-live-box" style="position:relative;border-radius:10px;overflow:hidden;background:#000;border:1px solid var(--border2);">
         <img id="rc-live" alt="" style="width:100%;display:block;max-height:320px;object-fit:contain;background:#000;">
@@ -1238,6 +1244,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <canvas id="rc-capcanvas" style="display:none;"></canvas>
     </div>
     <div id="rc-trace"></div>
+    </div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:2px;">🤖 Auto-AI captures — every row the camera counted off by itself</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Each time the AI decides a row came off, it records a <b>full trace at that exact moment</b> (frame 1) and then re-reads the scene <b>continuously</b> (a fresh read every ~2–3&nbsp;seconds) for ~30&nbsp;seconds after — each frame shows what it saw and what it did, just like the live trace, and each can be corrected. These are <b>saved on the server</b> and survive restarts (most recent 20 events). Every correction you make — here or on the live trace — is fed back into every future read.</div>
