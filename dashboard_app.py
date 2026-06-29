@@ -1129,6 +1129,26 @@ def api_books_summary():
                     "sales":round(sales,2),"cogs":round(cogs,2),"wages":round(wtot,2),"other":round(other,2),"net":round(net,2),
                     "gross":round(sales-cogs,2)})
 
+@app.route("/api/rotcam_prompts",methods=["GET","POST"])
+def api_rotcam_prompts():
+    # Owner-editable AI instructions for the rotisserie camera. GET returns each prompt's current text +
+    # its built-in default; POST saves one (blank text resets it to default).
+    if request.method=="GET":
+        cust=(_rotcam_cfg().get("prompts") or {})
+        out=[{"key":k,"label":_ROT_PROMPT_LABELS.get(k,k),"text":_rot_prompt(k),
+              "default":_ROT_PROMPT_DEFAULTS.get(k,""),"custom":bool(isinstance(cust.get(k),str) and cust.get(k).strip())}
+             for k in ("doneness","occupancy","bench","whole","bench_count")]
+        return jsonify({"prompts":out})
+    j=request.get_json(force=True,silent=True) or {}
+    key=str(j.get("key") or ""); text=j.get("text")
+    if key not in _ROT_PROMPT_DEFAULTS: return jsonify({"ok":False,"error":"unknown prompt"})
+    with data_lock:
+        cfg=db.get("rotcam_config",{}) or {}; pr=dict(cfg.get("prompts") or {})
+        if isinstance(text,str) and text.strip(): pr[key]=text.strip()
+        else: pr.pop(key,None)   # blank → reset to the built-in default
+        cfg["prompts"]=pr; db["rotcam_config"]=cfg; save_data(db)
+    return jsonify({"ok":True,"custom":bool(text and text.strip())})
+
 @app.route("/api/square_week_test")
 def api_square_week_test():
     # Diagnostic: replicate Weekly Books' card+cash deposit tally for a week, server-side, to see what
@@ -2006,10 +2026,10 @@ def _rotcam_gemini_read(jpeg):
     comp=_rotcam_boxes_composite(jpeg)
     done_mode=bool(cfg.get("doneness_enabled")) and comp is not None   # read colour/doneness per row in the same call
     if comp is not None:
-        img=comp; prompt=(_ROT_DONE_PROMPT if done_mode else (cfg.get("prompt") or _ROT_BOX_PROMPT))   # per-box strips (preferred)
+        img=comp; prompt=(_rot_prompt("doneness") if done_mode else _rot_prompt("occupancy"))   # per-box strips (preferred) — owner-editable
         out["comp_b64"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
     else:
-        img=_downscale_jpeg(jpeg); prompt=cfg.get("prompt") or _ROT_PROMPT   # fallback: whole frame
+        img=_downscale_jpeg(jpeg); prompt=_rot_prompt("whole")   # fallback: whole frame — owner-editable
     _gd=_rotcam_corr_guidance()
     if _gd: prompt=(prompt or "")+"\n\n"+_gd   # feed the owner's saved corrections back into every read
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
@@ -2213,6 +2233,27 @@ _BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the wheeled stainless-steel 
                     "are on or over it, or it is split open / on a chopping board, IGNORE it. Return ONLY a JSON array, one object "
                     "per whole chicken, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} with integer coordinates normalised 0-1000 "
                     "(origin top-left). If there are no whole chickens on the open bench, return [].")
+# ── Editable AI prompts: the owner can edit the AI's instructions in Settings (the simple way to correct it).
+#    Custom text lives in rotcam_config['prompts'][key]; falls back to the built-in default when blank. ──
+_ROT_PROMPT_DEFAULTS={
+    "doneness":_ROT_DONE_PROMPT,       # reads each shelf: empty / raw / almost / ready / overdone (when doneness is ON)
+    "occupancy":_ROT_BOX_PROMPT,       # reads each shelf: loaded or empty (when doneness is OFF)
+    "whole":_ROT_PROMPT,               # whole-oven fallback (if the per-shelf crop can't be built)
+    "bench":_BENCH_DETECT_PROMPT,      # side bench camera: box each cooked chicken that landed
+    "bench_count":_BENCH_PROMPT,       # front-cam bench crop: how many cooked rows (older path)
+}
+_ROT_PROMPT_LABELS={
+    "doneness":"Shelf read + doneness (the main one)","occupancy":"Shelf read — loaded/empty only",
+    "whole":"Whole-oven fallback","bench":"Bench camera — detect cooked chickens","bench_count":"Bench count (older)",
+}
+def _rot_prompt(key):
+    cust=(_rotcam_cfg().get("prompts") or {}).get(key)
+    if isinstance(cust,str) and cust.strip(): return cust
+    if key=="occupancy":   # back-compat with the old single custom-prompt field
+        old=_rotcam_cfg().get("prompt")
+        if isinstance(old,str) and old.strip(): return old
+    return _ROT_PROMPT_DEFAULTS.get(key,"")
+
 _BENCH_ZONE=(0.08,0.15,0.53,0.96)   # x1,y1,x2,y2 fraction — the unloading bench area on the LEFT (cuts off before the warmer cabinet on the right). Tunable via rotcam_config['bench_zone'].
 def _bench_zone():
     z=_rotcam_cfg().get("bench_zone")
@@ -2259,7 +2300,7 @@ def _benchcam_count(jpeg):
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
     gencfg={"temperature":0,"maxOutputTokens":700}
     if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
-    body={"contents":[{"parts":[{"text":_BENCH_DETECT_PROMPT},
+    body={"contents":[{"parts":[{"text":_rot_prompt("bench")},
           {"inline_data":{"mime_type":"image/jpeg","data":_b.b64encode(crop_jpeg).decode()}}]}],
           "generationConfig":gencfg}
     url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
