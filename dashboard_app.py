@@ -1185,6 +1185,21 @@ def api_bills_probe():
                 out["gw_sample_tail"]=txt[-700:]
                 out["gw_sample_vendor_hits"]=[k for k in ("g & w","g&w","packaging","gnw") if k in txt.lower()]
             except Exception as e: out["gw_read_error"]=str(e)[:150]
+        # PARSE every G&W file the way the books would: vendor hit, "Invoice Total", and the date (numeric + textual)
+        import re as _re
+        gwfiles=[i for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t]
+        out["gw_parsed"]=[]
+        for i in gwfiles[:14]:
+            try:
+                fid=files[i].get("id") or files[i].get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                vend = ("g&w" in txt.lower() or "g & w" in txt.lower())
+                am=_re.search(r"Invoice Total\s*\$?\s*([\d,]+\.\d{2})", txt, _re.I) or _re.search(r"Amount Due\s*(?:AUD)?\s*\$?\s*([\d,]+\.\d{2})", txt, _re.I)
+                amt=float(am.group(1).replace(",","")) if am else 0
+                dnum=_re.search(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})", txt)
+                dtxt=_re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})", txt, _re.I)
+                out["gw_parsed"].append({"file":titles[i],"gw_vendor":vend,"amount":amt,"date_numeric":(dnum.group(0) if dnum else None),"date_textual":(dtxt.group(0) if dtxt else None)})
+            except Exception as e: out["gw_parsed"].append({"file":titles[i],"err":str(e)[:80]})
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
