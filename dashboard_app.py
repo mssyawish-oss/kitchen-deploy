@@ -2745,12 +2745,10 @@ def rotcam_stream_loop():
             time.sleep(1); continue   # nobody watching AND not counting → don't burn the camera/CPU
         url=_rotcam_rtsp(); p=None
         try:
-            # NO forced "-r 8": CFR conversion on a cheap RTSP cam's irregular timestamps makes ffmpeg emit a short
-            # burst then stall. Native rate (low_delay/nobuffer) lets frames flow as the camera sends them.
-            p=subprocess.Popen(["ffmpeg","-nostdin","-fflags","nobuffer","-flags","low_delay","-rtsp_transport","tcp","-rw_timeout","5000000","-i",url,
-                                "-an","-q:v","6","-f","mjpeg","-"],
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
-            ROTCAM["_pp"]=p; ROTCAM["error"]=""; buf=b""
+            ROTCAM["error"]=""; buf=b""
             while True:
                 if (time.time()-ROTCAM.get("last_want",0))>20 and not _rotcam_analysis_active(): break   # viewer left AND not counting → stop
                 chunk=p.stdout.read(65536)
@@ -2770,26 +2768,10 @@ def rotcam_stream_loop():
         except Exception as ex:
             ROTCAM["error"]=str(ex)
         finally:
-            ROTCAM["_pp"]=None
             if p:
                 try: p.kill()
                 except Exception: pass
         time.sleep(0.5)
-
-def rotcam_watchdog():
-    # The puller's blocking stdout.read() can't time itself out, and -rw_timeout isn't honored for RTSP on every
-    # ffmpeg build — so a stalled stream freezes forever. This kills a stalled puller (no new frame for >6s while a
-    # viewer/analysis is active) → its read returns → the loop reconnects. Portable (incl. Windows; no select-on-pipe).
-    while True:
-        try:
-            time.sleep(2)
-            watched = (time.time()-ROTCAM.get("last_want",0))<=20 or _rotcam_analysis_active()
-            if not watched: continue
-            pp=ROTCAM.get("_pp")
-            if pp and (pp.poll() is None) and (time.time()-ROTCAM.get("frame_ts",0))>6:
-                try: pp.kill()
-                except Exception: pass
-        except Exception: pass
 
 def benchcam_stream_loop():
     # same persistent-MJPEG trick as the rotisserie cam, for the side bench camera → smooth, no per-grab lag
@@ -3506,7 +3488,6 @@ if __name__=="__main__":
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
-    threading.Thread(target=rotcam_watchdog,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
     threading.Timer(2.0,lambda:webbrowser.open("http://127.0.0.1:8080")).start()
     # The Bluetooth probe scan can hard-abort the whole process on a machine/launch context
