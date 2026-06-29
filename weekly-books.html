@@ -71,7 +71,11 @@
   .suptick input{margin:0;cursor:pointer;}
   /* ---- polished theme (overrides) ---- */
   body{ background:linear-gradient(180deg,#eef2f7,#e7ecf3); padding:22px 16px 40px; -webkit-font-smoothing:antialiased; }
-  .wrap{ max-width:760px; }
+  .wrap{ max-width:1180px; }
+  /* two columns on a wide screen: totals/overview on the left, editable detail on the right — far less scrolling */
+  .books-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .books-col{ min-width:0; }
+  @media(max-width:900px){ .books-grid{ grid-template-columns:1fr; } }
   .apphead{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
   .apphead .logo{ width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#f59e0b,#ea580c);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;box-shadow:0 4px 12px rgba(234,88,12,.3); }
   .apphead h1{ font-size:20px; font-weight:800; letter-spacing:-.01em; margin:0; }
@@ -130,6 +134,27 @@
   <div id="syncStatus" style="display:none"></div>
 
   <div id="weekView">
+  <div class="books-grid">
+  <div class="books-col">
+  <div class="card summary hero">
+    <div class="row"><span>Total sales</span><span class="v pos2" id="plSales">$0</span></div>
+    <div class="row"><span>Cost of goods sold<span class="pct" id="plCogsPct"></span></span><span class="v neg2" id="plCogs">$0</span></div>
+    <div class="row tot"><span>Gross profit</span><span class="v" id="plGross">$0</span></div>
+    <div class="row"><span>Wages + super<span class="pct" id="plLabPct"></span></span><span class="v neg2" id="plLabour">$0</span></div>
+    <div class="row"><span>Other expenses</span><span class="v neg2" id="plOther">$0</span></div>
+    <div class="row tot"><span>Net profit</span><span class="v net" id="plNet">$0</span></div>
+  </div>
+
+  <div class="card">
+    <h2><span>Cost of goods &amp; labour</span></h2>
+    <div class="summary">
+      <div class="row"><span>Total COGS<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
+      <div class="row"><span>Total wages<span class="pct" id="wgPct"></span></span><span class="v neg2" id="wgTot">$0</span></div>
+      <div class="row"><span>Labour incl. super<span class="pct" id="labPct"></span></span><span class="v neg2" id="labTot">$0</span></div>
+    </div>
+    <div class="empty" style="margin-top:8px">COGS = the total of any expense below you tag as <b>COGS</b>.</div>
+  </div>
+
   <div class="card" id="liveCard">
     <h2><span>⚡ Live & day-by-day</span><button class="ghost" style="padding:4px 10px;font-size:11px" onclick="refreshSelected()">⟳ update</button></h2>
     <div id="lvDays" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"></div>
@@ -141,16 +166,9 @@
     <div id="lvChart"></div>
     <div class="empty" id="lvNote" style="margin-top:6px"></div>
   </div>
-
-  <div class="card summary hero">
-    <div class="row"><span>Total sales</span><span class="v pos2" id="plSales">$0</span></div>
-    <div class="row"><span>Cost of goods sold<span class="pct" id="plCogsPct"></span></span><span class="v neg2" id="plCogs">$0</span></div>
-    <div class="row tot"><span>Gross profit</span><span class="v" id="plGross">$0</span></div>
-    <div class="row"><span>Wages + super<span class="pct" id="plLabPct"></span></span><span class="v neg2" id="plLabour">$0</span></div>
-    <div class="row"><span>Other expenses</span><span class="v neg2" id="plOther">$0</span></div>
-    <div class="row tot"><span>Net profit</span><span class="v net" id="plNet">$0</span></div>
   </div>
 
+  <div class="books-col">
   <div class="card">
     <h2 style="cursor:pointer" onclick="toggleSec('inc')"><span><span id="incCaret">▸</span> Income — total sales</span><span id="incTotal" style="color:#16a34a">$0</span></h2>
     <div id="incAlert" class="flag" style="display:none"></div>
@@ -158,16 +176,6 @@
       <div id="incList"></div>
       <button class="add inc" onclick="addTx('income')">+ Add income</button>
     </div>
-  </div>
-
-  <div class="card">
-    <h2><span>Cost of goods &amp; labour</span></h2>
-    <div class="summary">
-      <div class="row"><span>Total COGS<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
-      <div class="row"><span>Total wages<span class="pct" id="wgPct"></span></span><span class="v neg2" id="wgTot">$0</span></div>
-      <div class="row"><span>Labour incl. super<span class="pct" id="labPct"></span></span><span class="v neg2" id="labTot">$0</span></div>
-    </div>
-    <div class="empty" style="margin-top:8px">COGS = the total of any expense below you tag as <b>COGS</b>.</div>
   </div>
 
   <div class="card">
@@ -186,6 +194,8 @@
       <div id="expList"></div>
       <button class="add exp" onclick="addTx('expense','','other')">+ Add expense</button>
     </div>
+  </div>
+  </div>
   </div>
   </div>
   <div id="monthView" style="display:none"></div>
