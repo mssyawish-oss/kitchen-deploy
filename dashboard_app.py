@@ -2835,14 +2835,19 @@ def api_rotcam_stream():
 @app.route("/api/rotcam_frame")
 def api_rotcam_frame():
     if not _rotcam_rtsp(): return Response("camera not configured",status=404)
-    ROTCAM["last_want"]=time.time()   # tell the streamer a viewer is here
-    for _ in range(70):               # wait up to ~7s for the first frame (stream spinning up)
+    ROTCAM["last_want"]=time.time()   # tell the puller a viewer is here (it refreshes ROTCAM["frame"])
+    # ALWAYS serve the last good frame instantly — even if a few seconds old — so the live view never blanks
+    # or blocks. The puller refreshes it in the background; this cheap cam only manages ~1 frame/several-sec,
+    # so a slightly-stale frame beats an 8s wait + a failing one-shot grab (which fought the puller for the
+    # camera's single RTSP connection and 503'd).
+    fr=ROTCAM.get("frame")
+    if fr: return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    for _ in range(50):               # no frame cached yet → wait briefly for the puller to spin up
         fr=ROTCAM.get("frame")
-        if fr and (time.time()-ROTCAM.get("frame_ts",0))<8:
-            return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+        if fr: return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
         time.sleep(0.1)
-    jpeg,err=_rotcam_grab()           # fallback: one-shot grab if the stream hasn't produced a frame
-    if err: return Response(err,status=503)
+    jpeg,err=_rotcam_grab()           # truly never produced a frame → one last try
+    if err or not jpeg: return Response(err or "no frame",status=503)
     ROTCAM["frame"]=jpeg; ROTCAM["frame_ts"]=time.time()
     return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
