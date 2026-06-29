@@ -1039,6 +1039,27 @@ def api_google_config():
     _g_tok["access"]=None; _g_tok["exp"]=0
     return jsonify({"ok":True,"configured":bool(g.get("client_id") and g.get("client_secret") and g.get("refresh_token"))})
 
+@app.route("/api/google_test")
+def api_google_test():
+    # verify the saved Gmail/Drive OAuth actually works (refreshes a token + does a real read)
+    g=db.get("google_config",{}) or {}
+    if not (g.get("client_id") and g.get("client_secret") and g.get("refresh_token")):
+        return jsonify({"ok":False,"error":"Fill in all 3 fields and Save first."})
+    try:
+        if not _google_token(): return jsonify({"ok":False,"error":"Token refresh failed — check the Client ID/Secret/Refresh token."})
+        gm=_gmail_search({"query":"from:uber.com newer_than:60d","pageSize":1})
+        subj=""
+        for th in (gm.get("threads") or []):
+            for m in (th.get("messages") or []):
+                if m.get("subject"): subj=m["subject"]; break
+            if subj: break
+        nt=len(gm.get("threads") or [])
+        dr=_drive_search({"query":""}); nf=len(dr.get("files") or [])
+        return jsonify({"ok":True,"detail":"Gmail OK"+((" — found a recent Uber email: \""+subj[:60]+"\"") if subj else (" ("+str(nt)+" Uber thread(s) in 60d)"))+" · Drive OK ("+str(nf)+" files visible)"})
+    except Exception as e:
+        try: return jsonify({"ok":False,"error":e.read().decode()[:180]})
+        except Exception: return jsonify({"ok":False,"error":str(e)[:180]})
+
 # ── Task-completion photos: grab a still from a Dahua IP camera instead of a PIN ──
 PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)
@@ -2850,6 +2871,7 @@ def get_db():
     cl=snap.get("camera_config_cl") or {}                              # separate CHECKLIST camera
     safe["camera_cl_enabled"]=bool(cl.get("enabled") and cl.get("ip"))
     safe["camera_cl_public"]={k:cl.get(k) for k in ("ip","port","channel","url_override","enabled","crop")}
+    _gc=snap.get("google_config") or {}; safe["google_connected"]=bool(_gc.get("client_id") and _gc.get("client_secret") and _gc.get("refresh_token"))
     rc=snap.get("rotcam_config") or {}
     safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew","boxes6")}  # no pass/key
     safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
