@@ -1048,33 +1048,50 @@ async function syncBills(){
     // skip obvious non-invoices by filename so we don't waste time reading them
     const JUNK=/statement|strateg|resume|parking|certificate|balance|direct debit|\bddr\b|credit application|annual|signing|\bica\b|quote|booking|cashflow|my-receipt/i;
     files=files.filter(f=>!JUNK.test(f.title||''));
-    // 2) classify each, caching the result by file id so future runs only read NEW invoices
+    // 2) classify each, caching EVERY verdict (cogs AND skip) by file id — a file's content never
+    //    changes, so re-runs only read genuinely NEW files. Read 4 at a time with a per-file timeout
+    //    so one slow/oversized PDF can't stall the whole queue.
     let cache; try{cache=JSON.parse(localStorage.getItem(BILLCACHE)||'{}');}catch(e){cache={};}
     let changed=false;
     TX=TX.filter(t=>t.src!=='bill' && t.src!=='embed'); // clean rebuild each run; drop the old embedded seed (Drive is now the source of truth)
-    let cb=0, n=0; const seen=new Set();
-    for(const f of files){
-      n++;
-      let o=cache[f.id];
-      if(o===undefined){
-        status(`Reading invoices… ${n}/${files.length}`);
-        const text=await driveText(f.id);   // always read FULL invoice text (snippet is too short to find the total)
-        o=await parseBillAI(text,f.title);
-        // cache ONLY confident hits — skips/zero-amount reads stay uncached so they get retried next run
-        if(o && o.type==='cogs' && o.amt>0){ cache[f.id]=o; changed=true; }
-      }
-      if(!o || o.type!=='cogs' || !(o.amt>0)) continue;
+    const TIMEOUT=30000;
+    const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
+    let done=0, read=0, errs=0;
+    async function classify(f){
+      if(cache[f.id]!==undefined) return cache[f.id];                 // cached verdict (incl skip) → no network
+      try{
+        const text=await withTimeout(driveText(f.id),TIMEOUT);       // full PDF text (snippet is too short to find the total)
+        const o=await withTimeout(parseBillAI(text,f.title),TIMEOUT);
+        read++;
+        const v=(o && o.type==='cogs' && o.amt>0)?o:{type:'skip'};
+        cache[f.id]=v; changed=true;                                  // cache the verdict so it's never re-read
+        return v;
+      }catch(e){ errs++; return null; }                               // timeout/error → leave uncached so it retries next run
+    }
+    const CONC=4, results=new Array(files.length);
+    for(let i=0;i<files.length;i+=CONC){
+      const slice=files.slice(i,i+CONC);
+      const got=await Promise.all(slice.map(classify));
+      got.forEach((v,j)=>{ results[i+j]=v; });
+      done=Math.min(i+CONC,files.length);
+      status(`Reading invoices… ${done}/${files.length}`+(read?` (${read} new this run)`:' (mostly cached)'));
+    }
+    // 3) book the confident COGS hits, de-duped by vendor+invoice no.
+    let cb=0; const seen=new Set();
+    files.forEach((f,i)=>{
+      const o=results[i];
+      if(!o || o.type!=='cogs' || !(o.amt>0)) return;
       const key=(o.vendor+'|'+(o.invoiceNo||f.id)).toLowerCase().replace(/\s+/g,'');
-      if(seen.has(key)) continue; seen.add(key); // never book the same invoice twice
+      if(seen.has(key)) return; seen.add(key);                        // never book the same invoice twice
       const fbWk=weekKey((f.createdTime||'').slice(0,10)||curKey());
       const wk=safeWk(o.invoiceDate, fbWk);
       TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id}); cb++;
-    }
+    });
     if(changed){ try{localStorage.setItem(BILLCACHE,JSON.stringify(cache));}catch(e){} }
     // Note: G&W and CFM invoices are saved as PDFs in the folder now, so they're booked above —
     // the old email-reading step (syncXeroBills) was removed to avoid booking them twice.
     save(); render();
-    status(`Bills ✓ ${cb} COGS invoices booked from ${files.length} files scanned. Overheads, statements & forms skipped.`);
+    status(`Bills ✓ ${cb} invoices booked from ${files.length} scanned`+(errs?` · ${errs} couldn't be read — tap Load invoices again to retry just those`:'')+'.');
   }catch(e){ status('Bills sync issue: '+(e.message||e)); }
   if(btn)btn.disabled=false;
 }
