@@ -1150,10 +1150,19 @@ def api_bills_probe():
                 fid=files[si_idx[0]].get("id") or files[si_idx[0]].get("fileId")
                 txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
                 out["si_sample_name"]=titles[si_idx[0]]
-                out["si_sample_head"]=txt[:600]
+                out["si_sample_tail"]=txt[-700:]   # the TOTAL lives at the bottom
                 kws=[k for k in ("united","zoghaib","pfd","bidfood","fiesta","feel good","melbourne chilli") if k in txt.lower()]
                 out["si_sample_vendor_hits"]=kws
             except Exception as e: out["si_read_error"]=str(e)[:150]
+        gw_idx=[i for i,t in enumerate(low) if "inv-50" in t]
+        if gw_idx:
+            try:
+                fid=files[gw_idx[0]].get("id") or files[gw_idx[0]].get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                out["gw_sample_name"]=titles[gw_idx[0]]
+                out["gw_sample_tail"]=txt[-700:]
+                out["gw_sample_vendor_hits"]=[k for k in ("g & w","g&w","packaging","gnw") if k in txt.lower()]
+            except Exception as e: out["gw_read_error"]=str(e)[:150]
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
