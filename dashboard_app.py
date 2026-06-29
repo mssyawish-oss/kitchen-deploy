@@ -1110,6 +1110,7 @@ def api_square_week_test():
                 amt=((p.get("amount_money") or {}).get("amount") or 0); rf=((p.get("refunded_money") or {}).get("amount") or 0)
                 if st=="CASH": cash+=(amt-rf)/100.0; ncash+=1; continue
                 if st!="CARD" or p.get("status")!="COMPLETED": continue
+                if (((p.get("card_details") or {}).get("card") or {}).get("card_brand"))=="SQUARE_GIFT_CARD": continue  # gift-card redemptions never hit the bank
                 fees=sum(((f.get("amount_money") or {}).get("amount") or 0) for f in (p.get("processing_fee") or []))
                 appf=((p.get("app_fee_money") or {}).get("amount") or 0)
                 dep+=(amt-rf-fees-appf)/100.0; ncard+=1

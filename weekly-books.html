@@ -1237,26 +1237,18 @@ async function syncWeek(){
     // (status COMPLETED), minus Square's processing fees, app fees, gift-card redemptions and refunds.
     // NOT transfer-dated — money is counted when you earn it, not when it lands in the bank.
     status('Tallying sales earned this week…');
-    let cur, pages=0;
-    do{
-      const req={begin_time:begin,end_time:end,limit:100}; if(cur)req.cursor=cur;
-      const res=await call(SQUARE,{service:'payments',method:'list',request:req,characterization:'Weekly sales earned (card + cash)'});
-      (res.payments||[]).forEach(p=>{
-        const c=new Date(p.created_at); if(!(c>=mon && c<addDays(mon,7))) return;
-        const amt=(p.amount_money&&p.amount_money.amount||0), rf=(p.refunded_money&&p.refunded_money.amount||0);
-        if(p.source_type==='CASH'){ cash+=(amt-rf)/100; return; }
-        if(p.source_type!=='CARD'||p.status!=='COMPLETED') return;            // EXTERNAL = delivery platforms, booked via their statements
-        const brand=p.card_details&&p.card_details.card&&p.card_details.card.card_brand;
-        if(brand==='SQUARE_GIFT_CARD') return;                                // gift-card redemptions never hit the bank
-        let fees=0; (p.processing_fee||[]).forEach(f=>{ fees+=(f.amount_money&&f.amount_money.amount||0); });
-        const appFee=(p.app_fee_money&&p.app_fee_money.amount||0);
-        dep+=(amt-rf-fees-appFee)/100;
-      });
-      cur=res.cursor; pages++;
-    } while(cur && pages<60);
-    if(dep>0){ setSyncLine('Bank deposits (Square)',Math.round(dep*100)/100); gotIncome=true; }
-    if(cash>0){ setSyncLine('Cash sales (Square)',cash); gotIncome=true; }
-    if(gotIncome) syncOk=true;
+    // ONE reliable server-side call tallies the WHOLE week's card+cash (the old client-side 15-page
+    // pagination through the proxy was slow and would leave a stale partial like "$503"). Exact Melbourne
+    // week bounds (local Monday → next Monday), same as the delivery-gross call below.
+    const wStart=new Date(mon).toISOString(), wEnd=new Date(addDays(mon,7)).toISOString();
+    const sres=await fetch('/api/square_week_test?start='+encodeURIComponent(wStart)+'&end='+encodeURIComponent(wEnd));
+    const sd=await sres.json();
+    if(sd&&sd.ok){
+      dep=+sd.deposits_card_net||0; cash=+sd.cash||0;
+      if(dep>0){ setSyncLine('Bank deposits (Square)',Math.round(dep*100)/100); gotIncome=true; }
+      if(cash>0){ setSyncLine('Cash sales (Square)',Math.round(cash*100)/100); gotIncome=true; }
+      if(gotIncome) syncOk=true;
+    }
     setDone('dep'); setDone('cash');
     save(); render();
   }catch(e){ status('Income sync issue (wages still loading)… '+(e.message||e)); setDone('dep'); setDone('cash'); }   // don't abort — let wages/payouts continue
