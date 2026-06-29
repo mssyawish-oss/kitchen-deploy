@@ -2273,8 +2273,15 @@ def _rotcam_apply(rows):
                 #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
                 # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
                 cooked_long=(oa[i]-la[i]>=min_cook)
-                if cooked_long:                                # shelf was loaded long enough to be a finished cook, then went empty → a cooked row came off
-                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — shelf was loaded long enough to be a finished cook, then went empty"})
+                top_shelf=(i<=2)                               # OWNER RULE: cooked rows ONLY ever come off the TOP shelves (1, 2, 3) — never 4/5/6 (we don't finish-cook down there)
+                done_on=(isinstance(done,str) and len(done)==6)# is a colour/doneness read available this frame?
+                visibly_cooked=(ck[i] or not done_on)          # if we can see colour, REQUIRE the row actually went golden — a white/raw row is not a cooked row coming off
+                if top_shelf and cooked_long and visibly_cooked:
+                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — cooked (golden) row left a top shelf (1-3) after a full cook"})
+                elif not top_shelf:
+                    events.append({"shelf":i,"credited":False,"reason":"not counted — shelf %d: cooked rows only come off the top shelves (1-3), never 4/5/6"%(i+1)})
+                elif done_on and not ck[i]:
+                    events.append({"shelf":i,"credited":False,"reason":"not counted — shelf %d never turned golden this load (read raw/white), so it wasn't a cooked row"%(i+1)})
                 else:                                          # emptied too soon to be a finished cook — log it (with the real minutes) so early-pulls/misreads are visible
                     mins=int(max(0,oa[i]-la[i])/60)
                     events.append({"shelf":i,"credited":False,"reason":"shelf had only been loaded ~%d min (needs ~%d min to count as a finished cook)"%(mins,int(min_cook/60))})
