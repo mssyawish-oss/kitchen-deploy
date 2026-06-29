@@ -1197,7 +1197,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         </select>
         <button class="btn" onclick="calNudge(0,-1)">&#9650;</button><button class="btn" onclick="calNudge(0,1)">&#9660;</button><button class="btn" onclick="calNudge(-1,0)">&#9664;</button><button class="btn" onclick="calNudge(1,0)">&#9654;</button>
       </div>
-      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_refreshCalBg()">↻ Reconnect feed</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
+      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_startCalLive()">↻ Restart live</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
     </div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:2px;">🔬 AI Debug — what the camera sees on every check</div>
@@ -1809,15 +1809,18 @@ function _legacyTo6(boxes,bx,off,skew){const out=[];for(let i=0;i<6;i++){let a=_
 function openCalib(){const c=appData.rotcam_public||{};
   if(Array.isArray(c.boxes6)&&c.boxes6.length===6){_cal6=c.boxes6.map(r=>[+r[0],+r[1],+r[2],+r[3]]);}
   else{const boxes=(Array.isArray(c.boxes)&&c.boxes.length===6)?c.boxes.map(p=>[+p[0],+p[1]]):JSON.parse(JSON.stringify(_CAL_DEF_BOXES));const bx=(Array.isArray(c.box_x)&&c.box_x.length===2)?[+c.box_x[0],+c.box_x[1]]:_CAL_DEF_X.slice();_cal6=_legacyTo6(boxes,bx,parseFloat(c.box_offset)||0,parseFloat(c.box_skew)||0);}
-  _calZoom=1;_refreshCalBg();}
+  _calZoom=1;_startCalLive();}
+let _calLiveTimer=null;
 function _refreshCalBg(){const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
-  const note=document.getElementById('rc-cal-note');if(note)note.remove();
-  if(img._u){URL.revokeObjectURL(img._u);img._u=null;}
-  // LIVE MJPEG feed — plays like a webcam so you align boxes against live video (the rack is static; only chickens move). No manual refresh.
-  img.onload=function(){_applyZoom();_renderCalBoxes();};
-  img.onerror=function(){_applyZoom();_renderCalBoxes();if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Live camera unavailable right now — tap Reconnect once it comes back.';wrap.insertBefore(n,wrap.firstChild);}};
-  img.src='/api/rotcam_stream?t='+Date.now();}
-function _stopCalLive(){const img=document.getElementById('rc-cal-img');if(img){img.onload=null;img.onerror=null;img.removeAttribute('src');if(img._u){URL.revokeObjectURL(img._u);img._u=null;}}}
+  if(_calDrag)return;   // don't swap the frame out from under a box you're dragging
+  // poll a fresh cached JPEG directly (cache-busted) — /api/rotcam_frame keeps the puller warm AND returns the
+  // latest frame cheaply. The browser holds the previous frame until the new one loads → no flicker.
+  img.onload=function(){const note=document.getElementById('rc-cal-note');if(note)note.remove();_applyZoom();_renderCalBoxes();};
+  img.onerror=function(){if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Camera frame unavailable right now — it keeps retrying automatically.';wrap.insertBefore(n,wrap.firstChild);}};
+  img.src='/api/rotcam_frame?t='+Date.now();}
+// auto-refresh ~every 0.8s — looks live, and is RELIABLE through Tailscale (the MJPEG stream buffers/stalls there)
+function _startCalLive(){_stopCalLive();_refreshCalBg();_calLiveTimer=setInterval(_refreshCalBg,800);}
+function _stopCalLive(){if(_calLiveTimer){clearInterval(_calLiveTimer);_calLiveTimer=null;}const img=document.getElementById('rc-cal-img');if(img){img.onload=null;img.onerror=null;}}
 function _applyZoom(){const st=document.getElementById('rc-cal-stage');if(st)st.style.width=(_calZoom*100)+'%';const l=document.getElementById('rc-zoom-lbl');if(l)l.textContent=Math.round(_calZoom*100)+'%';}
 function calZoom(d){_calZoom=Math.max(1,Math.min(4,+(_calZoom+d*0.25).toFixed(2)));_applyZoom();}
 function _renderCalBoxes(){const st=document.getElementById('rc-cal-stage');if(!st)return;st.querySelectorAll('.cal-box').forEach(x=>x.remove());const sel=_calRow();
@@ -2244,18 +2247,22 @@ function toggleTrace(){
   if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;_stopLiveCap();if(btn)btn.innerHTML='&#9654; Start live trace';return;}
   if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;_startLiveCap();renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
 }
-let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={},_lastFrameUrl='',_stallCount=0;
-function _reconnectLive(){const im=document.getElementById('rc-live');if(im)im.src='/api/rotcam_stream?t='+Date.now();}
+let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={},_lastFrameUrl='';
 function _startLiveCap(){
   const w=document.getElementById('rc-live-wrap');if(w)w.style.display='block';
-  const im=document.getElementById('rc-live');if(im)im.src='/api/rotcam_stream?t='+Date.now();
-  _capStrip=[];_capMap={};_lastFrameUrl='';_stallCount=0;const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
+  _capStrip=[];_capMap={};_lastFrameUrl='';const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
   if(_liveCapTimer)clearInterval(_liveCapTimer);
-  _liveCapTimer=setInterval(_grabFrame,500);   // a fresh correctable frame every ~½ second
+  _liveCapTimer=setInterval(_pollLiveFrame,600);   // poll a fresh cached frame ~every 0.6s — reliable through Tailscale (MJPEG stalls there)
+  _pollLiveFrame();
+}
+function _pollLiveFrame(){
+  const im=document.getElementById('rc-live');if(!im)return;
+  im.onload=function(){_grabFrame();};
+  im.src='/api/rotcam_frame?t='+Date.now();   // /api/rotcam_frame keeps the puller warm + returns the latest cached JPEG cheaply
 }
 function _stopLiveCap(){
   if(_liveCapTimer){clearInterval(_liveCapTimer);_liveCapTimer=null;}
-  const im=document.getElementById('rc-live');if(im)im.src='';
+  const im=document.getElementById('rc-live');if(im){im.onload=null;im.src='';}
   const w=document.getElementById('rc-live-wrap');if(w)w.style.display='none';
 }
 function _grabFrame(){
@@ -2264,10 +2271,8 @@ function _grabFrame(){
   try{
     cv.width=im.naturalWidth;cv.height=im.naturalHeight;cv.getContext('2d').drawImage(im,0,0);
     const url=cv.toDataURL('image/jpeg',0.7);
-    // STALL DETECTION: an MJPEG that stops updating (puller stalled / connection dropped) yields the SAME frame.
-    // The rotisserie is always spinning, so identical frames = a frozen stream → reconnect, don't add dup thumbnails.
-    if(url===_lastFrameUrl){ if(++_stallCount>=6){ _stallCount=0; _reconnectLive(); } return; }
-    _stallCount=0; _lastFrameUrl=url;
+    if(url===_lastFrameUrl) return;   // identical frame (static scene / same cached frame) → don't add a duplicate thumbnail
+    _lastFrameUrl=url;
     const lid='cap_'+(++_capSeq);_capMap[lid]={url:url};
     const d=new Date(),t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
     if(strip.firstChild&&strip.firstChild.dataset&&strip.firstChild.dataset.ph)strip.innerHTML='';
@@ -2416,16 +2421,11 @@ function renderRotcamCard(){
   applyRotView();
   const img=document.getElementById('rotcam-stream');
   img.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};
-  if(_camIsPhone()){
-    // Phone browsers (esp. iOS Safari) won't render an MJPEG multipart stream in <img>.
-    // Poll single still frames instead — works everywhere.
-    if(window._camPollT)clearInterval(window._camPollT);
-    const poll=()=>{const im=document.getElementById('rotcam-stream');if(!im){clearInterval(window._camPollT);window._camPollT=null;return;}const n=new Image();n.onload=()=>{im.src=n.src;const m=document.getElementById('rotcam-msg');if(m)m.style.display='none';};n.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
-    poll();window._camPollT=setInterval(poll,1500);
-  }else{
-    img.onload=()=>{const m=document.getElementById('rotcam-msg');if(m)m.style.display='none';};
-    img.src='/api/rotcam_stream?t='+Date.now();
-  }
+  // Always poll single still frames — MJPEG multipart doesn't render reliably on phones OR through the
+  // Tailscale tunnel; polling /api/rotcam_frame (cached frame, keeps the puller warm) works everywhere.
+  if(window._camPollT)clearInterval(window._camPollT);
+  const poll=()=>{const im=document.getElementById('rotcam-stream');if(!im){clearInterval(window._camPollT);window._camPollT=null;return;}const n=new Image();n.onload=()=>{im.src=n.src;const m=document.getElementById('rotcam-msg');if(m)m.style.display='none';};n.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
+  poll();window._camPollT=setInterval(poll,1000);
 }
 function renderBenchcamCard(){
   const el=document.getElementById('rl-benchcam');if(!el)return;
@@ -2470,13 +2470,10 @@ function openRotcam(ev){if(ev)ev.stopPropagation();
   const big=document.getElementById('rotcam-big');
   if(big){
     big.onerror=()=>{if(m){m.style.display='';m.textContent='Camera offline';}};
-    if(_camIsPhone()){
-      if(window._camBigPollT)clearInterval(window._camBigPollT);
-      const poll=()=>{const el=document.getElementById('rotcam-big'),md=document.getElementById('rotcam-modal');if(!el||!md||!md.classList.contains('open')){clearInterval(window._camBigPollT);window._camBigPollT=null;return;}const n=new Image();n.onload=()=>{el.src=n.src;if(m)m.style.display='none';};n.onerror=()=>{if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
-      poll();window._camBigPollT=setInterval(poll,1200);
-    }else{
-      big.onload=()=>{if(m)m.style.display='none';};big.src='/api/rotcam_stream?t='+Date.now();
-    }
+    // Always poll (reliable on phones AND through Tailscale) — see renderRotcamCard.
+    if(window._camBigPollT)clearInterval(window._camBigPollT);
+    const poll=()=>{const el=document.getElementById('rotcam-big'),md=document.getElementById('rotcam-modal');if(!el||!md||!md.classList.contains('open')){clearInterval(window._camBigPollT);window._camBigPollT=null;return;}const n=new Image();n.onload=()=>{el.src=n.src;if(m)m.style.display='none';};n.onerror=()=>{if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
+    poll();window._camBigPollT=setInterval(poll,900);
   }
   openModal('rotcam-modal');}
 function closeRotcam(){const big=document.getElementById('rotcam-big');if(big)big.src='';if(window._camBigPollT){clearInterval(window._camBigPollT);window._camBigPollT=null;}closeModal('rotcam-modal');}
