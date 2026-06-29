@@ -216,7 +216,10 @@ body.kiosk .topbar-title{cursor:default;}
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
 /* Today's Prep */
-.prep-grid{display:flex;flex-direction:column;gap:9px;}
+.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px;align-content:start;}
+.prep-grid .prep-card .pc-row{padding:8px 9px;gap:8px;}
+.prep-grid .prep-card .pc-img,.prep-grid .prep-card .pc-noimg{width:38px;height:38px;}
+.prep-grid .prep-card .pc-name{white-space:normal;font-size:13px;line-height:1.2;}
 .prep-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;}
 .prep-col{background:var(--surface2);border:1px solid var(--border);border-radius:13px;padding:8px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden;}
 .prep-col-accent{position:absolute;top:0;left:0;right:0;height:3px;}
@@ -914,7 +917,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 
 <!-- Today's Prep: morning staff pick the list -->
 <div class="modal-overlay" id="prep-build-modal">
-  <div class="modal" style="max-width:760px;">
+  <div class="modal" style="max-width:1300px;width:96vw;max-height:94vh;">
     <div class="modal-header"><div class="modal-title">SET PREP LIST</div><button class="modal-close" onclick="closeModal('prep-build-modal')">Close</button></div>
     <div class="row" style="gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
       <span style="font-size:13px;color:var(--muted);">Prep list for:</span>
