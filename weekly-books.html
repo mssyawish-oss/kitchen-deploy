@@ -1020,6 +1020,13 @@ function regexCogs(text,title){
   else if(/melbourne chilli|hot honey/i.test(T)) vendor='Melbourne Chilli';
   else if(/russel/i.test(T)) vendor="Russel's Poultry";
   if(!vendor) return null;
+  let amt=0;
+  if(/United/i.test(vendor)){
+    // United (Zoghaib) flattens its totals as: "Total AUD Incl. GST <excl> <gst> <incl>" — take the 3rd = total incl GST.
+    // (Avoids the "Balance To Date" trap which is the running account balance, not this invoice.)
+    const um=T.match(/Total\s+AUD\s+Incl\.?\s*GST\s*([\d,]+\.\d{2})\s*([\d,]+\.\d{2})\s*([\d,]+\.\d{2})/i);
+    if(um) amt=parseFloat(um[3].replace(/,/g,''));
+  }
   const pats=[
     /TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})/i,
     /Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})/i,
@@ -1031,7 +1038,7 @@ function regexCogs(text,title){
     /TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})/i,
     /TOTAL\s*AUD\s*\$?\s*([\d,]+\.\d{2})/i
   ];
-  let amt=0; for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } }
+  if(!(amt>0)){ for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } } }
   if(!(amt>0)) return null;
   let invoiceDate=''; const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(dm){ const d=+dm[1],mo=+dm[2],y=+dm[3]; if(mo>=1&&mo<=12&&d>=1&&d<=31) invoiceDate=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
@@ -1053,6 +1060,10 @@ async function parseBillAI(text,title){
     if(m){ const j=JSON.parse(m[0]); o={type:j.type||'skip', vendor:j.vendor||title, amt:+j.amount||0, invoiceNo:j.invoiceNo||'', periodStart:j.periodStart||'', periodEnd:j.periodEnd||'', invoiceDate:j.invoiceDate||''}; }
   }catch(e){}
   const det=regexCogs(text,title);
+  // A KNOWN supplier with a deterministically-read total ALWAYS books as COGS — never let the AI skip it
+  // or misfile it as an overhead. (This is exactly how United "Sales Invoice SI…" and G&W "Invoice INV-50…"
+  // were going missing: the AI mislabelled them and the code trusted the AI over the reliable reader.)
+  if(det && det.amt>0 && (!o || o.type!=='cogs' || !(o.amt>0))) return det;
   if(!o) return det || {type:'skip', vendor:title, amt:0};                 // AI failed → use deterministic if it's a known supplier
   if(o.type==='cogs' && !(o.amt>0) && det){ o.amt=det.amt; o.invoiceDate=o.invoiceDate||det.invoiceDate; o.invoiceNo=o.invoiceNo||det.invoiceNo; } // AI saw cogs but missed total
   if(o.type==='skip' && det){ return det; }                                // AI skipped but it's clearly a supplier invoice with a total
@@ -1080,7 +1091,7 @@ async function syncXeroBills(){
   }catch(e){}
   return n;
 }
-const BILLCACHE='weeklybooks_billCacheV6';  // V6: bumped to force a fresh full re-read with the wider 30k char window — clears any poisoned 'skip' verdicts that were permanently suppressing a supplier
+const BILLCACHE='weeklybooks_billCacheV7';  // V7: re-read all with the deterministic-reader-wins logic + United total format (clears any cached skip on United/G&W)
 async function syncBills(){
   const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
   try{
