@@ -407,6 +407,12 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* Live AI trace: live video + decision cards side-by-side on a wide screen */
 .trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
 @media(max-width:820px){.trace-cols{grid-template-columns:1fr;}}
+.devtask{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border2);border-radius:10px;margin-bottom:7px;background:var(--surface2);}
+.devtask input[type=checkbox]{width:21px;height:21px;flex-shrink:0;cursor:pointer;}
+.devtask-txt{flex:1;font-size:14px;color:var(--text);line-height:1.35;}
+.devtask.done .devtask-txt{text-decoration:line-through;color:var(--muted);}
+.devtask-del{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;flex-shrink:0;padding:0 4px;}
+.devtask-del:hover{color:var(--red);}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
 .modal-title{font-size:14px;font-weight:700;color:var(--amber);font-family:var(--font-mono);}
 .modal-close{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;}
@@ -779,6 +785,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="side-item" onclick="closeSidebar();toggleTheme()"><span class="side-ic" id="side-theme-ic"></span><span>Theme</span></button>
       <button class="side-item" onclick="closeSidebar();openNotesModal()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><span>Shift Notes</span><span id="notes-badge"></span></button>
       <button class="side-item" onclick="openBooks()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M5 3h9l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 13h6M9 17h4"/></svg></span><span>Weekly Books</span></button>
+      <button class="side-item" onclick="openDevTodo()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span><span>Project To-Do</span></button>
       <button class="side-item" onclick="closeSidebar();openSettingsModal()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg></span><span>Settings</span></button>
       <button class="side-item" onclick="closeSidebar();toggleFullscreen()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span><span>Fullscreen</span></button>
     </div>
@@ -1265,6 +1272,16 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="rc-usage" style="font-size:11px;color:var(--muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px;"></div>
     <div class="divider"></div>
     <div style="font-size:11px;color:var(--muted);">Server: <span style="font-family:var(--font-mono);color:var(--text);" id="server-url-display"></span></div>
+  </div>
+</div>
+
+<!-- Dashboard project to-do -->
+<div class="modal-overlay" id="devtodo-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">DASHBOARD PROJECT — TO-DO</div><button class="modal-close" onclick="closeModal('devtodo-modal')">Close</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Jobs still to do on the dashboard. Tick them off as they're done; add your own.</div>
+    <div class="row" style="gap:6px;margin-bottom:14px;"><input class="input" id="devtask-new" placeholder="Add a job…" onkeydown="if(event.key==='Enter')addDevTask()"><button class="btn btn-primary" onclick="addDevTask()" style="white-space:nowrap;">+ Add</button></div>
+    <div id="devtask-list"></div>
   </div>
 </div>
 
@@ -3051,6 +3068,30 @@ function toggleSettingsSection(sec){if(_setCollapsed.has(sec))_setCollapsed.dele
   const modal=document.querySelector('#settings-modal .modal');if(modal){const h=[...modal.querySelectorAll('.sec-head')].find(x=>x.dataset.sec===sec);if(h)h.classList.toggle('collapsed',_setCollapsed.has(sec));}
   _applySettingsVis();}
 function openBooks(){closeSidebar();const go=()=>window.open('/books','_blank');if(gateUnlocked('books')){go();return;}requirePin('Manager Code','Weekly Books needs a Manager or Admin PIN',()=>{sectionUnlockedAt['books']=Date.now();go();},SETTINGS_ROLES);}
+// ── Dashboard project to-do (sidebar) ──────────────────────────────────────────────
+let _devTasks=[];
+const _DEV_DEFAULTS=[
+  "Weekly Books — build the always-on server auto-sync (pull Square + payout emails + invoices on a schedule, no manual Sync/Load)",
+  "Weekly Books — lock the overhead amounts (GST $1800 vs $2000) and add a Water line",
+  "Rotisserie AI — build the editable prompt editor in Settings (edit the AI's rules in plain English)",
+  "Prep settings — option to split the rotisserie section into separate collapsible sub-sections",
+  "Longer passcode option + different permission groups"
+];
+function openDevTodo(){closeSidebar();openModal('devtodo-modal');
+  fetch('/api/dev_tasks').then(r=>r.json()).then(d=>{
+    _devTasks=Array.isArray(d.tasks)?d.tasks:[];
+    if(!_devTasks.length){_devTasks=_DEV_DEFAULTS.map((t,i)=>({id:'d'+i+'_'+Date.now(),text:t,done:false}));saveDevTasks();}
+    renderDevTasks();
+  }).catch(()=>renderDevTasks());}
+function renderDevTasks(){const el=document.getElementById('devtask-list');if(!el)return;
+  const done=_devTasks.filter(t=>t.done).length;
+  el.innerHTML='<div style="font-size:13px;color:var(--muted);margin-bottom:10px;"><b style="color:var(--text);">'+done+' of '+_devTasks.length+'</b> done</div>'
+    +(_devTasks.length?_devTasks.map(t=>'<div class="devtask'+(t.done?' done':'')+'"><input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleDevTask(\''+t.id+'\')"><span class="devtask-txt">'+_mEsc(t.text)+'</span><button class="devtask-del" title="Remove" onclick="delDevTask(\''+t.id+'\')">&times;</button></div>').join('')
+    :'<div style="font-size:13px;color:var(--muted);text-align:center;padding:18px;">No jobs yet — add one above.</div>');}
+function toggleDevTask(id){const t=_devTasks.find(x=>x.id===id);if(t){t.done=!t.done;saveDevTasks();renderDevTasks();}}
+function addDevTask(){const inp=document.getElementById('devtask-new');const v=(inp.value||'').trim();if(!v)return;_devTasks.push({id:'d'+Date.now(),text:v,done:false});inp.value='';saveDevTasks();renderDevTasks();}
+function delDevTask(id){_devTasks=_devTasks.filter(x=>x.id!==id);saveDevTasks();renderDevTasks();}
+function saveDevTasks(){fetch('/api/dev_tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tasks:_devTasks})}).catch(()=>{});}
 function openSettingsModal(){if(!gateUnlocked('settings')){requirePin('Manager Code','Settings needs a Manager or Admin PIN',u=>{sectionUnlockedAt['settings']=Date.now();_openSettingsModal();},SETTINGS_ROLES);return;}_openSettingsModal();}
 function applyFriedVis(){document.body.classList.toggle('hide-fried',appData.fried_enabled===false);}
 function saveFriedVis(on){appData.fried_enabled=!!on;applyFriedVis();fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fried_enabled:!!on})}).catch(()=>{});}

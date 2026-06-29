@@ -1085,6 +1085,17 @@ def api_books_tx():
         db["books_store"]=b; save_data(db)
     return jsonify({"ok":True,"rev":b["rev"],"count":len(tx)})
 
+@app.route("/api/dev_tasks",methods=["GET","POST"])
+def api_dev_tasks():
+    # Dashboard-project to-do list (shared across devices), shown from the sidebar.
+    if request.method=="GET":
+        return jsonify({"tasks":db.get("dev_tasks") or []})
+    j=request.get_json(force=True,silent=True) or {}
+    tasks=j.get("tasks")
+    if not isinstance(tasks,list): return jsonify({"ok":False,"error":"tasks must be a list"})
+    with data_lock: db["dev_tasks"]=tasks; save_data(db)
+    return jsonify({"ok":True,"count":len(tasks)})
+
 @app.route("/api/square_week_test")
 def api_square_week_test():
     # Diagnostic: replicate Weekly Books' card+cash deposit tally for a week, server-side, to see what
