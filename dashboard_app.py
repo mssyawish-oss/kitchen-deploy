@@ -1153,8 +1153,8 @@ def api_bills_probe():
                 return {"name":titles[idx_list[0]],"head":txt[:700],"tail":txt[-700:],"hits":hits,"len":len(txt)}
             except Exception as e: return {"error":str(e)[:150]}
         out["asahi_sample"]=read_sample([i for i,t in enumerate(low) if "asahi" in t])
-        out["brunos_inv_sample"]=read_sample([i for i,t in enumerate(low) if "brunos chicken inv" in t or "chicken inv" in t])
-        out["brunos_inv_files"]=[titles[i] for i,t in enumerate(low) if "chicken inv" in t]
+        out["invoice72_files"]=[titles[i] for i,t in enumerate(low) if "invoice_72" in t or "invoice 72" in t]
+        out["russel72_sample"]=read_sample([i for i,t in enumerate(low) if "invoice_72" in t or "invoice 72" in t])
         out["si_files"]=[titles[i] for i,t in enumerate(low) if "sales invoice si" in t or "sales invoice" in t][:12]
         out["inv5_files"]=[titles[i] for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t or "inv-5" in t][:12]
         out["sample"]=titles[:50]
