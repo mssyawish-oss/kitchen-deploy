@@ -1140,7 +1140,20 @@ def api_bills_probe():
         out["united"]=[titles[i] for i,t in enumerate(low) if "united" in t or "zoghaib" in t]
         out["gw"]=[titles[i] for i,t in enumerate(low) if "g&w" in t or "g & w" in t or "gnw" in t or "packag" in t]
         out["baiada"]=[titles[i] for i,t in enumerate(low) if "baiada" in t]
+        out["si_files"]=[titles[i] for i,t in enumerate(low) if "sales invoice si" in t or "sales invoice" in t][:12]
+        out["inv5_files"]=[titles[i] for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t or "inv-5" in t][:12]
         out["sample"]=titles[:50]
+        # read one "Sales Invoice SI" file to see which supplier it actually is
+        si_idx=[i for i,t in enumerate(low) if "sales invoice si" in t]
+        if si_idx:
+            try:
+                fid=files[si_idx[0]].get("id") or files[si_idx[0]].get("fileId")
+                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                out["si_sample_name"]=titles[si_idx[0]]
+                out["si_sample_head"]=txt[:600]
+                kws=[k for k in ("united","zoghaib","pfd","bidfood","fiesta","feel good","melbourne chilli") if k in txt.lower()]
+                out["si_sample_vendor_hits"]=kws
+            except Exception as e: out["si_read_error"]=str(e)[:150]
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
