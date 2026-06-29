@@ -1033,6 +1033,11 @@ function regexCogs(text,title){
     const rm=T.match(/Invoice\s+total\s*([\d,]+\.\d{2})/i);
     if(rm) amt=parseFloat(rm[1].replace(/,/g,''));
   }
+  if(/Asahi/i.test(vendor)){
+    // Asahi's grand total is a 5-column row "AUD Total <ex.CDL> <CDL> <ex.GST> <GST> <Payable>" — take the LAST (Total Payable).
+    const am=T.match(/AUD\s+Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/i);
+    if(am) amt=parseFloat(am[5].replace(/,/g,''));
+  }
   const pats=[
     /TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})/i,
     /Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})/i,
@@ -1046,7 +1051,7 @@ function regexCogs(text,title){
   ];
   if(!(amt>0)){ for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } } }
   if(!(amt>0)) return null;
-  let invoiceDate=''; const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/);   // DD/MM/YYYY or DD/MM/YY (Russel's uses 2-digit years)
+  let invoiceDate=''; const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/) || T.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);   // DD/MM/YYYY, DD/MM/YY (Russel's), or DD.MM.YYYY (Asahi)
   if(dm){ const d=+dm[1],mo=+dm[2]; let y=+dm[3]; if(y<100) y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31) invoiceDate=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
   let invoiceNo=''; const im=T.match(/\b(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6}|72\d{4})\b/); if(im) invoiceNo=im[1];
   return {type:'cogs',vendor:vendor,amt:Math.round(amt*100)/100,invoiceNo:invoiceNo,invoiceDate:invoiceDate};
@@ -1097,7 +1102,7 @@ async function syncXeroBills(){
   }catch(e){}
   return n;
 }
-const BILLCACHE='weeklybooks_billCacheV8';  // V8: re-read all with Russel's "Invoice total" extraction (ignores Total Balance owing) + 2-digit dates
+const BILLCACHE='weeklybooks_billCacheV9';  // V9: re-read all with Asahi's "AUD Total …Payable" extraction + dot-separated dates
 async function syncBills(){
   const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
   try{
