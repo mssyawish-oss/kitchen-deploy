@@ -1121,6 +1121,39 @@ def api_square_week_test():
         try: return jsonify({"ok":False,"error":e.read().decode()[:200]})
         except Exception: return jsonify({"ok":False,"error":str(e)[:200]})
 
+@app.route("/api/bills_probe")
+def api_bills_probe():
+    # Diagnostic: where do specific suppliers' invoices actually live — Drive folder PDFs vs Xero emails?
+    out={}
+    try:
+        files=[]; tok=None; pages=0
+        while pages<15:
+            q={"query":"parentId = '1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'","pageSize":100}
+            if tok: q["pageToken"]=tok
+            r=_drive_search(q) or {}
+            files+=(r.get("files") or [])
+            tok=r.get("nextPageToken"); pages+=1
+            if not tok: break
+        titles=[(f.get("title") or f.get("name") or "") for f in files]
+        low=[t.lower() for t in titles]
+        out["drive_total"]=len(titles)
+        out["united"]=[titles[i] for i,t in enumerate(low) if "united" in t or "zoghaib" in t]
+        out["gw"]=[titles[i] for i,t in enumerate(low) if "g&w" in t or "g & w" in t or "gnw" in t or "packag" in t]
+        out["baiada"]=[titles[i] for i,t in enumerate(low) if "baiada" in t]
+        out["sample"]=titles[:50]
+    except Exception as e:
+        out["drive_error"]=str(e)[:200]
+    try:
+        gw=_gmail_search({"query":'from:post.xero.com ("G & W" OR "G&W" OR Packaging OR CFM) newer_than:35d',"pageSize":12}) or {}
+        subs=[]
+        for th in (gw.get("threads") or []):
+            for m in (th.get("messages") or []):
+                if m.get("subject"): subs.append(m["subject"][:90]); break
+        out["xero_emails"]=subs
+    except Exception as e:
+        out["gmail_error"]=str(e)[:200]
+    return jsonify(out)
+
 # ── Task-completion photos: grab a still from a Dahua IP camera instead of a PIN ──
 PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)
