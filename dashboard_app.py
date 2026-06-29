@@ -1227,6 +1227,13 @@ def api_bills_probe():
                 pd=_pdate(txt); ct=(f.get("createdTime") or "")[:10]
                 out["produce_parsed"].append({"file":titles[i],"vendor":vend,"invoice_date":pd,"week_invoice":(_monday(pd) if pd else None),"createdTime":ct,"week_upload":_monday(ct)})
             except Exception as e: out["produce_parsed"].append({"file":titles[i],"err":str(e)[:80]})
+        fr=[i for i,t in enumerate(low) if "fresho" in t and "credit" not in t]
+        if fr:
+            try:
+                fid=files[fr[0]].get("id") or files[fr[0]].get("fileId")
+                ft=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
+                out["fresho_full"]={"name":titles[fr[0]],"text":ft[:2600]}
+            except Exception as e: out["fresho_full"]={"err":str(e)[:120]}
     except Exception as e:
         out["drive_error"]=str(e)[:200]
     try:
