@@ -1197,7 +1197,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         </select>
         <button class="btn" onclick="calNudge(0,-1)">&#9650;</button><button class="btn" onclick="calNudge(0,1)">&#9660;</button><button class="btn" onclick="calNudge(-1,0)">&#9664;</button><button class="btn" onclick="calNudge(1,0)">&#9654;</button>
       </div>
-      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_refreshCalBg()">Refresh photo</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
+      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_refreshCalBg()">↻ Reconnect feed</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
     </div>
     <div class="divider"></div>
     <div class="label" style="margin-bottom:2px;">🔬 AI Debug — what the camera sees on every check</div>
@@ -1642,7 +1642,7 @@ function deleteCamera(id,name){if(!confirm('Delete camera "'+name+'"?'))return;f
 function tick(){const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const el=document.getElementById('clock');if(el)el.textContent=t;const sc=document.getElementById('side-clock');if(sc)sc.textContent=new Date().toLocaleDateString('en-AU',{weekday:'short',day:'2-digit',month:'short'})+'  '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 setInterval(tick,1000);tick();
 function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='settings-modal')_stopCalLive();}
 function toggleDayPill(el){el.classList.toggle('on');}
 function toggleOrderDay(el){el.classList.toggle('on');_orderAdj={};updateOrderPreview();}
 let _localSavedAt={};   // keys this device just saved → don't let a stale background GET revert them
@@ -1812,7 +1812,12 @@ function openCalib(){const c=appData.rotcam_public||{};
   _calZoom=1;_refreshCalBg();}
 function _refreshCalBg(){const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
   const note=document.getElementById('rc-cal-note');if(note)note.remove();
-  fetch('/api/rotcam_calib?clean=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clean:true})}).then(r=>r.ok?r.blob():Promise.reject()).then(b=>{if(img._u)URL.revokeObjectURL(img._u);img._u=URL.createObjectURL(b);img.onload=function(){_applyZoom();_renderCalBoxes();};img.src=img._u;}).catch(()=>{img.removeAttribute('src');_applyZoom();_renderCalBoxes();if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Camera photo unavailable right now — line the boxes up once the live frame loads.';wrap.insertBefore(n,wrap.firstChild);}});}
+  if(img._u){URL.revokeObjectURL(img._u);img._u=null;}
+  // LIVE MJPEG feed — plays like a webcam so you align boxes against live video (the rack is static; only chickens move). No manual refresh.
+  img.onload=function(){_applyZoom();_renderCalBoxes();};
+  img.onerror=function(){_applyZoom();_renderCalBoxes();if(wrap&&!document.getElementById('rc-cal-note')){const n=document.createElement('div');n.id='rc-cal-note';n.style.cssText='padding:10px;font-size:12px;color:var(--muted);';n.textContent='Live camera unavailable right now — tap Reconnect once it comes back.';wrap.insertBefore(n,wrap.firstChild);}};
+  img.src='/api/rotcam_stream?t='+Date.now();}
+function _stopCalLive(){const img=document.getElementById('rc-cal-img');if(img){img.onload=null;img.onerror=null;img.removeAttribute('src');if(img._u){URL.revokeObjectURL(img._u);img._u=null;}}}
 function _applyZoom(){const st=document.getElementById('rc-cal-stage');if(st)st.style.width=(_calZoom*100)+'%';const l=document.getElementById('rc-zoom-lbl');if(l)l.textContent=Math.round(_calZoom*100)+'%';}
 function calZoom(d){_calZoom=Math.max(1,Math.min(4,+(_calZoom+d*0.25).toFixed(2)));_applyZoom();}
 function _renderCalBoxes(){const st=document.getElementById('rc-cal-stage');if(!st)return;st.querySelectorAll('.cal-box').forEach(x=>x.remove());const sel=_calRow();
