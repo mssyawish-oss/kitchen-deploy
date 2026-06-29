@@ -1065,6 +1065,26 @@ def api_google_test():
         try: return jsonify({"ok":False,"error":e.read().decode()[:180]})
         except Exception: return jsonify({"ok":False,"error":str(e)[:180]})
 
+@app.route("/api/books_tx",methods=["GET","POST"])
+def api_books_tx():
+    # Central server backup of the Weekly Books data (the TX array + recurring-delete exceptions),
+    # so the books are shared across devices and never trapped in one browser's localStorage.
+    if not _books_ok(): return Response('{"errors":[{"detail":"locked"}]}',status=401,mimetype="application/json")
+    if request.method=="GET":
+        b=db.get("books_store") or {}
+        tx=b.get("tx") or []
+        return jsonify({"tx":tx,"rskip":b.get("rskip") or {},"rev":b.get("rev") or 0,"ts":b.get("ts") or "","count":len(tx)})
+    j=request.get_json(force=True,silent=True) or {}
+    tx=j.get("tx")
+    if not isinstance(tx,list): return jsonify({"ok":False,"error":"tx must be a list"})
+    with data_lock:
+        b=db.get("books_store") or {}
+        b["tx"]=tx; b["rskip"]=j.get("rskip") or {}; b["rev"]=(b.get("rev") or 0)+1
+        try: b["ts"]=datetime.now().astimezone().isoformat()
+        except Exception: b["ts"]=""
+        db["books_store"]=b; save_data(db)
+    return jsonify({"ok":True,"rev":b["rev"],"count":len(tx)})
+
 # ── Task-completion photos: grab a still from a Dahua IP camera instead of a PIN ──
 PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
 try: os.makedirs(PHOTOS_DIR,exist_ok=True)

@@ -118,6 +118,7 @@
     <button class="ghost" onclick="goToday()">This week</button>
     <button class="ghost" id="viewBtn" onclick="toggleView()">📅 Month view</button>
     <span id="status"></span>
+    <span id="cloud" onclick="manualRestore()" title="Click to pull the latest backup from the server" style="margin-left:auto;font-size:12px;color:#94a3b8;cursor:pointer;white-space:nowrap">☁ …</span>
   </div>
 
   <div class="weekbar">
@@ -548,8 +549,8 @@ function load(){
       localStorage.setItem(KEY+'_noFixed','1'); save();
     }
     ensureGstLine();
-    TX=TX.filter(t=>t.src!=='bill');   // drop rows from the old (broken) Drive reader; real invoices come from ensureBills
-    ensureBills(); ensureHist();
+    TX=TX.filter(t=>t.src!=='embed');  // Drive is now the source of truth for invoices (syncBills); drop the old embedded seed. KEEP src:'bill' (live Drive invoices) across reloads.
+    ensureHist();
     ensurePayouts();
     ensureWages();
     ensureIncome();
@@ -581,7 +582,51 @@ function pruneFuturePayouts(){
   });
   if(TX.length!==before) save();
 }
-function save(){ try{localStorage.setItem(KEY,JSON.stringify(TX));}catch(e){} }
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(TX));}catch(e){} schedulePush(); }
+// ── Central server backup ─────────────────────────────────────────────────────────────────────
+// Every change backs up to the always-on server, so the books are SHARED across devices and never
+// trapped in one browser. An empty device auto-pulls the backup; if a device's data diverges from
+// the backup we ASK rather than silently clobber (financial data must never be lost or doubled).
+let _snapTimer=null;
+function schedulePush(){ if(_snapTimer)clearTimeout(_snapTimer); _snapTimer=setTimeout(pushSnap,1500); }
+function setCloud(t,warn){ const el=document.getElementById('cloud'); if(el){ el.textContent='☁ '+t; el.style.color=warn?'#b45309':'#94a3b8'; } }
+async function pushSnap(){
+  try{
+    const r=await fetch('/api/books_tx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tx:TX,rskip:rskip()})});
+    const j=await r.json(); if(j&&j.ok) setCloud('backed up · '+j.count+' items');
+  }catch(e){ setCloud('backup offline',true); }
+}
+const isSeedRow=t=>typeof t.id==='string' && t.id.charAt(0)==='s';
+async function reconcileServer(){
+  let s; try{ const r=await fetch('/api/books_tx'); if(!r.ok) return; s=await r.json(); }catch(e){ return; }
+  if(!s) return;
+  const srvTx=s.tx||[], srvN=srvTx.length;
+  if(srvN===0){ if(TX.filter(t=>!isSeedRow(t)).length>0) pushSnap(); else setCloud('backup empty'); return; }  // server empty → seed from here
+  if(TX.length===0 || TX.every(isSeedRow)){                                   // this device is empty → adopt the backup
+    TX=srvTx; try{localStorage.setItem(RSKIP,JSON.stringify(s.rskip||{}));}catch(e){}
+    save(); load(); render(); setCloud('restored · '+srvN+' items'); return;
+  }
+  if(srvN > TX.length+5) showSnapConflict(srvN,s.ts,srvTx,s.rskip||{});       // server has notably MORE → this device may be missing data; offer restore
+  else { pushSnap(); setCloud('in sync · '+TX.length+' items'); }             // this device is current/richer → just back it up
+}
+// manual pull — click the ☁ status to fetch the latest backup and choose
+async function manualRestore(){
+  let s; try{ const r=await fetch('/api/books_tx'); s=await r.json(); }catch(e){ setCloud('backup offline',true); return; }
+  if(!s||!(s.tx||[]).length){ setCloud('backup empty'); return; }
+  showSnapConflict((s.tx||[]).length, s.ts, s.tx||[], s.rskip||{});
+}
+function showSnapConflict(srvN,ts,srvTx,srvRskip){
+  let bar=document.getElementById('snapConflict');
+  if(!bar){ bar=document.createElement('div'); bar.id='snapConflict';
+    bar.style.cssText='position:sticky;top:0;z-index:50;background:#fef3c7;border-bottom:1px solid #f59e0b;color:#92400e;padding:10px 14px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+    document.body.insertBefore(bar,document.body.firstChild); }
+  let when=''; try{ if(ts) when=' (saved '+new Date(ts).toLocaleString()+')'; }catch(e){}
+  bar.innerHTML='☁ Server backup has <b>'+srvN+'</b> transactions'+when+'; this device has <b>'+TX.length+'</b>. '+
+    '<button id="useSrv" style="background:#0ea5e9;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Use server backup</button>'+
+    '<button id="useLoc" style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;cursor:pointer">Keep this device (overwrite backup)</button>';
+  document.getElementById('useSrv').onclick=function(){ TX=srvTx; try{localStorage.setItem(RSKIP,JSON.stringify(srvRskip||{}));}catch(e){} save(); load(); render(); bar.remove(); setCloud('restored · '+srvN+' items'); };
+  document.getElementById('useLoc').onclick=function(){ pushSnap(); bar.remove(); setCloud('this device kept'); };
+}
 const uid=()=>'t'+Date.now()+Math.random().toString(36).slice(2,6);
 const status=m=>{document.getElementById('status').textContent=m;};
 
@@ -1545,7 +1590,7 @@ function drawDayChart(hrS,hrW){
     '<div class="empty" style="font-size:11px;margin-top:2px"><span style="color:#16a34a">■</span> sales/hr&nbsp;&nbsp;<span style="color:#dc2626">■</span> wages/hr&nbsp;&nbsp;(% = labour share that hour) · 10am–close</div>';
 }
 
-load(); render(); applyWagesState(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
 if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
 setInterval(maybeAutoSync, 5*60*1000); // while open, the viewed week re-syncs itself every 30 min (checked every 5)
 </script>
