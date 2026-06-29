@@ -1003,6 +1003,16 @@ function parseBill(text,title){
   for(const [k,nm,bk] of V){ if(new RegExp(k,'i').test(T)||new RegExp(k,'i').test(title||'')){ vendor=nm; bucket=bk; break; } }
   return {amt, vendor, bucket};
 }
+// Deterministic invoice-date parser (the AI flips DD/MM and mis-files the WEEK — this reads the date itself).
+// Handles DD/MM/YYYY, DD/MM/YY (Russel's), DD.MM.YYYY (Asahi) and "16 Jun 2026" textual (G&W / CFM).
+function parseInvDate(T){
+  T=T||'';
+  const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/) || T.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);
+  if(dm){ const d=+dm[1],mo=+dm[2]; let y=+dm[3]; if(y<100) y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31) return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  const tm=T.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i);
+  if(tm){ const M={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}; const d=+tm[1],mo=M[tm[2].toLowerCase().slice(0,3)],y=+tm[3]; if(mo&&d>=1&&d<=31) return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  return '';
+}
 // Deterministic fallback for COGS supplier invoices — used when the AI errors or misses the total.
 function regexCogs(text,title){
   const T=(text||'')+' '+(title||'');
@@ -1051,12 +1061,7 @@ function regexCogs(text,title){
   ];
   if(!(amt>0)){ for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } } }
   if(!(amt>0)) return null;
-  let invoiceDate=''; const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/) || T.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);   // DD/MM/YYYY, DD/MM/YY (Russel's), or DD.MM.YYYY (Asahi)
-  if(dm){ const d=+dm[1],mo=+dm[2]; let y=+dm[3]; if(y<100) y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31) invoiceDate=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
-  if(!invoiceDate){ // textual month e.g. "16 Jun 2026" (G&W / CFM Xero invoices) — was unparsed → they landed in the upload week, not the invoice week
-    const tm=T.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i);
-    if(tm){const M={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};const d=+tm[1],mo=M[tm[2].toLowerCase().slice(0,3)],y=+tm[3];if(mo&&d>=1&&d<=31)invoiceDate=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
-  }
+  let invoiceDate=parseInvDate(T);
   let invoiceNo=''; const im=T.match(/\b(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6}|72\d{4})\b/); if(im) invoiceNo=im[1];
   return {type:'cogs',vendor:vendor,amt:Math.round(amt*100)/100,invoiceNo:invoiceNo,invoiceDate:invoiceDate};
 }
@@ -1078,11 +1083,18 @@ async function parseBillAI(text,title){
   // A KNOWN supplier with a deterministically-read total ALWAYS books as COGS — never let the AI skip it
   // or misfile it as an overhead. (This is exactly how United "Sales Invoice SI…" and G&W "Invoice INV-50…"
   // were going missing: the AI mislabelled them and the code trusted the AI over the reliable reader.)
-  if(det && det.amt>0 && (!o || o.type!=='cogs' || !(o.amt>0))) return det;
-  if(!o) return det || {type:'skip', vendor:title, amt:0};                 // AI failed → use deterministic if it's a known supplier
-  if(o.type==='cogs' && !(o.amt>0) && det){ o.amt=det.amt; o.invoiceDate=o.invoiceDate||det.invoiceDate; o.invoiceNo=o.invoiceNo||det.invoiceNo; } // AI saw cogs but missed total
-  if(o.type==='skip' && det){ return det; }                                // AI skipped but it's clearly a supplier invoice with a total
-  return o;
+  let res;
+  if(det && det.amt>0 && (!o || o.type!=='cogs' || !(o.amt>0))) res=det;
+  else if(!o) res=det || {type:'skip', vendor:title, amt:0};                // AI failed → use deterministic if it's a known supplier
+  else {
+    if(o.type==='cogs' && !(o.amt>0) && det){ o.amt=det.amt; o.invoiceDate=o.invoiceDate||det.invoiceDate; o.invoiceNo=o.invoiceNo||det.invoiceNo; } // AI saw cogs but missed total
+    res=(o.type==='skip' && det) ? det : o;
+  }
+  // DATE: if we still have no date, read it straight from the invoice text (handles textual "30 Jun 2026").
+  // This is what mis-filed Fruit Talk/packaging into the 1 Jun (upload) week. Do NOT override a date the
+  // reader/AI already found — some invoices print a Due Date before the Invoice Date in the text.
+  if(res && !res.invoiceDate){ const dd=parseInvDate(text); if(dd) res.invoiceDate=dd; }
+  return res;
 }
 function safeWk(s,fb){ if(!s) return fb; const d=parseISO(s); return (d&&!isNaN(d.getTime()))? isoOf(mondayOf(d)) : fb; }
 // Xero-relayed invoices (G & W Packaging, CFM) — amount is in the email body, no PDF attachment
@@ -1106,7 +1118,7 @@ async function syncXeroBills(){
   }catch(e){}
   return n;
 }
-const BILLCACHE='weeklybooks_billCacheV10';  // V9: re-read all with Asahi's "AUD Total …Payable" extraction + dot-separated dates
+const BILLCACHE='weeklybooks_billCacheV11';  // V9: re-read all with Asahi's "AUD Total …Payable" extraction + dot-separated dates
 async function syncBills(){
   const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
   try{
