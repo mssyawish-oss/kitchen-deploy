@@ -422,7 +422,8 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 #settings-modal .modal{max-width:1300px;width:96vw;max-height:94vh;}
 /* Pop-ups use (nearly) the whole screen — we can't use the background anyway, so this means far less scrolling. Tiny confirm dialogs stay compact. */
 .modal-overlay>.modal{width:97vw!important;max-width:1500px!important;max-height:95vh!important;}
-#pin-confirm-modal>.modal,#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
+#pin-confirm-modal>.modal{width:100%!important;max-width:340px!important;max-height:92vh!important;}
+#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
 /* Live AI trace: live video + decision cards side-by-side on a wide screen */
 .trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
 @media(max-width:820px){.trace-cols{grid-template-columns:1fr;}}
@@ -457,7 +458,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 #lock-screen.hidden{display:none;}
 .pin-dot{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--border2);margin:0 5px;transition:background .12s,box-shadow .12s;}
 .pin-dot.filled{background:var(--amber);box-shadow:0 0 10px var(--amber);}
-.pin-pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;}
+.pin-pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;justify-content:center;}
 .pin-key{height:62px;background:linear-gradient(180deg,#1c2028,#15181f);border:1px solid var(--border2);border-radius:14px;color:var(--text);font-size:22px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);transition:transform .08s,filter .12s;}
 .pin-key:hover{filter:brightness(1.15);}
 .pin-key:active{transform:translateY(1px);filter:brightness(.85);}
@@ -795,7 +796,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   <div id="lock-logo" role="img" aria-label="Bruno's Chicken Shop"></div>
   <div class="lock-illu"></div>
   <div style="font-size:13px;color:var(--muted);">Enter your 4-digit PIN</div>
-  <div style="font-size:32px;min-height:48px;"><span class="pin-dot" id="d0"></span><span class="pin-dot" id="d1"></span><span class="pin-dot" id="d2"></span><span class="pin-dot" id="d3"></span></div>
+  <div id="pin-dots" style="font-size:32px;min-height:48px;"></div>
   <div class="pin-pad">
     <button class="pin-key" onclick="pinPress('1')">1</button><button class="pin-key" onclick="pinPress('2')">2</button><button class="pin-key" onclick="pinPress('3')">3</button>
     <button class="pin-key" onclick="pinPress('4')">4</button><button class="pin-key" onclick="pinPress('5')">5</button><button class="pin-key" onclick="pinPress('6')">6</button>
@@ -883,7 +884,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div id="prep-tabs-slot" class="prep-tabs"></div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-sub-slot"></div></div>
+      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div id="prep-tabs-slot" class="prep-tabs"></div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-sub-slot"></div></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
     </div>
@@ -927,7 +928,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   <div class="modal" style="max-width:300px;text-align:center;">
     <div style="font-size:14px;font-weight:700;color:var(--amber);font-family:var(--font-mono);margin-bottom:6px;" id="pin-confirm-title">Enter PIN</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;" id="pin-confirm-sub"></div>
-    <div style="font-size:28px;min-height:40px;margin-bottom:14px;"><span class="pin-dot" id="cd0"></span><span class="pin-dot" id="cd1"></span><span class="pin-dot" id="cd2"></span><span class="pin-dot" id="cd3"></span></div>
+    <div id="cpin-dots" style="font-size:28px;min-height:40px;margin-bottom:14px;"></div>
     <div class="pin-pad" style="margin:0 auto;">
       <button class="pin-key" onclick="cPinPress('1')">1</button><button class="pin-key" onclick="cPinPress('2')">2</button><button class="pin-key" onclick="cPinPress('3')">3</button>
       <button class="pin-key" onclick="cPinPress('4')">4</button><button class="pin-key" onclick="cPinPress('5')">5</button><button class="pin-key" onclick="cPinPress('6')">6</button>
@@ -1126,7 +1127,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="staff-list-admin"></div>
     <div style="display:grid;grid-template-columns:1fr 80px 110px;gap:6px;margin-top:8px;align-items:end;">
       <div><div class="label">Name</div><input class="input" id="new-staff-name" placeholder="Sarah"></div>
-      <div><div class="label">PIN (4 digit)</div><input class="input" id="new-staff-pin" type="number" placeholder="1234"></div>
+      <div><div class="label">PIN (4–8 digits)</div><input class="input" id="new-staff-pin" type="number" placeholder="1234"></div>
       <div><div class="label">Role</div><select class="input" id="new-staff-role" style="background:var(--surface2);"><option value="cashier">Cashier</option><option value="kitchen">Kitchen</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
     </div>
     <button class="btn btn-primary mt-8" id="btn-add-staff" style="width:100%;" onclick="addStaff()">+ Add Staff</button>
@@ -1599,10 +1600,12 @@ function waitDone(oid){fetch('/api/wait_done',{method:'POST',headers:{'Content-T
 function toggleFullscreen(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});else document.exitFullscreen();}
 
 let pinBuf='';
-function pinPress(d){if(pinBuf.length>=4)return;pinBuf+=d;updatePinDots();if(pinBuf.length===4)setTimeout(checkPin,80);}
+function _pinMatches(buf){const staff=appData.staff||[];return (staff.length===0&&buf==='0000')||staff.some(s=>s.pin===buf);}   // PINs may be 4–8 digits
+function pinPress(d){if(pinBuf.length>=8)return;pinBuf+=d;updatePinDots();if(pinBuf.length>=4&&(_pinMatches(pinBuf)||pinBuf.length>=8))setTimeout(checkPin,80);}
 function pinBack(){pinBuf=pinBuf.slice(0,-1);updatePinDots();}
 function pinClear(){pinBuf='';updatePinDots();}
-function updatePinDots(){for(let i=0;i<4;i++)document.getElementById('d'+i).className='pin-dot'+(i<pinBuf.length?' filled':'');}
+function _renderDots(elId,len){const el=document.getElementById(elId);if(!el)return;const n=Math.max(4,len);let h='';for(let i=0;i<n;i++)h+='<span class="pin-dot'+(i<len?' filled':'')+'"></span>';el.innerHTML=h;}
+function updatePinDots(){_renderDots('pin-dots',pinBuf.length);}
 function checkPin(){const staff=appData.staff||[];if((staff.length===0&&pinBuf==='0000')||staff.some(s=>s.pin===pinBuf)){openDashboard();return;}document.getElementById('pin-error').textContent='Incorrect PIN';pinBuf='';updatePinDots();setTimeout(()=>document.getElementById('pin-error').textContent='',2000);}
 function openDashboard(){pinBuf='';updatePinDots();document.getElementById('lock-screen').classList.add('hidden');document.getElementById('app-shell').style.display='flex';document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('hidden'));const sb=document.getElementById('settings-btn');if(sb)sb.style.display='';clearLockBanners();updateNotesBadge();if(!window.matchMedia('(max-width:600px)').matches)document.getElementById('app-shell').classList.add('nosidebar');   // start collapsed → menu is PIN-protected from load (open it via the ☰, which asks for a Manager/Admin PIN)
 navTo('probes',document.querySelector('.nav-btn[data-page="probes"]'));}
@@ -1666,10 +1669,10 @@ function hideCaptureOverlay(){const c=document.getElementById('capture-chip');if
 function enlargePhoto(name){requirePin('Enter PIN','A PIN is needed to view task photos',function(){_enlargePhotoShow(name);},null);}
 function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:401;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:12px;">';o.style.display='flex';}
 function proofHtml(state){if(!state||!state.done)return '';if(state.photo)return '<div class="task-who">&#10003; <img src="/photos/'+state.photo+'" onclick="enlargePhoto(\''+state.photo+'\')" style="width:26px;height:26px;border-radius:4px;object-fit:cover;vertical-align:middle;cursor:pointer;border:1px solid var(--border2);"> '+(state.time||'')+'</div>';if(state.who)return '<div class="task-who">&#10003; '+state.who+' at '+(state.time||'')+'</div>';return '';}
-function cPinPress(d){if(cPinBuf.length>=4)return;cPinBuf+=d;updateCPinDots();if(cPinBuf.length===4)setTimeout(checkCPin,80);}
+function cPinPress(d){if(cPinBuf.length>=8)return;cPinBuf+=d;updateCPinDots();if(cPinBuf.length>=4&&(_pinMatches(cPinBuf)||cPinBuf.length>=8))setTimeout(checkCPin,80);}
 function cPinBack(){cPinBuf=cPinBuf.slice(0,-1);updateCPinDots();}
 function cPinClear(){cPinBuf='';updateCPinDots();}
-function updateCPinDots(){for(let i=0;i<4;i++)document.getElementById('cd'+i).className='pin-dot'+(i<cPinBuf.length?' filled':'');}
+function updateCPinDots(){_renderDots('cpin-dots',cPinBuf.length);}
 function checkCPin(){const staff=appData.staff||[];let found=staff.find(s=>s.pin===cPinBuf);if(!found&&cPinBuf==='0000'&&staff.length===0)found={name:'Admin',role:'admin'};if(found&&cPinRoles&&!cPinRoles.includes(found.role)){document.getElementById('pin-confirm-error').textContent='Needs '+cPinRoles.join(' / ')+' access';cPinBuf='';updateCPinDots();return;}if(found){closeModal('pin-confirm-modal');cPinBuf='';if(cPinCB)cPinCB(found);}else{document.getElementById('pin-confirm-error').textContent='Incorrect PIN';cPinBuf='';updateCPinDots();}}
 
 const SIDE_ICONS={
@@ -2982,6 +2985,8 @@ function renderPrepPage(){
 function _setPrepHeader(tabsHTML,subHTML){
   const ts=document.getElementById('prep-tabs-slot');if(ts)ts.innerHTML=tabsHTML;
   const ss=document.getElementById('prep-sub-slot');if(ss)ss.innerHTML=subHTML||'';
+  // "Clear list" wipes TODAY's list — hide it while reviewing Yesterday so it can't be pressed by mistake
+  const cb=document.getElementById('prep-clear-btn');if(cb)cb.style.display=(_prepView==='yesterday')?'none':'';
 }
 function completePrep(id){
   const today=_prepToday();appData.prep_today=appData.prep_today||{};
@@ -3208,7 +3213,7 @@ function testGoogle(){const s=document.getElementById('google-status');s.textCon
 async function saveEmailConfig(){const email=document.getElementById('cfg-email').value.trim();const pass=document.getElementById('cfg-apppass').value.trim();const status=document.getElementById('email-status');if(!email||!pass){status.textContent='Enter email and password.';status.style.color='var(--red)';return;}appData.email_config={smtp_host:'smtp.gmail.com',smtp_port:587,smtp_user:email,smtp_pass:pass.replace(/\s/g,''),from_addr:email};await saveAppData();status.textContent='Saved!';status.style.color='var(--green)';}
 async function testEmail(){const status=document.getElementById('email-status');status.textContent='Sending...';status.style.color='var(--muted)';try{const r=await fetch('/api/test_email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:(appData.email_config||{}).smtp_user||''})});const d=await r.json();status.textContent=d.ok?'Test sent!':'Error: '+d.error;status.style.color=d.ok?'var(--green)':'var(--red)';}catch(e){status.textContent='Error';status.style.color='var(--red)';}}
 function renderStaffAdmin(){document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">${s.name}</span><span class="tag tag-amber">${s.role}</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">PIN: ${s.pin}</span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeStaff(${i})">&#10005;</button></span></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
-function addStaff(){const name=document.getElementById('new-staff-name').value.trim();const pin=String(document.getElementById('new-staff-pin').value).trim();const role=document.getElementById('new-staff-role').value;if(!name||pin.length!==4||isNaN(pin)){alert('Enter name and 4-digit PIN.');return;}if((appData.staff||[]).find(s=>s.pin===pin&&s.id!==editingStaff)){alert('PIN already in use.');return;}appData.staff=appData.staff||[];if(editingStaff){const ex=appData.staff.find(s=>s.id===editingStaff);if(ex)Object.assign(ex,{name,pin,role});editingStaff=null;setBtn('btn-add-staff','+ Add Staff');}else{appData.staff.push({id:'staff_'+Date.now(),name,pin,role});}saveAppData();renderStaffAdmin();document.getElementById('new-staff-name').value='';document.getElementById('new-staff-pin').value='';}
+function addStaff(){const name=document.getElementById('new-staff-name').value.trim();const pin=String(document.getElementById('new-staff-pin').value).trim();const role=document.getElementById('new-staff-role').value;if(!name||pin.length<4||pin.length>8||isNaN(pin)){alert('Enter a name and a PIN of 4 to 8 digits.');return;}if((appData.staff||[]).find(s=>s.pin===pin&&s.id!==editingStaff)){alert('PIN already in use.');return;}appData.staff=appData.staff||[];if(editingStaff){const ex=appData.staff.find(s=>s.id===editingStaff);if(ex)Object.assign(ex,{name,pin,role});editingStaff=null;setBtn('btn-add-staff','+ Add Staff');}else{appData.staff.push({id:'staff_'+Date.now(),name,pin,role});}saveAppData();renderStaffAdmin();document.getElementById('new-staff-name').value='';document.getElementById('new-staff-pin').value='';}
 function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;editingStaff=s.id;document.getElementById('new-staff-name').value=s.name||'';document.getElementById('new-staff-pin').value=s.pin||'';document.getElementById('new-staff-role').value=s.role||'cashier';setBtn('btn-add-staff','Save Changes');document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeStaff(i){if(!confirm('Remove?'))return;appData.staff.splice(i,1);saveAppData();renderStaffAdmin();}
 
@@ -3320,7 +3325,7 @@ function renderTeamRoster(){
   }).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No staff yet — Import from Square, or add them in Settings → Staff.</div>';
 }
 function _roleFromTitle(t){t=(t||'').toLowerCase();if(t.indexOf('owner')>=0||t.indexOf('admin')>=0)return 'admin';if(t.indexOf('manager')>=0||t.indexOf('supervis')>=0)return 'manager';if(t.indexOf('cashier')>=0||t.indexOf('front')>=0||t.indexOf('counter')>=0)return 'cashier';return 'kitchen';}
-function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Set a 4-digit dashboard PIN for '+s.name+':',s.pin||'');if(v===null)return;const p=(v||'').replace(/\D/g,'').slice(0,4);if(p.length!==4){_toast('PIN must be 4 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();}
+function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Set a 4-digit dashboard PIN for '+s.name+':',s.pin||'');if(v===null)return;const p=(v||'').replace(/\D/g,'').slice(0,8);if(p.length<4||p.length>8){_toast('PIN must be 4 to 8 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();}
 function setStaffRate(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Hourly rate ($) for '+s.name+':',s.hourly_rate||'');if(v===null)return;s.hourly_rate=Math.max(0,parseFloat(v)||0);saveKeys(['staff']);renderTeamPage();}
 function importSquareTeam(){
   const st=document.getElementById('team-import-status');if(st){st.textContent='Importing from Square…';st.style.color='var(--muted)';}
