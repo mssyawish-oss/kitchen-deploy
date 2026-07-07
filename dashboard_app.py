@@ -178,6 +178,42 @@ def report_loop():
         except Exception as e: print(f"report_loop:{e}")
         time.sleep(60)
 
+# ── ORDER REMINDERS — sent server-side, once per (recipient+message) per day, so that multiple open
+#    dashboards can't each fire their own email. That client-side blast was the cause of duplicate
+#    "place your order" spam (every tablet/phone/tab sent its own copy every time the clock matched). ──
+_reminder_sent={}          # "to|msg" -> "YYYY-MM-DD"
+_reminder_lock=threading.Lock()
+def _send_reminder_once(to,msg,subject="Kitchen Reminder"):
+    to=(to or "").strip()
+    if not to: return False
+    today=datetime.now().strftime("%Y-%m-%d");key=to+"|"+msg
+    with _reminder_lock:
+        if _reminder_sent.get(key)==today: return False     # already sent today → skip the duplicate
+        _reminder_sent[key]=today
+        if len(_reminder_sent)>800:                          # prune stale keys from previous days
+            for k,v in list(_reminder_sent.items()):
+                if v!=today: _reminder_sent.pop(k,None)
+    try:
+        send_email(to,subject,msg);return True
+    except Exception as e:
+        with _reminder_lock: _reminder_sent.pop(key,None)   # send failed → allow a retry on the next tick
+        print(f"reminder send:{e}");return False
+
+def reminder_loop():
+    while True:
+        try:
+            cfg=db.get("email_config",{}) or {}
+            if cfg.get("smtp_user"):
+                now=datetime.now();hhmm=now.strftime("%H:%M");dow=now.weekday()   # Mon=0..Sun=6 (matches the UI)
+                for sup in (db.get("suppliers",[]) or []):
+                    if (sup.get("remind_time") or "")!=hhmm: continue
+                    days=sup.get("remind_days") or []
+                    if days and dow not in days: continue
+                    msg="Order reminder: place stock order with "+(sup.get("name") or "supplier")+" now."
+                    _send_reminder_once(sup.get("remind_email"),msg,"Bruno's — Order Reminder")
+        except Exception as e: print(f"reminder_loop:{e}")
+        time.sleep(20)
+
 def print_ticket(probe_id,batch_name,temp,use_by_time):
     try:
         ESC=b'\x1b';GS=b'\x1d';now=datetime.now()
@@ -3520,11 +3556,8 @@ def send_orders():
 @app.route("/api/send_reminder",methods=["POST"])
 def send_reminder():
     data=request.get_json(silent=True) or {};msg=data.get("message","Reminder");to=data.get("to","")
-    errors=[]
-    if to:
-        try: send_email(to,"Kitchen Reminder",msg)
-        except Exception as e: errors.append(str(e))
-    return jsonify({"ok":not errors,"error":"; ".join(errors)})
+    sent=_send_reminder_once(to,msg) if to else False   # per-day dedup: many open dashboards → still one email
+    return jsonify({"ok":True,"sent":sent})
 
 @app.route("/api/test_email",methods=["POST"])
 def test_email_route():
@@ -3625,6 +3658,7 @@ if __name__=="__main__":
     threading.Thread(target=lambda:app.run(host="0.0.0.0",port=8080,debug=False,use_reloader=False,threaded=True),daemon=True).start()
     threading.Thread(target=square_poll_loop,daemon=True).start()
     threading.Thread(target=report_loop,daemon=True).start()
+    threading.Thread(target=reminder_loop,daemon=True).start()
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()

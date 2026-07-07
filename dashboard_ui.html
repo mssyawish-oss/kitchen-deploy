@@ -3227,8 +3227,9 @@ function checkAllReminders(){
     triggerAlarm('ORDER REMINDER','Time to place your order with '+sup.name+'!');
     document.getElementById('stock-badge').classList.add('show');
     document.querySelector('.nav-btn[data-page="stock"]')?.classList.add('alarming');
-    if(sup.remind_email)fetch('/api/send_reminder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Order reminder: place stock order with '+sup.name+' now.',to:sup.remind_email})});
-    if(sup.remind_sms)fetch('/api/send_reminder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Order reminder: place stock order with '+sup.name+' now.',to:sup.remind_sms})});
+    // NOTE: the reminder EMAIL is sent by the server (once per supplier per day) — see reminder_loop in
+    // dashboard_app.py. We deliberately don't email from the client anymore: every open dashboard used to
+    // send its own copy, which spammed the inbox with dozens of duplicate reminders.
   });
   (appData.service_alerts||[]).forEach(a=>{
     if(!_taskActiveToday(a))return;   // daily / weekly / fortnightly / specific dates
