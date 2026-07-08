@@ -274,6 +274,33 @@ body.kiosk .topbar-title{cursor:default;}
 /* arrow on a missed Yesterday item → add it to today's list */
 .pc-addtoday{flex-shrink:0;width:30px;height:30px;border-radius:8px;border:1px solid var(--amber);background:rgba(251,191,36,.15);color:var(--amber);font-size:17px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;}
 .pc-addtoday:hover{background:var(--amber);color:#1a1205;}
+/* ── Kitchen Timers strip (Prep page) ── */
+.kt-strip{margin-bottom:12px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;overflow:hidden;}
+.kt-strip:empty{display:none;}
+.kt-head{display:flex;align-items:center;gap:9px;padding:10px 14px;cursor:pointer;user-select:none;}
+.kt-head .kt-ico{color:var(--amber);display:flex;}
+.kt-title{font-size:15px;font-weight:800;letter-spacing:.02em;}
+.kt-run{font-size:11px;font-weight:700;color:var(--amber);border:1px solid var(--amber-dim);border-radius:20px;padding:1px 9px;}
+.kt-chev{margin-left:auto;color:var(--muted);font-size:12px;}
+.kt-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 12px 12px;}
+@media(max-width:900px){.kt-grid{grid-template-columns:repeat(2,1fr);}}
+.kt-card{background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:11px 10px;display:flex;flex-direction:column;gap:8px;}
+.kt-card.kt-running{border-color:var(--amber);}
+.kt-card.kt-done{border-color:#f87171;animation:ktflash 1s infinite;}
+@keyframes ktflash{0%,100%{border-color:#f87171;background:var(--surface2);}50%{border-color:#7f1d1d;background:#2a1010;}}
+.kt-label{background:transparent;border:none;border-bottom:1px dashed rgba(255,255,255,.18);color:var(--amber);font-weight:700;font-size:13px;text-align:center;padding:3px 0;outline:none;width:100%;box-sizing:border-box;font-family:var(--font-body);}
+.kt-label:focus{border-bottom-color:var(--amber);}
+.kt-time{font-family:var(--font-mono);font-size:34px;font-weight:700;text-align:center;letter-spacing:1px;line-height:1.05;}
+.kt-running .kt-time{color:var(--amber);}
+.kt-done .kt-time{color:#f87171;}
+.kt-up{text-align:center;font-size:11px;font-weight:800;letter-spacing:.08em;color:#f87171;padding:3px 0;}
+.kt-adds{display:flex;gap:5px;}
+.kt-adds button{flex:1;background:var(--surface);border:1px solid var(--border2);color:#c9cfdb;font-size:11.5px;font-weight:700;padding:5px 0;border-radius:7px;cursor:pointer;}
+.kt-adds button:active{transform:translateY(1px);}
+.kt-ctrls{display:flex;gap:6px;}
+.kt-go{flex:1;background:var(--amber);border:1px solid var(--amber);color:#1a1205;font-size:12.5px;font-weight:800;padding:7px 0;border-radius:8px;cursor:pointer;}
+.kt-running .kt-go{background:rgba(251,155,36,.16);color:var(--amber);}
+.kt-rst{width:40px;background:var(--surface);border:1px solid var(--border2);color:var(--muted);font-size:16px;padding:7px 0;border-radius:8px;cursor:pointer;}
 @keyframes prepFlash{0%,100%{opacity:1;}50%{opacity:.45;}}
 .prep-card.missed{opacity:.9;}
 .prep-card.missed .pc-check{border-color:#ef4444;color:#ef4444;}
@@ -885,6 +912,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="page" id="page-jobs">
       <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div id="prep-tabs-slot" class="prep-tabs"></div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-sub-slot"></div></div>
+      <div id="kt-strip" class="kt-strip"></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
     </div>
@@ -1578,7 +1606,7 @@ function silenceOneAlarm(key){if(key==='probe'){Object.keys(_probeAlarms).forEac
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
   _updateFlash();}
 setInterval(_updateFlash,400);
-function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
+function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
 // ── cross-screen silence: silencing on one dashboard silences them all ──
 let _silenceSeen=0,_applyingRemoteSilence=false;
 function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
@@ -3217,6 +3245,64 @@ function addStaff(){const name=document.getElementById('new-staff-name').value.t
 function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;editingStaff=s.id;document.getElementById('new-staff-name').value=s.name||'';document.getElementById('new-staff-pin').value=s.pin||'';document.getElementById('new-staff-role').value=s.role||'cashier';setBtn('btn-add-staff','Save Changes');document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeStaff(i){if(!confirm('Remove?'))return;appData.staff.splice(i,1);saveAppData();renderStaffAdmin();}
 
+// ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they
+//    keep running across pages and survive a refresh; a finished timer rings the "Batch timer" alarm. ──
+let KT=[],_ktCollapsed=false;
+const _KT_CLOCK='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';
+function _ktLoad(){
+  try{KT=JSON.parse(localStorage.getItem('bruno_ktimers')||'null');}catch(e){KT=null;}
+  if(!Array.isArray(KT)||KT.length!==4){KT=[0,1,2,3].map(i=>({label:'Timer '+(i+1),running:false,endAt:0,remaining:0,done:false}));}
+  const now=Date.now();KT.forEach(t=>{if(t.running&&t.endAt-now<=0){t.running=false;t.remaining=0;t.done=true;}});   // finished while the page was closed
+  try{_ktCollapsed=localStorage.getItem('bruno_kt_collapsed')==='1';}catch(e){}
+}
+function _ktSave(){try{localStorage.setItem('bruno_ktimers',JSON.stringify(KT));}catch(e){}}
+function _ktRemaining(t){return t.running?Math.max(0,Math.round((t.endAt-Date.now())/1000)):(t.remaining||0);}
+function _ktFmt(s){const m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+function ktLabel(i,v){KT[i].label=v;_ktSave();}   // no re-render → keeps the input focused while typing
+function ktToggleCollapse(){_ktCollapsed=!_ktCollapsed;try{localStorage.setItem('bruno_kt_collapsed',_ktCollapsed?'1':'0');}catch(e){}renderKTimers();}
+function ktAdd(i,mins){const t=KT[i];if(t.done){t.done=false;stopAlarm('ktimer-'+i);}let rem=_ktRemaining(t)+mins*60;if(t.running)t.endAt=Date.now()+rem*1000;else t.remaining=rem;_ktSave();renderKTimers();}
+function ktToggle(i){const t=KT[i];if(t.done){ktReset(i);return;}
+  if(t.running){t.remaining=_ktRemaining(t);t.running=false;}
+  else{const rem=_ktRemaining(t);if(rem<=0){_toast('Add some minutes first (+1 / +5 / +10).');return;}t.endAt=Date.now()+rem*1000;t.running=true;t.done=false;}
+  _ktSave();renderKTimers();}
+function ktReset(i){const t=KT[i];t.running=false;t.remaining=0;t.endAt=0;t.done=false;stopAlarm('ktimer-'+i);_ktSave();renderKTimers();}
+function renderKTimers(){
+  const wrap=document.getElementById('kt-strip');if(!wrap)return;
+  const nRun=KT.filter(t=>t.running).length,anyDone=KT.some(t=>t.done);
+  let head='<div class="kt-head" onclick="ktToggleCollapse()"><span class="kt-ico">'+_KT_CLOCK+'</span><span class="kt-title">Kitchen Timers</span>'
+    +(nRun?'<span class="kt-run">'+nRun+' running</span>':'')
+    +(anyDone?'<span class="kt-run" style="color:#f87171;border-color:#f87171;">done</span>':'')
+    +'<span class="kt-chev">'+(_ktCollapsed?'&#9662;':'&#9652;')+'</span></div>';
+  let body='';
+  if(!_ktCollapsed){
+    body='<div class="kt-grid">'+KT.map((t,i)=>{
+      const rem=_ktRemaining(t),cls='kt-card'+(t.done?' kt-done':(t.running?' kt-running':''));
+      return '<div class="'+cls+'">'
+        +'<input class="kt-label" value="'+_mEsc(t.label)+'" maxlength="14" oninput="ktLabel('+i+',this.value)" onclick="event.stopPropagation()">'
+        +'<div class="kt-time" id="kt-time-'+i+'">'+_ktFmt(rem)+'</div>'
+        +(t.done?'<div class="kt-up">TIME’S UP</div>'
+                :'<div class="kt-adds"><button onclick="ktAdd('+i+',1)">+1</button><button onclick="ktAdd('+i+',5)">+5</button><button onclick="ktAdd('+i+',10)">+10</button></div>')
+        +'<div class="kt-ctrls"><button class="kt-go" onclick="ktToggle('+i+')">'+(t.done?'Reset':(t.running?'Pause':'Start'))+'</button>'
+        +'<button class="kt-rst" onclick="ktReset('+i+')" aria-label="Reset">&#8635;</button></div></div>';
+    }).join('')+'</div>';
+  }
+  wrap.innerHTML=head+body;
+}
+function ktTick(){
+  const now=Date.now();let structChange=false;
+  KT.forEach((t,i)=>{
+    if(t.running&&t.endAt-now<=0){
+      t.running=false;t.remaining=0;t.done=true;structChange=true;_ktSave();
+      playAlarm('ktimer-'+i);                                   // repeating "Batch timer" alarm + screen flash (Alarm Center settings)
+      showLockBanner('TIMER DONE',(t.label||'Timer')+' — time’s up');
+      document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
+    }
+  });
+  const wrap=document.getElementById('kt-strip');if(!wrap)return;
+  if(structChange){renderKTimers();return;}
+  KT.forEach((t,i)=>{const el=document.getElementById('kt-time-'+i);if(el)el.textContent=_ktFmt(_ktRemaining(t));});   // cheap per-second update, keeps label focus
+}
+
 // ── REMINDERS — keyed by DATE+time so they reset every 24 hours ──
 function checkAllReminders(){
   const now=nowHHMM(),todayDay=(new Date().getDay()+6)%7,dateKey=todayDateStr();
@@ -3501,6 +3587,7 @@ async function init(){
   openDashboard();
   const _kp=_kioskPage();if(_kp){document.body.classList.add('kiosk');navTo(_kp);}   // dedicated single-page tablet
   renderProbes();renderTimers();
+  _ktLoad();renderKTimers();setInterval(ktTick,1000);   // kitchen timers: run in the background, survive refresh
   setInterval(pollTemps,1000);pollTemps();
   setInterval(checkSquareActivity,10000);checkSquareActivity();
   setInterval(checkAllReminders,20000);checkAllReminders();
