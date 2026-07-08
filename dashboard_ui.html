@@ -267,7 +267,7 @@ body.kiosk .topbar-title{cursor:default;}
 .prep-tab.active .ptab-badge{background:#1a1205;color:var(--amber);}
 .prep-tab.warn .ptab-badge{background:#fff;color:#ef4444;}
 /* compact prep header that sits up in the page-header (above the divider) to free vertical space for the list */
-#prep-tabs-slot{flex:0 1 auto;}
+#prep-tabs-slot{flex-basis:100%;justify-content:center;margin-top:2px;}
 #prep-sub-slot{flex-basis:100%;font-size:18px;font-weight:700;color:var(--muted);margin-top:6px;text-align:center;}
 #prep-sub-slot b{color:var(--text);}
 #prep-sub-slot .pdate{color:var(--amber);font-weight:800;}
@@ -911,7 +911,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div id="prep-tabs-slot" class="prep-tabs"></div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-sub-slot"></div></div>
+      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
