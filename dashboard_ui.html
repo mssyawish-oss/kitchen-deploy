@@ -2967,6 +2967,7 @@ function deleteRecipe(i){const r=(appData.recipes||[])[i];requirePin('Manager Co
 // ===== TODAY'S PREP (preset items → morning picks → afternoon checklist w/ photo) =====
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
 let _prepView='today';
+let _prepYestAck=(function(){try{return localStorage.getItem('bruno_prep_yest_ack')||'';}catch(e){return '';}})();   // yesterday-date the user has already reviewed → stop the tab strobing
 function setPrepView(v){_prepView=v;renderPrepPage();}
 const _PREP_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const _PREP_MONS=['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -3010,9 +3011,11 @@ function renderPrepPage(){
   const yDone=yest?(yest.done||{}):{};
   const yMissed=yItems.filter(p=>!yDone[p.id]).length;
   let tabs='<button class="prep-tab'+(_prepView!=='yesterday'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>';
-  if(yest&&yItems.length){tabs+='<button class="prep-tab'+(_prepView==='yesterday'?' active':'')+((_prepView!=='yesterday'&&yMissed)?' warn':'')+'" onclick="setPrepView(\'yesterday\')">Yesterday'+(yMissed?(' <span class="ptab-badge">'+yMissed+'</span>'):' ✓')+'</button>';}
+  const _yAcked=(yest&&_prepYestAck===yest.date);   // already reviewed this day's misses → don't strobe
+  if(yest&&yItems.length){tabs+='<button class="prep-tab'+(_prepView==='yesterday'?' active':'')+((_prepView!=='yesterday'&&yMissed&&!_yAcked)?' warn':'')+'" onclick="setPrepView(\'yesterday\')">Yesterday'+(yMissed?(' <span class="ptab-badge">'+yMissed+'</span>'):' ✓')+'</button>';}
   // ── Yesterday view ──
   if(_prepView==='yesterday'&&yest&&yItems.length){
+    if(_prepYestAck!==yest.date){_prepYestAck=yest.date;try{localStorage.setItem('bruno_prep_yest_ack',_prepYestAck);}catch(e){}}   // viewing it = acknowledged → stop the strobe
     const dN=yItems.filter(p=>yDone[p.id]).length;
     const sub='Yesterday’s Prep · <span class="pdate">'+_prepFullDate(yest.date)+'</span> · <b>'+dN+' of '+yItems.length+'</b> completed'+(yMissed?(' · <span style="color:#ef4444;font-weight:700;">⚠ '+yMissed+' not done</span>'):' · all done ✓');
     _setPrepHeader(tabs,sub);
