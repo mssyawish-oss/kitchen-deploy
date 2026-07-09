@@ -967,6 +967,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.5;">These items are sold-out in Square and won’t sell until turned back on. The reminder alarm is silenced for 1 hour.</div>
     <div id="prodoff-list"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;"><b>Turn on</b> asks Square to un-mark it as sold-out. Square sometimes blocks this from the API — if it says it couldn’t, switch that item back on in the Square app.</div>
+    <button class="btn" style="width:100%;margin-top:12px;" onclick="prodOffSilenceToday()">Silence this alarm for the rest of today</button>
   </div>
 </div>
 
@@ -2794,6 +2796,7 @@ function submitStockCheck(){
 }
 // ===== Products turned off (Square sold-out) — flashing bottom pill + tap-to-view list =====
 let _prodOffSilencedUntil=0;   // ms epoch: alarm stays quiet until this time (tapping the pill = +1 hour)
+let _prodOffSilenceDay=(function(){try{return localStorage.getItem('bruno_prodoff_silence_day')||'';}catch(e){return '';}})();   // date the user silenced for the whole day
 let _prodOffList=[];
 function checkProductsOff(){
   const fab=document.getElementById('prodoff-fab');if(!fab)return;
@@ -2805,7 +2808,7 @@ function checkProductsOff(){
     if(!_prodOffList.length){hide();return;}
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
     const afterOpen=mins>=(9*60+55);                                 // alarm only sounds from 9:55am
-    const silenced=Date.now()<_prodOffSilencedUntil;
+    const silenced=(Date.now()<_prodOffSilencedUntil)||(_prodOffSilenceDay===_prepToday());
     const alarmOn=afterOpen&&!silenced;
     fab.style.display='flex';
     const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_prodOffList.length;
@@ -2831,6 +2834,14 @@ function prodOffOpen(){
   if(typeof _toast==='function')_toast('Alarm silenced for 1 hour');
 }
 function silenceProductsOff(){_prodOffSilencedUntil=Date.now()+3600000;if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence();}
+function prodOffSilenceToday(){
+  _prodOffSilenceDay=_prepToday();try{localStorage.setItem('bruno_prodoff_silence_day',_prodOffSilenceDay);}catch(e){}
+  if(typeof stopAlarm==='function')stopAlarm('prod-off');
+  if(typeof _broadcastSilence==='function')_broadcastSilence();
+  checkProductsOff();
+  if(typeof _toast==='function')_toast('Sold-out alarm silenced for the rest of today');
+  closeModal('prodoff-modal');
+}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}
@@ -3276,7 +3287,7 @@ function removeStaff(i){if(!confirm('Remove?'))return;appData.staff.splice(i,1);
 
 // ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they
 //    keep running across pages and survive a refresh; a finished timer rings the "Batch timer" alarm. ──
-let KT=[],_ktCollapsed=false;
+let KT=[],_ktCollapsed=false,_ktIdle=null;
 const _KT_CLOCK='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';
 function _ktLoad(){
   try{KT=JSON.parse(localStorage.getItem('bruno_ktimers')||'null');}catch(e){KT=null;}
@@ -3287,8 +3298,9 @@ function _ktLoad(){
 function _ktSave(){try{localStorage.setItem('bruno_ktimers',JSON.stringify(KT));}catch(e){}}
 function _ktRemaining(t){return t.running?Math.max(0,Math.round((t.endAt-Date.now())/1000)):(t.remaining||0);}
 function _ktFmt(s){const m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
-function ktLabel(i,v){KT[i].label=v;_ktSave();}   // no re-render → keeps the input focused while typing
+function ktLabel(i,v){KT[i].label=v;_ktSave();_ktBump();}   // no re-render → keeps the input focused while typing
 function ktToggleCollapse(){_ktCollapsed=!_ktCollapsed;try{localStorage.setItem('bruno_kt_collapsed',_ktCollapsed?'1':'0');}catch(e){}renderKTimers();}
+function _ktBump(){clearTimeout(_ktIdle);if(_ktCollapsed)return;_ktIdle=setTimeout(function(){_ktCollapsed=true;try{localStorage.setItem('bruno_kt_collapsed','1');}catch(e){}renderKTimers();},30000);}   // auto-collapse the strip after 30s of no use
 function ktAdd(i,mins){const t=KT[i];if(t.done){t.done=false;stopAlarm('ktimer-'+i);}let rem=_ktRemaining(t)+mins*60;if(t.running)t.endAt=Date.now()+rem*1000;else t.remaining=rem;_ktSave();renderKTimers();}
 function ktToggle(i){const t=KT[i];if(t.done){ktReset(i);return;}
   if(t.running){t.remaining=_ktRemaining(t);t.running=false;}
@@ -3316,12 +3328,13 @@ function renderKTimers(){
     }).join('')+'</div>';
   }
   wrap.innerHTML=head+body;
+  _ktBump();   // (re)start the 30s auto-hide idle timer whenever the strip is re-rendered by a real action
 }
 function ktTick(){
   const now=Date.now();let structChange=false;
   KT.forEach((t,i)=>{
     if(t.running&&t.endAt-now<=0){
-      t.running=false;t.remaining=0;t.done=true;structChange=true;_ktSave();
+      t.running=false;t.remaining=0;t.done=true;structChange=true;_ktCollapsed=false;_ktSave();   // pop the strip open so the finished timer is visible
       playAlarm('ktimer-'+i);                                   // repeating "Batch timer" alarm + screen flash (Alarm Center settings)
       showLockBanner('TIMER DONE',(t.label||'Timer')+' — time’s up');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
