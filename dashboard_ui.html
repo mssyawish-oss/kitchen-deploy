@@ -653,6 +653,32 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .task-item.due{animation:task-strobe .9s ease-in-out infinite;border-radius:8px;padding-left:8px;margin-left:-8px;}
 .task-item.due .task-check{border-color:var(--amber);}
 .task-item.due .task-reminder{color:var(--amber);font-weight:700;}
+/* ── Redesigned Packdown: one time-sorted list with time-based sections ── */
+.pd-prog{margin:2px 0 16px;}
+.pd-prog-top{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:600;color:var(--muted);margin-bottom:7px;gap:12px;}
+.pd-prog-top b{color:var(--text);font-weight:800;}
+.pd-prog-bar{height:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:99px;overflow:hidden;}
+.pd-prog-fill{height:100%;background:var(--green);border-radius:99px;transition:width .35s ease;min-width:0;}
+.pd-tsec{display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:20px 0 8px;}
+.pd-tsec:first-child{margin-top:2px;}
+.pd-tsec.overdue{color:#f87171;}
+.pd-tsec-line{flex:1;height:1px;background:var(--border);}
+.pd-tsec-n{font-family:var(--font-mono);font-size:12px;font-weight:800;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:1px 8px;}
+.pd-tsec.overdue .pd-tsec-n{background:rgba(248,113,113,.14);border-color:#f87171;color:#f87171;}
+.pd-done-head{cursor:pointer;user-select:none;}
+.pdrow{display:flex;align-items:center;gap:12px;padding:8px 6px;border-bottom:1px solid var(--border);}
+.pdrow.overdue{border-left:3px solid #f87171;border-radius:0;padding-left:11px;background:rgba(248,113,113,.06);}
+.pdrow.coming{opacity:.6;}
+.pdrow.done{opacity:.5;}
+.pd-check{width:44px;height:44px;min-width:44px;border:2px solid var(--border2);border-radius:11px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;background:var(--surface2);color:#fff;transition:background .12s,border-color .12s;}
+.pd-check.done{background:var(--green-dim);border-color:var(--green);color:var(--green);}
+.pdrow.overdue .pd-check{border-color:#f87171;}
+.pd-mid{flex:1;min-width:0;display:flex;align-items:center;gap:10px;}
+.pd-name{font-size:15.5px;font-weight:600;color:var(--text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;}
+.pdrow.done .pd-name{text-decoration:line-through;color:var(--muted);}
+.pd-tag{flex-shrink:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;white-space:nowrap;}
+.pd-time{flex-shrink:0;font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--muted);min-width:52px;text-align:right;}
+.pdrow.overdue .pd-time{color:#f87171;}
 @keyframes task-strobe{0%,100%{background:transparent;}50%{background:rgba(245,158,11,.28);}}
 .alert-card{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);}
 .alert-card.active-now{border-color:var(--amber);background:var(--amber-bg);}
@@ -908,6 +934,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="page" id="page-packdown">
       <div class="page-header"><div class="page-title">Packdown &amp; Cleaning Checklist</div><div class="row" style="gap:6px;"><button class="btn" onclick="openPackdownAdmin()">Setup</button><button class="btn btn-danger" id="packdown-reset-btn" onclick="resetPackdown()">Reset</button></div></div>
       <div class="stock-filter-chips" id="packdown-shift-tabs"></div>
+      <div id="packdown-progress"></div>
       <div id="packdown-list"></div><div id="packdown-empty" class="empty-state"><div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No tasks yet.</div>
     </div>
     <div class="page" id="page-service">
@@ -2208,12 +2235,48 @@ function renderPackdownPage(){
   const rb=document.getElementById('packdown-reset-btn');if(rb)rb.textContent='Reset '+(shift==='day'?'Day':'Night');
   const tabs=document.getElementById('packdown-shift-tabs');
   if(tabs){tabs.style.display='flex';tabs.innerHTML=[['day','<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> Day Shift'],['night','<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> Night Shift']].map(([v,lbl])=>`<div class="filter-chip ${shift===v?'on':''}" onclick="setPackdownShift('${v}')">${lbl}</div>`).join('')+`<span style="font-size:12px;color:var(--muted);align-self:center;margin-left:6px;">${shift==='day'?'10am–5pm':'5pm–10pm'}${packdownShift==='auto'?' · auto':''}</span>`;}
+  const prog=document.getElementById('packdown-progress');
   const tasks=allTasks.filter(t=>(t.shift||'day')===shift&&_taskActiveToday(t));
-  if(tasks.length===0){list.innerHTML='';empty.style.display='block';empty.innerHTML='<div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No '+(shift==='day'?'day':'night')+' shift tasks yet.';return;}
+  if(tasks.length===0){list.innerHTML='';if(prog)prog.innerHTML='';empty.style.display='block';empty.innerHTML='<div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No '+(shift==='day'?'day':'night')+' shift tasks yet.';return;}
   empty.style.display='none';
-  const sections={};tasks.forEach(t=>{const s=t.section||'General';if(!sections[s])sections[s]=[];sections[s].push(t);});
-  list.innerHTML='<div class="pd-columns">'+Object.entries(sections).map(([sec,items])=>`<div class="pd-section"><div class="pd-sec-head">${sec}</div>${items.map(t=>{const state=(appData.packdown_checks||{})[t.id]||{done:false};const due=t.remind_at&&!state.done&&!packdownDueDismissed[t.id]&&nowHHMM()>=t.remind_at;return `<div class="task-item ${due?'due':''}"><div class="task-check ${state.done?'done':''}" onclick="toggleTask('${t.id}')">${state.done?'&#10003;':''}</div><div style="flex:1;"><div class="task-name ${state.done?'done':''}">${t.name}</div>${t.remind_at?`<div class="task-reminder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${t.remind_at}</div>`:''} ${proofHtml(state)}</div></div>`;}).join('')}</div>`).join('')+'</div>';
+  const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());
+  // one list, classified into time-based sections relative to the clock
+  const B={overdue:[],due:[],coming:[],done:[]};
+  tasks.forEach(t=>{
+    const st=checks[t.id]||{done:false};
+    if(st.done){B.done.push(t);return;}
+    const tm=_pdMin(t.remind_at);
+    if(tm===null){B.due.push(t);return;}          // no due time → treat as "due now" for this shift
+    const delta=tm-nowM;
+    if(delta<0)B.overdue.push(t);                  // past its time
+    else if(delta<=90)B.due.push(t);               // within the next 90 min
+    else B.coming.push(t);                          // later
+  });
+  const byTime=(a,b)=>{const ta=_pdMin(a.remind_at),tb=_pdMin(b.remind_at);if(ta===null&&tb===null)return (a.name||'').localeCompare(b.name||'');if(ta===null)return 1;if(tb===null)return -1;return ta-tb;};
+  ['overdue','due','coming','done'].forEach(k=>B[k].sort(byTime));
+  const doneN=B.done.length,total=tasks.length,pct=total?Math.round(doneN/total*100):0;
+  if(prog)prog.innerHTML='<div class="pd-prog"><div class="pd-prog-top"><span><b>'+doneN+'</b> of <b>'+total+'</b> done · <b>'+pct+'%</b></span>'+(B.overdue.length?('<span style="color:#f87171;font-weight:800;">'+B.overdue.length+' overdue</span>'):'')+'</div><div class="pd-prog-bar"><div class="pd-prog-fill" style="width:'+pct+'%;"></div></div></div>';
+  const row=(t,cls)=>{
+    const st=checks[t.id]||{done:false};
+    const tag=t.section?('<span class="pd-tag">'+_mEsc(t.section)+'</span>'):'';
+    const time=t.remind_at?('<span class="pd-time">'+t.remind_at+'</span>'):('<span class="pd-time" style="opacity:.4;">—</span>');
+    const proof=st.done?proofHtml(st):'';
+    return '<div class="pdrow'+(cls?(' '+cls):'')+'"><div class="pd-check'+(st.done?' done':'')+'" onclick="toggleTask(\''+t.id+'\')">'+(st.done?'&#10003;':'')+'</div><div class="pd-mid"><span class="pd-name'+(st.done?' done':'')+'">'+_mEsc(t.name)+'</span>'+proof+'</div>'+tag+time+'</div>';
+  };
+  const sec=(label,extra)=>'<div class="pd-tsec'+(extra||'')+'"><span>'+label+'</span><span class="pd-tsec-line"></span></div>';
+  let html='';
+  if(B.overdue.length)html+='<div class="pd-tsec overdue"><span>Overdue</span><span class="pd-tsec-n">'+B.overdue.length+'</span><span class="pd-tsec-line"></span></div>'+B.overdue.map(t=>row(t,'overdue')).join('');
+  if(B.due.length)html+=sec('Due now')+B.due.map(t=>row(t,'')).join('');
+  if(B.coming.length)html+=sec('Coming up')+B.coming.map(t=>row(t,'coming')).join('');
+  if(B.done.length){
+    html+='<div class="pd-tsec pd-done-head" onclick="togglePdDone()"><span>Done ('+B.done.length+')</span><span class="pd-tsec-line"></span><span class="pd-tsec-n">'+(_pdDoneOpen?'&#9662;':'&#9656;')+'</span></div>';
+    if(_pdDoneOpen)html+=B.done.map(t=>row(t,'done')).join('');
+  }
+  list.innerHTML=html;
 }
+let _pdDoneOpen=false;
+function togglePdDone(){_pdDoneOpen=!_pdDoneOpen;renderPackdownPage();}
+function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.length!==2)return null;const h=parseInt(a[0],10),m=parseInt(a[1],10);return (isNaN(h)||isNaN(m))?null:h*60+m;}
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
 function toggleTask(taskId){
   appData.packdown_checks=appData.packdown_checks||{};
@@ -3408,11 +3471,19 @@ function checkAllReminders(){
   if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();   // a prep list scheduled for today becomes today's list
 
 }
-function updatePackdownBadge(){  // Checklist tab badge strobes whenever there are overdue (flashing) checklist tasks
+function updatePackdownBadge(){  // Checklist tab badge shows the number of OVERDUE tasks for the current shift
   const b=document.getElementById('packdown-badge');if(!b)return;
-  const checks=appData.packdown_checks||{};const now=nowHHMM();
-  const due=(appData.packdown_tasks||[]).some(t=>t.remind_at&&_taskActiveToday(t)&&!((checks[t.id]||{}).done)&&!packdownDueDismissed[t.id]&&now>=t.remind_at);
-  b.className='nav-badge'+(due?' show':'');
+  const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());const shift=autoShift();
+  let overdue=0;
+  (appData.packdown_tasks||[]).forEach(t=>{
+    if((t.shift||'day')!==shift)return;
+    if(!_taskActiveToday(t))return;
+    if((checks[t.id]||{}).done)return;
+    const tm=_pdMin(t.remind_at);if(tm===null)return;
+    if(tm<nowM)overdue++;
+  });
+  b.textContent=overdue>0?String(overdue):'';
+  b.className='nav-badge'+(overdue>0?' show':'');
 }
 function updatePrepBadge(){  // keep the Prep tab badge live from ANY page (so its icon strobes when prep is outstanding)
   const badge=document.getElementById('jobs-badge');if(!badge)return;
