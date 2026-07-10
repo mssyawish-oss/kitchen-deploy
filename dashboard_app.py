@@ -3646,6 +3646,198 @@ def api_sonos_cmd():
         return jsonify({"ok":False,"error":str(e)})
 # ==================================================================================
 
+# ===== COMBO BOX SLIPS — one slip per combo, auto-printed to the kitchen thermal printer =====
+# A combo rings as its COMPONENT items: a chicken line followed by its 1-2 "SIDE ..." lines
+# (the SIDE products exist ONLY inside combos, so any SIDE line is part of one). Two identical
+# combos merge into quantity-2 lines in Square, so grouping is quantity-aware. Non-combo items
+# (drinks, burgers, a la carte) are never printed. Runs ONLY on the production Windows server
+# (or with DASH_SLIPS=1) so the Mac dev copy can't double-print. Layout tuned on paper with
+# the owner: small chicken logo, big order number/name, items, tiny footer, minimal feed.
+SLIP_STATE=os.path.join(BASE_DIR,"slip_state.json")
+SLIP_POLL=10
+_SLIP_ESC=b"\x1b";_SLIP_GS=b"\x1d"
+_slip_logo_cache={}
+def _slips_enabled(): return sys.platform=="win32" or os.environ.get("DASH_SLIPS")=="1"
+def _slip_norm(s): return " ".join((s or "").upper().split())
+def _slip_is_side(name): return _slip_norm(name).startswith("SIDE ")
+def _slip_sideclean(name):
+    n=_slip_norm(name);return n[5:] if n.startswith("SIDE ") else n
+def _slip_label(li):
+    n=_slip_norm(li.get("name"));v=(li.get("variation_name") or "").strip()
+    return n+(" ("+v+")" if v and v.lower()!="regular" else "")
+def _slip_group(order):
+    # -> (combos, warnings). combo={"main":line_item|None,"sides":[line_item,...]}
+    lines=[]
+    for li in order.get("line_items") or []:
+        try: q=max(1,int(float(li.get("quantity") or 1)))
+        except Exception: q=1
+        lines.append({"li":li,"qty":q,"side":_slip_is_side(li.get("name"))})
+    combos=[];warn=[];j=0;n=len(lines)
+    while j<n:
+        p=lines[j]
+        if p["side"]:   # side run with no chicken before it
+            run=[];k=j
+            while k<n and lines[k]["side"]: run+=[lines[k]["li"]]*lines[k]["qty"];k+=1
+            combos.append({"main":None,"sides":run});warn.append("side(s) with no chicken before them - CHECK");j=k;continue
+        k=j+1;sl=[]
+        while k<n and lines[k]["side"]: sl.append(lines[k]);k+=1
+        if not sl: j+=1;continue                    # plain item (drink/burger/...) -> not printed
+        nch=p["qty"]
+        if all(x["qty"]==nch for x in sl):          # N identical combos merged by Square
+            for _ in range(nch): combos.append({"main":p["li"],"sides":[x["li"] for x in sl]})
+            if len(sl)>2: warn.append("%s: combo shows %d sides (max 2) - CHECK"%(_slip_label(p["li"]),len(sl)))
+        else:                                        # mixed qtys -> split side units across the chickens
+            su=[]
+            for x in sl: su+=[x["li"]]*x["qty"]
+            if nch>=1 and len(su)%nch==0 and (len(su)//nch)<=2:
+                per=len(su)//nch
+                for c in range(nch): combos.append({"main":p["li"],"sides":su[c*per:(c+1)*per]})
+            else:
+                combos.append({"main":p["li"],"sides":su})
+                warn.append("%s: %d chicken(s) with %d side(s) - couldn't split, CHECK"%(_slip_label(p["li"]),nch,len(su)))
+        j=k
+    return combos,warn
+def _slip_logo_bytes():
+    if "img" in _slip_logo_cache: return _slip_logo_cache["img"]
+    data=b""
+    try:
+        from PIL import Image
+        im=Image.open(os.path.join(BASE_DIR,"Chicken.png")).convert("RGBA")
+        bg=Image.new("RGBA",im.size,(255,255,255,255));bg.alpha_composite(im)
+        g=bg.convert("L");w=170;h=round(im.size[1]*(w/im.size[0]));g=g.resize((w,h),Image.LANCZOS)
+        bw=g.point(lambda px:255 if px>=160 else 0,mode="L").convert("1",dither=Image.NONE)
+        wb=(w+7)//8;pix=bw.load();rows=bytearray()
+        for y in range(h):
+            for xb in range(wb):
+                b=0
+                for bit in range(8):
+                    x=xb*8+bit
+                    if x<w and pix[x,y]==0: b|=(0x80>>bit)
+                rows.append(b)
+        data=bytes([0x1D,0x76,0x30,0x00,wb&0xFF,(wb>>8)&0xFF,h&0xFF,(h>>8)&0xFF])+bytes(rows)
+    except Exception as e: print(f"slip logo unavailable ({e}) - printing without it")
+    _slip_logo_cache["img"]=data;return data
+def _slip_number(order):
+    tn=(order.get("ticket_name") or "").strip()
+    if tn: return tn
+    for f in order.get("fulfillments") or []:
+        for key in ("pickup_details","delivery_details","shipment_details"):
+            rec=((f.get(key) or {}).get("recipient") or {})
+            if rec.get("display_name"): return rec["display_name"].strip()
+    return "#"+(order.get("id") or "")[-4:].upper()
+def _slip_src(order):
+    src=((order.get("source") or {}).get("name") or "").strip() or "?"
+    return {"Point of Sale":"POS","Square Online":"Online"}.get(src,src)
+def _slip_time(order):
+    try:
+        dt=datetime.fromisoformat((order.get("created_at") or "").replace("Z","+00:00")).astimezone()
+        return dt.strftime("%H:%M")
+    except Exception: return ""
+def _slip_bytes(number,src,tm,box,combo,warns):
+    E=_SLIP_ESC;G=_SLIP_GS
+    def t(s): return s.encode("ascii","replace")
+    o=bytearray();o+=E+b"@"+E+b"\x61\x01"
+    o+=_slip_logo_bytes()                                             # small chicken on top
+    o+=G+b"\x21\x11"+E+b"\x45\x01"+t(number)+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"   # big number OR name
+    o+=E+b"\x61\x00"+t("-"*42)+b"\n"
+    main=combo["main"]
+    if main is not None:
+        o+=G+b"\x21\x01"+E+b"\x45\x01"+t(_slip_label(main))+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
+        for m in (main.get("modifiers") or []):
+            if m.get("name"): o+=t("  - "+m["name"].lower())+b"\n"
+        if (main.get("note") or "").strip(): o+=t("  ! "+main["note"].strip())+b"\n"
+    else:
+        o+=E+b"\x45\x01"+b"CHICKEN: (not found - check order)\n"+E+b"\x45\x00"
+    for s in combo["sides"]:
+        o+=E+b"J\x10"                                                  # small gap between items
+        o+=G+b"\x21\x01"+E+b"\x45\x01"+t(_slip_sideclean(s.get("name")))+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
+        for m in (s.get("modifiers") or []):
+            if m.get("name"): o+=t("  - "+m["name"].lower())+b"\n"
+        if (s.get("note") or "").strip(): o+=t("  ! "+s["note"].strip())+b"\n"
+    for w in warns: o+=E+b"\x45\x01"+t("** "+w)+E+b"\x45\x00"+b"\n"
+    # tiny footer: box counter + source + time, then minimal feed, cut, reverse-feed (if supported)
+    o+=E+b"\x61\x01"+E+b"M\x01"+E+b"\x45\x01"+t(box)+E+b"\x45\x00"+t("  "+src+" "+tm)+E+b"M\x00"+b"\n"
+    o+=E+b"J\x14"+G+b"\x56\x41\x00"+E+b"e\x06"
+    return bytes(o)
+def _slip_print(payload):
+    last=None
+    for attempt in range(1,4):
+        try:
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+                s.settimeout(6);s.connect((settings["printer_ip"],PRINTER_PORT));s.sendall(payload)
+            return True
+        except Exception as e:
+            last=e;print(f"slip print attempt {attempt}/3 failed: {e}");time.sleep(1.5*attempt)
+    print(f"SLIP PRINTER UNREACHABLE ({settings['printer_ip']}): {last}")
+    return False
+def _slip_state_load():
+    try:
+        with open(SLIP_STATE,encoding="utf-8") as f: s=json.load(f)
+        s.setdefault("printed",[]);return s
+    except Exception: return {"printed":[]}
+def _slip_state_save(st):
+    st["printed"]=st["printed"][-5000:]
+    tmp=SLIP_STATE+".tmp"
+    with open(tmp,"w",encoding="utf-8") as f: json.dump(st,f)
+    os.replace(tmp,SLIP_STATE)
+def _slip_orders(minutes=15):
+    cfg=db.get("square_config",{}) or {}
+    token=(cfg.get("access_token") or "").strip();loc=(cfg.get("location_id") or "").strip()
+    if not token or not loc: return []
+    hdr={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"}
+    begin=(datetime.now(timezone.utc)-timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out=[];cursor=None
+    for _ in range(6):
+        q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":begin}},
+            "state_filter":{"states":["OPEN","COMPLETED"]}},"sort":{"sort_field":"CREATED_AT","sort_order":"ASC"}},"limit":500}
+        if cursor: q["cursor"]=cursor
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(q).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: d=json.loads(r.read().decode())
+        out+=d.get("orders") or [];cursor=d.get("cursor")
+        if not cursor: break
+    return out
+def _slip_process(order):
+    combos,warns=_slip_group(order)
+    if not combos: return 0
+    num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);total=len(combos);sent=0
+    for i,c in enumerate(combos,1):
+        box=("BOX %d of %d"%(i,total)) if total>1 else "BOX 1 of 1"
+        if _slip_print(_slip_bytes(num,src,tm,box,c,warns if i==1 else [])): sent+=1
+        else: raise RuntimeError("printer unreachable")
+    return sent
+def slip_loop():
+    st=_slip_state_load();printed=set(st["printed"]);first=True
+    print(f"combo slip printer ON -> {settings['printer_ip']} (known orders: {len(printed)})")
+    while True:
+        try:
+            for o in _slip_orders(15):
+                oid=o.get("id")
+                if not oid or oid in printed: continue
+                if first:                              # startup: don't spew the backlog
+                    printed.add(oid);continue
+                try:
+                    n=_slip_process(o)
+                    if n: print(f"slips: order {(_slip_number(o))} -> {n} slip(s)")
+                except Exception as e:
+                    print(f"slips: order {oid} FAILED: {e}");continue   # retry next pass
+                printed.add(oid)
+                st["printed"]=list(printed);_slip_state_save(st)
+            if first:
+                st["printed"]=list(printed);_slip_state_save(st);first=False
+        except Exception as e: print(f"slip_loop: {e}")
+        time.sleep(SLIP_POLL)
+@app.route("/api/slips_test",methods=["POST"])
+def api_slips_test():
+    # remote sanity check: prints one demo combo slip from THIS machine (the server)
+    demo={"ticket_name":"TEST","created_at":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          "source":{"name":"Point of Sale"},
+          "line_items":[{"name":"BBQ CHICKEN","variation_name":"1/2","quantity":"1"},
+                        {"name":"SIDE CHIPS","variation_name":"Regular","quantity":"1"},
+                        {"name":"SIDE SLAW","variation_name":"Regular","quantity":"1","modifiers":[{"name":"HONEY MUSTARD"}]}]}
+    try: return jsonify({"ok":True,"slips":_slip_process(demo),"enabled":_slips_enabled(),"printer":settings["printer_ip"]})
+    except Exception as e: return jsonify({"ok":False,"error":str(e),"enabled":_slips_enabled()})
+# ==================================================================================
+
 if __name__=="__main__":
     import webbrowser
     print("="*55)
@@ -3659,6 +3851,7 @@ if __name__=="__main__":
     threading.Thread(target=square_poll_loop,daemon=True).start()
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
+    if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
