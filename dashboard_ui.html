@@ -833,7 +833,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   .grid-3{grid-template-columns:1fr 1fr;}
   /* Checklist: let it scroll on a phone, single column */
   #page-packdown.active{overflow-y:auto;}
-  #page-packdown #packdown-list{overflow:visible;}
+  #page-packdown #packdown-list{overflow:visible;flex:0 0 auto;min-height:auto;}   /* phone: the PAGE scrolls, so let the list take its natural height */
   .pd-columns{columns:1;column-width:auto;height:auto;}
   /* Modals fit the screen */
   .modal{padding:16px;max-width:calc(100vw - 20px);}
