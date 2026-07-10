@@ -1481,7 +1481,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="modal-header"><div class="modal-title">PACKDOWN SETUP</div><button class="modal-close" onclick="closeModal('packdown-admin-modal')">Close</button></div>
     <div id="packdown-task-admin-list"></div>
     <div class="form-row mt-8"><div class="label">Task Name</div><input class="input" id="new-task-name" placeholder="Clean fryers"></div>
-    <div class="grid-2"><div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option></select></div><div class="form-row"><div class="label">Section</div><input class="input" id="new-task-section" placeholder="Kitchen"></div></div>
+    <div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option></select></div>
     <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-task-recur" style="background:var(--surface2);" onchange="onTaskRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="new-task-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-task-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
     <div id="new-task-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-task-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
@@ -2240,11 +2240,10 @@ function renderPackdownPage(){
   if(tasks.length===0){list.innerHTML='';if(prog)prog.innerHTML='';empty.style.display='block';empty.innerHTML='<div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No '+(shift==='day'?'day':'night')+' shift tasks yet.';return;}
   empty.style.display='none';
   const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());
-  // one list, classified into time-based sections relative to the clock
-  const B={overdue:[],due:[],coming:[],done:[]};
+  // one list, classified by DUE TIME only — a completed task stays exactly where it is
+  // (ticked + struck in place) instead of dropping to a Done pile at the bottom
+  const B={overdue:[],due:[],coming:[]};
   tasks.forEach(t=>{
-    const st=checks[t.id]||{done:false};
-    if(st.done){B.done.push(t);return;}
     const tm=_pdMin(t.remind_at);
     if(tm===null){B.due.push(t);return;}          // no due time → treat as "due now" for this shift
     const delta=tm-nowM;
@@ -2253,29 +2252,24 @@ function renderPackdownPage(){
     else B.coming.push(t);                          // later
   });
   const byTime=(a,b)=>{const ta=_pdMin(a.remind_at),tb=_pdMin(b.remind_at);if(ta===null&&tb===null)return (a.name||'').localeCompare(b.name||'');if(ta===null)return 1;if(tb===null)return -1;return ta-tb;};
-  ['overdue','due','coming','done'].forEach(k=>B[k].sort(byTime));
-  const doneN=B.done.length,total=tasks.length,pct=total?Math.round(doneN/total*100):0;
-  if(prog)prog.innerHTML='<div class="pd-prog"><div class="pd-prog-top"><span><b>'+doneN+'</b> of <b>'+total+'</b> done · <b>'+pct+'%</b></span>'+(B.overdue.length?('<span style="color:#f87171;font-weight:800;">'+B.overdue.length+' overdue</span>'):'')+'</div><div class="pd-prog-bar"><div class="pd-prog-fill" style="width:'+pct+'%;"></div></div></div>';
+  ['overdue','due','coming'].forEach(k=>B[k].sort(byTime));
+  const doneN=tasks.filter(t=>(checks[t.id]||{}).done).length,total=tasks.length,pct=total?Math.round(doneN/total*100):0;
+  const odN=B.overdue.filter(t=>!((checks[t.id]||{}).done)).length;   // overdue = not done + past time
+  if(prog)prog.innerHTML='<div class="pd-prog"><div class="pd-prog-top"><span><b>'+doneN+'</b> of <b>'+total+'</b> done · <b>'+pct+'%</b></span>'+(odN?('<span style="color:#f87171;font-weight:800;">'+odN+' overdue</span>'):'')+'</div><div class="pd-prog-bar"><div class="pd-prog-fill" style="width:'+pct+'%;"></div></div></div>';
   const row=(t,cls)=>{
     const st=checks[t.id]||{done:false};
-    const tag=t.section?('<span class="pd-tag">'+_mEsc(t.section)+'</span>'):'';
+    if(st.done)cls='done';                          // completed → struck in place, never red/dimmed
     const time=t.remind_at?('<span class="pd-time">'+t.remind_at+'</span>'):('<span class="pd-time" style="opacity:.4;">—</span>');
     const proof=st.done?proofHtml(st):'';
-    return '<div class="pdrow'+(cls?(' '+cls):'')+'"><div class="pd-check'+(st.done?' done':'')+'" onclick="toggleTask(\''+t.id+'\')">'+(st.done?'&#10003;':'')+'</div><div class="pd-mid"><span class="pd-name'+(st.done?' done':'')+'">'+_mEsc(t.name)+'</span>'+proof+'</div>'+tag+time+'</div>';
+    return '<div class="pdrow'+(cls?(' '+cls):'')+'"><div class="pd-check'+(st.done?' done':'')+'" onclick="toggleTask(\''+t.id+'\')">'+(st.done?'&#10003;':'')+'</div><div class="pd-mid"><span class="pd-name'+(st.done?' done':'')+'">'+_mEsc(t.name)+'</span>'+proof+'</div>'+time+'</div>';
   };
   const sec=(label,extra)=>'<div class="pd-tsec'+(extra||'')+'"><span>'+label+'</span><span class="pd-tsec-line"></span></div>';
   let html='';
-  if(B.overdue.length)html+='<div class="pd-tsec overdue"><span>Overdue</span><span class="pd-tsec-n">'+B.overdue.length+'</span><span class="pd-tsec-line"></span></div>'+B.overdue.map(t=>row(t,'overdue')).join('');
+  if(B.overdue.length)html+='<div class="pd-tsec overdue"><span>Overdue</span>'+(odN?('<span class="pd-tsec-n">'+odN+'</span>'):'')+'<span class="pd-tsec-line"></span></div>'+B.overdue.map(t=>row(t,'overdue')).join('');
   if(B.due.length)html+=sec('Due now')+B.due.map(t=>row(t,'')).join('');
   if(B.coming.length)html+=sec('Coming up')+B.coming.map(t=>row(t,'coming')).join('');
-  if(B.done.length){
-    html+='<div class="pd-tsec pd-done-head" onclick="togglePdDone()"><span>Done ('+B.done.length+')</span><span class="pd-tsec-line"></span><span class="pd-tsec-n">'+(_pdDoneOpen?'&#9662;':'&#9656;')+'</span></div>';
-    if(_pdDoneOpen)html+=B.done.map(t=>row(t,'done')).join('');
-  }
   list.innerHTML=html;
 }
-let _pdDoneOpen=false;
-function togglePdDone(){_pdDoneOpen=!_pdDoneOpen;renderPackdownPage();}
 function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.length!==2)return null;const h=parseInt(a[0],10),m=parseInt(a[1],10);return (isNaN(h)||isNaN(m))?null:h*60+m;}
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
 function toggleTask(taskId){
@@ -2317,12 +2311,11 @@ let _taskDates=[];
 function renderTaskDates(){const el=document.getElementById('new-task-dates-list');if(!el)return;el.innerHTML=_taskDates.length?_taskDates.map(d=>`<span class="filter-chip on" style="cursor:default;">${d} <span style="cursor:pointer;margin-left:4px;" onclick="removeTaskDate('${d}')">&#10005;</span></span>`).join(''):'<span style="font-size:11px;color:var(--muted);">No dates added yet.</span>';}
 function addTaskDate(){const i=document.getElementById('new-task-date'),v=i.value;if(!v)return;if(!_taskDates.includes(v))_taskDates.push(v);_taskDates.sort();i.value='';renderTaskDates();}
 function removeTaskDate(d){_taskDates=_taskDates.filter(x=>x!==d);renderTaskDates();}
-function _resetTaskForm(){['new-task-name','new-task-section','new-task-time','new-task-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-task-shift').value='day';document.getElementById('new-task-recur').value='daily';document.getElementById('new-task-alarm').checked=true;document.querySelectorAll('#new-task-days .day-pill').forEach(p=>p.classList.remove('on'));_taskDates=[];renderTaskDates();onTaskRecurChange();}
+function _resetTaskForm(){['new-task-name','new-task-time','new-task-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-task-shift').value='day';document.getElementById('new-task-recur').value='daily';document.getElementById('new-task-alarm').checked=true;document.querySelectorAll('#new-task-days .day-pill').forEach(p=>p.classList.remove('on'));_taskDates=[];renderTaskDates();onTaskRecurChange();}
 function openPackdownAdmin(){editingTask=null;setBtn('btn-add-task','+ Add Task');_resetTaskForm();renderPackdownTaskAdmin();openModal('packdown-admin-modal');}
 function renderPackdownTaskAdmin(){document.getElementById('packdown-task-admin-list').innerHTML=(appData.packdown_tasks||[]).map((t,i)=>`<div class="row-between" style="padding:6px 0;border-bottom:1px solid var(--border);"><div style="min-width:0;"><div style="font-size:13px;">${t.name}</div><div style="font-size:11px;color:var(--muted);">${(t.shift||'day')==='night'?'Night':'Day'} · ${_recurLabel(t)}${t.remind_at?' · '+t.remind_at+(t.alarm?' &#9201;':''):''}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editPackdownTask(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removePackdownTask(${i})">&#10005;</button></span></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No tasks yet.</div>';}
 function addPackdownTask(){
   const name=document.getElementById('new-task-name').value.trim();
-  const section=document.getElementById('new-task-section').value.trim()||'General';
   const remind_at=document.getElementById('new-task-time').value.trim();
   const shift=document.getElementById('new-task-shift').value;
   const recur=document.getElementById('new-task-recur').value;
@@ -2333,7 +2326,7 @@ function addPackdownTask(){
   const dates=_taskDates.slice();
   if((recur==='weekly'||recur==='fortnightly')&&days.length===0){alert('Pick at least one day of the week.');return;}
   if(recur==='dates'&&dates.length===0){alert('Add at least one date.');return;}
-  const fields={name,section,remind_at,shift,recur,days,start_date,dates,alarm};
+  const fields={name,remind_at,shift,recur,days,start_date,dates,alarm};
   appData.packdown_tasks=appData.packdown_tasks||[];
   if(editingTask){const ex=appData.packdown_tasks.find(t=>t.id===editingTask);if(ex)Object.assign(ex,fields);editingTask=null;setBtn('btn-add-task','+ Add Task');}
   else{appData.packdown_tasks.push(Object.assign({id:'task_'+Date.now()},fields));}
@@ -2341,7 +2334,6 @@ function addPackdownTask(){
 }
 function editPackdownTask(i){const t=(appData.packdown_tasks||[])[i];if(!t)return;editingTask=t.id;
   document.getElementById('new-task-name').value=t.name||'';
-  document.getElementById('new-task-section').value=t.section||'';
   document.getElementById('new-task-time').value=t.remind_at||'';
   document.getElementById('new-task-shift').value=t.shift||'day';
   document.getElementById('new-task-recur').value=t.recur||'daily';
