@@ -48,6 +48,13 @@ settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_min
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None} for i in range(1,5)}
 state_lock=threading.Lock()
 data_lock=threading.Lock()
+# restore probe settings + probe names from the last run (they used to reset to defaults on restart)
+settings.update({k:v for k,v in (db.get("probe_settings") or {}).items() if k in settings})
+for _k,_v in (db.get("probe_names") or {}).items():
+    try:
+        _i=int(_k)
+        if 1<=_i<=4: probe_names[_i]=str(_v)[:30]
+    except (TypeError,ValueError): pass
 timer_triggers={1:False,2:False,3:False,4:False}
 
 # ── shared batch timers (state lives in db so every device sees the same countdown) ──
@@ -3109,7 +3116,9 @@ def temps():
 @app.route("/set_name",methods=["POST"])
 def set_name():
     d=request.get_json(silent=True) or {};pid=int(d.get("probe_id",0))
-    if 1<=pid<=4: probe_names[pid]=str(d.get("name",""))[:30];probe_state[pid]["printed"]=False
+    if 1<=pid<=4:
+        probe_names[pid]=str(d.get("name",""))[:30];probe_state[pid]["printed"]=False
+        with data_lock: db["probe_names"]={str(k):v for k,v in probe_names.items()};save_data(db)   # survive restarts
     return Response('{"ok":true}',mimetype="application/json")
 
 @app.route("/set_settings",methods=["POST"])
@@ -3124,6 +3133,7 @@ def set_settings():
             try: settings[k]=int(d[k])
             except (TypeError,ValueError): pass
     if "printer_ip" in d: settings["printer_ip"]=str(d["printer_ip"])
+    with data_lock: db["probe_settings"]=dict(settings);save_data(db)   # survive restarts
     return Response('{"ok":true}',mimetype="application/json")
 
 @app.route("/ack_probe",methods=["POST"])
