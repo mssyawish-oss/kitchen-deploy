@@ -233,6 +233,7 @@ body.kiosk .topbar-title{cursor:default;}
 .prep-card.pri-high{border-left-color:#ef4444;}
 .prep-card.pri-med{border-left-color:#f59e0b;}
 .prep-card.pri-low{border-left-color:#3b82f6;}
+.prep-card.pri-recur{border-left-color:#a78bfa;}
 .prep-card.done{border-left-color:var(--green)!important;opacity:.82;}
 .prep-card .pc-row{display:flex;align-items:center;gap:11px;padding:9px 12px;}
 .prep-card .pc-img{width:46px;height:46px;border-radius:9px;object-fit:cover;background:var(--surface2);display:block;flex-shrink:0;}
@@ -3045,11 +3046,18 @@ function _prepFullDate(ds){try{const d=new Date(ds+'T12:00:00');return _PREP_DAY
 // shared 3-column renderer; readonly=true for the Yesterday view (no tapping, marks missed items)
 function _prepColsHTML(items,done,priMap,readonly){
   const now=nowHHMM();
-  const groups={high:[],med:[],low:[]};
-  items.forEach(p=>{const pr=priMap[p.id]||p.priority||'med';(groups[pr]||groups.med).push(p);});
+  // 3 columns: Do First (very important) | Do Today (everything else) | Daily Tasks (recurring).
+  // Recurring items always live in the third column; legacy 'low' priority folds into Do Today.
+  const groups={high:[],med:[],recur:[]};
+  items.forEach(p=>{
+    if(p.recur){groups.recur.push(p);return;}
+    const pr=priMap[p.id]||p.priority||'med';
+    (pr==='high'?groups.high:groups.med).push(p);
+  });
+  groups.recur.sort((a,b)=>(a.remind||'99:99').localeCompare(b.remind||'99:99'));   // daily tasks in time order
   Object.values(groups).forEach(arr=>arr.sort((a,b)=>(done[a.id]?1:0)-(done[b.id]?1:0)));
   const card=p=>{
-    const d=done[p.id];const pri=priMap[p.id]||p.priority||'med';
+    const d=done[p.id];const _pr=priMap[p.id]||p.priority||'med';const pri=p.recur?'recur':(_pr==='high'?'high':'med');   // legacy 'low' shows as Do Today
     const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:24px;height:24px;color:var(--muted);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
     const due=!readonly&&p.remind&&!d&&now>=p.remind;
     const rem=(!readonly&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
@@ -3063,7 +3071,7 @@ function _prepColsHTML(items,done,priMap,readonly){
     const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
     return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
   };
-  const COLS=[['high','High','#ef4444'],['med','Medium','#f59e0b'],['low','Low','#60a5fa']];
+  const COLS=[['high','Do First','#ef4444'],['med','Do Today','#f59e0b'],['recur','Daily Tasks','#a78bfa']];
   return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
     const key=c[0],label=c[1],col=c[2];const arr=groups[key];
     const dC=arr.filter(p=>done[p.id]).length;
@@ -3222,7 +3230,7 @@ function renderPrepBuildGrid(){
   const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
   if(!presets.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px;">No prep items yet. Close this and tap <b>Items</b> to create some first.</div>';return;}
   grid.innerHTML=presets.map(p=>{const picked=_prepPick.has(p.id);const cpri=_prepPickPri[p.id]||'med';const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:24px;height:24px;color:var(--muted);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
-    const priRow=picked?('<div class="pp-pri" onclick="event.stopPropagation()">'+[['high','High','#ef4444'],['med','Med','#f59e0b'],['low','Low','#60a5fa']].map(x=>'<button class="pp-pri-btn'+(cpri===x[0]?' on':'')+'"'+(cpri===x[0]?(' style="background:'+x[2]+';border-color:'+x[2]+';color:#0b0c10;"'):'')+' onclick="setPrepPickPri(\''+p.id+'\',\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div>'):'';
+    const priRow=(picked&&!p.recur)?('<div class="pp-pri" onclick="event.stopPropagation()">'+[['high','Do First','#ef4444'],['med','Do Today','#f59e0b']].map(x=>'<button class="pp-pri-btn'+(cpri===x[0]?' on':'')+'"'+(cpri===x[0]?(' style="background:'+x[2]+';border-color:'+x[2]+';color:#0b0c10;"'):'')+' onclick="setPrepPickPri(\''+p.id+'\',\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div>'):'';
     return '<div class="prep-card prep-pick'+(picked?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')"><div class="pc-tick">&#10003;</div><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div>'+priRow+'</div>';}).join('');
 }
 function togglePrepPick(id){if(_prepPick.has(id)){_prepPick.delete(id);delete _prepPickPri[id];}else{_prepPick.add(id);if(!_prepPickPri[id])_prepPickPri[id]='med';}renderPrepBuildGrid();}
