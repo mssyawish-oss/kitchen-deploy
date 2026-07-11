@@ -947,7 +947,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
+      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
@@ -977,9 +977,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="nav-btn active" data-page="probes" onclick="navTo('probes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg><span>Temp</span></div></button>
     <button class="nav-btn" data-page="stock" onclick="navTo('stock',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Stock</span></div><div class="nav-badge" id="stock-badge">!</div></button>
     <button class="nav-btn" data-page="packdown" onclick="navTo('packdown',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8.5 12 2.2 2.2L16 9.5"/></svg><span>Checklist</span></div><div class="nav-badge" id="packdown-badge">!</div></button>
-    <button class="nav-btn" data-page="service" onclick="navTo('service',this)" id="nav-service-btn"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg><span>Routines</span></div><div class="nav-badge" id="service-badge">!</div></button>
     <button class="nav-btn" data-page="recipes" onclick="navTo('recipes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 14a4 4 0 0 1-1-7.86A5 5 0 0 1 15.4 4.6 4.5 4.5 0 0 1 17.5 14"/><path d="M6.5 14v6h11v-6"/><path d="M6.5 17.2h11"/></svg><span>Recipes</span></div></button>
-    <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
+    <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep/Tasks</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -1049,6 +1048,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <input type="hidden" id="prep-edit-id">
     <div class="form-row"><div class="label">Name</div><input class="input" id="prep-name" placeholder="e.g. Cut lettuce, Marinate wings…"></div>
     <div class="form-row"><div class="label">Remind at <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-remind" type="time"> <span style="font-size:11.5px;color:var(--muted);margin-left:8px;">Sounds an alarm if not done by this time.</span></div>
+    <div class="form-row"><div class="label">Repeats</div><select class="input" id="prep-recur" style="background:var(--surface2);" onchange="onPrepRecurChange()"><option value="">No — added by hand when needed</option><option value="daily">Every day (appears on the list automatically)</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
+    <div id="prep-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="prep-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
+    <div id="prep-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="prep-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs.</div></div>
+    <div id="prep-dates-wrap" style="display:none;margin-top:8px;"><div class="label">Add the dates it should run</div><div class="row" style="gap:6px;"><input class="input" type="date" id="prep-date-in" style="flex:1;"><button class="btn" onclick="addPrepDate()">Add date</button></div><div id="prep-dates-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
+    <div class="form-row"><div class="label">Instructions <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-detail" placeholder="e.g. Load 12 chickens, season with rub"></div>
     <div class="form-row"><div class="label">Picture</div><label class="btn" style="cursor:pointer;">Choose image…<input type="file" accept="image/*" style="display:none;" id="prep-img-input" onchange="prepPickImage(this)"></label> <span id="prep-img-name" style="font-size:12px;color:var(--muted);margin-left:8px;"></span><div id="prep-img-preview" style="margin-top:8px;"></div></div>
     <div class="row" style="gap:6px;margin-top:6px;"><button class="btn btn-primary" style="flex:1;" id="prep-save-btn" onclick="savePrepItem()">Add item</button><button class="btn" onclick="prepClearForm()">Clear</button></div>
     <div id="prep-manage-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
@@ -3050,12 +3054,14 @@ function _prepColsHTML(items,done,priMap,readonly){
     const due=!readonly&&p.remind&&!d&&now>=p.remind;
     const rem=(!readonly&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
     const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
-    const meta=(rem||doneMeta)?('<div class="pc-meta">'+rem+doneMeta+'</div>'):'';
+    const recMark=(!readonly&&p.recur&&!d)?'<span class="pc-remind" title="repeats automatically">&#8635;</span>':'';
+    const meta=(rem||doneMeta||recMark)?('<div class="pc-meta">'+rem+recMark+doneMeta+'</div>'):'';
+    const det=p.detail?('<div style="font-size:11px;color:var(--muted);line-height:1.25;margin-top:1px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+_mEsc(p.detail)+'</div>'):'';
     const pthumb=(d&&d.photo)?('<img class="pc-pthumb" src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')" title="Tap to enlarge">'):'';
     const addBtn=(readonly&&!d)?('<button class="pc-addtoday" onclick="event.stopPropagation();addPrepToToday(\''+p.id+'\')" title="Add to today’s prep list">&#8594;</button>'):'';
     const cls='prep-card pri-'+pri+(d?' done':(readonly?' missed':''));
     const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
-    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
+    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
   };
   const COLS=[['high','High','#ef4444'],['med','Medium','#f59e0b'],['low','Low','#60a5fa']];
   return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
@@ -3066,9 +3072,45 @@ function _prepColsHTML(items,done,priMap,readonly){
     return '<div class="prep-col"><div class="prep-col-accent" style="background:'+col+';"></div>'+head+'<div class="prep-col-body">'+body+'</div></div>';
   }).join('')+'</div>';
 }
+// recurring presets (daily / weekly / fortnightly / set dates) appear on today's list on their
+// own — no need to pick them in Set list. Data-only and idempotent; safe to call anywhere.
+function _mergeRecurringPrep(){
+  const today=_prepToday();appData.prep_today=appData.prep_today||{};const pt=appData.prep_today;
+  if(pt.date&&pt.date!==today)return;   // day is rolling over — let _promoteScheduledPrep run first
+  let changed=false;
+  (appData.prep_presets||[]).forEach(p=>{
+    if(!p.recur)return;
+    if(!_taskActiveToday(p))return;
+    if(!pt.date){pt.date=today;pt.items=pt.items||[];pt.done=pt.done||{};changed=true;}
+    pt.items=pt.items||[];
+    if(!pt.items.includes(p.id)){pt.items.push(p.id);changed=true;}
+  });
+  if(changed)saveKeys(['prep_today']);
+}
+// One-time migration: the old Routines become recurring prep items (same names, times and
+// repeat rules), and the Routines page retires. Guarded by a shared flag so it runs once
+// across all devices. Today's routine ticks aren't carried over (fresh from tomorrow).
+function _migrateRoutinesToPrep(){
+  if(appData.routines_migrated)return;
+  const alerts=appData.service_alerts||[];
+  appData.prep_presets=appData.prep_presets||[];
+  alerts.forEach(a=>{
+    const id='rt_'+a.id;
+    if(appData.prep_presets.some(p=>p.id===id))return;
+    appData.prep_presets.push({id:id,name:a.name||'Routine',detail:a.detail||'',img:'',remind:a.time||'',
+      recur:a.recur||((Array.isArray(a.days)&&a.days.length)?'weekly':'daily'),
+      days:a.days||[],start_date:a.start_date||'',dates:a.dates||[]});
+  });
+  appData.service_alerts=[];
+  appData.routines_migrated=true;
+  saveKeys(['prep_presets','service_alerts','routines_migrated']);
+  if(alerts.length)_toast(alerts.length+' routine'+(alerts.length>1?'s':'')+' moved to Prep / Daily Tasks');
+}
 function renderPrepPage(){
   const box=document.getElementById('prep-list');if(!box)return;
+  _migrateRoutinesToPrep();         // old Routines → recurring prep items (one-time)
   _promoteScheduledPrep();          // archive yesterday + load any scheduled list, on a new day
+  _mergeRecurringPrep();            // then drop today's recurring items onto the list
   renderPrepUpcoming();
   const today=_prepToday();const presets=appData.prep_presets||[];
   // ── Yesterday tab data ──
@@ -3203,19 +3245,34 @@ let _prepFile=null;
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
   const el=document.getElementById('prep-manage-list');if(!el)return;const presets=appData.prep_presets||[];
-  el.innerHTML=presets.length?presets.map(p=>{const meta=(p.remind?('Remind '+p.remind):'<span style="opacity:.6;">priority set when added to the day</span>');return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:11px;color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
+  el.innerHTML=presets.length?presets.map(p=>{const bits=[];if(p.recur)bits.push('&#8635; '+_recurLabel(p));if(p.remind)bits.push('Remind '+p.remind);const meta=bits.length?bits.join(' · '):'<span style="opacity:.6;">added by hand · priority set when added</span>';return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:11px;color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
 }
 function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">';}}
-function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
+function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-recur').value=p.recur||'';setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
 function deletePrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!confirm('Delete "'+(p?p.name:'')+'"?'))return;appData.prep_presets=(appData.prep_presets||[]).filter(x=>x.id!==id);saveKeys(['prep_presets']);renderPrepManageList();renderPrepPage();}
-function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';if(g('prep-recur'))g('prep-recur').value='';document.querySelectorAll('#prep-days .day-pill').forEach(p=>p.classList.remove('on'));if(g('prep-anchor'))g('prep-anchor').value='';_prepDates=[];renderPrepDates();if(typeof onPrepRecurChange==='function'&&g('prep-recur'))onPrepRecurChange();if(g('prep-detail'))g('prep-detail').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+let _prepDates=[];
+function onPrepRecurChange(){const r=document.getElementById('prep-recur').value;
+  document.getElementById('prep-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'block':'none';
+  document.getElementById('prep-anchor-wrap').style.display=(r==='fortnightly')?'block':'none';
+  document.getElementById('prep-dates-wrap').style.display=(r==='dates')?'block':'none';}
+function renderPrepDates(){const el=document.getElementById('prep-dates-list');if(!el)return;el.innerHTML=_prepDates.map(d=>'<span class="tag tag-amber" style="cursor:pointer;" onclick="removePrepDate(\''+d+'\')">'+d+' &#10005;</span>').join('');}
+function addPrepDate(){const v=document.getElementById('prep-date-in').value;if(v&&!_prepDates.includes(v)){_prepDates.push(v);_prepDates.sort();renderPrepDates();}}
+function removePrepDate(d){_prepDates=_prepDates.filter(x=>x!==d);renderPrepDates();}
 function savePrepItem(){
   const name=document.getElementById('prep-name').value.trim();const st=document.getElementById('prep-manage-status');
   if(!name){if(st){st.textContent='Enter a name.';st.style.color='var(--red)';}return;}
   let id=document.getElementById('prep-edit-id').value||('p'+Date.now().toString(36));
   const remind=document.getElementById('prep-remind').value||'';
+  const recur=document.getElementById('prep-recur').value||'';
+  const days=[];document.querySelectorAll('#prep-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
+  const start_date=document.getElementById('prep-anchor').value||'';
+  const dates=_prepDates.slice();
+  const detail=document.getElementById('prep-detail').value.trim();
+  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){if(st){st.textContent='Pick at least one day of the week.';st.style.color='var(--red)';}return;}
+  if(recur==='dates'&&dates.length===0){if(st){st.textContent='Add at least one date.';st.style.color='var(--red)';}return;}
   appData.prep_presets=appData.prep_presets||[];
-  const finish=img=>{const ex=appData.prep_presets.find(p=>p.id===id);if(ex){ex.name=name;ex.remind=remind;if(img)ex.img=img;}else appData.prep_presets.push({id:id,name:name,img:img||'',remind:remind});saveKeys(['prep_presets']);prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
+  const finish=img=>{const f={name,remind,recur,days,start_date,dates,detail};const ex=appData.prep_presets.find(p=>p.id===id);if(ex){Object.assign(ex,f);if(img)ex.img=img;}else appData.prep_presets.push(Object.assign({id:id,img:img||''},f));saveKeys(['prep_presets']);_mergeRecurringPrep();prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
   if(_prepFile){if(st){st.textContent='Uploading…';st.style.color='var(--muted)';}const fd=new FormData();fd.append('file',_prepFile);fetch('/api/prep_image/'+id,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)finish(d.img);else if(st){st.textContent='Image error: '+(d.error||'failed');st.style.color='var(--red)';}}).catch(()=>{if(st){st.textContent='Upload failed.';st.style.color='var(--red)';}});}
   else finish(null);
 }
@@ -3422,7 +3479,7 @@ function checkAllReminders(){
     if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
     _routineNag[a.id]=nowMs;
     triggerAlarm(((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // skip SVG-markup icons (they'd print as raw code in the alarm title)
-    document.getElementById('service-badge').classList.add('show');
+    document.getElementById('service-badge')?.classList.add('show');
     document.getElementById('nav-service-btn')?.classList.add('alarming');
   });
   (appData.packdown_tasks||[]).forEach(t=>{
@@ -3443,12 +3500,27 @@ function checkAllReminders(){
     document.getElementById('jobs-badge').classList.add('show');
     document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
   });
-  // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM)
-  (function(){const pt=appData.prep_today||{};
+  // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM).
+  // Recurring items (the old Routines) keep the routine behaviour: alarm at the time,
+  // then re-alarm every 15 min until ticked off. One-off items alarm once.
+  (function(){
+    if(typeof _migrateRoutinesToPrep==='function')_migrateRoutinesToPrep();
+    if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();
+    if(typeof _mergeRecurringPrep==='function')_mergeRecurringPrep();   // recurring items land on the list even if nobody opens the page
+    const pt=appData.prep_today||{};
     const presets=appData.prep_presets||[];const doneMap=pt.done||{};
-    (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind||p.remind!==now)return;if(doneMap[iid])return;
-      const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
-      triggerAlarm('PREP DUE',p.name);
+    (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind)return;
+      if(doneMap[iid]){delete _routineNag['prep_'+iid];return;}
+      if(p.recur){                                   // routine-style nag
+        if(now<p.remind)return;
+        const nowMs=Date.now(),last=_routineNag['prep_'+iid]||0;
+        if(nowMs-last<15*60*1000)return;
+        _routineNag['prep_'+iid]=nowMs;
+      }else{                                          // one-off: fire once at the minute
+        if(p.remind!==now)return;
+        const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+      }
+      triggerAlarm('PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
       document.getElementById('jobs-badge').classList.add('show');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
     });
