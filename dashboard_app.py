@@ -3826,13 +3826,23 @@ def slip_loop():
                 st["printed"]=list(printed);_slip_state_save(st);first=False
         except Exception as e: print(f"slip_loop: {e}")
         time.sleep(SLIP_POLL)
-# ===== SELF-UPDATE — the app pulls its own updates from GitHub =====================
-# The Windows scheduled task kept stalling (twice on 2026-07-11), leaving the shop on old
-# code until someone rebooted the PC. Now the app itself does a git fetch + ff-only pull
-# every 3 minutes. UI files are served from disk so they apply instantly; if
-# dashboard_app.py changed, the process exits and the watchdog batch relaunches it with
-# the fresh code (same mechanism as /api/restart). Runs only where BASE_DIR is a git
-# checkout (the server) — the Mac dev copy has no .git so the loop just exits.
+# ===== SELF-UPDATE — the app pulls its own updates straight from GitHub ============
+# The Windows scheduled task kept stalling, and the app folder on the server is not a git
+# checkout — so this uses plain HTTPS to GitHub (no git needed): read the branch head, and
+# when it moves, download the changed files and swap them in. UI files apply instantly; if
+# dashboard_app.py changed, exit so the watchdog batch relaunches us on the new code.
+# Windows-only (the Mac dev copy must never be overwritten); DASH_SELFUPDATE=1 forces on.
+_SELFUP_REPO="mssyawish-oss/kitchen-deploy"
+_SELFUP_BRANCH="main"
+_SELFUP_STATE=os.path.join(BASE_DIR,"selfupdate.json")
+def _selfup_on(): return (sys.platform=="win32" or os.environ.get("DASH_SELFUPDATE")=="1") and os.environ.get("DASH_NO_SELFUPDATE")!="1"
+def _gh(url):
+    req=urllib.request.Request(url,headers={"User-Agent":"brunos-dashboard","Accept":"application/vnd.github+json"})
+    with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: return json.loads(r.read().decode())
+def _gh_raw(sha,path):
+    url="https://raw.githubusercontent.com/%s/%s/%s"%(_SELFUP_REPO,sha,urllib.parse.quote(path))
+    req=urllib.request.Request(url,headers={"User-Agent":"brunos-dashboard"})
+    with urllib.request.urlopen(req,timeout=60,context=SSL_CTX) as r: return r.read()
 def _relaunch_self():
     import subprocess
     if os.environ.get("KDASH_WATCHDOG")=="1": os._exit(0)     # watchdog loop relaunches us
@@ -3847,29 +3857,44 @@ def _relaunch_self():
             os.execv(sys.executable,[sys.executable,script])
     except Exception: os._exit(0)
 def _self_update_once():
-    """One check: pull if behind; return 'restart' | 'updated' | 'clean' | 'error:<msg>'."""
-    import subprocess
-    def git(*a):
-        return subprocess.run(["git","-C",BASE_DIR]+list(a),capture_output=True,text=True,timeout=90)
-    before=git("rev-parse","HEAD").stdout.strip()
-    git("fetch","--quiet","origin")
-    p=git("pull","--ff-only","--quiet")
-    if p.returncode!=0: return "error:"+(p.stderr or p.stdout or "pull failed").strip()[:160]
-    after=git("rev-parse","HEAD").stdout.strip()
-    msg=git("log","-1","--pretty=%s").stdout.strip()
-    try:   # feed the on-screen deploy-health (same file the old scheduled task wrote)
+    """One check. Returns 'restart' | 'updated' | 'clean' | 'error:<msg>'."""
+    br=_gh("https://api.github.com/repos/%s/branches/%s"%(_SELFUP_REPO,_SELFUP_BRANCH))
+    sha=br["commit"]["sha"];msg=(br["commit"]["commit"]["message"] or "").split("\n")[0]
+    try:   # on-screen deploy health (same file the old pipeline wrote)
         with open(os.path.join(BASE_DIR,"deploy-status.json"),"w",encoding="utf-8") as fh:
-            json.dump({"last_run":int(time.time()),"head":(after or "")[:7],"head_msg":msg[:150]},fh)
+            json.dump({"last_run":int(time.time()),"head":sha[:7],"head_msg":msg[:150]},fh)
     except Exception: pass
-    if not after or after==before: return "clean"
-    changed=git("diff","--name-only",before,after).stdout
-    print(f"self-update: {before[:7]} -> {after[:7]} ({msg[:60]})")
-    return "restart" if "dashboard_app.py" in changed else "updated"
+    st={}
+    try:
+        with open(_SELFUP_STATE,encoding="utf-8") as fh: st=json.load(fh)
+    except Exception: pass
+    if st.get("sha")==sha: return "clean"
+    tree=_gh("https://api.github.com/repos/%s/git/trees/%s?recursive=1"%(_SELFUP_REPO,sha))
+    backend_changed=False;wrote=0
+    for it in tree.get("tree") or []:
+        if it.get("type")!="blob": continue
+        path=it.get("path") or ""
+        if not path or path.startswith(".git") or path.startswith("__pycache__") or ".." in path or path=="deploy-status.json": continue
+        try: data=_gh_raw(sha,path)
+        except Exception as e: return "error:download %s: %s"%(path,e)
+        dest=os.path.join(BASE_DIR,path)
+        try:
+            with open(dest,"rb") as fh:
+                if fh.read()==data: continue                   # unchanged — don't touch it
+        except Exception: pass
+        d=os.path.dirname(dest)
+        if d and not os.path.isdir(d): os.makedirs(d,exist_ok=True)
+        tmp=dest+".selfup"
+        with open(tmp,"wb") as fh: fh.write(data)
+        os.replace(tmp,dest);wrote+=1
+        if path=="dashboard_app.py": backend_changed=True
+        print("self-update: wrote",path)
+    with open(_SELFUP_STATE,"w",encoding="utf-8") as fh: json.dump({"sha":sha},fh)
+    if wrote: print(f"self-update: now on {sha[:7]} ({wrote} file(s))")
+    return "restart" if backend_changed else ("updated" if wrote else "clean")
 def self_update_loop():
-    if not os.path.isdir(os.path.join(BASE_DIR,".git")):
-        print("self-update: not a git checkout - loop off");return
-    if os.environ.get("DASH_NO_SELFUPDATE")=="1":
-        print("self-update: disabled by DASH_NO_SELFUPDATE");return
+    if not _selfup_on():
+        print("self-update: off on this machine");return
     time.sleep(20)                                             # let the app finish starting first
     while True:
         try:
@@ -3880,6 +3905,13 @@ def self_update_loop():
             elif r.startswith("error:"): print("self-update:",r)
         except Exception as e: print(f"self_update_loop: {e}")
         time.sleep(180)
+@app.route("/api/selfupdate_status")
+def api_selfupdate_status():
+    st={}
+    try:
+        with open(_SELFUP_STATE,encoding="utf-8") as fh: st=json.load(fh)
+    except Exception: pass
+    return jsonify({"enabled":_selfup_on(),"applied_sha":(st.get("sha") or "")[:7],"repo":_SELFUP_REPO})
 # ==================================================================================
 
 @app.route("/api/slips_test",methods=["POST"])
