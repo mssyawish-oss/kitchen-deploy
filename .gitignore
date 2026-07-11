@@ -5,3 +5,4 @@ bbq_history.json
 .DS_Store
 backup/
 BACKEND-UPDATE-PENDING.txt
+deploy-status.json

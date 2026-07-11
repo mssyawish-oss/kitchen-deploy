@@ -3826,6 +3826,62 @@ def slip_loop():
                 st["printed"]=list(printed);_slip_state_save(st);first=False
         except Exception as e: print(f"slip_loop: {e}")
         time.sleep(SLIP_POLL)
+# ===== SELF-UPDATE — the app pulls its own updates from GitHub =====================
+# The Windows scheduled task kept stalling (twice on 2026-07-11), leaving the shop on old
+# code until someone rebooted the PC. Now the app itself does a git fetch + ff-only pull
+# every 3 minutes. UI files are served from disk so they apply instantly; if
+# dashboard_app.py changed, the process exits and the watchdog batch relaunches it with
+# the fresh code (same mechanism as /api/restart). Runs only where BASE_DIR is a git
+# checkout (the server) — the Mac dev copy has no .git so the loop just exits.
+def _relaunch_self():
+    import subprocess
+    if os.environ.get("KDASH_WATCHDOG")=="1": os._exit(0)     # watchdog loop relaunches us
+    try:
+        script=os.path.join(BASE_DIR,"dashboard_app.py")
+        if os.name=="nt":
+            DETACHED=0x00000008|0x00000200
+            subprocess.Popen('ping -n 3 127.0.0.1 >nul & "%s" "%s"'%(sys.executable,script),
+                             cwd=BASE_DIR,shell=True,creationflags=DETACHED,close_fds=True)
+            time.sleep(0.4); os._exit(0)
+        else:
+            os.execv(sys.executable,[sys.executable,script])
+    except Exception: os._exit(0)
+def _self_update_once():
+    """One check: pull if behind; return 'restart' | 'updated' | 'clean' | 'error:<msg>'."""
+    import subprocess
+    def git(*a):
+        return subprocess.run(["git","-C",BASE_DIR]+list(a),capture_output=True,text=True,timeout=90)
+    before=git("rev-parse","HEAD").stdout.strip()
+    git("fetch","--quiet","origin")
+    p=git("pull","--ff-only","--quiet")
+    if p.returncode!=0: return "error:"+(p.stderr or p.stdout or "pull failed").strip()[:160]
+    after=git("rev-parse","HEAD").stdout.strip()
+    msg=git("log","-1","--pretty=%s").stdout.strip()
+    try:   # feed the on-screen deploy-health (same file the old scheduled task wrote)
+        with open(os.path.join(BASE_DIR,"deploy-status.json"),"w",encoding="utf-8") as fh:
+            json.dump({"last_run":int(time.time()),"head":(after or "")[:7],"head_msg":msg[:150]},fh)
+    except Exception: pass
+    if not after or after==before: return "clean"
+    changed=git("diff","--name-only",before,after).stdout
+    print(f"self-update: {before[:7]} -> {after[:7]} ({msg[:60]})")
+    return "restart" if "dashboard_app.py" in changed else "updated"
+def self_update_loop():
+    if not os.path.isdir(os.path.join(BASE_DIR,".git")):
+        print("self-update: not a git checkout - loop off");return
+    if os.environ.get("DASH_NO_SELFUPDATE")=="1":
+        print("self-update: disabled by DASH_NO_SELFUPDATE");return
+    time.sleep(20)                                             # let the app finish starting first
+    while True:
+        try:
+            r=_self_update_once()
+            if r=="restart":
+                print("self-update: backend changed - restarting to apply");time.sleep(1)
+                _relaunch_self()
+            elif r.startswith("error:"): print("self-update:",r)
+        except Exception as e: print(f"self_update_loop: {e}")
+        time.sleep(180)
+# ==================================================================================
+
 @app.route("/api/slips_test",methods=["POST"])
 def api_slips_test():
     # remote sanity check: prints one demo combo slip from THIS machine (the server)
@@ -3852,6 +3908,7 @@ if __name__=="__main__":
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
+    threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
