@@ -2260,7 +2260,7 @@ function renderPackdownPage(){
   // prep picture sits; photo proof stays exactly as before.
   const byTime=(a,b)=>{const ta=_pdMin(a.remind_at),tb=_pdMin(b.remind_at);if(ta===null&&tb===null)return (a.name||'').localeCompare(b.name||'');if(ta===null)return 1;if(tb===null)return -1;return ta-tb;};
   const main=tasks.filter(t=>!t.notbusy),relax=tasks.filter(t=>t.notbusy);
-  [main,relax].forEach(arr=>{arr.sort(byTime);arr.sort((a,b)=>((checks[a.id]||{}).done?1:0)-((checks[b.id]||{}).done?1:0));});
+  [main,relax].forEach(arr=>arr.sort(byTime));   // time order only — a completed task stays exactly where it is
   const doneN=tasks.filter(t=>(checks[t.id]||{}).done).length,total=tasks.length,pct=total?Math.round(doneN/total*100):0;
   const odN=main.filter(t=>{const tm=_pdMin(t.remind_at);return tm!==null&&tm<nowM&&!((checks[t.id]||{}).done);}).length;
   if(prog)prog.innerHTML='<div class="pd-prog"><div class="pd-prog-top"><span><b>'+doneN+'</b> of <b>'+total+'</b> done \u00b7 <b>'+pct+'%</b></span>'+(odN?('<span style="color:#f87171;font-weight:800;">'+odN+' overdue</span>'):'')+'</div><div class="pd-prog-bar"><div class="pd-prog-fill" style="width:'+pct+'%;"></div></div></div>';
