@@ -699,9 +699,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .alert-card.rt-done{opacity:.6;border-color:var(--green);}
 .alert-card .rt-strike{text-decoration:line-through;color:var(--muted);}
 .alert-card.active-now:not(.rt-done){animation:rl-warn 1.4s infinite;}
-.recipe-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow);transition:filter .12s;}
+#recipe-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;align-content:start;}
+.recipe-card{background:var(--card);border:1px solid var(--border);border-left:5px solid var(--amber-dim);border-radius:12px;padding:13px 14px;cursor:pointer;box-shadow:var(--shadow);transition:filter .12s,border-color .15s;display:flex;flex-direction:column;gap:8px;min-height:76px;}
+.recipe-card:hover{border-left-color:var(--amber);}
 .recipe-card:hover{filter:brightness(1.1);}
-.recipe-name{font-size:15px;font-weight:600;text-transform:uppercase;}
+.recipe-name{font-size:14.5px;font-weight:700;text-transform:uppercase;line-height:1.25;}
 .recipe-content{white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:10px;}
 /* Team / labour board */
 .team-chips{display:flex;flex-wrap:wrap;gap:8px;}
@@ -3038,7 +3040,7 @@ function renderRecipesPage(){const recipes=appData.recipes||[];const list=docume
   const chipBox=document.getElementById('recipe-filter-chips');
   if(chipBox)chipBox.innerHTML=(recipes.length&&cats.length)?['All',...cats].map(c=>`<div class="filter-chip ${recipeFilter===c?'on':''}" onclick="setRecipeFilter('${c.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">${c}</div>`).join(''):'';
   if(recipes.length===0){list.innerHTML='';empty.style.display='block';return;}empty.style.display='none';
-  list.innerHTML=recipes.map((r,i)=>({r,i})).filter(o=>recipeFilter==='All'||(o.r.category||'Other')===recipeFilter).map(({r,i})=>`<div class="recipe-card" onclick="openRecipe(${i})"><div class="recipe-name">${r.name}</div><div style="margin-top:6px;">${r.category?`<span class="tag tag-amber" style="text-transform:uppercase;">${r.category}</span>`:''}</div></div>`).join('');}
+  list.innerHTML=recipes.map((r,i)=>({r,i})).filter(o=>recipeFilter==='All'||(o.r.category||'Other')===recipeFilter).map(({r,i})=>`<div class="recipe-card" onclick="openRecipe(${i})"><div class="recipe-name">${r.name}</div>${r.category?`<div style="margin-top:auto;"><span class="tag tag-amber" style="text-transform:uppercase;">${r.category}</span></div>`:''}</div>`).join('');}
 function openRecipe(i){const r=(appData.recipes||[])[i];if(!r)return;
   let o=document.getElementById('recipe-view-modal');
   if(!o){o=document.createElement('div');o.id='recipe-view-modal';o.className='modal-overlay';document.body.appendChild(o);}
