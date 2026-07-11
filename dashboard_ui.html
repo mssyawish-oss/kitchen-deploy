@@ -770,6 +770,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
 .prodoff-on:hover{background:#15803d;}
 .prodoff-on:disabled{opacity:.65;cursor:default;}
+.prodoff-sil{flex-shrink:0;background:rgba(251,155,36,.15);color:var(--amber);border:1px solid var(--amber-dim);border-radius:9px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.prodoff-sil:hover{background:rgba(251,155,36,.3);}
+.prodoff-sil.day{background:rgba(255,255,255,.06);color:#cbd5e1;border-color:rgba(255,255,255,.2);}
+.prodoff-muted{flex-shrink:0;background:rgba(255,255,255,.08);color:var(--muted);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .prodoff-banner.mini{background:none;border:none;padding:0;}
 .prodoff-mini{display:inline-flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;border-radius:999px;padding:7px 15px;font-size:13px;font-weight:700;color:#fff;cursor:pointer;}
 .prodoff-mini .num{background:#ef4444;color:#fff;border-radius:999px;padding:1px 9px;font-weight:800;font-size:13px;}
@@ -992,10 +996,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <div class="modal-overlay" id="prodoff-modal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.5;">These items are sold-out in Square and won’t sell until turned back on. The reminder alarm is silenced for 1 hour.</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.5;">These items are marked sold-out in Square and won’t sell until you switch them back on in the Square app. Silence each one for an hour or for the rest of the day — everything resets at 10am for the new trading day.</div>
     <div id="prodoff-list"></div>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;"><b>Turn on</b> asks Square to un-mark it as sold-out. Square sometimes blocks this from the API — if it says it couldn’t, switch that item back on in the Square app.</div>
-    <button class="btn" style="width:100%;margin-top:12px;" onclick="prodOffSilenceToday()">Silence this alarm for the rest of today</button>
   </div>
 </div>
 
@@ -1665,7 +1667,7 @@ let _silenceSeen=0,_applyingRemoteSilence=false;
 function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
 function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(ts){if(!ts)return;if(!_silenceSeen){_silenceSeen=ts;return;}if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
-function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffSilencedUntil=Date.now()+3600000;}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll(3600000);}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
@@ -2855,9 +2857,28 @@ function submitStockCheck(){
   closeModal('stockcheck-modal');
 }
 // ===== Products turned off (Square sold-out) — flashing bottom pill + tap-to-view list =====
-let _prodOffSilencedUntil=0;   // ms epoch: alarm stays quiet until this time (tapping the pill = +1 hour)
-let _prodOffSilenceDay=(function(){try{return localStorage.getItem('bruno_prodoff_silence_day')||'';}catch(e){return '';}})();   // date the user silenced for the whole day
+// Each off product is silenced INDIVIDUALLY (1 hour or rest of day) — no global silence.
+// Mutes live in shared appData.prodoff_mutes {productId: untilMs}, so silencing on one
+// screen silences every screen. The "day" runs 10am→10am: a rest-of-day mute expires at
+// the next 10am, when everything resets for the new trading day.
 let _prodOffList=[];
+function _pdOffNext10(){const d=new Date();const t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),10,0,0);
+  if(d>=t)t.setDate(t.getDate()+1);
+  if(t.getTime()-d.getTime()<15*60000)t.setDate(t.getDate()+1);   // 9:45–10:00 counts as the NEW day already (alarm starts 9:55)
+  return t.getTime();}
+function _pdOffMuted(id){return ((appData.prodoff_mutes||{})[id]||0)>Date.now();}
+function _pdOffPrune(){const m=appData.prodoff_mutes||{};const now=Date.now();let ch=false;
+  Object.keys(m).forEach(k=>{if(m[k]<=now){delete m[k];ch=true;}});
+  if(ch)saveKeys(['prodoff_mutes']);}
+function prodOffMute(id,mode){
+  appData.prodoff_mutes=appData.prodoff_mutes||{};
+  appData.prodoff_mutes[id]=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
+  saveKeys(['prodoff_mutes']);
+  if(!_prodOffList.some(p=>!_pdOffMuted(p.id))){if(typeof stopAlarm==='function')stopAlarm('prod-off');if(typeof _broadcastSilence==='function')_broadcastSilence();const fab=document.getElementById('prodoff-fab');if(fab)fab.classList.remove('flashing');}
+  _prodOffRenderModal();
+}
+function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
+function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};_prodOffList.forEach(p=>{appData.prodoff_mutes[p.id]=Math.max(appData.prodoff_mutes[p.id]||0,Date.now()+ms);});saveKeys(['prodoff_mutes']);}
 function checkProductsOff(){
   const fab=document.getElementById('prodoff-fab');if(!fab)return;
   const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
@@ -2868,8 +2889,8 @@ function checkProductsOff(){
     if(!_prodOffList.length){hide();return;}
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
     const afterOpen=mins>=(9*60+55);                                 // alarm only sounds from 9:55am
-    const silenced=(Date.now()<_prodOffSilencedUntil)||(_prodOffSilenceDay===_prepToday());
-    const alarmOn=afterOpen&&!silenced;
+    _pdOffPrune();                                                    // expired mutes (incl. the 10am day reset)
+    const alarmOn=afterOpen&&_prodOffList.some(p=>!_pdOffMuted(p.id));   // any off product not individually silenced
     fab.style.display='flex';
     const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_prodOffList.length;
     fab.classList.toggle('flashing',alarmOn);                        // flashes while the alarm is live; steady once silenced
@@ -2882,26 +2903,20 @@ function _prodOffRenderModal(){
   if(!_prodOffList.length){el.innerHTML='<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on ✓</div>';return;}
   el.innerHTML=_prodOffList.map(p=>{
     const tag=p.kind==='modifier'?'<span class="prodoff-tag">ADD-ON</span>':((p.variation&&p.variation.toLowerCase()!=='regular')?'<span class="prodoff-tag">'+_mEsc(p.variation)+'</span>':'');
-    return '<div class="prodoff-row" data-id="'+p.id+'"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div><button class="prodoff-on" onclick="enableProduct(\''+p.id+'\',this)">Turn on</button></div>';
+    const until=(appData.prodoff_mutes||{})[p.id]||0;
+    let right;
+    if(until>Date.now()){
+      const lbl=(until>=_pdOffNext10()-60000)?'today':('until '+new Date(until).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}));
+      right='<button class="prodoff-muted" onclick="prodOffUnmute(\''+p.id+'\')" title="Tap to un-silence">Silenced '+lbl+' &#10005;</button>';
+    }else{
+      right='<span style="display:flex;gap:6px;flex-shrink:0;"><button class="prodoff-sil" onclick="prodOffMute(\''+p.id+'\',\'hour\')">Silence 1 hr</button><button class="prodoff-sil day" onclick="prodOffMute(\''+p.id+'\',\'day\')">Rest of today</button></span>';
+    }
+    return '<div class="prodoff-row" data-id="'+p.id+'"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div>'+right+'</div>';
   }).join('');
 }
-function prodOffOpen(){
-  _prodOffSilencedUntil=Date.now()+3600000;   // tapping the pill silences the alarm for 1 hour
-  if(typeof stopAlarm==='function')stopAlarm('prod-off');
-  if(typeof _broadcastSilence==='function')_broadcastSilence();
-  _prodOffRenderModal();openModal('prodoff-modal');
-  const fab=document.getElementById('prodoff-fab');if(fab)fab.classList.remove('flashing');
-  if(typeof _toast==='function')_toast('Alarm silenced for 1 hour');
-}
-function silenceProductsOff(){_prodOffSilencedUntil=Date.now()+3600000;if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence();}
-function prodOffSilenceToday(){
-  _prodOffSilenceDay=_prepToday();try{localStorage.setItem('bruno_prodoff_silence_day',_prodOffSilenceDay);}catch(e){}
-  if(typeof stopAlarm==='function')stopAlarm('prod-off');
-  if(typeof _broadcastSilence==='function')_broadcastSilence();
-  checkProductsOff();
-  if(typeof _toast==='function')_toast('Sold-out alarm silenced for the rest of today');
-  closeModal('prodoff-modal');
-}
+function prodOffOpen(){_prodOffRenderModal();openModal('prodoff-modal');}
+// bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
+function silenceProductsOff(){_prodOffMuteAll(3600000);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence();}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}
