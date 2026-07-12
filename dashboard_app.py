@@ -3810,10 +3810,11 @@ def slip_loop():
     print(f"combo slip printer ON -> {settings['printer_ip']} (known orders: {len(printed)})")
     while True:
         try:
+            paused=(db.get("slips_enabled") is False)   # owner switch: pause printing, keep tracking
             for o in _slip_orders(15):
                 oid=o.get("id")
                 if not oid or oid in printed: continue
-                if first:                              # startup: don't spew the backlog
+                if first or paused:                    # startup/paused: mark seen, print nothing
                     printed.add(oid);continue
                 try:
                     n=_slip_process(o)
@@ -3922,6 +3923,7 @@ def api_slips_test():
           "line_items":[{"name":"BBQ CHICKEN","variation_name":"1/2","quantity":"1"},
                         {"name":"SIDE CHIPS","variation_name":"Regular","quantity":"1"},
                         {"name":"SIDE SLAW","variation_name":"Regular","quantity":"1","modifiers":[{"name":"HONEY MUSTARD"}]}]}
+    if db.get("slips_enabled") is False: return jsonify({"ok":True,"paused":True,"note":"combo slip printing is switched OFF (slips_enabled=false)"})
     try: return jsonify({"ok":True,"slips":_slip_process(demo),"enabled":_slips_enabled(),"printer":settings["printer_ip"]})
     except Exception as e: return jsonify({"ok":False,"error":str(e),"enabled":_slips_enabled()})
 # ==================================================================================
