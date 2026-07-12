@@ -3082,7 +3082,7 @@ function _prepColsHTML(items,done,priMap,readonly){
   Object.values(groups).forEach(arr=>arr.sort((a,b)=>(done[a.id]?1:0)-(done[b.id]?1:0)));
   const card=p=>{
     const d=done[p.id];const _pr=priMap[p.id]||p.priority||'med';const pri=p.recur?'recur':(_pr==='high'?'high':'med');   // legacy 'low' shows as Do Today
-    const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:24px;height:24px;color:var(--muted);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
+    const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';   // no picture uploaded -> show nothing, keep the card clean
     const due=!readonly&&p.remind&&!d&&now>=p.remind;
     const rem=(!readonly&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
     const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
@@ -3253,7 +3253,7 @@ function setPrepPickPri(id,pri){_prepPickPri[id]=pri;_prepPick.add(id);renderPre
 function renderPrepBuildGrid(){
   const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
   if(!presets.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px;">No prep items yet. Close this and tap <b>Items</b> to create some first.</div>';return;}
-  grid.innerHTML=presets.map(p=>{const picked=_prepPick.has(p.id);const cpri=_prepPickPri[p.id]||'med';const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'<div class="pc-noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:24px;height:24px;color:var(--muted);"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
+  grid.innerHTML=presets.map(p=>{const picked=_prepPick.has(p.id);const cpri=_prepPickPri[p.id]||'med';const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';   // no picture uploaded -> show nothing, keep the card clean
     const priRow=(picked&&!p.recur)?('<div class="pp-pri" onclick="event.stopPropagation()">'+[['high','Do First','#ef4444'],['med','Do Today','#f59e0b']].map(x=>'<button class="pp-pri-btn'+(cpri===x[0]?' on':'')+'"'+(cpri===x[0]?(' style="background:'+x[2]+';border-color:'+x[2]+';color:#0b0c10;"'):'')+' onclick="setPrepPickPri(\''+p.id+'\',\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div>'):'';
     return '<div class="prep-card prep-pick'+(picked?' sel':'')+'" onclick="togglePrepPick(\''+p.id+'\')"><div class="pc-tick">&#10003;</div><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div>'+priRow+'</div>';}).join('');
 }
