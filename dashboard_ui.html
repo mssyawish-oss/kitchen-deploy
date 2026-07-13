@@ -536,6 +536,27 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .badge-almost{background:var(--amber-bg);color:var(--amber);}
 .badge-ready{background:var(--green-bg);color:var(--green);}
 .badge-overdone{background:var(--red-bg);color:var(--red);}
+/* Global probe alert popup — appears centred on ANY page when a probe hits a setpoint */
+#probe-alert{display:none;position:fixed;inset:0;z-index:450;background:rgba(4,5,10,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;}
+#probe-alert.show{display:flex;}
+.pa-inner{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:94vw;max-height:92vh;overflow:auto;}
+.pa-card{background:linear-gradient(180deg,#191b24,#101117);border:2px solid var(--border2);border-radius:20px;padding:22px 30px;min-width:250px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 24px 60px rgba(0,0,0,.65);}
+.pa-card.almost{border-color:var(--amber);animation:flash-amber 1s infinite;}
+.pa-card.ready{border-color:var(--green);animation:flash-green .8s infinite;}
+.pa-card.overdone{border-color:var(--red);animation:flash-red .5s infinite;}
+.pa-badge{font-family:var(--font-mono);font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--muted);}
+.pa-name{font-size:19px;font-weight:800;color:var(--text);line-height:1.2;}
+.pa-temp{font-family:var(--font-mono);font-size:60px;font-weight:700;line-height:1;}
+.pa-temp span{font-size:22px;color:var(--muted);margin-left:4px;}
+.pa-card.almost .pa-temp{color:var(--amber);}
+.pa-card.ready .pa-temp{color:var(--green);}
+.pa-card.overdone .pa-temp{color:var(--red);}
+.pa-status{font-size:18px;font-weight:800;letter-spacing:.08em;padding:6px 20px;border-radius:22px;}
+.pa-status.pa-almost{background:var(--amber-bg);color:var(--amber);}
+.pa-status.pa-ready{background:var(--green-bg);color:var(--green);}
+.pa-status.pa-overdone{background:var(--red-bg);color:var(--red);}
+.pa-btn{margin-top:6px;background:#fff;color:#111;border:none;border-radius:12px;padding:13px 24px;font-size:15px;font-weight:800;cursor:pointer;min-width:180px;}
+.pa-btn:active{transform:scale(.97);}
 .probe-ack-btn{width:100%;padding:10px;background:var(--red-dim);border:1px solid var(--red);border-radius:6px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;}
 .probe-actions{display:flex;gap:6px;width:100%;}
 .probe-btn{flex:1;padding:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:14px;cursor:pointer;}
@@ -886,6 +907,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <div id="alarm-flash"></div>
+<div id="probe-alert"><div class="pa-inner"><div id="probe-alert-cards"></div></div></div>
 <div id="alarm-overlay">
   <div class="alarm-card">
     <div class="alarm-bell"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
@@ -1895,6 +1917,7 @@ function syncTimers(serverTimers){
 let probeData={1:{temp:null,name:'Probe 1'},2:{temp:null,name:'Probe 2'},3:{temp:null,name:'Probe 3'},4:{temp:null,name:'Probe 4'}};
 let probeStates={1:{status:'idle',alerted:false},2:{status:'idle',alerted:false},3:{status:'idle',alerted:false},4:{status:'idle',alerted:false}};
 const prevStatuses={};
+let _probePopDismissed={};   // pid -> the status it was dismissed at (re-shows on status change)
 
 function renderProbes(){
   document.getElementById('probes-grid').innerHTML=Object.entries(probeData).map(([pid,p])=>{
@@ -1905,6 +1928,7 @@ function renderProbes(){
       if(status==='ready'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
       if(status==='overdone'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
       if(status==='idle')stopProbeAlarm(pidN);
+      delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
       prevStatuses[pidN]=status;
     }
     const t=p.temp,tempHtml=t===null?'<div class="probe-no-data">&#8212;&#8212;</div>':`<div class="probe-temp">${t.toFixed(1)}</div>`;
@@ -1923,6 +1947,40 @@ function renderProbes(){
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
   }).join('');
+  renderProbeAlerts();
+}
+function renderProbeAlerts(){
+  const ov=document.getElementById('probe-alert');if(!ov)return;
+  // suppress on the lock screen (banners cover it) and on the Temp page (cards already visible)
+  if((typeof lockVisible==='function'&&lockVisible())||(typeof _pageActive==='function'&&_pageActive('probes'))||!_acfg('probe').enabled){ov.classList.remove('show');return;}
+  const ALERT=['almost','ready','overdone'];
+  const active=Object.keys(probeStates).map(k=>parseInt(k)).filter(pid=>{
+    const st=probeStates[pid]||{};const sSt=st.status;
+    if(!ALERT.includes(sSt))return false;
+    if((sSt==='ready'||sSt==='overdone')&&st.alerted)return false;   // already acknowledged
+    if(_probePopDismissed[pid]===sSt)return false;                   // dismissed at this status
+    return true;
+  });
+  if(!active.length){ov.classList.remove('show');return;}
+  const LBL={almost:'ALMOST READY',ready:'READY',overdone:'OVERDONE'};
+  document.getElementById('probe-alert-cards').innerHTML=active.map(pid=>{
+    const p=probeData[pid]||{},st=probeStates[pid],sSt=st.status,t=p.temp;
+    const cta=(sSt==='ready'||sSt==='overdone')?'Silence &amp; dismiss':'Got it';
+    return '<div class="pa-card '+sSt+'">'
+      +'<div class="pa-badge">PROBE '+String(pid).padStart(2,'0')+'</div>'
+      +(p.name?('<div class="pa-name">'+_mEsc(p.name)+'</div>'):'')
+      +'<div class="pa-temp">'+(t===null||t===undefined?'&#8212;':t.toFixed(1))+'<span>&#176;C</span></div>'
+      +'<div class="pa-status pa-'+sSt+'">'+LBL[sSt]+'</div>'
+      +'<button class="pa-btn" onclick="dismissProbeAlert('+pid+')">'+cta+'</button>'
+      +'</div>';
+  }).join('');
+  ov.classList.add('show');
+}
+function dismissProbeAlert(pid){
+  const st=probeStates[pid];if(!st)return;const sSt=st.status;
+  if(sSt==='ready'||sSt==='overdone')ackProbe(pid);   // stops the looping alarm + marks acked
+  else _probePopDismissed[pid]=sSt;                    // 'almost' has no persistent alarm — just hide it
+  renderProbeAlerts();
 }
 function ackProbe(pid){probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence();}
 function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
