@@ -234,6 +234,9 @@ body.kiosk .topbar-title{cursor:default;}
 .prep-card.pri-med{border-left-color:#f59e0b;}
 .prep-card.pri-low{border-left-color:#3b82f6;}
 .prep-card.pri-recur{border-left-color:#a78bfa;}
+.pt-seg{flex:1;font-size:13.5px;font-weight:800;padding:10px 0;border-radius:9px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;}
+.pt-seg.on{background:var(--amber);border-color:var(--amber);color:#1a1205;}
+.pt-seg[data-type="task"].on{background:#a78bfa;border-color:#a78bfa;color:#160f24;}
 .prep-card.done{border-left-color:var(--green)!important;opacity:.82;}
 .prep-card .pc-row{display:flex;align-items:center;gap:11px;padding:9px 12px;}
 .prep-card .pc-img{width:46px;height:46px;border-radius:9px;object-fit:cover;background:var(--surface2);display:block;flex-shrink:0;}
@@ -1058,12 +1061,21 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="divider"></div>
     <div class="section-title">Add / edit item</div>
     <input type="hidden" id="prep-edit-id">
+    <div class="form-row"><div class="label">Type</div>
+      <div id="prep-type-seg" style="display:flex;gap:8px;">
+        <button type="button" class="pt-seg on" data-type="prep" onclick="setPrepType('prep')">Prep item</button>
+        <button type="button" class="pt-seg" data-type="task" onclick="setPrepType('task')">Daily task</button>
+      </div>
+      <div id="prep-type-hint" style="font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4;">A one-off prep job — staff add it to the day&rsquo;s list with &ldquo;Set list&rdquo;.</div>
+    </div>
     <div class="form-row"><div class="label">Name</div><input class="input" id="prep-name" placeholder="e.g. Cut lettuce, Marinate wings…"></div>
     <div class="form-row"><div class="label">Remind at <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-remind" type="time"> <span style="font-size:11.5px;color:var(--muted);margin-left:8px;">Sounds an alarm if not done by this time.</span></div>
-    <div class="form-row"><div class="label">Repeats</div><select class="input" id="prep-recur" style="background:var(--surface2);" onchange="onPrepRecurChange()"><option value="">No — added by hand when needed</option><option value="daily">Every day (appears on the list automatically)</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
+    <div id="prep-recur-wrap" style="display:none;">
+    <div class="form-row"><div class="label">Repeats</div><select class="input" id="prep-recur" style="background:var(--surface2);" onchange="onPrepRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="prep-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="prep-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
     <div id="prep-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="prep-anchor"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs.</div></div>
     <div id="prep-dates-wrap" style="display:none;margin-top:8px;"><div class="label">Add the dates it should run</div><div class="row" style="gap:6px;"><input class="input" type="date" id="prep-date-in" style="flex:1;"><button class="btn" onclick="addPrepDate()">Add date</button></div><div id="prep-dates-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
+    </div>
     <div class="form-row"><div class="label">Instructions <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-detail" placeholder="e.g. Load 12 chickens, season with rub"></div>
     <div class="form-row"><div class="label">Picture</div><label class="btn" style="cursor:pointer;">Choose image…<input type="file" accept="image/*" style="display:none;" id="prep-img-input" onchange="prepPickImage(this)"></label> <span id="prep-img-name" style="font-size:12px;color:var(--muted);margin-left:8px;"></span><div id="prep-img-preview" style="margin-top:8px;"></div></div>
     <div class="row" style="gap:6px;margin-top:6px;"><button class="btn btn-primary" style="flex:1;" id="prep-save-btn" onclick="savePrepItem()">Add item</button><button class="btn" onclick="prepClearForm()">Clear</button></div>
@@ -3280,9 +3292,9 @@ function renderPrepManageList(){
   el.innerHTML=presets.length?presets.map(p=>{const bits=[];if(p.recur)bits.push('&#8635; '+_recurLabel(p));if(p.remind)bits.push('Remind '+p.remind);const meta=bits.length?bits.join(' · '):'<span style="opacity:.6;">added by hand · priority set when added</span>';return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:11px;color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
 }
 function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">';}}
-function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-recur').value=p.recur||'';setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
+function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-recur').value=p.recur||'daily';setPrepType(p.recur?'task':'prep');setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
 function deletePrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!confirm('Delete "'+(p?p.name:'')+'"?'))return;appData.prep_presets=(appData.prep_presets||[]).filter(x=>x.id!==id);saveKeys(['prep_presets']);renderPrepManageList();renderPrepPage();}
-function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';if(g('prep-recur'))g('prep-recur').value='';document.querySelectorAll('#prep-days .day-pill').forEach(p=>p.classList.remove('on'));if(g('prep-anchor'))g('prep-anchor').value='';_prepDates=[];renderPrepDates();if(typeof onPrepRecurChange==='function'&&g('prep-recur'))onPrepRecurChange();if(g('prep-detail'))g('prep-detail').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';if(g('prep-recur'))g('prep-recur').value='daily';if(typeof setPrepType==='function')setPrepType('prep');document.querySelectorAll('#prep-days .day-pill').forEach(p=>p.classList.remove('on'));if(g('prep-anchor'))g('prep-anchor').value='';_prepDates=[];renderPrepDates();if(typeof onPrepRecurChange==='function'&&g('prep-recur'))onPrepRecurChange();if(g('prep-detail'))g('prep-detail').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
 let _prepDates=[];
 function onPrepRecurChange(){const r=document.getElementById('prep-recur').value;
   document.getElementById('prep-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'block':'none';
@@ -3291,12 +3303,26 @@ function onPrepRecurChange(){const r=document.getElementById('prep-recur').value
 function renderPrepDates(){const el=document.getElementById('prep-dates-list');if(!el)return;el.innerHTML=_prepDates.map(d=>'<span class="tag tag-amber" style="cursor:pointer;" onclick="removePrepDate(\''+d+'\')">'+d+' &#10005;</span>').join('');}
 function addPrepDate(){const v=document.getElementById('prep-date-in').value;if(v&&!_prepDates.includes(v)){_prepDates.push(v);_prepDates.sort();renderPrepDates();}}
 function removePrepDate(d){_prepDates=_prepDates.filter(x=>x!==d);renderPrepDates();}
+function setPrepType(type){
+  document.querySelectorAll('#prep-type-seg .pt-seg').forEach(b=>b.classList.toggle('on',b.dataset.type===type));
+  const wrap=document.getElementById('prep-recur-wrap'),hint=document.getElementById('prep-type-hint'),sel=document.getElementById('prep-recur');
+  if(type==='task'){
+    if(wrap)wrap.style.display='block';
+    if(sel&&!sel.value)sel.value='daily';
+    if(hint)hint.textContent='A recurring job (like a routine) — it shows in the purple Daily Tasks column automatically, no need to add it each day.';
+    if(typeof onPrepRecurChange==='function')onPrepRecurChange();
+  }else{
+    if(wrap)wrap.style.display='none';
+    if(hint)hint.textContent='A one-off prep job — staff add it to the day\u2019s list with \u201cSet list\u201d.';
+  }
+}
 function savePrepItem(){
   const name=document.getElementById('prep-name').value.trim();const st=document.getElementById('prep-manage-status');
   if(!name){if(st){st.textContent='Enter a name.';st.style.color='var(--red)';}return;}
   let id=document.getElementById('prep-edit-id').value||('p'+Date.now().toString(36));
   const remind=document.getElementById('prep-remind').value||'';
-  const recur=document.getElementById('prep-recur').value||'';
+  const _isTask=((document.querySelector('#prep-type-seg .pt-seg.on')||{}).dataset||{}).type==='task';
+  const recur=_isTask?(document.getElementById('prep-recur').value||'daily'):'';
   const days=[];document.querySelectorAll('#prep-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
   const start_date=document.getElementById('prep-anchor').value||'';
   const dates=_prepDates.slice();
