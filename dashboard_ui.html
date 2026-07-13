@@ -1634,7 +1634,9 @@ const _TONE_ORDER=['bell','ready','doorbell','microwave','fryer','ovenbuzz','dry
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};const _alarmStart={};
 // ── Alarm Center: per-alarm config (sound / volume / interval / flash colour / vibrate / auto-stop) ──
 const _ALARM_DEF={
- probe:{label:'Probe — ready / overdone',color:'#ef4444',interval:2800,desc:'A meat probe reaches target or goes over.'},
+ probeAlmost:{label:'Probe \u2014 almost ready',color:'#f59e0b',interval:2800,desc:'A meat probe is nearly at temperature.'},
+ probeReady:{label:'Probe \u2014 ready',color:'#34d399',interval:2800,desc:'A meat probe hits target temperature.'},
+ probeOverdone:{label:'Probe \u2014 overdone',color:'#ef4444',interval:1800,desc:'A meat probe has gone over temperature.'},
  stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie or fried stock is running low.'},
  prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (from 9:55am).'},
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
@@ -1642,8 +1644,17 @@ const _ALARM_DEF={
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Routine / service reminder',color:'#7c5cff',interval:700,desc:'Scheduled routine & service prompts.'}
 };
-const _ALARM_ORDER=['probe','timer','stock','prodoff','rotstopped','orders','service'];
-function _legacyEnabled(key){if(key==='probe')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service'];
+function _migrateProbeAlarms(){
+  try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
+    if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
+    ['probeAlmost','probeReady','probeOverdone'].forEach(k=>{ac[k]=ac[k]||{};
+      ['enabled','flash','vibrate','volume','autostop','sound_preset'].forEach(f=>{if(ac.probe[f]!==undefined)ac[k][f]=ac.probe[f];});});
+    if(ac.probe.interval!==undefined){ac.probeAlmost.interval=ac.probe.interval;ac.probeReady.interval=ac.probe.interval;}
+    saveKeys(['alarm_cfg']);
+  }catch(e){}
+}
+function _legacyEnabled(key){if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
 function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})[key])||{};return {
   enabled:(c.enabled!==undefined)?(c.enabled!==false):_legacyEnabled(key),
   flash:c.flash!==false, vibrate:c.vibrate===true,
@@ -1665,6 +1676,9 @@ function _alarmSynth(key,v){
   if(key==='stock')return playChime(v);
   if(key==='orders'){playTone(740,'square',.22,.32*v);setTimeout(()=>playTone(990,'square',.22,.32*v),230);return;}
   if(key==='service'){playTone(880,'square',.15,.3*v);setTimeout(()=>playTone(1200,'square',.15,.3*v),200);return;}
+  if(key==='probeAlmost')return playAlmostTone(v);
+  if(key==='probeReady')return playReadyTone(v);
+  if(key==='probeOverdone')return playOverdoneTone(v);
   playTone(960,'square',.25,.25*v);}                     // timer / rotstopped default beep
 function playAlarm(id){if(alarms[id])return;const key=_keyForId(id);if(!_acfg(key).enabled)return;alarms[id]=true;_alarmStart[id]=Date.now();function b(){if(!alarms[id])return;const c=_acfg(key);if(c.autostop&&(Date.now()-_alarmStart[id])>c.autostop*60000){alarms[id]=false;_updateFlash();return;}_alarmHit(key);setTimeout(()=>{if(alarms[id])b();},c.interval);}b();}
 // soft, friendly recurring chime for the "products still off" warning (gentle bell, not a buzzer)
@@ -1672,7 +1686,7 @@ function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeou
 function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;function loop(){if(!alarms['prod-off'])return;_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},_acfg('prodoff').interval);}loop();}
 function stopAlarm(id){alarms[id]=false;_updateFlash();}
 function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateFlash();}
-function startProbeAlarm(pid,type){if(!_acfg('probe').enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg('probe');const iv=(typeof((appData.alarm_cfg||{}).probe||{}).interval==='number')?c.interval:(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;if(c.has_custom||c.sound_preset)_alarmHit('probe');else{if(type==='ready')playReadyTone(c.volume);if(type==='overdone')playOverdoneTone(c.volume);}setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
+function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub){
   if(!_acfg('service').enabled)return;
@@ -1692,12 +1706,12 @@ let _waitAlarm=false;
 function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;(function b(){if(!_waitAlarm)return;_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},_acfg('orders').interval);})();}
 function stopWaitAlarm(){_waitAlarm=false;_updateFlash();}
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});if(Object.keys(_probeAlarms).length)ks.add('probe');if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');return ks;}
 function _updateFlash(){const el=document.getElementById('alarm-flash');if(!el)return;
   const ov=document.getElementById('alarm-overlay');
   if(ov&&ov.classList.contains('active')){el.classList.remove('on');return;}   // full alarm modal up → no screen-edge flashing, the card glow is the cue
   const ks=_activeAlarmKeys();let col=null;for(const k of _ALARM_ORDER){if(ks.has(k)){const c=_acfg(k);if(c.flash){col=c.color;break;}}}if(col){el.style.setProperty('--af-col',col);el.classList.add('on');}else{el.classList.remove('on');}}
-function silenceOneAlarm(key){if(key==='probe'){Object.keys(_probeAlarms).forEach(p=>stopProbeAlarm(parseInt(p)));}
+function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key==='probeAlmost'){Object.keys(_probeAlarms).forEach(p=>{const kk=_probeAlarms[p]==='overdone'?'probeOverdone':'probeReady';if(kk===key)stopProbeAlarm(parseInt(p));});}
   else if(key==='orders'){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}
   else if(key==='service'){if(typeof silenceAlarm==='function')silenceAlarm();}
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
@@ -1924,7 +1938,7 @@ function renderProbes(){
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
     const status=st.status,acked=st.alerted,cardCls=status==='idle'?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
-      if(status==='almost'){stopProbeAlarm(pidN);playAlmostTone(_acfg('probe').volume);}
+      if(status==='almost'){stopProbeAlarm(pidN);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
       if(status==='ready'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
       if(status==='overdone'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
       if(status==='idle')stopProbeAlarm(pidN);
@@ -1952,11 +1966,13 @@ function renderProbes(){
 function renderProbeAlerts(){
   const ov=document.getElementById('probe-alert');if(!ov)return;
   // suppress on the lock screen (banners cover it) and on the Temp page (cards already visible)
-  if((typeof lockVisible==='function'&&lockVisible())||(typeof _pageActive==='function'&&_pageActive('probes'))||!_acfg('probe').enabled){ov.classList.remove('show');return;}
+  if((typeof lockVisible==='function'&&lockVisible())||(typeof _pageActive==='function'&&_pageActive('probes'))){ov.classList.remove('show');return;}
   const ALERT=['almost','ready','overdone'];
   const active=Object.keys(probeStates).map(k=>parseInt(k)).filter(pid=>{
     const st=probeStates[pid]||{};const sSt=st.status;
     if(!ALERT.includes(sSt))return false;
+    const _gk=sSt==='almost'?'probeAlmost':(sSt==='overdone'?'probeOverdone':'probeReady');
+    if(!_acfg(_gk).enabled)return false;
     if((sSt==='ready'||sSt==='overdone')&&st.alerted)return false;   // already acknowledged
     if(_probePopDismissed[pid]===sSt)return false;                   // dismissed at this status
     return true;
@@ -3881,7 +3897,8 @@ async function init(){
   openDashboard();
   const _kp=_kioskPage();if(_kp){document.body.classList.add('kiosk');navTo(_kp);}   // dedicated single-page tablet
   renderProbes();renderTimers();
-  _ktLoad();renderKTimers();setInterval(ktTick,1000);   // kitchen timers: run in the background, survive refresh
+  _ktLoad();renderKTimers();setInterval(ktTick,1000);
+  _migrateProbeAlarms();   // split the old single probe alarm into almost/ready/overdone   // kitchen timers: run in the background, survive refresh
   setInterval(pollTemps,1000);pollTemps();
   setInterval(checkSquareActivity,10000);checkSquareActivity();
   setInterval(checkAllReminders,20000);checkAllReminders();
