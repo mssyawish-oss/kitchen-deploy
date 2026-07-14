@@ -44,7 +44,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None} for i in range(1,5)}
 state_lock=threading.Lock()
 data_lock=threading.Lock()
@@ -259,14 +259,18 @@ def check_probe_status(pid,temp):
             threading.Thread(target=record_cook,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,cook_mins),daemon=True).start()
             threading.Thread(target=print_ticket,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,ub),daemon=True).start()
         if ns=="overdone" and prev=="ready": ps["alerted"]=False
-        # AUTO RE-ARM: once a probe has been pulled and cooled well below cooking temp (a fresh raw bird
-        # went on, or the probe is sitting in air), start a new cook cycle so the NEXT batch is detected
-        # and credited again. Warmer-held birds (~60C) stay above this, so they never re-credit.
-        rearm_below=max(40.0,almost-20)
+        # PULLED-OFF detection: the bird reached done/overdone (peak hit cooked temp), was held cooked for
+        # however long, then the probe reading FALLS BELOW pull temp (default 60C) — i.e. it was taken off
+        # and the probe pulled out. Absolute threshold, NOT "dropped X from peak", so a long cooked hold or
+        # an overdone bird cooling on the spit doesn't count until it's actually removed.
+        pull=settings.get("probe_pull_temp",60.0)
+        # AUTO RE-ARM: after a pull, once it cools further (fresh raw bird on, or probe in air) reset the
+        # cycle so the NEXT batch counts. Kept below the pull temp so a bird still near 60 can't bounce.
+        rearm_below=pull-15
         if ps["removed"] and temp<rearm_below:
             ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle"});ns="idle"
         peak=ps["peak_temp"]
-        if peak and peak>=cooked and (peak-temp)>=15 and not ps["removed"]:
+        if peak and peak>=cooked and temp<pull and not ps["removed"]:
             ps["removed"]=True
             if ps["removal_timer"]: ps["removal_timer"].cancel()
             t=threading.Timer(10.0,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
@@ -409,7 +413,7 @@ def _probe_credit_stock(pid,name,temp):
             seq=int(db.get("rotcam_credit_seq",0))+1; db["rotcam_credit_seq"]=seq
             entry={"id":"probe_%d_%d"%(pid,int(time.time())),"num":seq,"ts":int(time.time()),"credited":True,
                    "auto":True,"source":"probe","rows":1,"birds":bpr,"shelves":[],
-                   "reason":"%s reached cooked temp then dropped %d°C (probe pulled) → +%d"%(name,15,bpr),
+                   "reason":"%s reached done/overdone then dropped below %d°C (probe pulled) → +%d"%(name,int(settings.get("probe_pull_temp",60)),bpr),
                    "avail_after":round(ROT_LIVE.get("available",0),2),"shots":[]}
             log=list(db.get("rotcam_credit_log",[]) or []); log.append(entry); db["rotcam_credit_log"]=log[-60:]
             save_data(db)
