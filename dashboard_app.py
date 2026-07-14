@@ -45,7 +45,7 @@ probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
 settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0}
-probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None} for i in range(1,5)}
+probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
 data_lock=threading.Lock()
@@ -238,6 +238,12 @@ def print_ticket(probe_id,batch_name,temp,use_by_time):
 def trigger_timer_start(pid):
     i=pid-1
     if 0<=i<4:
+        # In PROBE-count mode the probe roams between rows, so a pull must NOT reset a use-by timer that's
+        # already counting down a previously-pulled row — only auto-start Batch N when it's idle (a running
+        # countdown is left alone; expired/idle starts fresh). Camera mode keeps the old always-restart.
+        if _rot_mode()=="probe":
+            with data_lock: already=bool(db["timers"][i].get("running"))
+            if already: timer_triggers[pid]=True; return
         secs=settings["use_by_minutes"]*60; now=time.time()
         with data_lock:
             db["timers"][i].update({"total":secs,"remaining":secs,"running":True,"expired":False,"end_at":now+secs})
@@ -265,14 +271,22 @@ def check_probe_status(pid,temp):
         # and the probe pulled out. Absolute threshold, NOT "dropped X from peak", so a long cooked hold or
         # an overdone bird cooling on the spit doesn't count until it's actually removed.
         pull=settings.get("probe_pull_temp",60.0)
-        # AUTO RE-ARM: after a pull, once it cools further (fresh raw bird on, or probe in air) reset the
-        # cycle so the NEXT batch counts. Kept below the pull temp so a bird still near 60 can't bounce.
+        # AUTO RE-ARM so the NEXT row on this probe counts too. Two ways to know a new cook has begun:
+        #  (a) COLD  — the reading falls below pull-15 (a fresh raw bird went on, or the probe is in air).
+        #  (b) REBOUND — after the probe clearly came off the pulled bird (its low dropped below 'almost'), the
+        #      reading climbs back >=10C while still under cooked temp: it's now in a new row heating up. This
+        #      catches the owner's case where the probe is moved straight into a row that's already warm and
+        #      never goes fully cold, which the cold rule alone would miss.
         rearm_below=pull-15
-        if ps["removed"] and temp<rearm_below:
-            ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle"});ns="idle"
+        if ps["removed"]:
+            lp=ps.get("low_since_pull"); ps["low_since_pull"]=temp if lp is None else min(lp,temp)
+            lo=ps["low_since_pull"]
+            rebound=(lo is not None and lo<almost and temp>=lo+10 and temp<cooked)
+            if temp<rearm_below or rebound:
+                ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle","low_since_pull":None});ns="idle"
         peak=ps["peak_temp"]
         if peak and peak>=cooked and temp<pull and not ps["removed"]:
-            ps["removed"]=True
+            ps["removed"]=True; ps["low_since_pull"]=temp
             if ps["removal_timer"]: ps["removal_timer"].cancel()
             t=threading.Timer(10.0,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
             # PROBE-COUNTED STOCK (experimental): a probed rod reached cooked temp then dropped sharply →
@@ -3186,7 +3200,7 @@ def reset_probe():
     if 1<=pid<=4:
         with state_lock:
             if probe_state[pid]["removal_timer"]: probe_state[pid]["removal_timer"].cancel()
-            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None}
+            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None}
         timer_triggers[pid]=False
     return Response('{"ok":true}',mimetype="application/json")
 
