@@ -259,11 +259,20 @@ def check_probe_status(pid,temp):
             threading.Thread(target=record_cook,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,cook_mins),daemon=True).start()
             threading.Thread(target=print_ticket,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,ub),daemon=True).start()
         if ns=="overdone" and prev=="ready": ps["alerted"]=False
+        # AUTO RE-ARM: once a probe has been pulled and cooled well below cooking temp (a fresh raw bird
+        # went on, or the probe is sitting in air), start a new cook cycle so the NEXT batch is detected
+        # and credited again. Warmer-held birds (~60C) stay above this, so they never re-credit.
+        rearm_below=max(40.0,almost-20)
+        if ps["removed"] and temp<rearm_below:
+            ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle"});ns="idle"
         peak=ps["peak_temp"]
         if peak and peak>=cooked and (peak-temp)>=15 and not ps["removed"]:
             ps["removed"]=True
             if ps["removal_timer"]: ps["removal_timer"].cancel()
             t=threading.Timer(10.0,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
+            # PROBE-COUNTED STOCK (experimental): a probed rod reached cooked temp then dropped sharply →
+            # it was pulled off → credit one row of cooked birds. Only fires when counting mode is "probe".
+            threading.Thread(target=_probe_credit_stock,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp),daemon=True).start()
 
 def handle_data(sender,data):
     if len(data)<6: return
@@ -329,6 +338,8 @@ _first_sweep=False   # on startup, sweep all of TODAY's sales once to catch up; 
 def _rot_cfg():
     r=db.get("rotisserie") or {}
     return {"open_rows":r.get("open_rows",2),"bpr":r.get("birds_per_row",4)}
+def _rot_mode():   # how cooked-chicken stock is counted onto 'available': "camera" (default) or "probe" (experimental)
+    return "probe" if str(db.get("rot_stock_mode") or "camera").lower()=="probe" else "camera"
 def _rot_cook_secs():   # average full cook time → ONLY drives the rough "how cooked %" progress gauge (NOT doneness — colour does that; probes are the accurate check). Varies with oven heat / burners; 65 min is the average.
     try: return max(60,int((db.get("rotisserie") or {}).get("cook_min",65)))*60
     except Exception: return 65*60
@@ -368,7 +379,8 @@ def rot_state():
         return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
                 "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
-                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:]}   # camera-credit audit trail (newest last) for the on-screen log + debug shots
+                "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
+                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:]}   # credit audit trail (newest last) for the on-screen log + debug shots
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
@@ -384,6 +396,24 @@ def rot_deduct(birds,oids):
         _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,ROT_LIVE["available"]-birds)
         ROT_LIVE["sold_today"]+=birds;ROT_LIVE["seen"].extend(oids);ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
     _rot_save()
+def _probe_credit_stock(pid,name,temp):
+    # Experimental probe-counting: called (in a thread) when a probe was detected pulled after cooking.
+    # Adds one row (birds_per_row) of cooked chickens to available and logs it in the same credit trail
+    # the camera uses, so the on-screen log shows exactly what happened.
+    if _rot_mode()!="probe": return
+    bpr=_rot_cfg().get("bpr",4) or 4
+    try: rot_put_on(1)                                   # +bpr birds to 'available' (also persists rot_live)
+    except Exception: return
+    try:
+        with data_lock:
+            seq=int(db.get("rotcam_credit_seq",0))+1; db["rotcam_credit_seq"]=seq
+            entry={"id":"probe_%d_%d"%(pid,int(time.time())),"num":seq,"ts":int(time.time()),"credited":True,
+                   "auto":True,"source":"probe","rows":1,"birds":bpr,"shelves":[],
+                   "reason":"%s reached cooked temp then dropped %d°C (probe pulled) → +%d"%(name,15,bpr),
+                   "avail_after":round(ROT_LIVE.get("available",0),2),"shots":[]}
+            log=list(db.get("rotcam_credit_log",[]) or []); log.append(entry); db["rotcam_credit_log"]=log[-60:]
+            save_data(db)
+    except Exception: pass
 
 # ── LIVE FRIED-CHICKEN STOCK (whole pieces; 18/batch, ~15 min) ──
 DEFAULT_FRIED_MAP={"2 PCS FRIED CHICKEN PACK|Regular":2,"3 PCS FRIED CHICKEN PACK|Regular":3,"2 PCS PACK SPECIAL|Regular":2}
@@ -2185,6 +2215,7 @@ def _rotcam_bench_count(jpeg):
         return None
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
+    if _rot_mode()=="probe": return               # probes are counting stock this session → ignore camera credits
     # The COUNT comes from the ROTISSERIE (each shelf-row that leaves the spit = one row of birds).
     # The BENCH only CONFIRMS a chicken actually landed recently — it never decides the NUMBER (it sees
     # individual chickens, not clean rows, so counting bench items over-counts). So: a rotisserie misread
@@ -2464,6 +2495,7 @@ def _rotcam_apply(rows):
     # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
     # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
     auto=bool((db.get("rotcam_config") or {}).get("auto_count",True))
+    if _rot_mode()=="probe": auto=False           # probes are counting stock this session → camera must not also credit
     if credit>0 and auto: rot_put_on(credit)
     if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
     bpr=_rot_cfg().get("bpr",4)
