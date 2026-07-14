@@ -46,6 +46,7 @@ probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
 settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None} for i in range(1,5)}
+SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
 data_lock=threading.Lock()
 # restore probe settings + probe names from the last run (they used to reset to defaults on restart)
@@ -3147,7 +3148,7 @@ def api_silence():
 def temps():
     with probe_lock: t=dict(probe_temps)
     with state_lock: s={k:{kk:vv for kk,vv in v.items() if kk!="removal_timer"} for k,v in probe_state.items()}
-    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"boot":SERVER_BOOT_ID}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
