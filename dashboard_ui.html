@@ -1026,7 +1026,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <!-- Floating "products switched off" pill + its list modal -->
-<button id="prodoff-fab" class="prodoff-fab" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off — tap to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="pf-num">0</span></button>
+<button id="prodoff-fab" class="prodoff-fab" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off — tap to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="pf-num">0</span><span style="font-size:11px;font-weight:700;letter-spacing:.5px;">OFF</span></button>
 <div class="modal-overlay" id="prodoff-modal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
@@ -1648,7 +1648,7 @@ const _ALARM_DEF={
  probeReady:{label:'Probe \u2014 ready',color:'#34d399',interval:2800,desc:'A meat probe hits target temperature.'},
  probeOverdone:{label:'Probe \u2014 overdone',color:'#ef4444',interval:1800,desc:'A meat probe has gone over temperature.'},
  stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie or fried stock is running low.'},
- prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (from 9:55am).'},
+ prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (opening alarm from 10:10am).'},
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
@@ -2995,7 +2995,7 @@ function _pdOffMuted(id){return ((appData.prodoff_mutes||{})[id]||0)>Date.now();
 //   • 10:00am–6:30pm  → the alarm starts 1 hour after it was switched off
 //   • 6:30pm–9:30pm   → stays silent until the next trading day's open (joins the morning batch)
 //   • otherwise (overnight / before open) → next open (the morning batch)
-function _pdOffNextOpen(off){const d=new Date(off);const o=new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,55,0,0);if(d.getTime()>o.getTime())o.setDate(o.getDate()+1);return o.getTime();}
+function _pdOffNextOpen(off){const d=new Date(off);const o=new Date(d.getFullYear(),d.getMonth(),d.getDate(),10,10,0,0);if(d.getTime()>o.getTime())o.setDate(o.getDate()+1);return o.getTime();}
 function _pdOffEligibleAt(off_since){
   if(!off_since)return 0;                                   // unknown → treat as due now (safe fallback)
   const d=new Date(off_since),mins=d.getHours()*60+d.getMinutes();
@@ -3024,13 +3024,15 @@ function checkProductsOff(){
   fetch('/api/products_offline').then(r=>r.json()).then(d=>{
     _prodOffList=(d&&d.ok&&d.off)?d.off:[];
     if(!_prodOffList.length){hide();return;}
+    // Show the pill the MOMENT anything is off — before any alarm-timing math — so the indicator is always
+    // visible (even while the alarm is auto-delayed) and can never be hidden by an error further down.
+    fab.style.display='flex';
+    const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_prodOffList.length;
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
-    const afterOpen=mins>=(9*60+55);                                 // alarm only sounds from 9:55am
+    const afterOpen=mins>=(10*60+10);                                // opening alarm sounds from 10:10am
     _pdOffPrune();                                                    // expired mutes (incl. the 10am day reset)
     const _t=Date.now();
     const alarmOn=afterOpen&&_prodOffList.some(p=>!_pdOffMuted(p.id)&&_t>=_pdOffEligibleAt(p.off_since));   // off, not silenced, AND past its auto-delay window
-    fab.style.display='flex';
-    const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_prodOffList.length;
     fab.classList.toggle('flashing',alarmOn);                        // flashes while the alarm is live; steady once silenced
     if(alarmOn){startProdAlarm();}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
     if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();
