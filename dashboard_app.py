@@ -44,8 +44,8 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0}
-probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None} for i in range(1,5)}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15}
+probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
 data_lock=threading.Lock()
@@ -288,14 +288,25 @@ def check_probe_status(pid,temp):
         # the 80C "ready" line, so a bird that peaked in the high-70s and was pulled still counts. Doneness
         # alarms + the use-by ticket still use cooked_temp (80); this only governs the stock credit + pull.
         count_temp=settings.get("probe_count_temp",cooked)
+        confirm_secs=settings.get("probe_confirm_secs",15) or 15
         peak=ps["peak_temp"]
-        if peak and peak>=count_temp and temp<pull and not ps["removed"]:
-            ps["removed"]=True; ps["low_since_pull"]=temp
-            if ps["removal_timer"]: ps["removal_timer"].cancel()
-            t=threading.Timer(10.0,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
-            # PROBE-COUNTED STOCK (experimental): a probed rod reached cooked temp then dropped sharply →
-            # it was pulled off → credit one row of cooked birds. Only fires when counting mode is "probe".
-            threading.Thread(target=_probe_credit_stock,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp),daemon=True).start()
+        # CONFIRMATION WINDOW: when the reading first drops below pull temp after cooking, DON'T count yet —
+        # start a ~15s window. If the temp climbs back up within it, the probe was just pulled out and
+        # repositioned in the SAME bird (staff re-seat it for a better reading), so it's cancelled. Only when
+        # the reading stays down for the whole window do we treat it as a real pull → credit + start use-by.
+        if not ps["removed"]:
+            if ps.get("pull_pending_at"):
+                pm=ps.get("pull_min"); ps["pull_min"]=temp if pm is None else min(pm,temp)
+                if temp>=pull or temp>=ps["pull_min"]+4:                     # climbed back up → repositioned, not pulled
+                    ps["pull_pending_at"]=None; ps["pull_min"]=None
+                elif (time.time()-ps["pull_pending_at"])>=confirm_secs:      # stayed down the whole window → real pull
+                    ps["removed"]=True; ps["low_since_pull"]=temp; ps["pull_pending_at"]=None; ps["pull_min"]=None
+                    if ps["removal_timer"]: ps["removal_timer"].cancel()
+                    t=threading.Timer(0.5,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
+                    # PROBE-COUNTED STOCK: confirmed pull of a cooked rod → credit one row (probe mode only).
+                    threading.Thread(target=_probe_credit_stock,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp),daemon=True).start()
+            elif peak and peak>=count_temp and temp<pull:                    # first drop below pull after cooking → arm the window
+                ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
 
 def handle_data(sender,data):
     if len(data)<6: return
@@ -3195,7 +3206,7 @@ def set_settings():
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
-    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces"]:
+    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces","probe_confirm_secs"]:
         if k in d:
             try: settings[k]=int(d[k])
             except (TypeError,ValueError): pass
@@ -3216,7 +3227,7 @@ def reset_probe():
     if 1<=pid<=4:
         with state_lock:
             if probe_state[pid]["removal_timer"]: probe_state[pid]["removal_timer"].cancel()
-            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None}
+            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None}
         timer_triggers[pid]=False
     return Response('{"ok":true}',mimetype="application/json")
 
