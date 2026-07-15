@@ -1011,7 +1011,19 @@ def _sq_enable_variation(vid):
 def api_products_offline():
     items,err=_sq_offline_products()
     if err: return jsonify({"ok":False,"error":err})
-    return jsonify({"ok":True,"off":items,"count":len(items)})
+    # Stamp when each product was FIRST seen switched off (server-side so every device agrees, and it survives
+    # device reloads). The frontend uses off_since to delay the alarm by the owner's time-of-day rules. Entries
+    # for products switched back on are dropped so the next off starts a fresh clock.
+    now=int(time.time()*1000)
+    with data_lock:
+        since=dict(db.get("prodoff_since") or {}); cur=set()
+        for it in items:
+            pid=str(it.get("id")); cur.add(pid)
+            if pid not in since: since[pid]=now
+            it["off_since"]=since[pid]
+        for k in [k for k in since if k not in cur]: del since[k]
+        if since!=(db.get("prodoff_since") or {}): db["prodoff_since"]=since; save_data(db)
+    return jsonify({"ok":True,"off":items,"count":len(items),"now":now})
 @app.route("/api/product_enable",methods=["POST"])
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
