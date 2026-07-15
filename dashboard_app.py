@@ -44,7 +44,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -284,8 +284,12 @@ def check_probe_status(pid,temp):
             rebound=(lo is not None and lo<almost and temp>=lo+10 and temp<cooked)
             if temp<rearm_below or rebound:
                 ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle","low_since_pull":None});ns="idle"
+        # COUNT threshold: a bird counts as cooked-enough-for-stock at probe_count_temp (default 75C) — below
+        # the 80C "ready" line, so a bird that peaked in the high-70s and was pulled still counts. Doneness
+        # alarms + the use-by ticket still use cooked_temp (80); this only governs the stock credit + pull.
+        count_temp=settings.get("probe_count_temp",cooked)
         peak=ps["peak_temp"]
-        if peak and peak>=cooked and temp<pull and not ps["removed"]:
+        if peak and peak>=count_temp and temp<pull and not ps["removed"]:
             ps["removed"]=True; ps["low_since_pull"]=temp
             if ps["removal_timer"]: ps["removal_timer"].cancel()
             t=threading.Timer(10.0,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
@@ -3175,7 +3179,7 @@ def set_name():
 @app.route("/set_settings",methods=["POST"])
 def set_settings():
     d=request.get_json(silent=True) or {}
-    for k in ["cooked_temp","almost_temp","overdone_temp"]:
+    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp"]:
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
