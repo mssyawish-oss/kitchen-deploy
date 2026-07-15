@@ -214,189 +214,15 @@ const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
 function mondayOf(d){const x=new Date(d);x.setHours(0,0,0,0);const wd=(x.getDay()+6)%7;x.setDate(x.getDate()-wd);return x;}
 const KEY='weeklybooks_v2';
-const SEED=[["2026-01-05","consulting",-250.0],["2026-01-05","deliverect",-22.0],["2026-01-05","gst",-1600.0],["2026-01-05","loans",-1704.0],["2026-01-07","Acounting",-195.0],["2026-01-07","Bins",-175.0],["2026-01-07","Deputy",-45.0],["2026-01-07","Electricty",-486.0],["2026-01-07","Gas",-240.0],["2026-01-07","Insurance",-345.0],["2026-01-07","Phone",-30.0],["2026-01-07","Point of sale",-61.0],["2026-01-07","Rent",-1299.0],["2026-01-07","xero",-36.0],["2026-01-12","consulting",-250.0],["2026-01-12","deliverect",-22.0],["2026-01-12","gst",-1600.0],["2026-01-12","loans",-1573.0],["2026-01-12","window cleaner",-40.0],["2026-01-14","Acounting",-195.0],["2026-01-14","Bins",-175.0],["2026-01-14","Deputy",-45.0],["2026-01-14","Electricty",-520.0],["2026-01-14","Gas",-240.0],["2026-01-14","Insurance",-345.0],["2026-01-14","Phone",-10.0],["2026-01-14","Point of sale",-51.0],["2026-01-14","Rent",-1299.0],["2026-01-14","xero",-36.0],["2026-01-19","consulting",-250.0],["2026-01-19","deliverect",-22.0],["2026-01-19","gst",-1600.0],["2026-01-19","loans",-1573.0],["2026-01-21","Acounting",-195.0],["2026-01-21","Bins",-175.0],["2026-01-21","Deputy",-45.0],["2026-01-21","Electricty",-520.0],["2026-01-21","Gas",-240.0],["2026-01-21","Insurance",-345.0],["2026-01-21","Phone",-10.0],["2026-01-21","Point of sale",-51.0],["2026-01-21","Rent",-1299.0],["2026-01-21","xero",-36.0],["2026-01-26","Baiaida Poultry",-5486.0],["2026-01-26","Costco",-636.0],["2026-01-26","Doordash",765.0],["2026-01-26","Fruit talk",-1440.0],["2026-01-26","Misc",-357.0],["2026-01-26","PFD Food",-5708.0],["2026-01-26","Packaging",-1195.0],["2026-01-26","Russel\u2019s poultry",-1157.0],["2026-01-26","Uber",9263.0],["2026-01-26","Wage",-11722.0],["2026-01-26","bopple",288.0],["2026-01-26","bopple",9075.0],["2026-01-26","card",27040.0],["2026-01-26","cc",3420.0],["2026-01-26","cfm",-362.0],["2026-01-26","consulting",-250.0],["2026-01-26","deliverect",-22.0],["2026-01-26","filters",-522.0],["2026-01-26","gst",-1600.0],["2026-01-26","loans",-1573.0],["2026-01-26","window cleaner",-40.0],["2026-01-28","Acounting",-195.0],["2026-01-28","Bins",-175.0],["2026-01-28","Deputy",-45.0],["2026-01-28","Electricty",-520.0],["2026-01-28","Gas",-240.0],["2026-01-28","Insurance",-345.0],["2026-01-28","Phone",-10.0],["2026-01-28","Point of sale",-51.0],["2026-01-28","Rent",-1296.0],["2026-01-28","xero",-36.0],["2026-02-02","Costco",-386.0],["2026-02-02","Doordash",622.0],["2026-02-02","Uber",6486.0],["2026-02-02","Wage",-9283.0],["2026-02-02","bopple",6488.0],["2026-02-02","card",24263.0],["2026-02-02","cc",3150.0],["2026-02-02","consulting",-250.0],["2026-02-02","deliverect",-22.0],["2026-02-02","gst",-1600.0],["2026-02-02","loans",-1573.0],["2026-02-04","Acounting",-195.0],["2026-02-04","Asahi",-360.0],["2026-02-04","Baiaida Poultry",-4248.4],["2026-02-04","Bins",-175.0],["2026-02-04","Deputy",-45.0],["2026-02-04","Electricty",-520.0],["2026-02-04","Fruit talk",-1174.0],["2026-02-04","Gas",-240.0],["2026-02-04","Insurance",-345.0],["2026-02-04","Misc",-557.0],["2026-02-04","PFD Food",-5907.0],["2026-02-04","Packaging",-991.0],["2026-02-04","Phone",-10.0],["2026-02-04","Point of sale",-51.0],["2026-02-04","Rent",-1296.0],["2026-02-04","Russel\u2019s poultry",-1378.0],["2026-02-04","xero",-36.0],["2026-02-09","Asahi",-490.0],["2026-02-09","Baiaida Poultry",-4318.0],["2026-02-09","Doordash",748.0],["2026-02-09","Fruit talk",-1190.0],["2026-02-09","Misc",-623.5],["2026-02-09","PFD Food",-4486.0],["2026-02-09","Packaging",-672.0],["2026-02-09","Russel\u2019s poultry",-1152.0],["2026-02-09","Uber",8181.0],["2026-02-09","Wage",-8738.0],["2026-02-09","bopple",2550.0],["2026-02-09","card",11503.0],["2026-02-09","card",15474.0],["2026-02-09","cc",1600.0],["2026-02-09","cfm",-376.0],["2026-02-09","consulting",-250.0],["2026-02-09","deliverect",-22.0],["2026-02-09","gst",-1600.0],["2026-02-09","loans",-1573.0],["2026-02-09","super",-670.0],["2026-02-09","window cleaner",-40.0],["2026-02-10","Rent",-1296.0],["2026-02-11","Acounting",-195.0],["2026-02-11","Bins",-175.0],["2026-02-11","Electricty",-527.0],["2026-02-11","Gas",-240.0],["2026-02-11","Insurance",-345.0],["2026-02-11","Phone",-10.0],["2026-02-11","Point of sale",-51.0],["2026-02-11","xero",-36.0],["2026-02-16","Asahi",-359.0],["2026-02-16","Baiaida Poultry",-4388.0],["2026-02-16","Costco",-320.0],["2026-02-16","Doordash",277.0],["2026-02-16","Fruit talk",-1177.0],["2026-02-16","Misc",-696.0],["2026-02-16","PFD Food",-6064.0],["2026-02-16","Packaging",-700.0],["2026-02-16","Russel\u2019s poultry",-1415.0],["2026-02-16","Uber",6335.0],["2026-02-16","Wage",-9259.0],["2026-02-16","card",32097.0],["2026-02-16","cc",3868.0],["2026-02-16","cfm",-282.0],["2026-02-16","consulting",-250.0],["2026-02-16","deliverect",-22.0],["2026-02-16","gst",-1600.0],["2026-02-16","loans",-1573.0],["2026-02-16","super",-670.0],["2026-02-17","Rent",-1296.0],["2026-02-18","Acounting",-195.0],["2026-02-18","Bins",-175.0],["2026-02-18","Electricty",-527.0],["2026-02-18","Gas",-240.0],["2026-02-18","Insurance",-345.0],["2026-02-18","Phone",-10.0],["2026-02-18","Point of sale",-51.0],["2026-02-18","xero",-36.0],["2026-02-23","Asahi",-426.68],["2026-02-23","Baiaida Poultry",-4178.0],["2026-02-23","Bunnings",-38.0],["2026-02-23","Costco",-366.0],["2026-02-23","Doordash",623.87],["2026-02-23","Fruit talk",-1334.0],["2026-02-23","Misc",-191.24],["2026-02-23","Misc",-10.17],["2026-02-23","Packaging",-944.35],["2026-02-23","Russel\u2019s poultry",-1328.5],["2026-02-23","Uber",8041.58],["2026-02-23","United",-4877.0],["2026-02-23","Wage",-8683.0],["2026-02-23","Woolworth",-5.0],["2026-02-23","aldi",-52.02],["2026-02-23","aldi",-41.5],["2026-02-23","aldi",-15.0],["2026-02-23","card",29513.78],["2026-02-23","cc",2872.1],["2026-02-23","cfm",-282.0],["2026-02-23","consulting",-250.0],["2026-02-23","deliverect",-22.0],["2026-02-23","gst",-1600.0],["2026-02-23","loans",-1573.0],["2026-02-23","super",-705.0],["2026-02-23","tools",-17.0],["2026-02-23","window cleaner",-40.0],["2026-02-24","Rent",-1296.0],["2026-02-25","Acounting",-195.0],["2026-02-25","Bins",-175.0],["2026-02-25","Electricty",-527.0],["2026-02-25","Gas",-240.0],["2026-02-25","Insurance",-345.0],["2026-02-25","Phone",-10.0],["2026-02-25","Point of sale",-51.0],["2026-02-25","xero",-36.0],["2026-03-02","Asahi",-457.0],["2026-03-02","Baiaida Poultry",-4318.0],["2026-03-02","Doordash",640.0],["2026-03-02","Fruit talk",-1181.0],["2026-03-02","Packaging",-883.0],["2026-03-02","Russel\u2019s poultry",-1601.0],["2026-03-02","Uber",7537.0],["2026-03-02","United",-5323.0],["2026-03-02","Wage",-8657.0],["2026-03-02","aldi",-31.39],["2026-03-02","card",27161.0],["2026-03-02","cc",2984.0],["2026-03-02","cfm",-282.0],["2026-03-02","consulting",-250.0],["2026-03-02","deliverect",-22.0],["2026-03-02","gst",-1600.0],["2026-03-02","loans",-1573.0],["2026-03-02","super",-715.0],["2026-03-03","Rent",-1296.0],["2026-03-04","Acounting",-195.0],["2026-03-04","Bins",-175.0],["2026-03-04","Electricty",-527.0],["2026-03-04","Gas",-240.0],["2026-03-04","Insurance",-345.0],["2026-03-04","Phone",-10.0],["2026-03-04","Point of sale",-51.0],["2026-03-04","xero",-36.0],["2026-03-09","Asahi",-430.0],["2026-03-09","Baiaida Poultry",-3326.0],["2026-03-09","Costco",-267.0],["2026-03-09","Doordash",491.0],["2026-03-09","Fruit talk",-1150.0],["2026-03-09","Misc",-15.5],["2026-03-09","Packaging",-990.0],["2026-03-09","Russel\u2019s poultry",-1007.0],["2026-03-09","Uber",6627.0],["2026-03-09","United",-4306.0],["2026-03-09","Wage",-6851.0],["2026-03-09","Woolworth",-492.0],["2026-03-09","card",27170.0],["2026-03-09","cc",2779.0],["2026-03-09","cfm",-282.0],["2026-03-09","consulting",-250.0],["2026-03-09","deliverect",-22.0],["2026-03-09","gst",-1600.0],["2026-03-09","loans",-1573.0],["2026-03-09","super",-640.0],["2026-03-09","window cleaner",-40.0],["2026-03-10","Rent",-1296.0],["2026-03-11","Acounting",-195.0],["2026-03-11","Bins",-175.0],["2026-03-11","Electricty",-527.0],["2026-03-11","Gas",-240.0],["2026-03-11","Insurance",-345.0],["2026-03-11","Phone",-10.0],["2026-03-11","Point of sale",-51.0],["2026-03-11","xero",-36.0],["2026-03-16","Baiaida Poultry",-4388.0],["2026-03-16","Bunnings",-38.0],["2026-03-16","Costco",-355.0],["2026-03-16","Doordash",688.0],["2026-03-16","Fruit talk",-1032.0],["2026-03-16","Packaging",-623.0],["2026-03-16","Russel\u2019s poultry",-1516.0],["2026-03-16","Uber",8178.0],["2026-03-16","United",-5976.0],["2026-03-16","Wage",-8855.0],["2026-03-16","Woolworth",-195.0],["2026-03-16","card",28698.0],["2026-03-16","cc",2800.0],["2026-03-16","cfm",-282.0],["2026-03-16","consulting",-250.0],["2026-03-16","credit card int",-815.0],["2026-03-16","deliverect",-22.0],["2026-03-16","filters",-100.0],["2026-03-16","grease trap",-330.0],["2026-03-16","gst",-1600.0],["2026-03-16","loans",-1573.0],["2026-03-16","super",-640.0],["2026-03-17","Rent",-1296.0],["2026-03-18","Acounting",-195.0],["2026-03-18","Bins",-175.0],["2026-03-18","Electricty",-527.0],["2026-03-18","Gas",-240.0],["2026-03-18","Insurance",-345.0],["2026-03-18","Phone",-10.0],["2026-03-18","Point of sale",-51.0],["2026-03-18","xero",-36.0],["2026-03-19","Woolworth",-89.0],["2026-03-23","Asahi",-688.0],["2026-03-23","Baiaida Poultry",-3396.0],["2026-03-23","Doordash",835.0],["2026-03-23","Fruit talk",-1249.0],["2026-03-23","Packaging",-823.0],["2026-03-23","Russel\u2019s poultry",-1514.0],["2026-03-23","Uber",9056.0],["2026-03-23","United",-5853.0],["2026-03-23","Wage",-8662.0],["2026-03-23","Woolworth",-370.0],["2026-03-23","card",29819.0],["2026-03-23","cc",2820.0],["2026-03-23","consulting",-250.0],["2026-03-23","deliverect",-22.0],["2026-03-23","gst",-1600.0],["2026-03-23","loans",-1573.0],["2026-03-23","officeworks",-26.0],["2026-03-23","super",-625.0],["2026-03-23","window cleaner",-40.0],["2026-03-24","Rent",-1296.0],["2026-03-25","Acounting",-195.0],["2026-03-25","Bins",-175.0],["2026-03-25","Electricty",-527.0],["2026-03-25","Gas",-240.0],["2026-03-25","Insurance",-345.0],["2026-03-25","Phone",-10.0],["2026-03-25","Point of sale",-51.0],["2026-03-25","xero",-36.0],["2026-03-27","Woolworth",-21.0],["2026-03-30","Baiaida Poultry",-6372.0],["2026-03-30","Doordash",886.0],["2026-03-30","Fruit talk",-1577.0],["2026-03-30","Packaging",-1584.0],["2026-03-30","Russel\u2019s poultry",-2161.0],["2026-03-30","Uber",8614.0],["2026-03-30","United",-7753.0],["2026-03-30","Wage",-8917.0],["2026-03-30","Woolworth",-72.0],["2026-03-30","card",34099.0],["2026-03-30","cc",3062.0],["2026-03-30","consulting",-250.0],["2026-03-30","deliverect",-22.0],["2026-03-30","gst",-1600.0],["2026-03-30","loans",-1573.0],["2026-03-30","super",-625.0],["2026-03-31","Rent",-1296.0],["2026-04-01","Acounting",-195.0],["2026-04-01","Bins",-175.0],["2026-04-01","Electricty",-527.0],["2026-04-01","Gas",-240.0],["2026-04-01","Insurance",-345.0],["2026-04-01","Phone",-10.0],["2026-04-01","Point of sale",-51.0],["2026-04-01","xero",-36.0],["2026-04-06","Baiaida Poultry",-2194.4],["2026-04-06","Costco",-601.78],["2026-04-06","Costco",-316.87],["2026-04-06","Fruit talk",-391.1],["2026-04-06","Misc",-217.72],["2026-04-06","Misc",-14.23],["2026-04-06","Packaging",-762.74],["2026-04-06","Packaging",-111.87],["2026-04-06","Russel\u2019s poultry",-705.2],["2026-04-06","Russel\u2019s poultry",-205.3],["2026-04-06","Russel\u2019s poultry",-189.0],["2026-04-06","United",-2737.0],["2026-04-06","United",-1966.75],["2026-04-06","United",-1766.4],["2026-04-06","United",-812.8],["2026-04-06","Woolworth",-44.29],["2026-04-06","Woolworth",-43.2],["2026-04-06","consulting",-250.0],["2026-04-06","deliverect",-22.0],["2026-04-06","fiesta food",-760.0],["2026-04-06","gst",-1600.0],["2026-04-06","loans",-1573.0],["2026-04-06","window cleaner",-40.0],["2026-04-07","Rent",-1296.0],["2026-04-08","Acounting",-195.0],["2026-04-08","Bins",-175.0],["2026-04-08","Electricty",-527.0],["2026-04-08","Gas",-240.0],["2026-04-08","Insurance",-345.0],["2026-04-08","Phone",-10.0],["2026-04-08","Point of sale",-51.0],["2026-04-08","xero",-36.0],["2026-04-13","Asahi",-919.17],["2026-04-13","Baiaida Poultry",-2264.4],["2026-04-13","Baiaida Poultry",-2124.4],["2026-04-13","Costco",-357.33],["2026-04-13","Costco",-59.97],["2026-04-13","Fruit talk",-617.66],["2026-04-13","Fruit talk",-437.94],["2026-04-13","Fruit talk",-343.27],["2026-04-13","Fruit talk",-307.62],["2026-04-13","Russel\u2019s poultry",-828.7],["2026-04-13","Russel\u2019s poultry",-324.7],["2026-04-13","Russel\u2019s poultry",-126.0],["2026-04-13","Russel\u2019s poultry",-73.2],["2026-04-13","United",-4156.7],["2026-04-13","United",-1763.65],["2026-04-13","United",-52.95],["2026-04-13","Woolworth",-112.12],["2026-04-13","Woolworth",-41.39],["2026-04-13","Woolworth",-33.95],["2026-04-13","Woolworth",-26.0],["2026-04-13","Woolworth",-13.04],["2026-04-13","Woolworth",-11.55],["2026-04-13","consulting",-250.0],["2026-04-13","deliverect",-22.0],["2026-04-13","filters",-112.0],["2026-04-13","gst",-1600.0],["2026-04-13","loans",-1573.0],["2026-04-14","Rent",-1296.0],["2026-04-15","Acounting",-195.0],["2026-04-15","Bins",-175.0],["2026-04-15","Electricty",-527.0],["2026-04-15","Gas",-240.0],["2026-04-15","Insurance",-345.0],["2026-04-15","Phone",-10.0],["2026-04-15","Point of sale",-51.0],["2026-04-15","xero",-36.0],["2026-04-20","Asahi",-860.03],["2026-04-20","Baiaida Poultry",-2264.4],["2026-04-20","Baiaida Poultry",-2054.4],["2026-04-20","Bunnings",-38.66],["2026-04-20","Costco",-369.36],["2026-04-20","Doordash",680.0],["2026-04-20","Fruit talk",-532.6],["2026-04-20","Fruit talk",-232.7],["2026-04-20","Fruit talk",-197.5],["2026-04-20","Misc",-147.83],["2026-04-20","Packaging",-325.49],["2026-04-20","Russel\u2019s poultry",-915.3],["2026-04-20","Russel\u2019s poultry",-393.2],["2026-04-20","Russel\u2019s poultry",-332.2],["2026-04-20","Russel\u2019s poultry",-209.8],["2026-04-20","Russel\u2019s poultry",-140.7],["2026-04-20","Uber",8927.0],["2026-04-20","United",-3856.3],["2026-04-20","United",-2397.85],["2026-04-20","Wage",-8894.0],["2026-04-20","Woolworth",-174.88],["2026-04-20","Woolworth",-67.0],["2026-04-20","Woolworth",-39.95],["2026-04-20","Woolworth",-33.96],["2026-04-20","card",32371.0],["2026-04-20","cc",3044.0],["2026-04-20","consulting",-250.0],["2026-04-20","gst",-1600.0],["2026-04-20","loans",-1573.0],["2026-04-20","window cleaner",-40.0],["2026-04-21","Rent",-1296.0],["2026-04-22","Acounting",-195.0],["2026-04-22","Bins",-175.0],["2026-04-22","Electricty",-527.0],["2026-04-22","Gas",-240.0],["2026-04-22","Insurance",-345.0],["2026-04-22","Phone",-10.0],["2026-04-22","Point of sale",-51.0],["2026-04-22","xero",-36.0],["2026-04-27","Asahi",-819.87],["2026-04-27","Baiaida Poultry",-2124.4],["2026-04-27","Baiaida Poultry",-1342.2],["2026-04-27","Doordash",815.0],["2026-04-27","Fruit talk",-1246.0],["2026-04-27","Misc",-78.0],["2026-04-27","Misc",-27.0],["2026-04-27","Misc",-4.95],["2026-04-27","Packaging",-813.45],["2026-04-27","Russel\u2019s poultry",-962.5],["2026-04-27","Russel\u2019s poultry",-320.0],["2026-04-27","Russel\u2019s poultry",-266.7],["2026-04-27","Russel\u2019s poultry",-254.5],["2026-04-27","Russel\u2019s poultry",-138.7],["2026-04-27","Uber",8526.0],["2026-04-27","United",-3054.6],["2026-04-27","United",-2726.95],["2026-04-27","Wage",-9373.0],["2026-04-27","Woolworth",-88.3],["2026-04-27","Woolworth",-28.04],["2026-04-27","Woolworth",-22.0],["2026-04-27","Woolworth",-16.36],["2026-04-27","Woolworth",-11.85],["2026-04-27","Woolworth",-11.4],["2026-04-27","Woolworth",-9.98],["2026-04-27","Woolworth",-9.0],["2026-04-27","card",33438.0],["2026-04-27","cc",2820.0],["2026-04-27","consulting",-250.0],["2026-04-27","gst",-1600.0],["2026-04-27","loans",-419.0],["2026-04-28","Rent",-1296.0],["2026-04-29","Acounting",-195.0],["2026-04-29","Bins",-175.0],["2026-04-29","Electricty",-527.0],["2026-04-29","Gas",-240.0],["2026-04-29","Insurance",-345.0],["2026-04-29","Phone",-10.0],["2026-04-29","Point of sale",-51.0],["2026-04-29","xero",-36.0],["2026-05-04","Asahi",-793.0],["2026-05-04","Baiaida Poultry",-4318.0],["2026-05-04","Doordash",1064.0],["2026-05-04","Fruit talk",-1050.0],["2026-05-04","Misc",-11600.0],["2026-05-04","Misc",-104.25],["2026-05-04","Packaging",-852.0],["2026-05-04","Russel\u2019s poultry",-1502.0],["2026-05-04","Uber",8328.0],["2026-05-04","United",-4765.0],["2026-05-04","Wage",-9819.0],["2026-05-04","aldi",-509.0],["2026-05-04","card",27730.0],["2026-05-04","cc",2463.0],["2026-05-04","consulting",-250.0],["2026-05-04","gst",-1600.0],["2026-05-04","loans",-419.0],["2026-05-04","window cleaner",-40.0],["2026-05-05","Rent",-1296.0],["2026-05-06","Acounting",-195.0],["2026-05-06","Bins",-175.0],["2026-05-06","Electricty",-527.0],["2026-05-06","Gas",-240.0],["2026-05-06","Insurance",-345.0],["2026-05-06","Phone",-10.0],["2026-05-06","Point of sale",-51.0],["2026-05-06","xero",-36.0],["2026-05-11","Asahi",-865.0],["2026-05-11","Baiaida Poultry",-3466.0],["2026-05-11","Doordash",1019.0],["2026-05-11","Fruit talk",-1328.0],["2026-05-11","Packaging",-702.0],["2026-05-11","Russel\u2019s poultry",-1889.0],["2026-05-11","Uber",8125.0],["2026-05-11","United",-5873.0],["2026-05-11","Wage",-8976.0],["2026-05-11","aldi",-251.0],["2026-05-11","card",29487.0],["2026-05-11","cc",3105.0],["2026-05-11","consulting",-250.0],["2026-05-11","gst",-1600.0],["2026-05-11","loans",-419.0],["2026-05-12","Rent",-1296.0],["2026-05-13","Acounting",-195.0],["2026-05-13","Bins",-175.0],["2026-05-13","Electricty",-527.0],["2026-05-13","Gas",-240.0],["2026-05-13","Insurance",-345.0],["2026-05-13","Phone",-10.0],["2026-05-13","Point of sale",-51.0],["2026-05-13","xero",-36.0],["2026-05-18","United",-2961.5],["2026-05-18","United",-2320.9],["2026-05-18","United",-320.1],["2026-05-18","United",-126.9],["2026-05-18","United",-83.4],["2026-05-18","consulting",-250.0],["2026-05-18","gst",-1600.0],["2026-05-18","loans",-419.0],["2026-05-18","window cleaner",-40.0],["2026-05-19","Rent",-1296.0],["2026-05-20","Acounting",-195.0],["2026-05-20","Bins",-175.0],["2026-05-20","Electricty",-527.0],["2026-05-20","Gas",-240.0],["2026-05-20","Insurance",-345.0],["2026-05-20","Packaging",-11.0],["2026-05-20","Phone",-10.0],["2026-05-20","Point of sale",-51.0],["2026-05-20","xero",-36.0],["2026-05-21","Misc",-21.25],["2026-05-21","Russel\u2019s poultry",-346.0],["2026-05-21","aldi",-24.3],["2026-05-22","Asahi",-571.03],["2026-05-22","Baiaida Poultry",-2124.4],["2026-05-22","Baiaida Poultry",-1272.2],["2026-05-22","Baiaida Poultry",-614.8],["2026-05-22","Costco",-35.98],["2026-05-22","Fruit talk",-86.38],["2026-05-22","Misc",-154.32],["2026-05-22","Misc",-40.5],["2026-05-22","Packaging",-621.94],["2026-05-22","Russel\u2019s poultry",-889.5],["2026-05-22","Russel\u2019s poultry",-332.2],["2026-05-22","Russel\u2019s poultry",-133.2],["2026-05-22","Russel\u2019s poultry",-128.5],["2026-05-22","aldi",-46.46],["2026-05-22","aldi",-16.77],["2026-05-22","aldi",-15.25],["2026-05-22","aldi",-12.69],["2026-05-22","aldi",-4.99],["2026-05-25","consulting",-250.0],["2026-05-25","gst",-1600.0],["2026-05-25","loans",-419.0],["2026-05-26","Rent",-1296.0],["2026-05-27","Acounting",-195.0],["2026-05-27","Bins",-175.0],["2026-05-27","Electricty",-527.0],["2026-05-27","Gas",-240.0],["2026-05-27","Insurance",-345.0],["2026-05-27","Phone",-10.0],["2026-05-27","Point of sale",-51.0],["2026-05-27","xero",-36.0]];
+let SEED=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 // seed only the EXPENSE history from the CSV; income now comes from the Square/Uber/DoorDash sync
 function seedTx(){return SEED.filter(r=>r[2]<0).map((r,i)=>({id:'s'+i,date:r[0],type:'expense',cat:r[1],amt:Math.abs(r[2])}));}
 // Real COGS supplier invoices read straight from the Bills Drive folder (the in-app PDF reader can't
 // fetch text reliably, so they're loaded here). Weeks up to 24 May already come from the imported CSV
 // history, so only invoices dated 25 May onward are added — avoids double-counting. Ask Claude to refresh
 // this list when new invoices arrive.
-const BILLS_DATA=[
- {d:'2026-03-30',v:'Baiada Poultry',a:2124.40,i:'U779117',f:'1TP772bguwNqaCFIlJuTeP8bRPbMuY-sL'},
- {d:'2026-03-30',v:'United Foodservice',a:2587.70,i:'SI477254',f:'1AFaLl8UTnMHkDtm9176XsLup1b_9Rxhg'},
- {d:'2026-03-30',v:"Russel's Poultry",a:324.50,i:'RU711900',f:'169jrK-S9Eb9mY24-DgEjY8L2u91cfalK'},
- {d:'2026-03-31',v:"Russel's Poultry",a:319.50,i:'RU712040',f:'1xx_LnrZMGcuaSJBf7sTXNXJDgDlb5uOE'},
- {d:'2026-04-01',v:'CFM cooking oil',a:287.50,i:'INV-137768',f:'1Wf6oehHp9tUd5R-EHCpchkeQS1eZaoxi'},
- {d:'2026-04-01',v:"Russel's Poultry",a:187.50,i:'RU712281',f:'1gLQwAchX3VnNMArOpTCD8tVYsuuw4Wjh'},
- {d:'2026-04-02',v:'Baiada Poultry',a:2264.40,i:'U780658',f:'16R3ynKXAHKZ-RsKhF-DEWz_Z1nB31X1q'},
- {d:'2026-04-02',v:'Fresho produce',a:412.65,i:'F52014824',f:'14xjpzrxOUEktSNg3RgcYy1kvho8RVksR'},
- {d:'2026-04-02',v:'United Foodservice',a:5088.95,i:'SI478166',f:'1Xu1YDBq7qc6RT4mf-wKsZKyhCp82egTW'},
- {d:'2026-04-02',v:'Fiesta Foods',a:760.00,i:'30143',f:'1ARICwOv3tqQeEZu0QWhQcmgetojWhJGX'},
- {d:'2026-04-02',v:"Russel's Poultry",a:1330.50,i:'RU712439',f:'12TMhidh_p2JLHJmhAvi6_NwUsRPnAdDs'},
- {d:'2026-04-04',v:'Baiada Poultry',a:1984.40,i:'U781361',f:'1L_9u953CX8v1OLO5hwInvvt4JZ1FnLYB'},
- {d:'2026-04-04',v:'Fresho produce',a:539.47,i:'F52075746',f:'1XDEklo-wCNj1_9zJ224bgNQLNFDKvhlg'},
- {d:'2026-04-07',v:'Fresho produce',a:437.94,i:'F52134486',f:'1506zzdenb0BtxoFtUU-1TcElka96lFtT'},
- {d:'2026-04-07',v:'United Foodservice',a:1766.40,i:'SI478577',f:'1hLY7EzicDq6vBGBs6k2L41EB1AO-N5xX'},
- {d:'2026-04-07',v:'G & W Packaging',a:762.74,i:'INV-49026',f:'101yB0nLeQWTOtvakesEZHU72-adiSn-P'},
- {d:'2026-04-07',v:"Russel's Poultry",a:205.30,i:'RU712677',f:'16dqSmDiZZd3bIdEcv7nHV1LIwMXcyHWi'},
- {d:'2026-04-08',v:"Russel's Poultry",a:189.00,i:'RU712802',f:'1Q5Ut7-hfPf2IPUXECBvBDTQkz7_shbm0'},
- {d:'2026-04-09',v:'Baiada Poultry',a:2194.40,i:'U782914',f:'18hji1tiCHsbahW0lobZ9MHQoMgScgn0F'},
- {d:'2026-04-09',v:'United Foodservice',a:812.80,i:'SI478944',f:'1FFOWyi3XEdQwgzZ3jVLuHeWAPL11k6lF'},
- {d:'2026-04-09',v:'G & W Packaging',a:111.87,i:'INV-49071',f:'14jlZltRMmcYbHtwDAcZ49yaOClJDpQnl'},
- {d:'2026-04-09',v:'CFM cooking oil',a:564.00,i:'INV-138175',f:'1FHtbvmI2afseJFYYsB6tQUw_X2W4EjtH'},
- {d:'2026-04-10',v:'Fresho produce',a:391.10,i:'F52279699',f:'1RwH5zMWva8oPnhHUD8KEZlNLt8NQTcEN'},
- {d:'2026-04-10',v:'United Foodservice',a:1966.75,i:'SI479097',f:'1mb5Xtxpnbdqi-jmwS8csPd5j5Q_mGJcM'},
- {d:'2026-04-10',v:"Russel's Poultry",a:705.20,i:'RU713125',f:'1AGWXfg-4Hq-9SZ-_dPi1itACSNmdddop'},
- {d:'2026-04-13',v:'Baiada Poultry',a:2124.40,i:'U784633',f:'1bYh6qXWFTq3cq2c5G8o5lwYtYGybNqsc'},
- {d:'2026-04-13',v:'United Foodservice',a:4156.70,i:'SI479355',f:'1oOHmYGXO4YszSVOVMpbSG2CX8JA4Rrbx'},
- {d:'2026-04-13',v:'United Foodservice',a:52.95,i:'SI479356',f:'1TlOk1beG68m3QiENhdn8J-U5BL38zSjS'},
- {d:'2026-04-13',v:'G & W Packaging',a:489.58,i:'INV-49109',f:'1T65fcch72653SEbSUt3MCySzEJc6YK2E'},
- {d:'2026-04-13',v:"Russel's Poultry",a:126.00,i:'RU713220',f:'1p_qW_aM643rCedfH8GGXRnESFxYEpgBE'},
- {d:'2026-04-14',v:'Fresho produce',a:307.62,i:'F52408963',f:'12iUAmKTrImU-ZTxYLfXlfXeY75uRVozG'},
- {d:'2026-04-14',v:"Russel's Poultry",a:73.20,i:'RU713460',f:'18dxF9KtBes3qXsFdKv7Wituwg6stc78O'},
- {d:'2026-04-15',v:'Fresho produce',a:343.27,i:'F52454768',f:'1T581QXVoV2QVHHB8FuR3vMR_NE002HBq'},
- {d:'2026-04-15',v:'Asahi drinks',a:885.83,i:'9018115705',f:'1Ox1oA-uVxHTuvehYMazI4w-YVKV2_SwY'},
- {d:'2026-04-16',v:'Baiada Poultry',a:2264.40,i:'U786945',f:'1BeH1qZtwnCJU_DpoOL4dIIwrq-kKIpO6'},
- {d:'2026-04-16',v:'CFM cooking oil',a:569.50,i:'INV-138560',f:'1ZzXu28XQ_npLIJlidelfZxPpKR4Qwbfy'},
- {d:'2026-04-16',v:"Russel's Poultry",a:324.70,i:'RU713634',f:'1WuyXLMP_kAwnfACN2EdP2afV-6v-IMd9'},
- {d:'2026-04-17',v:'Fresho produce',a:617.66,i:'F52550432',f:'1llBPSjdrbrGt1VtXaUZldfvVZcZNa9WT'},
- {d:'2026-04-17',v:'United Foodservice',a:1763.65,i:'SI480263',f:'16cmox9Hw9_uwd4LcP1i3ESJbywSfl0Lg'},
- {d:'2026-04-17',v:"Russel's Poultry",a:828.70,i:'RU713891',f:'1s5dkyjX2jwdBsZiidUF1_aT-7Ad8BIlH'},
- {d:'2026-04-20',v:'Baiada Poultry',a:2054.40,i:'U788919',f:'1UAZouNsWxr_ErVOwxgkZm8MKSE19fmHa'},
- {d:'2026-04-20',v:'Fresho produce',a:232.70,i:'F52643537',f:'1Bn94iHz1B0Wa3gqRL_Vqp78B0CfzQTPu'},
- {d:'2026-04-20',v:'United Foodservice',a:3856.30,i:'SI480537',f:'1IEnt8N_ZUvwSJGHaq9v7B3Qt45NFg_bZ'},
- {d:'2026-04-20',v:'G & W Packaging',a:893.31,i:'INV-49240',f:'1TXljjY170LRMLB6G9z0lh0FQTXhdt_lQ'},
- {d:'2026-04-20',v:"Russel's Poultry",a:332.20,i:'RU714087',f:'1fmhpLyh3A3_LpW5ZhhF4hi1DSPVLZMCB'},
- {d:'2026-04-21',v:'G & W Packaging',a:325.49,i:'INV-49285',f:'1B-b0nhQIikKzhmdQXV0Lth4qISL7-t--'},
- {d:'2026-04-21',v:"Russel's Poultry",a:393.20,i:'RU714206',f:'1JT-DnpwbxIR_LnLsBbVb6tmjDi9QPiLL'},
- {d:'2026-04-22',v:'Fresho produce',a:197.50,i:'F52726912',f:'1UQJoBC9I5kJVR9SqlnZsloURtj7bnF33'},
- {d:'2026-04-22',v:"Russel's Poultry",a:140.70,i:'RU714333',f:'12dLUoGXj7R8oEieFRTZHoVz4JN3Mum04'},
- {d:'2026-04-23',v:'Baiada Poultry',a:2264.40,i:'U790318',f:'13nMdjEh6T70wqF1Pzqf0gpCmh1pHVQt2'},
- {d:'2026-04-23',v:"Russel's Poultry",a:209.80,i:'RU714498',f:'1LAq8uJihLssKoC7JnBfAxWJZ9FBOqzlb'},
- {d:'2026-04-24',v:'Fresho produce',a:532.60,i:'F52831135',f:'1aOA4GIjW3k1N_6TAI-TLsa9y3OyY_9Up'},
- {d:'2026-04-24',v:'Asahi drinks',a:860.03,i:'9018166757',f:'1dirpcqgDFYhyfNsRtWmNTiOrkdaFRxi8'},
- {d:'2026-04-24',v:'United Foodservice',a:2397.85,i:'SI481538',f:'1zO7H2fyrNY6oluBGwsX_lyyQFqbSeX26'},
- {d:'2026-04-24',v:"Russel's Poultry",a:915.30,i:'RU714664',f:'1ZHzCjziOJrW1Ye3uYMkXCQZ2NhkDpMFg'},
- {d:'2026-04-27',v:'Baiada Poultry',a:2124.40,i:'U792486',f:'1dPLE6ybEvJFWKz2cHPdEpQOB7WKHaxSR'},
- {d:'2026-04-27',v:'Fresho produce',a:472.53,i:'F52915685',f:'1uBJXEn449ccqnbz6zgWjV3kRDfqgCWLg'},
- {d:'2026-04-27',v:'Fresho produce',a:49.00,i:'F52915747',f:'141h6EEHsj4qEt7GgyeERZw-gkB8Dkv3n'},
- {d:'2026-04-27',v:'United Foodservice',a:2726.95,i:'SI481798',f:'1jzzahPsd4Jl9cJKWsTIWpSTrIOIfHUOc'},
- {d:'2026-04-27',v:'G & W Packaging',a:813.45,i:'INV-49366',f:'1Y5890vAfEII729IX2bNsgCp166avqe5H'},
- {d:'2026-04-27',v:"Russel's Poultry",a:320.00,i:'RU714776',f:'10-TE7pZZuhy_WQZAVoMe_Jx4iLiVPAnc'},
- {d:'2026-04-28',v:"Russel's Poultry",a:138.70,i:'RU714965',f:'1WPAnFNwPZyqG2kmVZLHTmyJIVHZ2kHry'},
- {d:'2026-04-29',v:'Melbourne Chilli',a:320.00,i:'BCS290426',f:'1ppZyzia3DEb-wSVhbftX4a2I04wKvNge'},
- {d:'2026-04-29',v:"Russel's Poultry",a:266.70,i:'RU715108',f:'1Wj1LyIy-VR4mjhZtgvk07OiLQtFmKemF'},
- {d:'2026-04-29',v:"Russel's Poultry",a:254.50,i:'RU715192',f:'1Umo9jN_8yd-WhzDWko5iGbK9SD3Pvmtq'},
- {d:'2026-04-30',v:'Baiada Poultry',a:1342.20,i:'U793728',f:'18XR2AxgxLC4fWSKZihc-XNHXNSOHg_YH'},
- {d:'2026-04-30',v:'Fresho produce',a:435.12,i:'F53049947',f:'1KhUmXf-kznTEFQPCN3NOX4XPCrzjjb3s'},
- {d:'2026-04-30',v:'Fresho produce',a:54.00,i:'F53050035',f:'1f_7UksIv_jXQZtqGQAwuVgElgyenVaem'},
- {d:'2026-04-30',v:'G & W Packaging',a:206.80,i:'INV-49457',f:'1t8ZlQDlS6uP1x7pDuuPbKLf4Da0bLdsr'},
- {d:'2026-04-30',v:'CFM cooking oil',a:569.50,i:'INV-139439',f:'1lwPQkHZZ00d2-wWl9mz5db-mXBWRHJ0H'},
- {d:'2026-05-01',v:'United Foodservice',a:3054.60,i:'SI482813',f:'16Pyym7lTIBxjgUbUkpquBBSeukXEHQ9E'},
- {d:'2026-05-01',v:'Asahi drinks',a:760.79,i:'9018214116',f:'1k7Q2KAgN8SnKeT8B6NAKQd-JD76Oy9i6'},
- {d:'2026-05-01',v:"Russel's Poultry",a:962.50,i:'RU715417',f:'1eBDWs4KnsFayVIVM5pT24hyevYL8rCTm'},
- {d:'2026-05-04',v:'United Foodservice',a:2854.80,i:'SI483097',f:'1O8ueYRS09XOx_PmWyROrimIOZME0xDFK'},
- {d:'2026-05-04',v:'G & W Packaging',a:852.32,i:'INV-49495',f:'1aTjoMQFS1HaCnliRfq0AgVE4t1OVwV41'},
- {d:'2026-05-04',v:"Russel's Poultry",a:266.70,i:'RU715550',f:'1lMTT4D1Fts7Sy3rDTAnXfgg_6tIdOInv'},
- {d:'2026-05-05',v:'Fresho produce',a:571.65,i:'F53236643',f:'1zZnjp2htOREqUnQpqPbw8iKk8dMx2he-'},
- {d:'2026-05-05',v:"Russel's Poultry",a:141.20,i:'RU715710',f:'1IqM6MXWRuF6qFWupouS7X_psTBw7oRFw'},
- {d:'2026-05-07',v:'Baiada Poultry',a:2194.40,i:'U797527',f:'1TX2l_LAGqdMwcRf0wQ2UitnpDp1r3CGX'},
- {d:'2026-05-07',v:"Russel's Poultry",a:322.50,i:'RU715959',f:'1joM3cR7GFMQfYtvEECF8-lHvxunL4IId'},
- {d:'2026-05-08',v:'Fresho produce',a:479.58,i:'F53390161',f:'112aTPsKPaVIwqdsAhA-8D81B8F6swp04'},
- {d:'2026-05-08',v:'Asahi drinks',a:793.35,i:'9018258250',f:'1GXPrv5nOR9IVeVWg6jQ9WIhfH3vQo0U5'},
- {d:'2026-05-08',v:'United Foodservice',a:1863.70,i:'SI484085',f:'1CM2XXTa3xcJTk-wGJgBNUaYCgyj6F7Wi'},
- {d:'2026-05-08',v:"Russel's Poultry",a:773.20,i:'RU716213',f:'1B_VOOKgZywqJDV3kl88LsNRNv_TTjLt_'},
- {d:'2026-05-11',v:'Baiada Poultry',a:2124.40,i:'U799839',f:'1LIGZKOA8F2D7N0BWc3eLl3VJ7Eo5nph_'},
- {d:'2026-05-11',v:'United Foodservice',a:2998.75,i:'SI484371',f:'1A84dM85w70cpEdTBHRDzsjJ3buZ4owgO'},
- {d:'2026-05-11',v:'CFM cooking oil',a:281.50,i:'INV-140097',f:'1y9Mlopc1ks1BOct5GmGg1VxSguL6VdRl'},
- {d:'2026-05-11',v:'G & W Packaging',a:702.79,i:'INV-49629'},
- {d:'2026-05-11',v:"Russel's Poultry",a:254.50,i:'RU716303',f:'1ON2M0al_gFMmAJGdfDSsp9tpiMGpBdNx'},
- {d:'2026-05-12',v:"Russel's Poultry",a:267.20,i:'RU716480',f:'1lfS38OsmGS68Gv7mDbxmT0ANKfa86nfM'},
- {d:'2026-05-13',v:"Russel's Poultry",a:400.20,i:'RU716668',f:'1FMth2OzW2xZxw7sHpXkLMGhEa2hkNVC1'},
- {d:'2026-05-14',v:'Baiada Poultry',a:1342.20,i:'U801276',f:'1gJ-tF7d1SWzgmsVh30z2XEzXzdzTtx53'},
- {d:'2026-05-15',v:'Asahi drinks',a:864.99,i:'9018282428',f:'1-5yF3jGKEGtJhdGF_NOC_D-RpNfWfCcU'},
- {d:'2026-05-15',v:'United Foodservice',a:2816.55,i:'SI485374',f:'1dUwzCqud8_S3-25cTBmgHTw_JRA0WKyW'},
- {d:'2026-05-15',v:"Russel's Poultry",a:967.20,i:'RU716999',f:'1zCC9iLPoSmg5O0QK8LTUN_pElzCSUYyD'},
- {d:'2026-05-16',v:'Fresho produce',a:387.68,i:'F53718511',f:'1Pv21xMCpX738T0TLeOTLZMHo2eUTEfwP'},
- {d:'2026-05-16',v:'Fresho produce',a:84.80,i:'F53731060',f:'1TpcEPfXeIK5JRQ-Rez-49KVexu2YjRw1'},
- {d:'2026-05-18',v:'Baiada Poultry',a:2124.40,i:'U802908',f:'1p6H0YUUL0UyiUfShFUAYByfjehKrvI3S'},
- {d:'2026-05-23',v:'Baiada Poultry',a:614.80,i:'U807367',f:'1WdTylLZEMy0nFP5WMCY1vdrRqS3XWhyH'},
- {d:'2026-05-18',v:'United Foodservice',a:2961.50,i:'SI485644'},
- {d:'2026-05-21',v:'United Foodservice',a:320.10,i:'SI486556'},
- {d:'2026-05-21',v:'United Foodservice',a:126.90,i:'SI486557'},
- {d:'2026-05-21',v:'United Foodservice',a:83.40,i:'SI486558'},
- {d:'2026-05-22',v:'United Foodservice',a:2320.90,i:'SI486620'},
- {d:'2026-05-19',v:'Fresho produce',a:365.32,i:'F53804326',f:'1CGPQFr5wSfkYwFGqyoes3yZ0BmS4mhxO'},
- {d:'2026-05-22',v:'Fresho produce',a:501.78,i:'F53953769',f:'10BxU6oxHm2qYMiqfaiSgEH5KHiITFbY7'},
- {d:'2026-05-23',v:'Fresho produce',a:86.38,i:'F54009999',f:'1QOFx_9IhU5Ft1toWjZGwGgdSOS8fAwZ6'},
- {d:'2026-05-22',v:'Asahi drinks',a:571.03,i:'9018314294',f:'1ztkVZdoKd8mj-XghORfnVwxbt8PveTSe'},
- {d:'2026-05-21',v:'CFM cooking oil',a:287.50,i:'INV-140680',f:'1gLWi786c1B9k9BkfAss19Njne5SCrvMH'},
- {d:'2026-05-18',v:'G & W Packaging',a:621.94,i:'INV-49765'},
- {d:'2026-06-06',v:'Baiada Poultry',a:210.00,i:'U814694',f:'1DEBY3p3NPHE3FTe2cb-VJMcmJHLRlevA'},
- {d:'2026-06-01',v:'G & W Packaging',a:1073.38,i:'INV-50001'},
- {d:'2026-05-25',v:'G & W Packaging',a:1207.14,i:'INV-49887'},
- {d:'2026-06-05',v:"Russel's Poultry",a:625.00,i:'RU719335',f:'1xeVvY4X4FYC_blNSef-rkkzpDR4Ya99V'},
- {d:'2026-06-04',v:"Russel's Poultry",a:121.00,i:'RU719067',f:'1Ei9zQafawWp3lVEw8B6a1RiwreDosL7X'},
- {d:'2026-06-03',v:"Russel's Poultry",a:126.00,i:'RU718995',f:'1e_CyIypPmJMmkwaeXcfxPcwWl_mJC9ET'},
- {d:'2026-06-02',v:"Russel's Poultry",a:225.00,i:'RU718865',f:'1zarMdHYDBKioVuMrD6uYapKT7OYWy3cA'},
- {d:'2026-06-01',v:"Russel's Poultry",a:266.70,i:'RU718651',f:'190UT1Kxh2S3TgCLK0ru2guamwuScjqlN'},
- {d:'2026-05-29',v:"Russel's Poultry",a:756.00,i:'RU718521',f:'1hMqbY7QNdEBX7vkYujl5UWAFIp0nwqQd'},
- {d:'2026-05-28',v:"Russel's Poultry",a:201.50,i:'RU718288',f:'1xOgC5YZSRPwffBUFWcz93wXCQRcJ3oCZ'},
- {d:'2026-05-27',v:"Russel's Poultry",a:252.00,i:'RU718222',f:'1hCbKMj89GBQuurqmun_rC0Txb6vuwdDQ'},
- {d:'2026-05-26',v:"Russel's Poultry",a:225.00,i:'RU718085',f:'1o47-nUaOeIvUNeCtJlF67rRqKHe2uJNi'},
- {d:'2026-06-05',v:'United Foodservice',a:2778.70,i:'SI489284',f:'1pBcOSYsHCIskEd05Uz3ZiZbovFdX8w0T'},
- {d:'2026-06-04',v:'Baiada Poultry',a:2194.40,i:'U812713',f:'1O7fLkT4rChCSDhc7U6zGqClKZLdY6_D3'},
- {d:'2026-06-04',v:'Fresho produce',a:319.93,i:'F54469859',f:'1fg95gTfdbGA5wd-XEMu7ZT1LIlZhmTJt'},
- {d:'2026-06-04',v:'CFM cooking oil',a:281.50,i:'INV-141522',f:'1LPOlXnCwGC9tOphEiXnYhtpLjZEGBWmc'},
- {d:'2026-06-02',v:'Baiada Poultry',a:315.92,i:'U812069',f:'1CTS_C3r84JrjHkkSOpEJ_4ujrZiiU6bz'},
- {d:'2026-06-01',v:'Baiada Poultry',a:2054.40,i:'U811210',f:'1j8FF_FJwGhvbQY7nwb8HOBSOhUGkb4A9'},
- {d:'2026-06-01',v:'United Foodservice',a:2954.05,i:'SI488252',f:'17HTojWWB-_khkVc1ItGEoe5URXejWUrd'},
- {d:'2026-06-01',v:'Fresho produce',a:326.15,i:'F54334384',f:'1JjNx52IAQ3KCNFnuHXykc-7Z6zQGuiXD'},
- {d:'2026-05-29',v:'Baiada Poultry',a:500.36,i:'U809250',f:'12GYVXB_YGM5mt72ViZa5xAqEjVZ0oqB-'},
- {d:'2026-05-29',v:'United Foodservice',a:2545.85,i:'SI487959',f:'17goCE5y_MmXhk17pd4wwVoFzpbZpeOyf'},
- {d:'2026-05-29',v:'Asahi drinks',a:951.78,i:'9018361887',f:'1ClkzyRar2id4GVvTAn8AmrVUlSBssDWP'},
- {d:'2026-05-28',v:'Baiada Poultry',a:1272.20,i:'U808695',f:'1YE-zDcyPrmm-ilBNrTtXb3xGg6_sKa_A'},
- {d:'2026-05-28',v:'United Foodservice',a:545.00,i:'SI487821',f:'14fszuG4QMWvIpsQ1lGwM0uPbJFFtMFuh'},
- {d:'2026-05-28',v:'CFM cooking oil',a:281.50,i:'INV-141105',f:'1P3joyNa9LRqdUJ3MqBsZiM3tVVx9Cio7'},
- {d:'2026-05-28',v:'Feel Good Foods',a:383.35,i:'332487',f:'1rRohnhp0wmlSoO9fp3i-k7uJaghJM2H2'},
- {d:'2026-05-28',v:'Fresho produce',a:387.45,i:'F54183157',f:'1vtGO3MzlaKhvOpCHztkNm6-E7aD7B90z'},
- {d:'2026-05-26',v:'Fiesta Foods',a:760.00,i:'30233',f:'13ZqOBjLK0sRR-9AnzgfGbmWLUVE-tpiu'},
- {d:'2026-05-25',v:'Baiada Poultry',a:1439.60,i:'U807211',f:'1dzpY_RR7gLvfnDglSn5YzSzhvqcjzYbL'},
- {d:'2026-05-25',v:'United Foodservice',a:3285.95,i:'SI486914',f:'1l4yi7iqPxqcV3bdX_KW-OqdvcRucxAoA'},
- {d:'2026-05-25',v:'Fresho produce',a:482.35,i:'F54057113',f:'1VW4VhvQr9tleqNIOO9otfqszKKnjPS_J'},
- {d:'2026-06-09',v:'Baiada Poultry',a:1984.40,i:'U814693',f:'1RX5wMfrCBvSbunZBeX3nZERHmc1EnosN'},
- {d:'2026-06-09',v:'United Foodservice',a:2448.25,i:'SI489663',f:'1zM0ZrEf0jBg6iRRqUxmDrm1g4bkASobA'},
- {d:'2026-06-09',v:"Russel's Poultry",a:461.20,i:'RU719488',f:'1lGtZ2BJ1TJM5hMFIKBhy7xbwpIQK10Ur'},
- {d:'2026-06-09',v:'Fresho produce',a:384.17,i:'F54648150',f:'1hfvUcCe3sR5bx3qocluTAHU2Q0Kc2wAq'},
- {d:'2026-06-11',v:'Poultry Plus',a:915.00,i:'PP563962',f:'1Rz8JeMk2CGzdOrRKgt0b-jsPuNiIqtqp'},
- {d:'2026-06-11',v:'CFM cooking oil',a:281.50,i:'INV-141966',f:'141Y-TrGQwPOxwGKVlsu5nvHh7Ur9_vVm'},
- {d:'2026-06-12',v:'United Foodservice',a:2541.45,i:'SI490515',f:'1mbDny_SAdMJe02AthtB_X0004aH_miyZ'},
- {d:'2026-06-12',v:'Baiada Poultry',a:280.00,i:'U816583',f:'1SD2JwptXkIwznPHa6cTy9t6lcfBfKrr3'},
- {d:'2026-06-12',v:'Fresho produce',a:319.84,i:'F54821524',f:'1bc8EIy4D9VEEPtH6rTFnKl2p0qIK4mnV'},
- {d:'2026-06-12',v:'Melbourne Meat',a:380.00,i:'F54709842',f:'1brcectVrVSoZJzQcZAnBEW6QHy1UXsF6'},
- {d:'2026-06-13',v:'Baiada Poultry',a:491.84,i:'U817154',f:'16NmXH23m0ufhvSRYIxYTQXEAFyin05p4'},
- {d:'2026-06-13',v:'Fresho produce',a:160.11,i:'F54840244',f:'1zE6CZN3x0IPNfhrqhluNSsCRmfsBQgiM'},
- {d:'2026-06-15',v:'Baiada Poultry',a:2054.40,i:'U817970',f:'1hyHDVfh-PI95sfuc7CUOyw5kvI3n9mnw'},
- {d:'2026-06-15',v:'United Foodservice',a:2747.25,i:'SI490794',f:'15Vcb7NGA_FLjx3TtK9eJm7jK50_FLJPF'},
- {d:'2026-06-15',v:'Fresho produce',a:245.46,i:'F54894878',f:'14FyqEABESwVBc0oCOq0VQ6prjSzEIut4'},
- {d:'2026-06-15',v:"G & W Packaging",a:551.87,i:'INV-50236',f:'1CplleWxJCHn5wqP7qO-8UY3v3O0UlVln'},
- {d:'2026-06-16',v:"Fresho produce",a:234.69,i:'F54948447',f:'1sJzLr9XdQM3gE2xXOgq8qQUEwDGGu4Ro'},
- {d:'2026-06-16',v:"Fresho produce",a:28.00,i:'F54912479',f:'1grP3AGHHidXW9AyknJumy23kjNLyuyLW'},
- {d:'2026-06-16',v:"Asahi drinks",a:397.87,i:'9018441905',f:'1W_5yHPbUVxzLMyQugwY1NL7yOOcHTMWs'},
- {d:'2026-06-16',v:"G & W Packaging",a:3553.00,i:'INV-50297',f:'1IhO-BHd2BDtNcnCG6kYaSSIXJnpsi6rX'},
- {d:'2026-06-17',v:"Poultry Plus",a:255.00,i:'PP564730',f:'186bPbe5qjD3Jg6jZC_Eg0Z1QegahZfwV'},
- {d:'2026-06-18',v:"Baiada Poultry",a:894.80,i:'U819302',f:'1PcU1Bw75ijqIvtjuZnuOd2f72UJtA62g'},
- {d:'2026-06-18',v:"CFM cooking oil",a:281.50,i:'INV-142400',f:'1l-jawt4gpJtvGA2LSw41BjhrnDfwkXpG'},
- {d:'2026-06-18',v:"Fresho produce",a:176.12,i:'F55017107',f:'1BHM3FoVibzg0n_OVYrugYyDbDwXG_-Bg'},
- {d:'2026-06-19',v:"United Foodservice",a:3025.95,i:'SI491852',f:'1MaMevmq_2X7_fwZIqEFNNAQZ5aONRMSe'},
- {d:'2026-06-19',v:"Poultry Plus",a:575.00,i:'PP564992',f:'1s6onBkjFEHCdud8WzpCZXbh04DO0pdBu'},
- {d:'2026-06-19',v:"Melbourne Meat",a:285.00,i:'F54789908',f:'1Qa1BcIQwZHUkHxUY9JUFLuz4lHXt2PyF'},
- {d:'2026-06-19',v:"Fresho produce",a:285.33,i:'F55084368',f:'1-rmOjqDJTOwMK7J3AHjZ9hKsPboFzNen'},
- {d:'2026-06-19',v:"Asahi drinks",a:512.80,i:'9018464459',f:'1xOHcKRA7LBstza8JYWTMbxmAmRrWjZdA'},
- {d:'2026-06-20',v:"Fresho produce",a:152.45,i:'F55120022',f:'1EdSPeS08fuRxK9XPJl4vK11RmR7p1gpH'},
- {d:'2026-06-22',v:"Baiada Poultry",a:2054.40,i:'U821723',f:'1ytpZplIpekt5uaU6dv0S8tyR0w9cbhsm'}
-];
-const BILLS_IDX={}; BILLS_DATA.forEach(function(b){ BILLS_IDX[b.i]=b; });
+let BILLS_DATA=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
+let BILLS_IDX={}; function _rebuildBillsIdx(){ BILLS_IDX={}; BILLS_DATA.forEach(function(b){ BILLS_IDX[b.i]=b; }); } _rebuildBillsIdx();
 function ensureBills(){
   try{
     const have=new Set(TX.filter(t=>t.inv).map(t=>t.inv));
@@ -407,9 +233,9 @@ function ensureBills(){
 }
 function loadBills(){ ensureBills(); ensureHist(); render(); status('Loaded '+BILLS_DATA.length+' supplier invoices (30 Mar onward).'); }
 // Your fixed overheads (the recurring amounts you set), applied to every April & May week as weekly values.
-// Monthly amounts are spread ÷ 4.33: PoS 322, loans 1816.65, Rent 7659, Accounting 770, Phone 60, Xero 162, Internet 99.
+// Monthly amounts are spread ÷ 4.33 (values live in kitchen_data.json, not here).
 const FIXED_WEEKS=['2026-03-30','2026-04-06','2026-04-13','2026-04-20','2026-04-27','2026-05-04','2026-05-11','2026-05-18','2026-05-25','2026-06-01','2026-06-08','2026-06-15','2026-06-22'];
-const FIXED_OH=[['Point of sale',74.31],['loans',419.23],['Rent',1767.46],['Acounting',177.69],['Electricty',600],['Gas',235],['Phone',13.85],['xero',37.38],['internet',22.85],['insurance',344.41],['consulting',750],['gst',2000]];
+let FIXED_OH=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 function ensureFixedOH(){
   try{
     let ch=false;
@@ -427,59 +253,12 @@ function ensureFixedOH(){
 // Delivery payouts pinned from the ACTUAL payout emails — verified per week. ensurePayouts also CORRECTS
 // any week whose booked figure doesn't match (fixes the old bug that stamped one week's payout onto another).
 // Known gaps in the inbox itself: no Uber email for w/c 13 Apr; no DoorDash email for w/c 30 Mar.
-const PAYOUTS_DATA=[
- {w:'2026-03-02',cat:'Uber Eats (net payout)',amt:7537.15},
- {w:'2026-03-09',cat:'Uber Eats (net payout)',amt:6627.90},
- {w:'2026-03-16',cat:'Uber Eats (net payout)',amt:8178.07},
- {w:'2026-03-23',cat:'Uber Eats (net payout)',amt:9056.77},
- {w:'2026-03-30',cat:'Uber Eats (net payout)',amt:8614.72},
- {w:'2026-04-06',cat:'Uber Eats (net payout)',amt:8445.31},
- {w:'2026-04-13',cat:'Uber Eats (net payout)',amt:9331.89},
- {w:'2026-04-20',cat:'Uber Eats (net payout)',amt:8927.65},
- {w:'2026-04-27',cat:'Uber Eats (net payout)',amt:8526.99},
- {w:'2026-05-04',cat:'Uber Eats (net payout)',amt:8328.26},
- {w:'2026-05-11',cat:'Uber Eats (net payout)',amt:8125.54},
- {w:'2026-05-18',cat:'Uber Eats (net payout)',amt:8278.60},
- {w:'2026-05-25',cat:'Uber Eats (net payout)',amt:8410.44},
- {w:'2026-03-30',cat:'DoorDash (net payout)',amt:835.02},
- {w:'2026-04-06',cat:'DoorDash (net payout)',amt:1318.25},
- {w:'2026-04-13',cat:'DoorDash (net payout)',amt:832.14},
- {w:'2026-04-20',cat:'DoorDash (net payout)',amt:680.86},
- {w:'2026-04-27',cat:'DoorDash (net payout)',amt:815.01},
- {w:'2026-05-04',cat:'DoorDash (net payout)',amt:1064.53},
- {w:'2026-05-11',cat:'DoorDash (net payout)',amt:1019.00},
- {w:'2026-05-18',cat:'DoorDash (net payout)',amt:1193.13},
- {w:'2026-05-25',cat:'DoorDash (net payout)',amt:816.14},
- {w:'2026-06-01',cat:'Uber Eats (net payout)',amt:7944.57},
- {w:'2026-06-08',cat:'Uber Eats (net payout)',amt:8462.53},
- {w:'2026-06-01',cat:'DoorDash (net payout)',amt:1158.14},
- {w:'2026-06-08',cat:'DoorDash (net payout)',amt:524.37},
- {w:'2026-06-15',cat:'DoorDash (net payout)',amt:835.62},
- {w:'2026-06-15',cat:'Uber Eats (net payout)',amt:7015.58}
-];
+let PAYOUTS_DATA=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 // Weekly wage totals verified directly against Square timecards (paid hours × rate, unpaid breaks deducted)
-const WAGES_DATA=[
- {w:'2026-03-02',a:7657.20},{w:'2026-03-09',a:6330.95},{w:'2026-03-16',a:7854.95},{w:'2026-03-23',a:7643.70},
- {w:'2026-03-30',a:7917.75},{w:'2026-04-06',a:7337.60},{w:'2026-04-13',a:8463.99},{w:'2026-04-20',a:7794.77},
- {w:'2026-04-27',a:8373.35},{w:'2026-05-04',a:9049.51},{w:'2026-05-11',a:8458.36},{w:'2026-05-18',a:8727.02},{w:'2026-05-25',a:8758.01}
-];
+let WAGES_DATA=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 // Square income verified per week straight from the payouts & cash records (created if a week has none;
 // a live sync of that week takes precedence)
-const INCOME_DATA=[
- {w:'2026-03-02',dep:26947.86,cash:2984.00},
- {w:'2026-03-09',dep:26848.12,cash:3114.65},
- {w:'2026-03-16',dep:27974.59,cash:2889.60},
- {w:'2026-03-23',dep:31095.66,cash:2730.50},
- {w:'2026-03-30',dep:33342.06,cash:3048.40},
- {w:'2026-04-06',dep:26914.66,cash:2982.55},
- {w:'2026-04-13',dep:29261.30,cash:2887.60},
- {w:'2026-04-20',dep:33674.58,cash:3164.05},
- {w:'2026-04-27',dep:32660.36,cash:2940.50},
- {w:'2026-05-04',dep:27086.86,cash:2713.90},
- {w:'2026-05-11',dep:30217.73,cash:3415.00},
- {w:'2026-05-18',dep:29888.34,cash:2554.50},
- {w:'2026-05-25',dep:28687.58,cash:3183.00}
-];
+let INCOME_DATA=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 function ensureIncome(){
   try{
     let ch=false;
@@ -523,7 +302,7 @@ function ensurePayouts(){
 
 
 // ── Imported history (26 Jan – Mar) rebuilt from the original transactions CSV: weekly income, wages, payouts, COGS & overheads ──
-const HIST=[{w:'2026-01-26',c:"Bank deposits (Square)",a:39823.00,k:'inc_dep'},{w:'2026-01-26',c:"Uber Eats (net payout)",a:9263.00,k:'inc_uber'},{w:'2026-01-26',c:"DoorDash (net payout)",a:765.00,k:'inc_dd'},{w:'2026-01-26',c:"Wages",a:11722.00,k:'wage'},{w:'2026-01-26',c:"Baiada Poultry",a:5486.00,k:'cogs'},{w:'2026-01-26',c:"CFM cooking oil",a:362.00,k:'cogs'},{w:'2026-01-26',c:"Costco",a:636.00,k:'cogs'},{w:'2026-01-26',c:"Fresho produce",a:1440.00,k:'cogs'},{w:'2026-01-26',c:"PFD Foods",a:5708.00,k:'cogs'},{w:'2026-01-26',c:"Packaging",a:1195.00,k:'cogs'},{w:'2026-01-26',c:"Russel's Poultry",a:1157.00,k:'cogs'},{w:'2026-01-26',c:"Acounting",a:195.00,k:'other'},{w:'2026-01-26',c:"Bins",a:175.00,k:'other'},{w:'2026-01-26',c:"Consulting",a:250.00,k:'other'},{w:'2026-01-26',c:"Deliverect",a:22.00,k:'other'},{w:'2026-01-26',c:"Deputy",a:45.00,k:'other'},{w:'2026-01-26',c:"Electricty",a:520.00,k:'other'},{w:'2026-01-26',c:"Filters",a:522.00,k:'other'},{w:'2026-01-26',c:"Gas",a:240.00,k:'other'},{w:'2026-01-26',c:"Gst",a:1600.00,k:'other'},{w:'2026-01-26',c:"Insurance",a:345.00,k:'other'},{w:'2026-01-26',c:"Loans",a:1573.00,k:'other'},{w:'2026-01-26',c:"Misc",a:357.00,k:'other'},{w:'2026-01-26',c:"Phone",a:10.00,k:'other'},{w:'2026-01-26',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-01-26',c:"Rent",a:1296.00,k:'other'},{w:'2026-01-26',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-01-26',c:"Xero",a:36.00,k:'other'},{w:'2026-02-02',c:"Bank deposits (Square)",a:33901.00,k:'inc_dep'},{w:'2026-02-02',c:"Uber Eats (net payout)",a:6486.00,k:'inc_uber'},{w:'2026-02-02',c:"DoorDash (net payout)",a:622.00,k:'inc_dd'},{w:'2026-02-02',c:"Wages",a:9283.00,k:'wage'},{w:'2026-02-02',c:"Asahi drinks",a:360.00,k:'cogs'},{w:'2026-02-02',c:"Baiada Poultry",a:4248.40,k:'cogs'},{w:'2026-02-02',c:"Costco",a:386.00,k:'cogs'},{w:'2026-02-02',c:"Fresho produce",a:1174.00,k:'cogs'},{w:'2026-02-02',c:"PFD Foods",a:5907.00,k:'cogs'},{w:'2026-02-02',c:"Packaging",a:991.00,k:'cogs'},{w:'2026-02-02',c:"Russel's Poultry",a:1378.00,k:'cogs'},{w:'2026-02-02',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-02',c:"Bins",a:175.00,k:'other'},{w:'2026-02-02',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-02',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-02',c:"Deputy",a:45.00,k:'other'},{w:'2026-02-02',c:"Electricty",a:520.00,k:'other'},{w:'2026-02-02',c:"Gas",a:240.00,k:'other'},{w:'2026-02-02',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-02',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-02',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-02',c:"Misc",a:557.00,k:'other'},{w:'2026-02-02',c:"Phone",a:10.00,k:'other'},{w:'2026-02-02',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-02',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-02',c:"Xero",a:36.00,k:'other'},{w:'2026-02-09',c:"Bank deposits (Square)",a:31127.00,k:'inc_dep'},{w:'2026-02-09',c:"Uber Eats (net payout)",a:8181.00,k:'inc_uber'},{w:'2026-02-09',c:"DoorDash (net payout)",a:748.00,k:'inc_dd'},{w:'2026-02-09',c:"Wages",a:9408.00,k:'wage'},{w:'2026-02-09',c:"Asahi drinks",a:490.00,k:'cogs'},{w:'2026-02-09',c:"Baiada Poultry",a:4318.00,k:'cogs'},{w:'2026-02-09',c:"CFM cooking oil",a:376.00,k:'cogs'},{w:'2026-02-09',c:"Fresho produce",a:1190.00,k:'cogs'},{w:'2026-02-09',c:"PFD Foods",a:4486.00,k:'cogs'},{w:'2026-02-09',c:"Packaging",a:672.00,k:'cogs'},{w:'2026-02-09',c:"Russel's Poultry",a:1152.00,k:'cogs'},{w:'2026-02-09',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-09',c:"Bins",a:175.00,k:'other'},{w:'2026-02-09',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-09',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-09',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-09',c:"Gas",a:240.00,k:'other'},{w:'2026-02-09',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-09',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-09',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-09',c:"Misc",a:623.50,k:'other'},{w:'2026-02-09',c:"Phone",a:10.00,k:'other'},{w:'2026-02-09',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-09',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-09',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-02-09',c:"Xero",a:36.00,k:'other'},{w:'2026-02-16',c:"Bank deposits (Square)",a:35965.00,k:'inc_dep'},{w:'2026-02-16',c:"Uber Eats (net payout)",a:6335.00,k:'inc_uber'},{w:'2026-02-16',c:"DoorDash (net payout)",a:277.00,k:'inc_dd'},{w:'2026-02-16',c:"Wages",a:9929.00,k:'wage'},{w:'2026-02-16',c:"Asahi drinks",a:359.00,k:'cogs'},{w:'2026-02-16',c:"Baiada Poultry",a:4388.00,k:'cogs'},{w:'2026-02-16',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-02-16',c:"Costco",a:320.00,k:'cogs'},{w:'2026-02-16',c:"Fresho produce",a:1177.00,k:'cogs'},{w:'2026-02-16',c:"PFD Foods",a:6064.00,k:'cogs'},{w:'2026-02-16',c:"Packaging",a:700.00,k:'cogs'},{w:'2026-02-16',c:"Russel's Poultry",a:1415.00,k:'cogs'},{w:'2026-02-16',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-16',c:"Bins",a:175.00,k:'other'},{w:'2026-02-16',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-16',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-16',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-16',c:"Gas",a:240.00,k:'other'},{w:'2026-02-16',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-16',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-16',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-16',c:"Misc",a:696.00,k:'other'},{w:'2026-02-16',c:"Phone",a:10.00,k:'other'},{w:'2026-02-16',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-16',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-16',c:"Xero",a:36.00,k:'other'},{w:'2026-02-23',c:"Bank deposits (Square)",a:32385.88,k:'inc_dep'},{w:'2026-02-23',c:"Uber Eats (net payout)",a:8041.58,k:'inc_uber'},{w:'2026-02-23',c:"DoorDash (net payout)",a:623.87,k:'inc_dd'},{w:'2026-02-23',c:"Wages",a:9388.00,k:'wage'},{w:'2026-02-23',c:"Aldi",a:108.52,k:'cogs'},{w:'2026-02-23',c:"Asahi drinks",a:426.68,k:'cogs'},{w:'2026-02-23',c:"Baiada Poultry",a:4178.00,k:'cogs'},{w:'2026-02-23',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-02-23',c:"Costco",a:366.00,k:'cogs'},{w:'2026-02-23',c:"Fresho produce",a:1334.00,k:'cogs'},{w:'2026-02-23',c:"Packaging",a:944.35,k:'cogs'},{w:'2026-02-23',c:"Russel's Poultry",a:1328.50,k:'cogs'},{w:'2026-02-23',c:"United Foodservice",a:4877.00,k:'cogs'},{w:'2026-02-23',c:"Woolworths",a:5.00,k:'cogs'},{w:'2026-02-23',c:"Acounting",a:195.00,k:'other'},{w:'2026-02-23',c:"Bins",a:175.00,k:'other'},{w:'2026-02-23',c:"Bunnings",a:38.00,k:'other'},{w:'2026-02-23',c:"Consulting",a:250.00,k:'other'},{w:'2026-02-23',c:"Deliverect",a:22.00,k:'other'},{w:'2026-02-23',c:"Electricty",a:527.00,k:'other'},{w:'2026-02-23',c:"Gas",a:240.00,k:'other'},{w:'2026-02-23',c:"Gst",a:1600.00,k:'other'},{w:'2026-02-23',c:"Insurance",a:345.00,k:'other'},{w:'2026-02-23',c:"Loans",a:1573.00,k:'other'},{w:'2026-02-23',c:"Misc",a:201.41,k:'other'},{w:'2026-02-23',c:"Phone",a:10.00,k:'other'},{w:'2026-02-23',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-02-23',c:"Rent",a:1296.00,k:'other'},{w:'2026-02-23',c:"Tools",a:17.00,k:'other'},{w:'2026-02-23',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-02-23',c:"Xero",a:36.00,k:'other'},{w:'2026-03-02',c:"Aldi",a:31.39,k:'cogs'},{w:'2026-03-02',c:"Asahi drinks",a:457.00,k:'cogs'},{w:'2026-03-02',c:"Baiada Poultry",a:4318.00,k:'cogs'},{w:'2026-03-02',c:"Fresho produce",a:1181.00,k:'cogs'},{w:'2026-03-02',c:"Packaging",a:883.00,k:'cogs'},{w:'2026-03-02',c:"Russel's Poultry",a:1601.00,k:'cogs'},{w:'2026-03-02',c:"United Foodservice",a:5323.00,k:'cogs'},{w:'2026-03-02',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-02',c:"Bins",a:175.00,k:'other'},{w:'2026-03-02',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-02',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-02',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-02',c:"Gas",a:240.00,k:'other'},{w:'2026-03-02',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-02',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-02',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-02',c:"Phone",a:10.00,k:'other'},{w:'2026-03-02',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-02',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-02',c:"Xero",a:36.00,k:'other'},{w:'2026-03-09',c:"Asahi drinks",a:430.00,k:'cogs'},{w:'2026-03-09',c:"Baiada Poultry",a:3326.00,k:'cogs'},{w:'2026-03-09',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-03-09',c:"Costco",a:267.00,k:'cogs'},{w:'2026-03-09',c:"Fresho produce",a:1150.00,k:'cogs'},{w:'2026-03-09',c:"Packaging",a:990.00,k:'cogs'},{w:'2026-03-09',c:"Russel's Poultry",a:1007.00,k:'cogs'},{w:'2026-03-09',c:"United Foodservice",a:4306.00,k:'cogs'},{w:'2026-03-09',c:"Woolworths",a:492.00,k:'cogs'},{w:'2026-03-09',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-09',c:"Bins",a:175.00,k:'other'},{w:'2026-03-09',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-09',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-09',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-09',c:"Gas",a:240.00,k:'other'},{w:'2026-03-09',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-09',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-09',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-09',c:"Misc",a:15.50,k:'other'},{w:'2026-03-09',c:"Phone",a:10.00,k:'other'},{w:'2026-03-09',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-09',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-09',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-03-09',c:"Xero",a:36.00,k:'other'},{w:'2026-03-16',c:"Baiada Poultry",a:4388.00,k:'cogs'},{w:'2026-03-16',c:"CFM cooking oil",a:282.00,k:'cogs'},{w:'2026-03-16',c:"Costco",a:355.00,k:'cogs'},{w:'2026-03-16',c:"Fresho produce",a:1032.00,k:'cogs'},{w:'2026-03-16',c:"Packaging",a:623.00,k:'cogs'},{w:'2026-03-16',c:"Russel's Poultry",a:1516.00,k:'cogs'},{w:'2026-03-16',c:"United Foodservice",a:5976.00,k:'cogs'},{w:'2026-03-16',c:"Woolworths",a:284.00,k:'cogs'},{w:'2026-03-16',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-16',c:"Bins",a:175.00,k:'other'},{w:'2026-03-16',c:"Bunnings",a:38.00,k:'other'},{w:'2026-03-16',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-16',c:"Credit Card Int",a:815.00,k:'other'},{w:'2026-03-16',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-16',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-16',c:"Filters",a:100.00,k:'other'},{w:'2026-03-16',c:"Gas",a:240.00,k:'other'},{w:'2026-03-16',c:"Grease Trap",a:330.00,k:'other'},{w:'2026-03-16',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-16',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-16',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-16',c:"Phone",a:10.00,k:'other'},{w:'2026-03-16',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-16',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-16',c:"Xero",a:36.00,k:'other'},{w:'2026-03-23',c:"Asahi drinks",a:688.00,k:'cogs'},{w:'2026-03-23',c:"Baiada Poultry",a:3396.00,k:'cogs'},{w:'2026-03-23',c:"Fresho produce",a:1249.00,k:'cogs'},{w:'2026-03-23',c:"Packaging",a:823.00,k:'cogs'},{w:'2026-03-23',c:"Russel's Poultry",a:1514.00,k:'cogs'},{w:'2026-03-23',c:"United Foodservice",a:5853.00,k:'cogs'},{w:'2026-03-23',c:"Woolworths",a:391.00,k:'cogs'},{w:'2026-03-23',c:"Acounting",a:195.00,k:'other'},{w:'2026-03-23',c:"Bins",a:175.00,k:'other'},{w:'2026-03-23',c:"Consulting",a:250.00,k:'other'},{w:'2026-03-23',c:"Deliverect",a:22.00,k:'other'},{w:'2026-03-23',c:"Electricty",a:527.00,k:'other'},{w:'2026-03-23',c:"Gas",a:240.00,k:'other'},{w:'2026-03-23',c:"Gst",a:1600.00,k:'other'},{w:'2026-03-23',c:"Insurance",a:345.00,k:'other'},{w:'2026-03-23',c:"Loans",a:1573.00,k:'other'},{w:'2026-03-23',c:"Officeworks",a:26.00,k:'other'},{w:'2026-03-23',c:"Phone",a:10.00,k:'other'},{w:'2026-03-23',c:"Point Of Sale",a:51.00,k:'other'},{w:'2026-03-23',c:"Rent",a:1296.00,k:'other'},{w:'2026-03-23',c:"Window Cleaner",a:40.00,k:'other'},{w:'2026-03-23',c:"Xero",a:36.00,k:'other'}];
+let HIST=[];   // loaded at runtime from /api/books_fin (kept out of the public repo)
 function ensureHist(){
   try{ let ch=false;
     HIST.forEach(function(h,ix){ var id='hi_'+ix;
@@ -947,11 +726,12 @@ function renderTotals(){
   setSigned2('plNet',net);
 }
 function setSigned2(id,v){ const el=document.getElementById(id); el.textContent=fmt(v); el.classList.toggle('pos2',v>0); el.classList.toggle('neg2',v<0); }
-// Mark is paid a flat $1000/week, SPREAD across the 7 days (≈$142.85/day) so daily figures aren't thrown
-// off by the whole grand landing on Monday. We normalise Mark to exactly these 7 deterministic daily rows
-// per week (ids 'mkd_<date>'), removing any old single-row/recurring Mark entries so they can't double up.
-const MARK_START='2026-03-02', MARK_WEEKLY=1000;
-function markAmts(){ const a=[]; for(let i=0;i<6;i++)a.push(142.85); a.push(Math.round((MARK_WEEKLY-142.85*6)*100)/100); return a; } // 6×142.85 + 142.90 = 1000.00
+// Mark is a flat weekly salary (amount from kitchen_data.json, not stored here), SPREAD across the 7 days
+// so daily figures aren't thrown off by the whole grand landing on Monday. We normalise Mark to exactly
+// these 7 deterministic daily rows per week (ids 'mkd_<date>'), removing any old single-row/recurring
+// Mark entries so they can't double up.
+let MARK_START='2026-03-02', MARK_WEEKLY=0;   // MARK_WEEKLY loaded at runtime from /api/books_fin
+function markAmts(){ const d=Math.round(MARK_WEEKLY/7*100)/100; const a=[]; for(let i=0;i<6;i++)a.push(d); a.push(Math.round((MARK_WEEKLY-d*6)*100)/100); return a; } // 6×daily + remainder = weekly
 function dedupeMark(){   // keeps its old name so every call site still works
   try{
     const isMark=function(t){ return t.type==='expense' && !t.staffId && /\bmark\b/i.test(t.cat||'') && bucketOf(t)==='wage'; };
@@ -1080,7 +860,7 @@ function regexCogs(text,title){
 }
 async function parseBillAI(text,title){
   const prompt=`Classify and extract ONE expense from this PDF for a chicken shop. Choose a "type":\n`+
-`- "monthly" = a FIXED OVERHEAD bill: rent (est8 / PropertyMe), electricity & gas (AGL), loan (Grenke), accounting (Highview), bins/waste (JJ Richards / JJ's Waste), Xero, Square subscription, phone/internet (Optus/Telstra — business internet line only ~$99, NOT home NBN or Netflix), insurance. Use the CURRENT period charge only, not arrears/overdue/total-due. For JJ's use this period's transactions total (~$713.90), not the total-due-with-overdue. Give periodStart and periodEnd as YYYY-MM-DD if shown.\n`+
+`- "monthly" = a FIXED OVERHEAD bill: rent (est8 / PropertyMe), electricity & gas (AGL), loan (Grenke), accounting (Highview), bins/waste (JJ Richards / JJ's Waste), Xero, Square subscription, phone/internet (Optus/Telstra — business internet line only, NOT home NBN or Netflix), insurance. Use the CURRENT period charge only, not arrears/overdue/total-due. For JJ's use this period's transactions total, not the total-due-with-overdue. Give periodStart and periodEnd as YYYY-MM-DD if shown.\n`+
 `- "cogs" = a single delivery/supplier INVOICE for food/drink/packaging: Baiada, Fresho, Fruit Talk, Russel's Poultry, United, G & W Packaging, Fiesta Foods, Feel Good Foods, Asahi/Schweppes. Use the invoice TOTAL payable. Give invoiceDate as YYYY-MM-DD.\n`+
 `- "skip" = a STATEMENT that lists multiple invoices or shows a running balance/aging, OR a credit application, direct-debit form, account balance, remittance, or anything that is not a single current invoice/bill. Set amount 0.\n`+
 `IMPORTANT: all dates on these invoices are AUSTRALIAN format DD/MM/YYYY (day FIRST, month second). Convert to YYYY-MM-DD correctly: e.g. 4/6/2026 = 4 June = 2026-06-04 (NOT 2026-04-06), and 1/6/2026 = 1 June = 2026-06-01. Use the invoice's Document Date / Delivery Date.\n`+
@@ -1637,7 +1417,25 @@ function drawDayChart(hrS,hrW){
     '<div class="empty" style="font-size:11px;margin-top:2px"><span style="color:#16a34a">■</span> sales/hr&nbsp;&nbsp;<span style="color:#dc2626">■</span> wages/hr&nbsp;&nbsp;(% = labour share that hour) · 10am–close</div>';
 }
 
-load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+// Pull the financial history (payouts/wages/income/expenses) from the server's local data BEFORE booting,
+// so those figures live only in kitchen_data.json, not in this (public) file. If the fetch fails we still
+// boot on whatever's cached in localStorage — no worse than before.
+(async function _bootBooks(){
+  try{
+    const r=await fetch('/api/books_fin',{cache:'no-store'});
+    if(r.ok){ const f=await r.json();
+      if(Array.isArray(f.seed))    SEED=f.seed;
+      if(Array.isArray(f.payouts)) PAYOUTS_DATA=f.payouts;
+      if(Array.isArray(f.wages))   WAGES_DATA=f.wages;
+      if(Array.isArray(f.income))  INCOME_DATA=f.income;
+      if(Array.isArray(f.hist))    HIST=f.hist;
+      if(Array.isArray(f.bills))   { BILLS_DATA=f.bills; if(typeof _rebuildBillsIdx==='function')_rebuildBillsIdx(); }
+      if(Array.isArray(f.fixed_oh))FIXED_OH=f.fixed_oh;
+      if(typeof f.mark_weekly==='number') MARK_WEEKLY=f.mark_weekly;
+    }
+  }catch(e){}
+  load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+})();
 if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
 setInterval(maybeAutoSync, 5*60*1000); // while open, the viewed week re-syncs itself every 30 min (checked every 5)
 </script>

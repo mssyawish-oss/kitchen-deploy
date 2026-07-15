@@ -3280,7 +3280,7 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_fin")}
     safe["cameras_public"]=[]
     for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
@@ -3317,6 +3317,13 @@ def get_db():
 def update_db():
     with data_lock: db.update(request.get_json(silent=True) or {});save_data(db)
     return jsonify({"ok":True})
+
+@app.route("/api/books_fin")
+def api_books_fin():
+    # weekly-books.html loads its financial history (Uber/DoorDash payouts, wages, income, expense history)
+    # from here at runtime, so those real figures live ONLY in local kitchen_data.json — never committed to
+    # the public deploy repo. Served on its own endpoint (kept OUT of /api/data) so the frequent poll stays lean.
+    return jsonify(db.get("books_fin") or {})
 
 @app.route("/webhook/square",methods=["POST"])
 def square_webhook():
