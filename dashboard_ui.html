@@ -1942,6 +1942,10 @@ let probeData={1:{temp:null,name:'Probe 1'},2:{temp:null,name:'Probe 2'},3:{temp
 let probeStates={1:{status:'idle',alerted:false},2:{status:'idle',alerted:false},3:{status:'idle',alerted:false},4:{status:'idle',alerted:false}};
 const prevStatuses={};
 let _probePopDismissed={};   // pid -> the status it was dismissed at (re-shows on status change)
+// iOS Safari (esp. the tablet in standalone/kiosk) often doesn't repaint a setInterval-driven DOM change
+// until the screen is touched — which is why a freshly-rendered Silence button "only appears after a tap".
+// Nudging the compositor with a momentary transform forces the new frame to paint on its own.
+function _paint(){try{const b=document.body;b.style.transform='translateZ(0)';requestAnimationFrame(()=>{requestAnimationFrame(()=>{b.style.transform='';});});}catch(e){}}
 
 function renderProbes(){
   document.getElementById('probes-grid').innerHTML=Object.entries(probeData).map(([pid,p])=>{
@@ -1953,12 +1957,13 @@ function renderProbes(){
       if(status==='overdone'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
       if(status==='idle')stopProbeAlarm(pidN);
       delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
+      if(status==='ready'||status==='overdone')_paint();   // force the Silence button to appear without needing a tap
       prevStatuses[pidN]=status;
     }
     const t=p.temp,tempHtml=t===null?'<div class="probe-no-data">&#8212;&#8212;</div>':`<div class="probe-temp">${t.toFixed(1)}</div>`;
     const badges={idle:'badge-idle',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone'};
     const labels={idle:'idle',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
-    const showAck=(status==='ready'||status==='overdone')&&!acked;
+    const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
     return `<div class="probe-card ac${(pidN-1)%4} ${cardCls}">
@@ -1983,7 +1988,7 @@ function renderProbeAlerts(){
     if(!ALERT.includes(sSt))return false;
     const _gk=sSt==='almost'?'probeAlmost':(sSt==='overdone'?'probeOverdone':'probeReady');
     if(!_acfg(_gk).enabled)return false;
-    if((sSt==='ready'||sSt==='overdone')&&st.alerted)return false;   // already acknowledged
+    if((sSt==='ready'||sSt==='overdone')&&st.alerted&&!_probeAlarms[pid])return false;   // acked AND the alarm has actually stopped
     if(_probePopDismissed[pid]===sSt)return false;                   // dismissed at this status
     return true;
   });
