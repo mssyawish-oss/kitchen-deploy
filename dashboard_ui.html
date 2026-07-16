@@ -1728,14 +1728,15 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
   else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
-  _updateFlash();}
+  _updateFlash();if(typeof _broadcastSilence==='function')_broadcastSilence();}   // propagate to the other dashboards too
 setInterval(_updateFlash,400);
 function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
 // ── cross-screen silence: silencing on one dashboard silences them all ──
-let _silenceSeen=0,_applyingRemoteSilence=false;
+let _silenceSeen=0,_silenceSynced=false,_applyingRemoteSilence=false;
 function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
 function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
-function _applyRemoteSilence(ts){if(!ts)return;if(!_silenceSeen){_silenceSeen=ts;return;}if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
+function _applyRemoteSilence(ts){ts=ts||0;if(!_silenceSynced){_silenceSynced=true;_silenceSeen=ts;return;}   // first poll → adopt the server's current level as baseline (don't act)
+  if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
 function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll(3600000);}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
@@ -2488,7 +2489,7 @@ function fmtBird(v){v=Math.round(v*4)/4;const w=Math.floor(v),f=v-w,fr={0:'',0.2
 const stockAlert={bbq:{lvl:'none',acked:false},fry:{lvl:'none',acked:false}};
 function playStockWarn(){const v=_acfg('stock').volume;playChime(v);setTimeout(()=>playChime(v),1000);setTimeout(()=>playChime(v),2000);}
 function updateStockAlert(key,lvl){if(appData.stock_alarm_enabled===false)return 'none';const s=stockAlert[key];if(lvl!==s.lvl){s.lvl=lvl;s.acked=false;stopAlarm('stock-'+key);if(lvl==='warn')playStockWarn();else if(lvl==='crit')playAlarm('stock-'+key);}return s.acked?'none':lvl;}
-function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';}
+function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';if(typeof _broadcastSilence==='function')_broadcastSilence();}   // silence on all dashes too
 let _rotSig='';
 function renderRotLive(rot){
   const el=document.getElementById('rl-bbq');if(!el)return;const R=appData.rotisserie;
