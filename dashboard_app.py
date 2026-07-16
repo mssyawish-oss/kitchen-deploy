@@ -3323,6 +3323,7 @@ def api_books_fin():
     # weekly-books.html loads its financial history (Uber/DoorDash payouts, wages, income, expense history)
     # from here at runtime, so those real figures live ONLY in local kitchen_data.json — never committed to
     # the public deploy repo. Served on its own endpoint (kept OUT of /api/data) so the frequent poll stays lean.
+    if not _books_ok(): return jsonify({})   # same password gate as the books page — no login, no figures
     return jsonify(db.get("books_fin") or {})
 
 @app.route("/webhook/square",methods=["POST"])
