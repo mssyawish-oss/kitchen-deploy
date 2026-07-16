@@ -1711,7 +1711,7 @@ function triggerAlarm(title,sub){
   function loop(){if(activeAlarmId!==id)return;_alarmHit('service');setTimeout(()=>{if(activeAlarmId===id)loop();},_acfg('service').interval);}
   loop();
 }
-function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence();}
+function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence('service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
 function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;(function b(){if(!_waitAlarm)return;_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},_acfg('orders').interval);})();}
@@ -1728,15 +1728,24 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
   else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
-  _updateFlash();if(typeof _broadcastSilence==='function')_broadcastSilence();}   // propagate to the other dashboards too
+  _updateFlash();if(typeof _broadcastSilence==='function')_broadcastSilence(key);}   // propagate this exact alarm type to the other dashboards
 setInterval(_updateFlash,400);
 function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
 // ── cross-screen silence: silencing on one dashboard silences them all ──
 let _silenceSeen=0,_silenceSynced=false,_applyingRemoteSilence=false;
-function _broadcastSilence(){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST'}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=d.ts;}).catch(()=>{});}
+function _broadcastSilence(key){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key||''})}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=Math.max(_silenceSeen,d.ts);}).catch(()=>{});}
 function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
-function _applyRemoteSilence(ts){ts=ts||0;if(!_silenceSynced){_silenceSynced=true;_silenceSeen=ts;return;}   // first poll → adopt the server's current level as baseline (don't act)
-  if(ts>_silenceSeen){_silenceSeen=ts;if(_anyAlarmActive()){_applyingRemoteSilence=true;try{silenceAll();}finally{_applyingRemoteSilence=false;}}}}
+function _applyRemoteSilence(list){
+  if(!Array.isArray(list)){list=(list?[{ts:list,key:''}]:[]);}   // tolerate an older server that still sends a bare ts
+  const maxTs=list.reduce((m,e)=>Math.max(m,(e&&e.ts)||0),0);
+  if(!_silenceSynced){_silenceSynced=true;_silenceSeen=maxTs;return;}   // first poll → adopt baseline, don't act
+  const fresh=list.filter(e=>e&&(e.ts||0)>_silenceSeen).sort((a,b)=>a.ts-b.ts);
+  if(!fresh.length)return;
+  _silenceSeen=Math.max(_silenceSeen,maxTs);
+  _applyingRemoteSilence=true;
+  try{ fresh.forEach(e=>{ if(e.key){ if(typeof silenceOneAlarm==='function')silenceOneAlarm(e.key); } else if(_anyAlarmActive()){ silenceAll(); } }); }
+  finally{_applyingRemoteSilence=false;}
+}
 function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll(3600000);}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
@@ -1748,7 +1757,7 @@ function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)
   if(!orders.length){body=`<div class="wo-empty">No orders waiting &mdash; all caught up</div>`;}
   else{body=`<div class="wo-grid">`+shown.map(o=>{const col=o.late?'var(--red)':'var(--amber)';return `<button class="wo-box" style="border-color:${col};${o.late?'animation:rl-warn 1s infinite;':''}" onclick="waitDone('${o.oid}')" title="Tap to mark handed out"><div class="wo-name">${o.name||(o.items&&o.items[0])||'Order'}</div><div class="wo-meta" style="color:${col};">waiting ${o.mins}m${o.late?' &middot; LATE':''}</div></button>`;}).join('')+(orders.length>6?`<div class="wo-more">+${orders.length-6} more</div>`:'')+`</div>`;}
   el.innerHTML=`<div class="rl-card wo-card">${head}${body}</div>`;}
-function silenceWait(){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'});_broadcastSilence();}
+function silenceWait(){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'});_broadcastSilence('orders');}
 function waitDone(oid){fetch('/api/wait_done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oid})}).then(()=>pollTemps());}
 function toggleFullscreen(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});else document.exitFullscreen();}
 
@@ -2015,7 +2024,7 @@ function dismissProbeAlert(pid){
   else _probePopDismissed[pid]=sSt;                    // 'almost' has no persistent alarm — just hide it
   renderProbeAlerts();
 }
-function ackProbe(pid){probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence();}
+function ackProbe(pid){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence(_k);}
 function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
 function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,name})});}
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
@@ -2171,7 +2180,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // new code too. Wait if someone's typing or a modal is open, then reload on the next idle tick.
   if(d.boot!=null){if(window._bootId==null)window._bootId=d.boot;else if(d.boot!==window._bootId)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){location.reload();return;}
-  _applyRemoteSilence(d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
@@ -2489,7 +2498,7 @@ function fmtBird(v){v=Math.round(v*4)/4;const w=Math.floor(v),f=v-w,fr={0:'',0.2
 const stockAlert={bbq:{lvl:'none',acked:false},fry:{lvl:'none',acked:false}};
 function playStockWarn(){const v=_acfg('stock').volume;playChime(v);setTimeout(()=>playChime(v),1000);setTimeout(()=>playChime(v),2000);}
 function updateStockAlert(key,lvl){if(appData.stock_alarm_enabled===false)return 'none';const s=stockAlert[key];if(lvl!==s.lvl){s.lvl=lvl;s.acked=false;stopAlarm('stock-'+key);if(lvl==='warn')playStockWarn();else if(lvl==='crit')playAlarm('stock-'+key);}return s.acked?'none':lvl;}
-function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';if(typeof _broadcastSilence==='function')_broadcastSilence();}   // silence on all dashes too
+function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';if(typeof _broadcastSilence==='function')_broadcastSilence('stock');}   // silence stock on all dashes too
 let _rotSig='';
 function renderRotLive(rot){
   const el=document.getElementById('rl-bbq');if(!el)return;const R=appData.rotisserie;
@@ -3018,7 +3027,7 @@ function prodOffMute(id,mode){
   appData.prodoff_mutes=appData.prodoff_mutes||{};
   appData.prodoff_mutes[id]=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
   saveKeys(['prodoff_mutes']);
-  if(!_prodOffList.some(p=>!_pdOffMuted(p.id))){if(typeof stopAlarm==='function')stopAlarm('prod-off');if(typeof _broadcastSilence==='function')_broadcastSilence();const fab=document.getElementById('prodoff-fab');if(fab)fab.classList.remove('flashing');}
+  if(!_prodOffList.some(p=>!_pdOffMuted(p.id))){if(typeof stopAlarm==='function')stopAlarm('prod-off');if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');const fab=document.getElementById('prodoff-fab');if(fab)fab.classList.remove('flashing');}
   _prodOffRenderModal();
 }
 function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
@@ -3065,7 +3074,7 @@ function _prodOffRenderModal(){
 }
 function prodOffOpen(){_prodOffRenderModal();openModal('prodoff-modal');}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
-function silenceProductsOff(){_prodOffMuteAll(3600000);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence();}
+function silenceProductsOff(){_prodOffMuteAll(3600000);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}

@@ -3191,12 +3191,19 @@ def api_mcp():
         return jsonify({"errors":[{"detail":str(e)}]})
     return jsonify({})
 
-ALARM_SILENCE_TS=0   # bumped whenever any screen silences — other screens see it and silence too
+ALARM_SILENCE_TS=0   # latest silence time (kept for backward-compat with older clients)
+ALARM_SILENCES=[]    # recent [{ts,key}] events — other screens replay each new one so silencing ONE alarm type
+_silence_lock=threading.Lock()   #   silences just THAT type everywhere (key="" means a full silence-all)
 @app.route("/api/silence",methods=["POST"])
 def api_silence():
     global ALARM_SILENCE_TS
-    ALARM_SILENCE_TS=int(time.time()*1000)
-    return jsonify({"ok":True,"ts":ALARM_SILENCE_TS})
+    key=str((request.get_json(silent=True) or {}).get("key","") or "")[:24]
+    now=int(time.time()*1000)
+    with _silence_lock:
+        ALARM_SILENCE_TS=now
+        ALARM_SILENCES.append({"ts":now,"key":key})
+        del ALARM_SILENCES[:-20]                     # keep only the most recent handful
+    return jsonify({"ok":True,"ts":now})
 @app.route("/temps")
 def temps():
     _now=time.time()
@@ -3209,7 +3216,7 @@ def temps():
             if _lca and (_now-_lca)>60:                 # reading unchanged >1 min → probe parked on the dock / not in use → blank it
                 t[k]=None; item["status"]="idle"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"boot":SERVER_BOOT_ID}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
