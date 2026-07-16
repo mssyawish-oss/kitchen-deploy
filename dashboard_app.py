@@ -45,7 +45,7 @@ probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
 settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15}
-probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None} for i in range(1,5)}
+probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
 data_lock=threading.Lock()
@@ -254,6 +254,15 @@ def check_probe_status(pid,temp):
     cooked=settings["cooked_temp"];almost=settings["almost_temp"];overdone=settings["overdone_temp"]
     with state_lock:
         ps=probe_state[pid]
+        # STALE / NOT-IN-USE tracking: note when the reading last actually CHANGED. A probe sitting on the dock
+        # (off/charging) freezes at its last value; an in-use probe always wobbles by ≥0.05°C. If a fresh reading
+        # arrives after the value was frozen >60s, the probe was parked → start a clean cycle so old cooking
+        # state (peak/removed/…) doesn't carry over. temps() blanks the display while it's frozen.
+        _now=time.time(); _lv=ps.get("last_val"); _lca=ps.get("last_change_at") or 0
+        if _lv is None or abs(temp-_lv)>=0.05:
+            if _lca and (_now-_lca)>60:
+                ps.update({"peak_temp":None,"printed":False,"cook_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
+            ps["last_val"]=temp; ps["last_change_at"]=_now
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
         prev=ps["status"]
         ns="overdone" if temp>=overdone else "ready" if temp>=cooked else "almost" if temp>=almost else "idle"
@@ -261,10 +270,10 @@ def check_probe_status(pid,temp):
         if prev=="idle" and ns!="idle" and not ps.get("cook_start"): ps["cook_start"]=time.time()
         if ns in("ready","overdone") and not ps["printed"]:
             ps["printed"]=True
-            ub=datetime.now()+timedelta(minutes=settings["use_by_minutes"])
             cook_mins=round((time.time()-ps["cook_start"])/60) if ps.get("cook_start") else None
             threading.Thread(target=record_cook,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,cook_mins),daemon=True).start()
-            threading.Thread(target=print_ticket,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp,ub),daemon=True).start()
+            # The use-by TICKET no longer prints here — it prints when the probe is PULLED (below), so the
+            # use-by clock starts from removal, not from the moment the bird hit cooked.
         if ns=="overdone" and prev=="ready": ps["alerted"]=False
         # PULLED-OFF detection: the bird reached done/overdone (peak hit cooked temp), was held cooked for
         # however long, then the probe reading FALLS BELOW pull temp (default 60C) — i.e. it was taken off
@@ -305,6 +314,9 @@ def check_probe_status(pid,temp):
                     t=threading.Timer(0.5,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
                     # PROBE-COUNTED STOCK: confirmed pull of a cooked rod → credit one row (probe mode only).
                     threading.Thread(target=_probe_credit_stock,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp),daemon=True).start()
+                    # USE-BY TICKET prints NOW (on pull), showing the cooked (peak) temp + a use-by clock from now.
+                    _ub=datetime.now()+timedelta(minutes=settings["use_by_minutes"]); _pt=ps.get("peak_temp") or temp
+                    threading.Thread(target=print_ticket,args=(pid,probe_names.get(pid,f"Probe {pid}"),_pt,_ub),daemon=True).start()
             elif peak and peak>=count_temp and temp<pull:                    # first drop below pull after cooking → arm the window
                 ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
 
@@ -3187,8 +3199,16 @@ def api_silence():
     return jsonify({"ok":True,"ts":ALARM_SILENCE_TS})
 @app.route("/temps")
 def temps():
+    _now=time.time()
     with probe_lock: t=dict(probe_temps)
-    with state_lock: s={k:{kk:vv for kk,vv in v.items() if kk!="removal_timer"} for k,v in probe_state.items()}
+    with state_lock:
+        s={}
+        for k,v in probe_state.items():
+            item={kk:vv for kk,vv in v.items() if kk!="removal_timer"}
+            _lca=v.get("last_change_at") or 0
+            if _lca and (_now-_lca)>60:                 # reading unchanged >1 min → probe parked on the dock / not in use → blank it
+                t[k]=None; item["status"]="idle"
+            s[k]=item
     return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"boot":SERVER_BOOT_ID}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
@@ -3227,7 +3247,7 @@ def reset_probe():
     if 1<=pid<=4:
         with state_lock:
             if probe_state[pid]["removal_timer"]: probe_state[pid]["removal_timer"].cancel()
-            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None}
+            probe_state[pid]={"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0}
         timer_triggers[pid]=False
     return Response('{"ok":true}',mimetype="application/json")
 
@@ -4014,8 +4034,25 @@ def api_slips_test():
     except Exception as e: return jsonify({"ok":False,"error":str(e),"enabled":_slips_enabled()})
 # ==================================================================================
 
+def _kill_sibling_instances():
+    # The app relaunches itself on every update, which on Windows leaves the OLD black console window behind →
+    # they pile up on the server. On startup, close any OTHER python running dashboard_app.py (not us) so only
+    # the newest window survives ("auto-close old when a new one pops up"). Best-effort; never blocks startup.
+    if os.name!="nt": return
+    try:
+        import subprocess
+        ps=("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*dashboard_app.py*' -and $_.ProcessId -ne %d } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }") % os.getpid()
+        subprocess.run(["powershell","-NoProfile","-Command",ps],capture_output=True,timeout=15,
+                       creationflags=0x08000000)   # CREATE_NO_WINDOW → the cleanup itself doesn't flash a window
+        print("startup: closed any stale dashboard windows")
+    except Exception as e:
+        print("sibling-cleanup:",e)
+
 if __name__=="__main__":
     import webbrowser
+    _kill_sibling_instances()            # close leftover console windows from previous relaunches
     print("="*55)
     print("  Kitchen Operations Dashboard v2")
     print("="*55)
