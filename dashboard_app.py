@@ -293,10 +293,10 @@ def check_probe_status(pid,temp):
             rebound=(lo is not None and lo<almost and temp>=lo+10 and temp<cooked)
             if temp<rearm_below or rebound:
                 ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle","low_since_pull":None});ns="idle"
-        # COUNT threshold: a bird counts as cooked-enough-for-stock at probe_count_temp (default 75C) — below
-        # the 80C "ready" line, so a bird that peaked in the high-70s and was pulled still counts. Doneness
-        # alarms + the use-by ticket still use cooked_temp (80); this only governs the stock credit + pull.
-        count_temp=settings.get("probe_count_temp",cooked)
+        # COUNT threshold: a bird counts as cooked-enough-for-stock once its peak reaches the ALMOST temp
+        # (auto-follows settings["almost_temp"]) — so a bird pulled at "almost" counts, not only fully-cooked
+        # ones. Kept ≥ pull+1 so it can't misfire while heating. Doneness alarms/ticket use their own temps.
+        count_temp=max(almost,pull+1.0)   # 'count as cooked' AUTO-FOLLOWS the Almost temp; kept just above pull so it can't misfire while heating
         confirm_secs=settings.get("probe_confirm_secs",15) or 15
         peak=ps["peak_temp"]
         # CONFIRMATION WINDOW: when the reading first drops below pull temp after cooking, DON'T count yet —
