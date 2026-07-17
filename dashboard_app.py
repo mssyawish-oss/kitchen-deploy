@@ -3450,7 +3450,7 @@ _LBL_DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; _LBL_MON=['Jan','Feb','Mar
 def _lbl_date(dt,withtime=False):
     s="%s %d %s"%(_LBL_DOW[dt.weekday()],dt.day,_LBL_MON[dt.month-1])
     return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
-def _render_label_png(item,staff,prepped_s,useby_s):
+def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     from PIL import Image,ImageDraw,ImageFont
     W,H=384,240   # ~50 x 30 mm at 203 dpi (NIIMBOT B1)
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
@@ -3471,8 +3471,13 @@ def _render_label_png(item,staff,prepped_s,useby_s):
                 cur=w
         if cur: lines.append(cur)
         return lines[:maxlines]
-    y=8; fi=fnt(34,True)
-    for ln in wrap((item or "").upper(),fi,W-16): dr.text((8,y),ln,font=fi,fill=0); y+=36
+    y=8; fi=fnt(34,True); name_maxw=W-16
+    badge=("%d/%d"%(seq,total)) if (total>1 and seq>0) else ""   # "1/4", "2/4"… only when a batch of >1
+    if badge:
+        fb=fnt(24,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-8-bw,10),badge,font=fb,fill=0)                # top-right corner
+        name_maxw=W-16-int(bw)-10                                 # keep the item name clear of the badge
+    for ln in wrap((item or "").upper(),fi,name_maxw): dr.text((8,y),ln,font=fi,fill=0); y+=36
     y+=2; fs=fnt(20,False)
     dr.text((8,y),"By: "+(staff or "-"),font=fs,fill=0); y+=26
     dr.text((8,y),"Prep: "+prepped_s,font=fs,fill=0); y+=32
@@ -3496,16 +3501,23 @@ def api_print_labels():
     if not item: return jsonify({"ok":False,"error":"no item chosen"})
     now=datetime.now()
     useby_s=_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-"
-    try: img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s)
+    prepped_s=_lbl_date(now,withtime=True)
+    printed=0; note=""; first_img=None
+    try:
+        for i in range(qty):
+            # each copy in a batch gets its own "1/4", "2/4"… so staff can see none went missing
+            img=_render_label_png(item,staff,prepped_s,useby_s,seq=i+1,total=qty)
+            if first_img is None: first_img=img
+            try:
+                if _niimbot_print(img,1): printed+=1
+            except Exception as e: note="printer error: %s"%e; break
     except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
     try:
-        base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True); img.save(os.path.join(base,"last_label.png"))
+        base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True)
+        if first_img is not None: first_img.save(os.path.join(base,"last_label.png"))
     except Exception: pass
-    printed=False; note=""
-    try: printed=bool(_niimbot_print(img,qty))
-    except Exception as e: note="printer error: %s"%e
     if not printed and not note: note="NIIMBOT B1 not paired yet — label built & saved (labels/last_label.png)."
-    return jsonify({"ok":True,"printed":printed,"qty":qty,"note":note})
+    return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
 # ── LIVE ORDERS BOARD (KDS mirror) + catering/large-order popup ──
 @app.route("/api/orders")
