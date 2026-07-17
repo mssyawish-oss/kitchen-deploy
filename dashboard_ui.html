@@ -3557,7 +3557,7 @@ function openLabelModal(){_lblItem=null;_lblItemName='';_lblStaff='';_lblQty=1;c
 function renderLabelItems(){
   const grid=document.getElementById('lbl-item-grid');if(!grid)return;
   const q=((document.getElementById('lbl-search')||{}).value||'').toLowerCase().trim();
-  const items=(appData.prep_presets||[]).filter(p=>!q||(p.name||'').toLowerCase().includes(q));
+  const items=(appData.prep_presets||[]).filter(p=>!p.recur).filter(p=>!q||(p.name||'').toLowerCase().includes(q));   // labels are for prep items only — hide recurring daily tasks (they have recur set)
   grid.innerHTML=items.length?items.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';const sel=(_lblItem===p.id)?' sel':'';return '<div class="prep-card lbl-pick'+sel+'" onclick="_lblPickItem(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:12px;">No items yet — add them under “Items”.</div>';
 }
 function _lblPickItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;_lblItem=id;_lblItemName=p.name||'';const sh=document.getElementById('lbl-shelf');if(sh&&!sh.value)sh.value=(p.shelf_days||'');renderLabelItems();renderLabelPreview();}
