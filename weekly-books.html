@@ -362,6 +362,14 @@ function load(){
     reconcileEstimates();   // a real Uber/DoorDash payout always supersedes its 30% estimate
     dedupeMark();
     pruneFuturePayouts();
+    // ONE-TIME: strip duplicate expenses (old months had the imported originals AND the auto ones). Keeps the
+    // blue auto row, removes the exact-matching original. Backs up first; restoreDupeBackup() undoes it.
+    if(localStorage.getItem(KEY+'_dedupeExp2')!=='1'){
+      try{ localStorage.setItem(KEY+'_predupe', localStorage.getItem(KEY)||'[]'); }catch(e){}
+      const _rmN=_dedupeExpenses();
+      localStorage.setItem(KEY+'_dedupeExp2','1');
+      if(_rmN){ save(); window._dedupeRemoved=_rmN; }
+    }
   }catch(e){ TX=seedTx(); }
   window._booksLoading=false;
 }
@@ -575,6 +583,19 @@ function wageRowHTML(t){
   return rowHTML(t);
 }
 function isAutoTx(t){ return t.src==='sync' || t.src==='bill' || t.src==='embed' || t.src==='est'; }
+// De-dupe expenses: where an ORIGINAL (imported CSV, non-auto) expense EXACTLY matches an auto/blue one
+// (same week + same category + same amount), drop the original and keep the blue auto. Returns count removed.
+function _dedupeExpenses(){
+  const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const g={};
+  TX.forEach(t=>{ if(t.type!=='expense')return; const k=weekKey(t.date)+'|'+norm(t.cat)+'|'+Math.round(Math.abs(+t.amt||0)*100); (g[k]=g[k]||[]).push(t); });
+  const rm=new Set();
+  Object.values(g).forEach(arr=>{ if(arr.length<2)return; if(!arr.some(isAutoTx))return; arr.forEach(t=>{ if(!isAutoTx(t)) rm.add(t.id); }); });
+  if(!rm.size) return 0;
+  TX=TX.filter(t=>!rm.has(t.id));
+  return rm.size;
+}
+function restoreDupeBackup(){ try{ const b=localStorage.getItem(KEY+'_predupe'); if(!b){ status('No pre-cleanup backup found.'); return; } TX=JSON.parse(b); localStorage.removeItem(KEY+'_dedupeExp2'); save(); render(); status('Restored the books to before the duplicate cleanup.'); }catch(e){ status('Restore failed: '+e.message); } }
 function rowHTML(t){
   const auto=isAutoTx(t);
   const isExp = t.type==='expense';
@@ -1435,6 +1456,7 @@ function drawDayChart(hrS,hrW){
     }
   }catch(e){}
   load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+  if(window._dedupeRemoved){ setTimeout(()=>{ try{ status('✓ Removed '+window._dedupeRemoved+' duplicate expense'+(window._dedupeRemoved>1?'s':'')+' — kept the blue auto ones.'); }catch(e){} }, 1500); }
 })();
 if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
 setInterval(maybeAutoSync, 5*60*1000); // while open, the viewed week re-syncs itself every 30 min (checked every 5)
