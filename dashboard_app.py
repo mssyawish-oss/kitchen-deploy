@@ -432,14 +432,14 @@ def rot_put_on(rows):   # a finished row went into the warmer → add straight t
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
     _rot_save()
 def rot_adjust(delta):
-    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,ROT_LIVE["available"]+delta)
+    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]+delta   # may go negative (oversold)
     _rot_save()
 def rot_set(v):
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,float(v))
     _rot_save()
 def rot_deduct(birds,oids):
     with rot_lock:
-        _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,ROT_LIVE["available"]-birds)
+        _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]-birds   # go NEGATIVE if oversold; cooking (rot_put_on/probe credit) brings it back up
         ROT_LIVE["sold_today"]+=birds;ROT_LIVE["seen"].extend(oids);ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
     _rot_save()
 def _probe_credit_stock(pid,name,temp):

@@ -2529,7 +2529,7 @@ function removePackdownTask(i){appData.packdown_tasks.splice(i,1);saveAppData();
 // DAILY ROUTINES
 function nowHHMM(){const n=new Date();return n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0');}
 function todayDateStr(){const n=new Date();return n.getFullYear()+'-'+(n.getMonth()+1)+'-'+n.getDate();}  // ← date key for 24h reset
-function fmtBird(v){v=Math.round(v*4)/4;const w=Math.floor(v),f=v-w,fr={0:'',0.25:'¼',0.5:'½',0.75:'¾'}[f];if(fr===undefined)return String(v);if(w===0&&fr)return fr;return w+(fr||'');}
+function fmtBird(v){const neg=(v<0)?'-':'';v=Math.abs(Math.round(v*4)/4);const w=Math.floor(v),f=v-w,fr={0:'',0.25:'¼',0.5:'½',0.75:'¾'}[f];if(fr===undefined)return neg+String(v);if(w===0&&fr)return neg+fr;return neg+(w+(fr||''));}
 // ── low-stock alarms: 'warn' = strobe + pleasant 3s chime once; 'crit' = strobe + looping sound until tapped ──
 const stockAlert={bbq:{lvl:'none',acked:false},fry:{lvl:'none',acked:false}};
 function playStockWarn(){const v=_acfg('stock').volume;playChime(v);setTimeout(()=>playChime(v),1000);setTimeout(()=>playChime(v),2000);}
