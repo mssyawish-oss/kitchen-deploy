@@ -3353,6 +3353,68 @@ def api_books_fin():
     if not _books_ok(): return jsonify({})   # same password gate as the books page — no login, no figures
     return jsonify(db.get("books_fin") or {})
 
+# ── PREP LABELS (NIIMBOT B1) — renders the sticker; sends to the printer once it's paired over Bluetooth ──
+_LBL_DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; _LBL_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+def _lbl_date(dt,withtime=False):
+    s="%s %d %s"%(_LBL_DOW[dt.weekday()],dt.day,_LBL_MON[dt.month-1])
+    return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
+def _render_label_png(item,staff,prepped_s,useby_s):
+    from PIL import Image,ImageDraw,ImageFont
+    W,H=384,240   # ~50 x 30 mm at 203 dpi (NIIMBOT B1)
+    img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
+    def fnt(sz,bold=True):
+        names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
+        for c in names:
+            for p in (c,os.path.join("C:\\Windows\\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    def wrap(text,font,maxw,maxlines=3):
+        lines=[];cur=""
+        for w in text.split():
+            t=(cur+" "+w).strip()
+            if dr.textlength(t,font=font)<=maxw: cur=t
+            else:
+                if cur: lines.append(cur)
+                cur=w
+        if cur: lines.append(cur)
+        return lines[:maxlines]
+    y=8; fi=fnt(34,True)
+    for ln in wrap((item or "").upper(),fi,W-16): dr.text((8,y),ln,font=fi,fill=0); y+=36
+    y+=2; fs=fnt(20,False)
+    dr.text((8,y),"By: "+(staff or "-"),font=fs,fill=0); y+=26
+    dr.text((8,y),"Prep: "+prepped_s,font=fs,fill=0); y+=32
+    fu=fnt(26,True); box="USE BY  "+useby_s
+    dr.rectangle([6,y,W-6,y+42],outline=0,width=3)
+    dr.text(((W-dr.textlength(box,font=fu))/2,y+7),box,font=fu,fill=0)
+    return img
+def _niimbot_print(img,qty):
+    # TODO(printer here): send `img` to the NIIMBOT B1 `qty` times over the server's Bluetooth (bleak) using the
+    # niimprint B1 protocol. Wired once the printer is physically paired + tested. Until then, never claim a print.
+    if not (db.get("niimbot") or {}).get("mac"): return False
+    return False
+@app.route("/api/print_labels",methods=["POST"])
+def api_print_labels():
+    d=request.get_json(silent=True) or {}
+    item=str(d.get("item","")).strip()[:60]; staff=str(d.get("staff","")).strip()[:30]
+    try: shelf=float(d.get("shelf_days",0) or 0)
+    except (TypeError,ValueError): shelf=0.0
+    try: qty=max(1,min(50,int(d.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    if not item: return jsonify({"ok":False,"error":"no item chosen"})
+    now=datetime.now()
+    useby_s=_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-"
+    try: img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s)
+    except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
+    try:
+        base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True); img.save(os.path.join(base,"last_label.png"))
+    except Exception: pass
+    printed=False; note=""
+    try: printed=bool(_niimbot_print(img,qty))
+    except Exception as e: note="printer error: %s"%e
+    if not printed and not note: note="NIIMBOT B1 not paired yet — label built & saved (labels/last_label.png)."
+    return jsonify({"ok":True,"printed":printed,"qty":qty,"note":note})
+
 @app.route("/webhook/square",methods=["POST"])
 def square_webhook():
     # Acknowledged so Square stops retrying; busy/quiet state is driven by square_poll_loop.

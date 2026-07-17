@@ -888,6 +888,20 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   .drawer-backdrop{display:none;}
   .app-shell.drawer-open .drawer-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;}
 }
+/* ── Prep label printer ── */
+.lbl-step{margin-bottom:14px;}
+.lbl-step-h{font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--muted);text-transform:uppercase;margin-bottom:7px;}
+#lbl-item-grid{max-height:34vh;overflow-y:auto;}
+.lbl-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.lbl-chip{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+.lbl-chip.on{background:var(--acc);border-color:var(--acc);color:#0b0c10;}
+.prep-card.lbl-pick.sel{outline:2px solid var(--acc);outline-offset:1px;}
+#lbl-preview-wrap{display:flex;justify-content:center;}
+.lbl-preview{width:300px;min-height:150px;background:#fff;color:#000;border:1px solid #cbd3dd;border-radius:6px;padding:12px 14px;font-family:'Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;flex-direction:column;}
+.lbl-preview .lp-item{font-size:22px;font-weight:800;line-height:1.05;letter-spacing:-.01em;word-break:break-word;}
+.lbl-preview .lp-row{font-size:13px;margin-top:5px;color:#111;}
+.lbl-preview .lp-useby{margin-top:8px;font-size:16px;font-weight:800;border:2px solid #000;border-radius:5px;padding:3px 8px;text-align:center;}
+.lbl-preview .lp-empty{color:#888;font-size:13px;text-align:center;margin:auto;}
 </style>
 </head>
 <body>
@@ -986,7 +1000,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="recipe-detail" style="display:none;"></div><div id="recipe-list"></div><div id="recipe-empty" class="empty-state"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
+      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button><button class="btn" onclick="openLabelModal()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Labels</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
@@ -1092,6 +1106,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="form-row"><div class="label">Name</div><input class="input" id="prep-name" placeholder="e.g. Cut lettuce, Marinate wings…"></div>
     <div class="form-row"><div class="label">Remind at <span style="color:var(--muted);font-weight:400;">(optional)</span></div><input class="input" id="prep-remind" type="time"> <span style="font-size:11.5px;color:var(--muted);margin-left:8px;">Sounds an alarm if not done by this time.</span></div>
+    <div class="form-row"><div class="label">Label shelf-life <span style="color:var(--muted);font-weight:400;">(days — used for the use-by sticker)</span></div><input class="input" id="prep-shelf" type="number" step="0.5" min="0" placeholder="e.g. 2 (leave blank if it doesn't get labelled)"></div>
     <div id="prep-recur-wrap" style="display:none;">
     <div class="form-row"><div class="label">Repeats</div><select class="input" id="prep-recur" style="background:var(--surface2);" onchange="onPrepRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="prep-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="prep-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
@@ -1102,6 +1117,27 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="form-row"><div class="label">Picture</div><label class="btn" style="cursor:pointer;">Choose image…<input type="file" accept="image/*" style="display:none;" id="prep-img-input" onchange="prepPickImage(this)"></label> <span id="prep-img-name" style="font-size:12px;color:var(--muted);margin-left:8px;"></span><div id="prep-img-preview" style="margin-top:8px;"></div></div>
     <div class="row" style="gap:6px;margin-top:6px;"><button class="btn btn-primary" style="flex:1;" id="prep-save-btn" onclick="savePrepItem()">Add item</button><button class="btn" onclick="prepClearForm()">Clear</button></div>
     <div id="prep-manage-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="label-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header"><div class="modal-title">PRINT PREP LABELS</div><button class="modal-close" onclick="closeModal('label-modal')">Close</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Pick what you prepped, who you are, and how many labels — it prints stickers with the use-by worked out for you.</div>
+    <div class="lbl-step"><div class="lbl-step-h">1 · What did you prep?</div><input class="input" id="lbl-search" placeholder="Search items…" oninput="renderLabelItems()" style="margin-bottom:8px;"><div id="lbl-item-grid" class="prep-grid"></div></div>
+    <div class="lbl-step"><div class="lbl-step-h">2 · Who are you?</div><div id="lbl-staff" class="lbl-chips"></div></div>
+    <div class="lbl-step"><div class="lbl-step-h">3 · How many labels?</div>
+      <div class="row" style="gap:10px;align-items:center;">
+        <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(-1)">&minus;</button>
+        <span id="lbl-qty" style="font-family:var(--font-mono);font-size:28px;font-weight:700;min-width:42px;text-align:center;">1</span>
+        <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(1)">+</button>
+        <span style="font-size:12px;color:var(--muted);margin-left:6px;">Use-by:</span>
+        <input class="input" id="lbl-shelf" type="number" step="0.5" min="0" style="width:70px;text-align:center;" oninput="renderLabelPreview()" title="shelf-life in days"><span style="font-size:12px;color:var(--muted);">days</span>
+      </div>
+    </div>
+    <div class="lbl-step"><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
+    <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:17px;padding:13px;margin-top:6px;" onclick="printLabels()">Print labels</button>
+    <div id="lbl-status" style="font-size:12.5px;margin-top:8px;min-height:16px;color:var(--muted);text-align:center;"></div>
   </div>
 </div>
 
@@ -3423,13 +3459,52 @@ function savePrepList(){
   if(typeof _toast==='function')_toast(ds===today?'Today’s prep list saved.':('Prep scheduled for '+_prepDateLabel(ds)+'.'));
 }
 let _prepFile=null;
+// ── PREP LABEL PRINTER (NIIMBOT B1) ──
+let _lblItem=null,_lblItemName='',_lblStaff='',_lblQty=1;
+function openLabelModal(){_lblItem=null;_lblItemName='';_lblStaff='';_lblQty=1;const s=document.getElementById('lbl-search');if(s)s.value='';const q=document.getElementById('lbl-qty');if(q)q.textContent='1';const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';const st=document.getElementById('lbl-status');if(st)st.textContent='';renderLabelItems();renderLabelStaff();renderLabelPreview();openModal('label-modal');}
+function renderLabelItems(){
+  const grid=document.getElementById('lbl-item-grid');if(!grid)return;
+  const q=((document.getElementById('lbl-search')||{}).value||'').toLowerCase().trim();
+  const items=(appData.prep_presets||[]).filter(p=>!q||(p.name||'').toLowerCase().includes(q));
+  grid.innerHTML=items.length?items.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';const sel=(_lblItem===p.id)?' sel':'';return '<div class="prep-card lbl-pick'+sel+'" onclick="_lblPickItem(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:12px;">No items yet — add them under “Items”.</div>';
+}
+function _lblPickItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;_lblItem=id;_lblItemName=p.name||'';const sh=document.getElementById('lbl-shelf');if(sh&&!sh.value)sh.value=(p.shelf_days||'');renderLabelItems();renderLabelPreview();}
+function renderLabelStaff(){const el=document.getElementById('lbl-staff');if(!el)return;const staff=(appData.staff||[]);el.innerHTML=staff.length?staff.map(s=>'<div class="lbl-chip'+(_lblStaff===s.name?' on':'')+'" onclick="_lblPickStaff('+JSON.stringify(s.name)+')">'+_mEsc(s.name)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">Add staff in Settings → Staff to tag who prepped it.</div>';}
+function _lblPickStaff(name){_lblStaff=name;renderLabelStaff();renderLabelPreview();}
+function lblQty(d){_lblQty=Math.max(1,Math.min(50,_lblQty+d));const q=document.getElementById('lbl-qty');if(q)q.textContent=_lblQty;}
+function _lblFmt(d,withTime){const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];let s=DAYS[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()];if(withTime)s+=' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});return s;}
+function renderLabelPreview(){
+  const el=document.getElementById('lbl-preview');if(!el)return;
+  if(!_lblItem){el.innerHTML='<div class="lp-empty">Pick an item to preview the label</div>';return;}
+  const shelf=parseFloat((document.getElementById('lbl-shelf')||{}).value)||0;
+  const now=new Date();
+  const useby=shelf>0?_lblFmt(new Date(now.getTime()+shelf*86400000),shelf<1):'—';
+  el.innerHTML='<div class="lp-item">'+_mEsc(_lblItemName)+'</div>'+
+    '<div class="lp-row"><b>By:</b> '+(_lblStaff?_mEsc(_lblStaff):'—')+'</div>'+
+    '<div class="lp-row"><b>Prep:</b> '+_lblFmt(now,true)+'</div>'+
+    '<div class="lp-useby">USE BY  '+useby+'</div>';
+}
+function printLabels(){
+  const st=document.getElementById('lbl-status');
+  if(!_lblItem){if(st){st.textContent='Pick an item first.';st.style.color='var(--red)';}return;}
+  if(!_lblStaff){if(st){st.textContent='Tap your name first.';st.style.color='var(--red)';}return;}
+  const shelf=parseFloat((document.getElementById('lbl-shelf')||{}).value)||0;
+  const btn=document.getElementById('lbl-print-btn');if(btn)btn.disabled=true;
+  if(st){st.textContent='Sending '+_lblQty+' label'+(_lblQty>1?'s':'')+'…';st.style.color='var(--muted)';}
+  fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item:_lblItemName,staff:_lblStaff,shelf_days:shelf,qty:_lblQty})}).then(r=>r.json()).then(d=>{
+    if(btn)btn.disabled=false;
+    if(d.ok&&d.printed){if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'');st.style.color='var(--green)';}}
+    else if(d.ok){if(st){st.innerHTML='Label built ✓ — no printer connected yet.<br><span style="color:var(--muted);">'+_mEsc(d.note||'Pair the NIIMBOT B1 to start printing.')+'</span>';st.style.color='var(--amber)';}}
+    else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
+  }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
+}
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
   const el=document.getElementById('prep-manage-list');if(!el)return;const presets=appData.prep_presets||[];
   el.innerHTML=presets.length?presets.map(p=>{const bits=[];if(p.recur)bits.push('&#8635; '+_recurLabel(p));if(p.remind)bits.push('Remind '+p.remind);const meta=bits.length?bits.join(' · '):'<span style="opacity:.6;">added by hand · priority set when added</span>';return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:11px;color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" data-del="'+p.id+'" style="padding:4px 10px;font-size:12px;" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:6px 0;">No prep items yet — add your first below.</div>';
 }
 function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">';}}
-function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-recur').value=p.recur||'daily';setPrepType(p.recur?'task':'prep');setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
+function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-shelf').value=p.shelf_days||'';document.getElementById('prep-recur').value=p.recur||'daily';setPrepType(p.recur?'task':'prep');setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
 let _prepDelArm=null,_prepDelTimer=null;
 // Two-tap delete — native confirm() is unreliable (it hangs/no-ops in the iPad's standalone/kiosk webview),
 // which is why Delete used to do nothing. First tap arms the button ("Tap to confirm"); second tap removes it.
@@ -3447,7 +3522,7 @@ function deletePrepItem(id){
   appData.prep_presets=(appData.prep_presets||[]).filter(x=>x.id!==id);saveKeys(['prep_presets']);renderPrepManageList();renderPrepPage();
   if(typeof _toast==='function')_toast('Deleted “'+(p?p.name:'')+'”');
 }
-function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';if(g('prep-recur'))g('prep-recur').value='daily';if(typeof setPrepType==='function')setPrepType('prep');document.querySelectorAll('#prep-days .day-pill').forEach(p=>p.classList.remove('on'));if(g('prep-anchor'))g('prep-anchor').value='';_prepDates=[];renderPrepDates();if(typeof onPrepRecurChange==='function'&&g('prep-recur'))onPrepRecurChange();if(g('prep-detail'))g('prep-detail').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
+function prepClearForm(){const g=id=>document.getElementById(id);if(g('prep-edit-id'))g('prep-edit-id').value='';if(g('prep-name'))g('prep-name').value='';if(g('prep-remind'))g('prep-remind').value='';if(g('prep-shelf'))g('prep-shelf').value='';if(g('prep-recur'))g('prep-recur').value='daily';if(typeof setPrepType==='function')setPrepType('prep');document.querySelectorAll('#prep-days .day-pill').forEach(p=>p.classList.remove('on'));if(g('prep-anchor'))g('prep-anchor').value='';_prepDates=[];renderPrepDates();if(typeof onPrepRecurChange==='function'&&g('prep-recur'))onPrepRecurChange();if(g('prep-detail'))g('prep-detail').value='';_prepFile=null;if(g('prep-img-name'))g('prep-img-name').textContent='';if(g('prep-img-preview'))g('prep-img-preview').innerHTML='';if(g('prep-img-input'))g('prep-img-input').value='';if(g('prep-save-btn'))g('prep-save-btn').textContent='Add item';if(g('prep-manage-status'))g('prep-manage-status').textContent='';}
 let _prepDates=[];
 function onPrepRecurChange(){const r=document.getElementById('prep-recur').value;
   document.getElementById('prep-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'block':'none';
@@ -3480,10 +3555,11 @@ function savePrepItem(){
   const start_date=document.getElementById('prep-anchor').value||'';
   const dates=_prepDates.slice();
   const detail=document.getElementById('prep-detail').value.trim();
+  const shelf_days=parseFloat(document.getElementById('prep-shelf').value)||0;
   if((recur==='weekly'||recur==='fortnightly')&&days.length===0){if(st){st.textContent='Pick at least one day of the week.';st.style.color='var(--red)';}return;}
   if(recur==='dates'&&dates.length===0){if(st){st.textContent='Add at least one date.';st.style.color='var(--red)';}return;}
   appData.prep_presets=appData.prep_presets||[];
-  const finish=img=>{const f={name,remind,recur,days,start_date,dates,detail};const ex=appData.prep_presets.find(p=>p.id===id);if(ex){Object.assign(ex,f);if(img)ex.img=img;}else appData.prep_presets.push(Object.assign({id:id,img:img||''},f));saveKeys(['prep_presets']);_mergeRecurringPrep();prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
+  const finish=img=>{const f={name,remind,recur,days,start_date,dates,detail,shelf_days};const ex=appData.prep_presets.find(p=>p.id===id);if(ex){Object.assign(ex,f);if(img)ex.img=img;}else appData.prep_presets.push(Object.assign({id:id,img:img||''},f));saveKeys(['prep_presets']);_mergeRecurringPrep();prepClearForm();renderPrepManageList();renderPrepBuildGrid();renderPrepPage();if(st){st.textContent='Saved ✓';st.style.color='var(--green)';}};
   if(_prepFile){if(st){st.textContent='Uploading…';st.style.color='var(--muted)';}const fd=new FormData();fd.append('file',_prepFile);fetch('/api/prep_image/'+id,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)finish(d.img);else if(st){st.textContent='Image error: '+(d.error||'failed');st.style.color='var(--red)';}}).catch(()=>{if(st){st.textContent='Upload failed.';st.style.color='var(--red)';}});}
   else finish(null);
 }
