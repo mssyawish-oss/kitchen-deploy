@@ -747,6 +747,7 @@ def _kds_fetch(cfg):
     for o in allo:
         oid=o.get("id")
         if not oid: continue
+        if not (o.get("fulfillments")): continue   # no fulfillment = not a kitchen order (invoice / payment link) — never hits the KDS, can't be bumped; keep it off the board
         items=[]; icount=0
         for li in o.get("line_items") or []:
             nm=(li.get("name") or "").strip()
@@ -795,13 +796,12 @@ def _orders_refresh(cfg):
     except (TypeError,ValueError): win=15
     open_tk=[b for b in board if not b["fulfilled"]]
     live_ids=set(b["id"] for b in open_tk)
-    # KDS-mirror board: unscheduled fire immediately; scheduled appear within the fire window (matches the pass KDS)
-    tickets=[]
-    for b in open_tk:
-        if b["sched"] and b["due"]:
-            d=_parse_dt(b["due"])
-            if d and now < d-timedelta(minutes=win): continue   # not on the KDS yet
-        tickets.append(b)
+    # Board shows ALL open kitchen orders — INCLUDING scheduled catering/pre-orders (tagged with their due
+    # time) so the owner sees + preps them ahead, not only within the KDS fire window. Soonest-relevant first.
+    def _eff(b):
+        d=_parse_dt(b["due"]) if (b.get("sched") and b.get("due")) else _parse_dt(b.get("created"))
+        return d or now
+    tickets=sorted(open_tk,key=_eff)
     # catering / large alerts — surfaced IMMEDIATELY (ahead of the KDS window), once each until dismissed
     seen=set(db.get("order_alert_seen") or [])
     if seen-live_ids:                                # prune ids that have left the board
