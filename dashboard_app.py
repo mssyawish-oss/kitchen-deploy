@@ -3432,10 +3432,36 @@ def get_db():
     safe["rotcam_usage"]={"today":_ct,"cost_today":round(_ct*_GEM_COST_PER_CALL,2),"total":_tt,"cost_total":round(_tt*_GEM_COST_PER_CALL,2),"per_call":_GEM_COST_PER_CALL}
     return jsonify(safe)
 
+_PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/blank tablet must never wipe wholesale
 @app.route("/api/data",methods=["POST"])
 def update_db():
-    with data_lock: db.update(request.get_json(silent=True) or {});save_data(db)
+    payload=request.get_json(silent=True) or {}
+    dropped=[]
+    with data_lock:
+        for k in _PROTECT_KEYS:
+            # guard: a tablet that loaded an empty list (mid-refresh / stale) must not clear a populated one.
+            # A real one-by-one delete never jumps a 3+ list straight to empty in a single POST.
+            if isinstance(payload.get(k),list) and not payload[k] and isinstance(db.get(k),list) and len(db[k])>=3:
+                payload.pop(k); dropped.append(k)
+        db.update(payload); save_data(db)
+    if dropped:
+        try: app.logger.warning("api/data: ignored empty overwrite of %s (kept existing)",dropped)
+        except Exception: pass
+        return jsonify({"ok":True,"ignored":dropped})
     return jsonify({"ok":True})
+
+@app.route("/api/prep_orphans")
+def api_prep_orphans():
+    # recovery aid: prep-item photos in task_photos with no matching prep_presets entry
+    ids={(p.get("id") or "") for p in (db.get("prep_presets") or [])}
+    out=[]
+    try:
+        for fn in os.listdir(PHOTOS_DIR):
+            if not fn.startswith("prep_"): continue
+            pid=os.path.splitext(fn)[0][5:]
+            if pid and pid not in ids: out.append({"id":pid,"file":fn})
+    except Exception as e: return jsonify({"ok":False,"error":str(e)})
+    return jsonify({"ok":True,"count":len(out),"orphans":sorted(out,key=lambda x:x["file"])})
 
 @app.route("/api/books_fin")
 def api_books_fin():
