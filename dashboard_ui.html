@@ -1168,8 +1168,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="modal-header"><div class="modal-title">PRINT PREP LABELS</div><button class="modal-close" onclick="closeModal('label-modal')">Close</button></div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Pick what you prepped, who you are, and how many labels — it prints stickers with the use-by worked out for you.</div>
     <div class="lbl-step"><div class="lbl-step-h">1 · What did you prep?</div><input class="input" id="lbl-search" placeholder="Search items…" oninput="renderLabelItems()" style="margin-bottom:8px;"><div id="lbl-item-grid" class="prep-grid"></div></div>
-    <div class="lbl-step"><div class="lbl-step-h">2 · Who are you?</div><div id="lbl-staff" class="lbl-chips"></div></div>
-    <div class="lbl-step"><div class="lbl-step-h">3 · How many labels?</div>
+    <div class="lbl-step"><div class="lbl-step-h">2 · How many labels?</div>
       <div class="row" style="gap:10px;align-items:center;">
         <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(-1)">&minus;</button>
         <span id="lbl-qty" style="font-family:var(--font-mono);font-size:28px;font-weight:700;min-width:42px;text-align:center;">1</span>
@@ -1179,8 +1178,17 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       </div>
     </div>
     <div class="lbl-step"><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
-    <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:17px;padding:13px;margin-top:6px;" onclick="printLabels()">Print labels</button>
+    <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:17px;padding:13px;margin-top:6px;" onclick="openStaffPick()">Print labels</button>
     <div id="lbl-status" style="font-size:12.5px;margin-top:8px;min-height:16px;color:var(--muted);text-align:center;"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="lbl-staff-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header"><div class="modal-title">WHO PREPPED THIS?</div><button class="modal-close" onclick="closeModal('lbl-staff-modal')">Close</button></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Tap your name — printing <b id="lbl-sm-qty"></b> label<span id="lbl-sm-s"></span> of <b id="lbl-sm-item"></b>.</div>
+    <div id="lbl-staff-pick" class="lbl-chips" style="gap:10px;"></div>
+    <div id="lbl-sm-status" style="font-size:12.5px;color:var(--muted);margin-top:12px;text-align:center;min-height:16px;"></div>
   </div>
 </div>
 
@@ -3545,7 +3553,7 @@ function printOrder(id,btn){if(!btn)return;btn.disabled=true;const o=btn.textCon
 setInterval(pollOrders,4000);pollOrders();
 // ── PREP LABEL PRINTER (NIIMBOT B1) ──
 let _lblItem=null,_lblItemName='',_lblStaff='',_lblQty=1;
-function openLabelModal(){_lblItem=null;_lblItemName='';_lblStaff='';_lblQty=1;const s=document.getElementById('lbl-search');if(s)s.value='';const q=document.getElementById('lbl-qty');if(q)q.textContent='1';const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';const st=document.getElementById('lbl-status');if(st)st.textContent='';renderLabelItems();renderLabelStaff();renderLabelPreview();openModal('label-modal');}
+function openLabelModal(){_lblItem=null;_lblItemName='';_lblStaff='';_lblQty=1;const s=document.getElementById('lbl-search');if(s)s.value='';const q=document.getElementById('lbl-qty');if(q)q.textContent='1';const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';const st=document.getElementById('lbl-status');if(st)st.textContent='';renderLabelItems();renderLabelPreview();openModal('label-modal');}
 function renderLabelItems(){
   const grid=document.getElementById('lbl-item-grid');if(!grid)return;
   const q=((document.getElementById('lbl-search')||{}).value||'').toLowerCase().trim();
@@ -3568,16 +3576,34 @@ function renderLabelPreview(){
     '<div class="lp-row"><b>Prep:</b> '+_lblFmt(now,true)+'</div>'+
     '<div class="lp-useby">USE BY  '+useby+'</div>';
 }
-function printLabels(){
+// On "Print labels" → pop up the staff picker showing only who's CLOCKED ON (Square open timecard), then print.
+function openStaffPick(){
   const st=document.getElementById('lbl-status');
   if(!_lblItem){if(st){st.textContent='Pick an item first.';st.style.color='var(--red)';}return;}
-  if(!_lblStaff){if(st){st.textContent='Tap your name first.';st.style.color='var(--red)';}return;}
+  const g=id=>document.getElementById(id);
+  if(g('lbl-sm-qty'))g('lbl-sm-qty').textContent=_lblQty;
+  if(g('lbl-sm-s'))g('lbl-sm-s').textContent=(_lblQty>1?'s':'');
+  if(g('lbl-sm-item'))g('lbl-sm-item').textContent=_lblItemName;
+  if(g('lbl-sm-status'))g('lbl-sm-status').textContent='';
+  const pick=g('lbl-staff-pick'); if(pick)pick.innerHTML='<div style="color:var(--muted);font-size:13px;">Loading who’s on…</div>';
+  openModal('lbl-staff-modal');
+  const _drawAll=()=>{ const names=(appData.staff||[]).map(s=>s.name).filter(Boolean); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+JSON.stringify(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>'; };
+  fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
+    let names=((d&&d.names)||[]).filter(Boolean);
+    if(!pick)return;
+    if(names.length){ pick.innerHTML=names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+JSON.stringify(n)+')">'+_mEsc(n)+'</div>').join(''); }
+    else { _drawAll(); const ss=g('lbl-sm-status'); if(ss)ss.textContent='(Nobody clocked on — showing all staff.)'; }
+  }).catch(_drawAll);
+}
+function _lblPickAndPrint(name){ _lblStaff=name; closeModal('lbl-staff-modal'); _doPrintLabels(); }
+function _doPrintLabels(){
+  const st=document.getElementById('lbl-status');
   const shelf=parseFloat((document.getElementById('lbl-shelf')||{}).value)||0;
   const btn=document.getElementById('lbl-print-btn');if(btn)btn.disabled=true;
-  if(st){st.textContent='Sending '+_lblQty+' label'+(_lblQty>1?'s':'')+'…';st.style.color='var(--muted)';}
+  if(st){st.textContent='Sending '+_lblQty+' label'+(_lblQty>1?'s':'')+' for '+_lblStaff+'…';st.style.color='var(--muted)';}
   fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item:_lblItemName,staff:_lblStaff,shelf_days:shelf,qty:_lblQty})}).then(r=>r.json()).then(d=>{
     if(btn)btn.disabled=false;
-    if(d.ok&&d.printed){if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'');st.style.color='var(--green)';}}
+    if(d.ok&&d.printed){if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'')+' — '+_lblStaff;st.style.color='var(--green)';}}
     else if(d.ok){if(st){st.innerHTML='Label built ✓ — no printer connected yet.<br><span style="color:var(--muted);">'+_mEsc(d.note||'Pair the NIIMBOT B1 to start printing.')+'</span>';st.style.color='var(--amber)';}}
     else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
   }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});

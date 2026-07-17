@@ -3547,6 +3547,34 @@ def api_print_order():
     except Exception as e: return jsonify({"ok":False,"error":str(e)})
     return jsonify({"ok":True})
 
+@app.route("/api/clocked_on")
+def api_clocked_on():
+    # Names of staff CURRENTLY clocked in — an OPEN Square timecard (clock-in, no clock-out). Falls back to the
+    # dashboard's manual shift board, then to the full staff list, so the label picker is never empty.
+    names=[]; hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    smap={}
+    for s in (db.get("staff") or []):
+        if s.get("square_id"): smap[s["square_id"]]=s.get("name") or ""
+    if hdr:
+        try:
+            now=datetime.now().astimezone(); mid=now.replace(hour=0,minute=0,second=0,microsecond=0)
+            body={"query":{"filter":{"start":{"start_at":(mid-timedelta(hours=18)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}},"limit":200}
+            if loc: body["query"]["filter"]["location_ids"]=[loc]
+            req=urllib.request.Request(SQUARE_BASE+"/v2/labor/timecards/search",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            for tc in data.get("timecards") or []:
+                if tc.get("end_at") is None and tc.get("start_at"):          # open shift = clocked in now
+                    nm=smap.get(tc.get("team_member_id") or "","")
+                    if nm and nm not in names: names.append(nm)
+        except Exception: pass
+    src="square" if names else ""
+    if not names:                                                            # fallback: manual shift board
+        for s in ((db.get("labour") or {}).get("on") or []):
+            nm=(s.get("name") if isinstance(s,dict) else str(s)) or ""
+            if nm and nm not in names: names.append(nm)
+        if names: src="shiftboard"
+    return jsonify({"names":names,"source":src})
+
 @app.route("/webhook/square",methods=["POST"])
 def square_webhook():
     # Acknowledged so Square stops retrying; busy/quiet state is driven by square_poll_loop.
