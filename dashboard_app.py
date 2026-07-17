@@ -728,6 +728,97 @@ def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
         out.append((oid,birds,pcs,sched,due,created,matched,src,nowait,oname,fulfilled,kind,total,all_li))
     return out
 
+ORDERS_LIVE={"board":[],"alerts":[],"ts":0}   # KDS-mirror board + catering/large popup alerts (rebuilt each poll)
+def _kds_fetch(cfg):
+    # ALL currently-OPEN orders with their full item lists + fulfillment + schedule, for the on-dash orders board
+    # and the catering/large-order popup. Wide created-at window so catering pre-orders booked days ahead are seen.
+    token=(cfg.get("access_token") or "").strip(); loc=(cfg.get("location_id") or "").strip()
+    if not token or not loc: return []
+    begin=(datetime.now(timezone.utc)-timedelta(days=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    allo=[]; cursor=None
+    for _pg in range(8):
+        q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":begin}},"state_filter":{"states":["OPEN"]}},"sort":{"sort_field":"CREATED_AT","sort_order":"ASC"}},"limit":500}
+        if cursor: q["cursor"]=cursor
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(q).encode(),headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=12,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        allo+=data.get("orders") or []; cursor=data.get("cursor")
+        if not cursor: break
+    out=[]
+    for o in allo:
+        oid=o.get("id")
+        if not oid: continue
+        items=[]; icount=0
+        for li in o.get("line_items") or []:
+            nm=(li.get("name") or "").strip()
+            if not nm: continue
+            var=(li.get("variation_name") or "").strip()
+            try: q=int(float(li.get("quantity") or 1))
+            except (TypeError,ValueError): q=1
+            icount+=q
+            mods=[m.get("name") for m in (li.get("modifiers") or []) if m.get("name")]
+            it={"n":nm+((" "+var) if (var and var.lower()!="regular") else ""),"q":q}
+            if mods: it["mods"]=mods
+            note=(li.get("note") or "").strip()
+            if note: it["note"]=note
+            items.append(it)
+        ff=[(fu.get("state") or "").upper() for fu in (o.get("fulfillments") or [])]
+        fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
+        sched=False; due=None; rname=""
+        for fu in o.get("fulfillments") or []:
+            pd=fu.get("pickup_details") or {}; dd=fu.get("delivery_details") or {}
+            if (pd.get("schedule_type") or dd.get("schedule_type"))=="SCHEDULED":
+                dt=_parse_dt(pd.get("pickup_at") or dd.get("deliver_at"))
+                if dt: sched=True; due=dt if (due is None or dt<due) else due
+            rec=(pd.get("recipient") or dd.get("recipient") or {})
+            if not rname and rec.get("display_name"): rname=rec.get("display_name")
+        name=(o.get("ticket_name") or "").strip() or rname or (o.get("reference_id") or "").strip() or ("#"+oid[-5:])
+        try: total=float((o.get("total_money") or {}).get("amount") or 0)/100.0
+        except (TypeError,ValueError): total=0.0
+        out.append({"id":oid,"name":name,"items":items,"icount":icount,"src":(o.get("source") or {}).get("name") or "",
+                    "total":round(total,2),"sched":sched,"due":(due.isoformat() if due else None),
+                    "created":o.get("created_at"),"fulfilled":fulfilled})
+    return out
+def _orders_refresh(cfg):
+    global ORDERS_LIVE
+    try:
+        board=_kds_fetch(cfg)
+    except Exception as e:
+        return   # transient Square hiccup → keep the last board
+    now=datetime.now(timezone.utc)
+    oc=db.get("order_alert") or {}
+    enabled=oc.get("enabled",True); schedOn=oc.get("sched",True)
+    try: minT=float(oc.get("min_total",150) or 0)
+    except (TypeError,ValueError): minT=150.0
+    try: minI=int(oc.get("min_items",15) or 0)
+    except (TypeError,ValueError): minI=15
+    try: win=int((db.get("orders_board_window") or 15))
+    except (TypeError,ValueError): win=15
+    open_tk=[b for b in board if not b["fulfilled"]]
+    live_ids=set(b["id"] for b in open_tk)
+    # KDS-mirror board: unscheduled fire immediately; scheduled appear within the fire window (matches the pass KDS)
+    tickets=[]
+    for b in open_tk:
+        if b["sched"] and b["due"]:
+            d=_parse_dt(b["due"])
+            if d and now < d-timedelta(minutes=win): continue   # not on the KDS yet
+        tickets.append(b)
+    # catering / large alerts — surfaced IMMEDIATELY (ahead of the KDS window), once each until dismissed
+    seen=set(db.get("order_alert_seen") or [])
+    if seen-live_ids:                                # prune ids that have left the board
+        with data_lock: db["order_alert_seen"]=[x for x in (db.get("order_alert_seen") or []) if x in live_ids]; save_data(db)
+        seen=live_ids & seen
+    alerts=[]
+    if enabled:
+        for b in open_tk:
+            if b["id"] in seen: continue
+            why=[]
+            if schedOn and b["sched"]: why.append("Catering / pre-order")
+            if minT and b["total"]>=minT: why.append("$%d order"%int(b["total"]))
+            if minI and b["icount"]>=minI: why.append("%d items"%b["icount"])
+            if why:
+                a=dict(b); a["reason"]=" · ".join(why); alerts.append(a)
+    ORDERS_LIVE={"board":tickets,"alerts":alerts,"ts":int(time.time()*1000),
+                 "cfg":{"min_total":minT,"min_items":minI,"sched":schedOn,"enabled":enabled,"window":win}}
 def square_poll_loop():
     while True:
         cfg=db.get("square_config",{}) or {}
@@ -790,6 +881,7 @@ def square_poll_loop():
                     if rids: rot_deduct(rb,rids)
                     if fids: fry_deduct(fb,fids)
                     if _stat_dirty: save_data(db)   # persist the sales board (once per poll, after counting)
+                    _orders_refresh(cfg)             # rebuild the on-dash orders board + catering/large popup alerts
             except Exception as e: print(f"sales-poll:{e}")
         else:
             square_status["configured"]=False
@@ -3414,6 +3506,46 @@ def api_print_labels():
     except Exception as e: note="printer error: %s"%e
     if not printed and not note: note="NIIMBOT B1 not paired yet — label built & saved (labels/last_label.png)."
     return jsonify({"ok":True,"printed":printed,"qty":qty,"note":note})
+
+# ── LIVE ORDERS BOARD (KDS mirror) + catering/large-order popup ──
+@app.route("/api/orders")
+def api_orders():
+    return jsonify(ORDERS_LIVE)
+@app.route("/api/order_ack",methods=["POST"])
+def api_order_ack():
+    oid=str((request.get_json(silent=True) or {}).get("id","") or "")
+    if oid:
+        with data_lock:
+            seen=list(db.get("order_alert_seen") or [])
+            if oid not in seen: seen.append(oid); db["order_alert_seen"]=seen[-200:]; save_data(db)
+    return jsonify({"ok":True})
+def _print_order_ticket(order):
+    ESC=b"\x1b"; GS=b"\x1d"; import socket
+    o=bytearray(); o+=ESC+b"@"+ESC+b"\x61\x01"                                   # init + centre
+    o+=GS+b"\x21\x11"+(order.get("name") or "").encode("ascii","replace")+GS+b"\x21\x00"+b"\n"
+    tag=[]
+    if order.get("sched") and order.get("due"):
+        d=_parse_dt(order["due"])
+        if d: tag.append("DUE "+d.astimezone().strftime("%a %H:%M %d/%m"))
+    if order.get("src"): tag.append(str(order["src"]))
+    if order.get("reason"): tag.insert(0,str(order["reason"]).upper())
+    if tag: o+=("  ".join(tag)).encode("ascii","replace")+b"\n"
+    o+=ESC+b"\x61\x00"+b"-"*32+b"\n"                                             # left + rule
+    for it in order.get("items") or []:
+        o+=GS+b"\x21\x01"+("%sx %s"%(it.get("q",1),it.get("n",""))).encode("ascii","replace")+GS+b"\x21\x00"+b"\n"
+        for m in it.get("mods") or []: o+=("   - "+str(m)).encode("ascii","replace")+b"\n"
+        if it.get("note"): o+=("   ! "+str(it["note"])).encode("ascii","replace")+b"\n"
+    o+=b"-"*32+b"\n"+ESC+b"\x61\x01"+("$%.2f"%(order.get("total") or 0)).encode()+b"\n\n"+GS+b"\x56\x41\x05"   # total, cut
+    with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+        s.settimeout(5); s.connect((settings["printer_ip"],PRINTER_PORT)); s.sendall(bytes(o))
+@app.route("/api/print_order",methods=["POST"])
+def api_print_order():
+    oid=str((request.get_json(silent=True) or {}).get("id","") or "")
+    order=next((b for b in ((ORDERS_LIVE.get("board") or [])+(ORDERS_LIVE.get("alerts") or [])) if b.get("id")==oid),None)
+    if not order: return jsonify({"ok":False,"error":"order not found (it may have cleared)"})
+    try: _print_order_ticket(order)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)})
+    return jsonify({"ok":True})
 
 @app.route("/webhook/square",methods=["POST"])
 def square_webhook():
