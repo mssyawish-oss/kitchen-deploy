@@ -3471,19 +3471,26 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
                 cur=w
         if cur: lines.append(cur)
         return lines[:maxlines]
-    y=8; fi=fnt(34,True); name_maxw=W-16
-    badge=("%d/%d"%(seq,total)) if (total>1 and seq>0) else ""   # "1/4", "2/4"… only when a batch of >1
-    if badge:
-        fb=fnt(24,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-8-bw,10),badge,font=fb,fill=0)                # top-right corner
-        name_maxw=W-16-int(bw)-10                                 # keep the item name clear of the badge
-    for ln in wrap((item or "").upper(),fi,name_maxw): dr.text((8,y),ln,font=fi,fill=0); y+=36
-    y+=2; fs=fnt(20,False)
-    dr.text((8,y),"By: "+(staff or "-"),font=fs,fill=0); y+=26
-    dr.text((8,y),"Prep: "+prepped_s,font=fs,fill=0); y+=32
-    fu=fnt(26,True); box="USE BY  "+useby_s
-    dr.rectangle([6,y,W-6,y+42],outline=0,width=3)
-    dr.text(((W-dr.textlength(box,font=fu))/2,y+7),box,font=fu,fill=0)
+    # ── professional "day dot" prep label: day-of-week header, product, prepped/by, USE BY box ──
+    DOWFULL={'Mon':'MONDAY','Tue':'TUESDAY','Wed':'WEDNESDAY','Thu':'THURSDAY','Fri':'FRIDAY','Sat':'SATURDAY','Sun':'SUNDAY'}
+    day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
+    # top black band = the "day dot" (prep day, drives FIFO rotation); batch number sits on the right
+    dr.rectangle([0,0,W,36],fill=0); fh=fnt(23,True)
+    dr.text((10,5),dayname,font=fh,fill=255)
+    if total>1 and seq>0:
+        badge="%d/%d"%(seq,total); fb=fnt(23,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-10-bw,5),badge,font=fb,fill=255)
+    # product name — the biggest thing on the label
+    y=44; fi=fnt(34,True)
+    for ln in wrap((item or "").upper(),fi,W-16,maxlines=2): dr.text((8,y),ln,font=fi,fill=0); y+=36
+    y+=4; dr.line([8,y,W-8,y],fill=0,width=2); y+=9
+    fs=fnt(19,False); fsb=fnt(19,True)
+    dr.text((8,y),"PREPPED",font=fsb,fill=0); dr.text((128,y),prepped_s,font=fs,fill=0); y+=26
+    dr.text((8,y),"BY",font=fsb,fill=0); dr.text((128,y),(staff or "-"),font=fs,fill=0)
+    # USE BY — the discard deadline, most important line: bold + boxed, anchored to the bottom
+    fu=fnt(27,True); box="USE BY  "+useby_s; bh=46; by0=H-8-bh
+    dr.rectangle([6,by0,W-6,by0+bh],outline=0,width=3)
+    dr.text(((W-dr.textlength(box,font=fu))/2,by0+9),box,font=fu,fill=0)
     return img
 def _niimbot_print(img,qty):
     # TODO(printer here): send `img` to the NIIMBOT B1 `qty` times over the server's Bluetooth (bleak) using the
