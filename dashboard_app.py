@@ -1184,6 +1184,104 @@ def api_product_enable():
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
     return jsonify(out)
 
+# ── Morning auto-switch-on: staff switch a product off and forget to switch it back, so every
+#    morning before open we un-86 everything EXCEPT the owner's never-touch list (db['prodoff_never'],
+#    edited live from the dash, matched on product NAME since one product = many Square objects).
+def _prodoff_auto_enable(manual=False):
+    items,err=_sq_offline_products()
+    if err or items is None: return {"ok":False,"error":err or "no data"}
+    never={str(n).strip().upper() for n in (db.get("prodoff_never") or [])}
+    enabled=[];skipped=[];failed=[];addons=[]
+    for it in items:
+        nm=(it.get("item") or "").strip()
+        if nm.upper() in never: skipped.append(nm); continue
+        try: ok,e=_sq_enable_variation(it.get("id"))
+        except Exception as ex: ok,e=False,str(ex)
+        if ok: enabled.append(nm)
+        elif it.get("kind")=="modifier": addons.append(nm)      # Square can't do add-ons from an app
+        else: failed.append("%s (%s)"%(nm,str(e)[:40]))
+    def uniq(l):
+        out=[]
+        for x in l:
+            if x not in out: out.append(x)
+        return out
+    res={"ok":True,"at":int(time.time()*1000),"date":datetime.now().strftime("%Y-%m-%d"),
+         "enabled":uniq(enabled),"skipped":uniq(skipped),"failed":uniq(failed),"addons":uniq(addons),
+         "manual":bool(manual),"seen":True if manual else False}
+    with data_lock:
+        db["prodoff_autolog"]=res
+        if not manual: db["prodoff_auto_lastrun"]=res["date"]
+        save_data(db)
+    return res
+
+@app.route("/api/prodoff_auto_run",methods=["POST"])
+def api_prodoff_auto_run():
+    return jsonify(_prodoff_auto_enable(manual=True))
+
+@app.route("/api/sq_diag/<vid>")
+def api_sq_diag(vid):
+    # READ-ONLY diagnostic: how does Square actually hold this object's sold-out state?
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    out={"ok":True,"loc":loc,"id":vid}
+    def _get(u):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            rd=getattr(e,"read",None)
+            if rd:
+                try: return {"_err":e.read().decode()[:300]}
+                except Exception: pass
+            return {"_err":str(e)}
+    obj=_get(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid))
+    o=(obj or {}).get("object") or {}
+    out["type"]=o.get("type"); out["catalog_err"]=obj.get("_err")
+    d=o.get("item_variation_data") or o.get("modifier_data") or {}
+    out["track_inventory"]=d.get("track_inventory")
+    out["location_overrides"]=[ov for ov in (d.get("location_overrides") or []) if ov.get("location_id")==loc]
+    out["inventory"]=_get(SQUARE_BASE+"/v2/inventory/"+urllib.parse.quote(vid))
+    return jsonify(out)
+
+@app.route("/api/products_all")
+def api_products_all():
+    # every product NAME at this location (items + add-on modifiers) — feeds the never-touch picker,
+    # so a product can be excluded even while it's currently switched ON
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}
+    if not hdr or not (cfg.get("location_id") or "").strip(): return jsonify({"ok":False,"error":"Square not configured"})
+    names=set()
+    try:
+        for typ,key in (("ITEM","item_data"),("MODIFIER","modifier_data")):
+            cursor=None
+            for _ in range(25):
+                url=SQUARE_BASE+"/v2/catalog/list?types="+typ+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                    data=json.loads(r.read().decode())
+                for obj in data.get("objects",[]) or []:
+                    if obj.get("type")!=typ: continue
+                    n=((obj.get(key) or {}).get("name") or "").strip()
+                    if n: names.add(n)
+                cursor=data.get("cursor")
+                if not cursor: break
+        return jsonify({"ok":True,"names":sorted(names)})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
+def prodoff_auto_loop():
+    while True:
+        try:
+            if db.get("prodoff_auto_on") is not False:
+                hhmm=str(db.get("prodoff_auto_time") or "09:45")
+                try: h,m=[int(x) for x in hhmm.split(":")[:2]]
+                except Exception: h,m=9,45
+                now=datetime.now(); today=now.strftime("%Y-%m-%d")
+                target=h*60+m; cur=now.hour*60+now.minute
+                # only inside a 2-hour window after the target, so a late server start can never
+                # silently switch everything back on in the middle of service
+                if target<=cur<target+120 and (db.get("prodoff_auto_lastrun") or "")!=today:
+                    _prodoff_auto_enable()
+        except Exception: pass
+        time.sleep(45)
 # ==================================================================================
 
 # ── Google (Gmail + Drive) via OAuth refresh token, stored in db['google_config'] ──
@@ -4376,6 +4474,9 @@ if __name__=="__main__":
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
+    # morning auto-switch-on writes to LIVE Square — server only, never a dev copy
+    if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
+        threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
