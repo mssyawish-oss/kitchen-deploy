@@ -96,14 +96,15 @@ body{background-image:radial-gradient(1200px 600px at 50% -10%,rgba(251,191,36,.
   .app-shell.drawer-open .drawer-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;}
 }
 .top-bar{height:56px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;gap:8px;position:relative;z-index:5;}
-.topbar-title{font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em;white-space:nowrap;}
+.topbar-title{font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.top-bar>div:first-child{min-width:0;}   /* let the shop name ellipsis instead of shoving the clock off-screen */
 .tb-ic{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:8px;border-radius:9px;position:relative;line-height:1;display:flex;align-items:center;}
 .tb-ic:hover{background:var(--surface2);color:var(--text);}
 .tb-clock{font-family:var(--font-mono);font-size:13px;color:var(--text);padding:0 4px;white-space:nowrap;}
 .top-bar .status-pill{white-space:nowrap;}
 .tb-lock{padding:6px 14px;font-size:13px;}
 .top-bar-title{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--amber);letter-spacing:.12em;}
-.top-bar-right{display:flex;align-items:center;gap:8px;}
+.top-bar-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 /* KIOSK mode: lock this tablet to a single page (e.g. ?kiosk=checklist) — hide the nav + menu so it can't wander off */
 body.kiosk .bottom-nav{display:none!important;}
 body.kiosk #menu-btn{display:none!important;}
@@ -359,11 +360,12 @@ body.kiosk .topbar-title{cursor:default;}
 @keyframes abPulse{0%,100%{background:#7f1d1d;}50%{background:#b91c1c;}}
 .alarm-bar .ab-ic{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#ef4444;color:#fff;
   font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;}
-.ab-list{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.ab-list{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-height:min(18vh,104px);overflow-y:auto;}
 .ab-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.28);
   border-radius:999px;padding:4px 6px 4px 12px;color:#fff;font-size:13.5px;font-weight:700;}
-.ab-chip button{background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:999px;width:22px;height:22px;
-  font-size:13px;font-weight:800;cursor:pointer;line-height:1;}
+.ab-chip button{position:relative;background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:999px;width:30px;height:30px;
+  font-size:15px;font-weight:800;cursor:pointer;line-height:1;}
+.ab-chip button::after{content:'';position:absolute;inset:-8px;}   /* 46px touch target */
 .ab-chip button:hover{background:rgba(255,255,255,.34);}
 .ab-all{flex-shrink:0;background:#fff;color:#7f1d1d;border:none;border-radius:9px;padding:7px 13px;
   font-size:13px;font-weight:800;cursor:pointer;}
@@ -376,6 +378,17 @@ body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8
 body.view-phone .rl-actions{flex-direction:column;gap:6px;}
 body.view-phone .nav-btn span{font-size:11px;}
 body.view-phone .rl-step{width:44px;height:44px;}
+/* Phone: the probes grid normally splits the section height between rows so it fits without
+   scrolling. On a phone that squeezes each card shorter than its own contents, so the temps
+   spilled out and the cards visibly overlapped. Let the rows size to their content and scroll. */
+@media(max-width:600px){
+  #page-probes .pb-split{flex-direction:column;}
+  #page-probes .pb-sec{min-height:0;}
+  #page-probes .pb-sec .probes-grid,#page-probes .pb-sec .timers-grid{grid-auto-rows:auto;flex:0 0 auto;}
+  #page-probes .pb-sec .probe-card,#page-probes .pb-sec .timer-card{min-height:0;padding:10px 10px;gap:6px;}
+  #page-probes .pb-sec .probe-temp,#page-probes .pb-sec .probe-no-data,#page-probes .probe-temp{font-size:clamp(30px,8vw,42px);}
+  #page-probes .pb-sec+.pb-sec{margin-top:12px;}   /* stop the BATCHES heading clipping the card above */
+}
 .rl-heroRow{display:flex;align-items:center;justify-content:center;gap:clamp(6px,2vw,18px);width:100%;min-width:0;}
 .rl-step{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:12px;width:clamp(40px,7vh,58px);height:clamp(40px,7vh,58px);font-size:clamp(24px,3.4vh,34px);font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;}
 .rl-step:active{transform:scale(.93);}
