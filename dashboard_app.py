@@ -3662,6 +3662,29 @@ def _niimbot_print(img,qty):
     # niimprint B1 protocol. Wired once the printer is physically paired + tested. Until then, never claim a print.
     if not (db.get("niimbot") or {}).get("mac"): return False
     return False
+@app.route("/api/ble_scan")
+def api_ble_scan():
+    # list Bluetooth LE devices the SERVER can see — used to find the NIIMBOT printer's address
+    try:
+        import asyncio
+        from bleak import BleakScanner
+        async def _scan():
+            ds=await BleakScanner.discover(timeout=float(request.args.get("secs") or 8))
+            return [{"name":(d.name or ""),"address":d.address,"rssi":getattr(d,"rssi",None)} for d in ds]
+        out=asyncio.run(_scan())
+        out.sort(key=lambda x:-(x.get("rssi") if x.get("rssi") is not None else -999))
+        return jsonify({"ok":True,"count":len(out),"devices":out,
+                        "saved_mac":((db.get("niimbot") or {}).get("mac") or "")})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
+@app.route("/api/niimbot_mac",methods=["POST"])
+def api_niimbot_mac():
+    mac=str((request.get_json(silent=True) or {}).get("mac","")).strip()
+    with data_lock:
+        n=dict(db.get("niimbot") or {}); n["mac"]=mac; db["niimbot"]=n; save_data(db)
+    return jsonify({"ok":True,"mac":mac})
+
 @app.route("/api/print_labels",methods=["POST"])
 def api_print_labels():
     d=request.get_json(silent=True) or {}
