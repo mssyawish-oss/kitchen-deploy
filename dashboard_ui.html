@@ -3110,12 +3110,52 @@ function _pdOffWhen(ms){const d=new Date(ms),n=new Date();const t=d.toLocaleTime
 function _pdOffPrune(){const m=appData.prodoff_mutes||{};const now=Date.now();let ch=false;
   Object.keys(m).forEach(k=>{if(m[k]<=now){delete m[k];ch=true;}});
   if(ch)saveKeys(['prodoff_mutes']);}
-function prodOffMute(id,mode){
-  appData.prodoff_mutes=appData.prodoff_mutes||{};
-  appData.prodoff_mutes[id]=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
-  saveKeys(['prodoff_mutes']);
+// One product (e.g. SWEET POTATO CHIPS) is SEVERAL Square objects — one per size variation plus any add-on
+// modifiers. Silencing must cover the whole NAME, else the other variations keep re-sounding the alarm.
+let _pdOffGroupCache=[];
+function _pdOffGroups(){
+  const m=new Map();
+  _prodOffList.forEach(p=>{
+    const k=p.item||'?';
+    if(!m.has(k))m.set(k,{name:k,ids:[],tags:[],off_since:0});
+    const g=m.get(k); g.ids.push(p.id);
+    const t=(p.kind==='modifier')?'ADD-ON':((p.variation&&p.variation.toLowerCase()!=='regular')?p.variation:'');
+    if(t&&g.tags.indexOf(t)<0)g.tags.push(t);
+    if(p.off_since&&(!g.off_since||p.off_since<g.off_since))g.off_since=p.off_since;   // earliest switch-off drives the alarm
+  });
+  _pdOffGroupCache=Array.from(m.values());
+  return _pdOffGroupCache;
+}
+function _pdOffGroupMutedUntil(g){                 // group counts as silenced only when EVERY id is silenced
+  const m=appData.prodoff_mutes||{};const now=Date.now();
+  let min=Infinity;
+  for(const id of g.ids){const u=m[id]||0;if(u<=now)return 0;if(u<min)min=u;}
+  return min===Infinity?0:min;
+}
+function _prodOffAfterMute(){
   if(!_prodOffList.some(p=>!_pdOffMuted(p.id))){if(typeof stopAlarm==='function')stopAlarm('prod-off');if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');const fab=document.getElementById('prodoff-fab');if(fab)fab.classList.remove('flashing');}
   _prodOffRenderModal();
+}
+function prodOffMuteG(i,mode){
+  const g=_pdOffGroupCache[i];if(!g)return;
+  appData.prodoff_mutes=appData.prodoff_mutes||{};
+  const until=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
+  g.ids.forEach(id=>{appData.prodoff_mutes[id]=until;});   // silence EVERY variation/add-on of this product
+  saveKeys(['prodoff_mutes']);
+  _prodOffAfterMute();
+}
+function prodOffUnmuteG(i){
+  const g=_pdOffGroupCache[i];if(!g)return;
+  if(appData.prodoff_mutes)g.ids.forEach(id=>{delete appData.prodoff_mutes[id];});
+  saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();
+}
+function prodOffMute(id,mode){                     // legacy single-id entry point — widen it to the whole product
+  const p=_prodOffList.find(x=>x.id===id);
+  const idx=p?_pdOffGroups().findIndex(g=>g.name===p.item):-1;
+  if(idx>=0)return prodOffMuteG(idx,mode);
+  appData.prodoff_mutes=appData.prodoff_mutes||{};
+  appData.prodoff_mutes[id]=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
+  saveKeys(['prodoff_mutes']);_prodOffAfterMute();
 }
 function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
 function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};_prodOffList.forEach(p=>{appData.prodoff_mutes[p.id]=Math.max(appData.prodoff_mutes[p.id]||0,Date.now()+ms);});saveKeys(['prodoff_mutes']);}
@@ -3130,7 +3170,7 @@ function checkProductsOff(){
     // Show the pill the MOMENT anything is off — before any alarm-timing math — so the indicator is always
     // visible (even while the alarm is auto-delayed) and can never be hidden by an error further down.
     fab.style.display='flex';
-    const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_prodOffList.length;
+    const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_pdOffGroups().length;   // count PRODUCTS, not each size/add-on object
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
     const afterOpen=mins>=(10*60+10);                                // opening alarm sounds from 10:10am
     _pdOffPrune();                                                    // expired mutes (incl. the 10am day reset)
@@ -3144,19 +3184,20 @@ function checkProductsOff(){
 function _prodOffRenderModal(){
   const el=document.getElementById('prodoff-list');if(!el)return;
   if(!_prodOffList.length){el.innerHTML='<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on ✓</div>';return;}
-  el.innerHTML=_prodOffList.map(p=>{
-    const tag=p.kind==='modifier'?'<span class="prodoff-tag">ADD-ON</span>':((p.variation&&p.variation.toLowerCase()!=='regular')?'<span class="prodoff-tag">'+_mEsc(p.variation)+'</span>':'');
-    const until=(appData.prodoff_mutes||{})[p.id]||0;
+  el.innerHTML=_pdOffGroups().map((g,i)=>{
+    const tags=g.tags.map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('');
+    const until=_pdOffGroupMutedUntil(g);
     let right;
     if(until>Date.now()){
       const lbl=(until>=_pdOffNext10()-60000)?'today':('until '+new Date(until).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}));
-      right='<button class="prodoff-muted" onclick="prodOffUnmute(\''+p.id+'\')" title="Tap to un-silence">Silenced '+lbl+' &#10005;</button>';
+      right='<button class="prodoff-muted" onclick="prodOffUnmuteG('+i+')" title="Tap to un-silence">Silenced '+lbl+' &#10005;</button>';
     }else{
-      right='<span style="display:flex;gap:6px;flex-shrink:0;"><button class="prodoff-sil" onclick="prodOffMute(\''+p.id+'\',\'hour\')">Silence 1 hr</button><button class="prodoff-sil day" onclick="prodOffMute(\''+p.id+'\',\'day\')">Rest of today</button></span>';
+      right='<span style="display:flex;gap:6px;flex-shrink:0;"><button class="prodoff-sil" onclick="prodOffMuteG('+i+',\'hour\')">Silence 1 hr</button><button class="prodoff-sil day" onclick="prodOffMuteG('+i+',\'day\')">Rest of today</button></span>';
     }
-    const _el=_pdOffEligibleAt(p.off_since);
+    const _el=_pdOffEligibleAt(g.off_since);
     const auto=(until<=Date.now()&&_el>Date.now())?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">Alarm starts '+_pdOffWhen(_el)+'</div>'):'';
-    return '<div class="prodoff-row" data-id="'+p.id+'"><div style="min-width:0;"><div class="prodoff-name">'+_mEsc(p.item)+tag+'</div>'+auto+'</div>'+right+'</div>';
+    const cnt=g.ids.length>1?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+g.ids.length+' variations/add-ons — silences all</div>'):'';
+    return '<div class="prodoff-row"><div style="min-width:0;"><div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'+auto+cnt+'</div>'+right+'</div>';
   }).join('');
 }
 function prodOffOpen(){_prodOffRenderModal();openModal('prodoff-modal');}
