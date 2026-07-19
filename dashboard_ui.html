@@ -3832,7 +3832,7 @@ let _setSeeded=false;try{_setSeeded=localStorage.getItem('setCollapsed_v2')!=nul
 function setupSettingsTabs(){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
   const grpOf=t=>{t=(t||'').toLowerCase();
     if(t.includes('square')||t.includes('cook log')||t.includes('sales feed'))return 'Sales';
-    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out'))return 'Kitchen';
+    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out')||t.includes('products'))return 'Kitchen';
     if(t.includes('task photos')||t.includes('recent task')||t.includes('store camera'))return 'Camera';
     if(t.includes('staff'))return 'Staff';
     return 'General';};
