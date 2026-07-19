@@ -3617,7 +3617,9 @@ def _lbl_date(dt,withtime=False):
     return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
 def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     from PIL import Image,ImageDraw,ImageFont
-    W,H=384,240   # ~50 x 30 mm at 203 dpi (NIIMBOT B1)
+    W,H=NIIM_W,354          # 50 x 30 mm at 300 dpi (NIIMBOT B1 Pro printhead = 567 dots)
+    S=W/384.0               # layout was designed at 384 wide — scale every number off that
+    def s(v): return int(round(v*S))
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     def fnt(sz,bold=True):
         names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
@@ -3640,28 +3642,85 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     DOWFULL={'Mon':'MONDAY','Tue':'TUESDAY','Wed':'WEDNESDAY','Thu':'THURSDAY','Fri':'FRIDAY','Sat':'SATURDAY','Sun':'SUNDAY'}
     day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
     # top black band = the "day dot" (prep day, drives FIFO rotation); batch number sits on the right
-    dr.rectangle([0,0,W,36],fill=0); fh=fnt(23,True)
-    dr.text((10,5),dayname,font=fh,fill=255)
+    dr.rectangle([0,0,W,s(36)],fill=0); fh=fnt(s(23),True)
+    dr.text((s(10),s(5)),dayname,font=fh,fill=255)
     if total>1 and seq>0:
-        badge="%d/%d"%(seq,total); fb=fnt(23,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-10-bw,5),badge,font=fb,fill=255)
+        badge="%d/%d"%(seq,total); fb=fnt(s(23),True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-s(10)-bw,s(5)),badge,font=fb,fill=255)
     # product name — the biggest thing on the label
-    y=44; fi=fnt(34,True)
-    for ln in wrap((item or "").upper(),fi,W-16,maxlines=2): dr.text((8,y),ln,font=fi,fill=0); y+=36
-    y+=4; dr.line([8,y,W-8,y],fill=0,width=2); y+=9
-    fs=fnt(19,False); fsb=fnt(19,True)
-    dr.text((8,y),"PREPPED",font=fsb,fill=0); dr.text((128,y),prepped_s,font=fs,fill=0); y+=26
-    dr.text((8,y),"BY",font=fsb,fill=0); dr.text((128,y),(staff or "-"),font=fs,fill=0)
+    y=s(44); fi=fnt(s(34),True)
+    for ln in wrap((item or "").upper(),fi,W-s(16),maxlines=2): dr.text((s(8),y),ln,font=fi,fill=0); y+=s(36)
+    y+=s(4); dr.line([s(8),y,W-s(8),y],fill=0,width=max(1,s(2))); y+=s(9)
+    fs=fnt(s(19),False); fsb=fnt(s(19),True)
+    dr.text((s(8),y),"PREPPED",font=fsb,fill=0); dr.text((s(128),y),prepped_s,font=fs,fill=0); y+=s(26)
+    dr.text((s(8),y),"BY",font=fsb,fill=0); dr.text((s(128),y),(staff or "-"),font=fs,fill=0)
     # USE BY — the discard deadline, most important line: bold + boxed, anchored to the bottom
-    fu=fnt(27,True); box="USE BY  "+useby_s; bh=46; by0=H-8-bh
-    dr.rectangle([6,by0,W-6,by0+bh],outline=0,width=3)
-    dr.text(((W-dr.textlength(box,font=fu))/2,by0+9),box,font=fu,fill=0)
+    fu=fnt(s(27),True); box="USE BY  "+useby_s; bh=s(46); by0=H-s(8)-bh
+    dr.rectangle([s(6),by0,W-s(6),by0+bh],outline=0,width=max(1,s(3)))
+    dr.text(((W-dr.textlength(box,font=fu))/2,by0+s(9)),box,font=fu,fill=0)
     return img
-def _niimbot_print(img,qty):
-    # TODO(printer here): send `img` to the NIIMBOT B1 `qty` times over the server's Bluetooth (bleak) using the
-    # niimprint B1 protocol. Wired once the printer is physically paired + tested. Until then, never claim a print.
-    if not (db.get("niimbot") or {}).get("mac"): return False
-    return False
+_NIIM_CHR="bef8d6c9-9c21-4c9e-b632-bd58c1009f9f"   # NOTIFY + WRITE_NO_RESPONSE
+NIIM_W=567                                         # B1 Pro printhead width in dots (300 dpi)
+def _niim_pkt(cmd,data=b""):
+    data=bytes(data); ln=len(data); crc=cmd^ln
+    for b in data: crc^=b
+    return bytes([0x55,0x55,cmd,ln])+data+bytes([crc,0xAA,0xAA])
+def _niim_rows(img):
+    # 1-bit, MSB-first, stride bytes per row + the black-pixel count the printer expects
+    im=img.convert("L")
+    if im.width!=NIIM_W:
+        h=max(1,int(round(im.height*NIIM_W/im.width))); im=im.resize((NIIM_W,h))
+    im=im.convert("1")
+    px=im.load(); H=im.height; stride=(NIIM_W+7)//8; out=[]
+    for y in range(H):
+        row=bytearray(stride); total=0
+        for x in range(NIIM_W):
+            if not px[x,y]:                        # 0 = black
+                row[x>>3]|=(0x80>>(x&7)); total+=1
+        out.append((bytes(row),total))
+    return out,H
+def _niimbot_print(img,qty=1):
+    # Send `img` to the NIIMBOT B1 Pro over the server's Bluetooth (same bleak stack as the FM230 probe).
+    # Protocol v4 print task, 300 dpi. Returns True only if the whole sequence went out cleanly.
+    mac=((db.get("niimbot") or {}).get("mac") or "").strip()
+    if not mac: return False
+    try:
+        import asyncio
+        from bleak import BleakClient
+    except Exception: return False
+    try: rows,H=_niim_rows(img)
+    except Exception: return False
+    dens=int((db.get("niimbot") or {}).get("density",3) or 3)
+    async def _run():
+        async with BleakClient(mac,timeout=25) as cl:
+            try: await cl.start_notify(_NIIM_CHR,lambda _c,_d:None)
+            except Exception: pass
+            async def send(raw,wait=0.05):
+                await cl.write_gatt_char(_NIIM_CHR,raw,response=False)
+                if wait: await asyncio.sleep(wait)
+            await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.25)   # wake/init
+            for _ in range(max(1,int(qty))):
+                await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.09)                 # density
+                await send(_niim_pkt(0x23,[1]),0.09)                                  # label type
+                await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)            # print start, 1 page
+                await send(_niim_pkt(0xA3,[1]),0.05)                                  # status ping
+                await send(_niim_pkt(0x13,[H>>8,H&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1,0,0,0,0,0,0,0]),0.15)
+                y=0
+                while y<H:
+                    row,total=rows[y]; run=1
+                    while y+run<H and rows[y+run][0]==row and run<200: run+=1
+                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0.004)
+                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0.004)
+                    y+=run
+                await send(_niim_pkt(0xE3,[1]),0.35)                                  # end page
+                await asyncio.sleep(1.4)                                              # let it feed
+            await send(_niim_pkt(0xF3,[1]),0.2)                                       # end print
+            return True
+    try: return bool(asyncio.run(_run()))
+    except Exception as e:
+        try: app.logger.warning("niimbot print failed: %s",e)
+        except Exception: pass
+        return False
 @app.route("/api/ble_scan")
 def api_ble_scan():
     # list Bluetooth LE devices the SERVER can see — used to find the NIIMBOT printer's address
