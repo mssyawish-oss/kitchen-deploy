@@ -3181,10 +3181,33 @@ function checkProductsOff(){
     if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();
   }).catch(()=>{});
 }
+// "Never auto-on" list — product NAMES the morning auto-switch-on must leave alone. Edited live here.
+function _pdOffNever(name){return (appData.prodoff_never||[]).some(n=>String(n).toUpperCase()===String(name).toUpperCase());}
+function prodOffNeverToggle(i){
+  const g=_pdOffGroupCache[i];if(!g)return;
+  appData.prodoff_never=appData.prodoff_never||[];
+  const u=String(g.name).toUpperCase();
+  const ix=appData.prodoff_never.findIndex(n=>String(n).toUpperCase()===u);
+  if(ix>=0)appData.prodoff_never.splice(ix,1);else appData.prodoff_never.push(g.name);
+  saveKeys(['prodoff_never']);_prodOffRenderModal();
+}
+function _pdOffAutoSummary(){                      // what this morning's auto switch-on actually did
+  const lg=appData.prodoff_autolog||{};if(!lg.date)return '';
+  const d=new Date();const local=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  if(lg.date!==local)return '';
+  const bits=[];
+  if((lg.enabled||[]).length)bits.push('<div style="color:var(--green);font-weight:600;">Switched back on: '+lg.enabled.map(_mEsc).join(', ')+'</div>');
+  if((lg.skipped||[]).length)bits.push('<div style="color:var(--muted);">Left off (never auto-on): '+lg.skipped.map(_mEsc).join(', ')+'</div>');
+  if((lg.failed||[]).length)bits.push('<div style="color:var(--red);">Failed: '+lg.failed.map(_mEsc).join(', ')+'</div>');
+  if(!bits.length)bits.push('<div style="color:var(--muted);">Nothing needed switching on.</div>');
+  const t=new Date(lg.at||Date.now()).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+  return '<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;background:var(--surface2);"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Morning auto switch-on &middot; '+t+(lg.manual?' (run by hand)':'')+'</div>'+bits.join('')+'</div>';
+}
 function _prodOffRenderModal(){
   const el=document.getElementById('prodoff-list');if(!el)return;
-  if(!_prodOffList.length){el.innerHTML='<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on ✓</div>';return;}
-  el.innerHTML=_pdOffGroups().map((g,i)=>{
+  const sum=_pdOffAutoSummary();
+  if(!_prodOffList.length){el.innerHTML=sum+'<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on ✓</div>';return;}
+  el.innerHTML=sum+_pdOffGroups().map((g,i)=>{
     const tags=g.tags.map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('');
     const until=_pdOffGroupMutedUntil(g);
     let right;
@@ -3197,7 +3220,9 @@ function _prodOffRenderModal(){
     const _el=_pdOffEligibleAt(g.off_since);
     const auto=(until<=Date.now()&&_el>Date.now())?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">Alarm starts '+_pdOffWhen(_el)+'</div>'):'';
     const cnt=g.ids.length>1?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+g.ids.length+' variations/add-ons — silences all</div>'):'';
-    return '<div class="prodoff-row"><div style="min-width:0;"><div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'+auto+cnt+'</div>'+right+'</div>';
+    const nev=_pdOffNever(g.name);
+    const nevBtn='<button onclick="prodOffNeverToggle('+i+')" style="background:none;border:none;padding:0;margin-top:3px;font-size:11px;text-align:left;cursor:pointer;color:'+(nev?'var(--amber)':'var(--muted)')+';">'+(nev?'Never auto-on ✓ — tap to allow':'Auto-on each morning — tap to exclude')+'</button>';
+    return '<div class="prodoff-row"><div style="min-width:0;"><div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'+auto+cnt+nevBtn+'</div>'+right+'</div>';
   }).join('');
 }
 function prodOffOpen(){_prodOffRenderModal();openModal('prodoff-modal');}

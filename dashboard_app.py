@@ -1147,6 +1147,53 @@ def api_product_enable():
     out={"ok":ok,"error":err}
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
     return jsonify(out)
+
+# ── Morning auto-switch-on: staff switch a product off and forget to switch it back, so every
+#    morning before open we un-86 everything EXCEPT the owner's never-touch list (db['prodoff_never'],
+#    edited live from the dash, matched on product NAME since one product = many Square objects).
+def _prodoff_auto_enable(manual=False):
+    items,err=_sq_offline_products()
+    if err or items is None: return {"ok":False,"error":err or "no data"}
+    never={str(n).strip().upper() for n in (db.get("prodoff_never") or [])}
+    enabled=[];skipped=[];failed=[]
+    for it in items:
+        nm=(it.get("item") or "").strip()
+        if nm.upper() in never: skipped.append(nm); continue
+        try: ok,e=_sq_enable_variation(it.get("id"))
+        except Exception as ex: ok,e=False,str(ex)
+        (enabled if ok else failed).append(nm if ok else "%s (%s)"%(nm,str(e)[:40]))
+    def uniq(l):
+        out=[]
+        for x in l:
+            if x not in out: out.append(x)
+        return out
+    res={"ok":True,"at":int(time.time()*1000),"date":datetime.now().strftime("%Y-%m-%d"),
+         "enabled":uniq(enabled),"skipped":uniq(skipped),"failed":uniq(failed),"manual":bool(manual),"seen":True if manual else False}
+    with data_lock:
+        db["prodoff_autolog"]=res
+        if not manual: db["prodoff_auto_lastrun"]=res["date"]
+        save_data(db)
+    return res
+
+@app.route("/api/prodoff_auto_run",methods=["POST"])
+def api_prodoff_auto_run():
+    return jsonify(_prodoff_auto_enable(manual=True))
+
+def prodoff_auto_loop():
+    while True:
+        try:
+            if db.get("prodoff_auto_on") is not False:
+                hhmm=str(db.get("prodoff_auto_time") or "09:45")
+                try: h,m=[int(x) for x in hhmm.split(":")[:2]]
+                except Exception: h,m=9,45
+                now=datetime.now(); today=now.strftime("%Y-%m-%d")
+                target=h*60+m; cur=now.hour*60+now.minute
+                # only inside a 2-hour window after the target, so a late server start can never
+                # silently switch everything back on in the middle of service
+                if target<=cur<target+120 and (db.get("prodoff_auto_lastrun") or "")!=today:
+                    _prodoff_auto_enable()
+        except Exception: pass
+        time.sleep(45)
 # ==================================================================================
 
 # ── Google (Gmail + Drive) via OAuth refresh token, stored in db['google_config'] ──
@@ -4339,6 +4386,9 @@ if __name__=="__main__":
     threading.Thread(target=report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
+    # morning auto-switch-on writes to LIVE Square — server only, never a dev copy
+    if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
+        threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
