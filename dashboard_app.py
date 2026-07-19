@@ -1082,46 +1082,69 @@ def _sq_offline_products():
         return None,str(e)
 _ENABLE_DBG=None
 def _sq_enable_variation(vid):
-    # clear SOLD OUT for one variation OR modifier at this location (turn it back on)
+    # Clear SOLD OUT for one item-variation OR modifier at this location (turn it back on).
+    # Where the flag actually lives depends on the object:
+    #   • track_inventory TRUE  → sold_out is derived from the Inventory state → set IN_STOCK
+    #   • track_inventory FALSE → sold_out is a plain Catalog location_override flag → clear it there
+    # Most of this shop's items are NOT inventory-tracked, so the catalog write is the one that counts.
+    # Always re-read afterwards and only report success if Square really cleared it.
     global _ENABLE_DBG; _ENABLE_DBG=None
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
-    cached=_SQ_OBJ_CACHE.get(vid)
+    dbg={"loc":loc,"vid":vid,"steps":[]}
+    def _get_obj():
+        try:
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                return (json.loads(r.read().decode()) or {}).get("object")
+        except Exception as e:
+            dbg["steps"].append({"read_err":str(e)[:140]}); return None
+    def _ov(o):
+        d=((o or {}).get("item_variation_data") or (o or {}).get("modifier_data") or {})
+        for x in (d.get("location_overrides") or []):
+            if x.get("location_id")==loc: return x
+        return None
+    obj=_get_obj()
+    if not obj:
+        _ENABLE_DBG=dbg; return False,"couldn't read this product from Square"
+    is_mod=(obj.get("type")=="MODIFIER")
+    ov0=_ov(obj) or {}
+    tracked=bool(ov0.get("track_inventory"))
+    dbg.update({"type":obj.get("type"),"sold_out_before":bool(ov0.get("sold_out")),"track_inventory":tracked})
+    if not ov0.get("sold_out"):
+        _SQ_OBJ_CACHE.pop(vid,None); _ENABLE_DBG=dbg; return True,None      # already on
+    if (not is_mod) and tracked:                                            # inventory-backed → restock it
+        try:
+            now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            body={"idempotency_key":_secrets.token_hex(16),"changes":[{"type":"PHYSICAL_COUNT","physical_count":{
+                "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":"1","occurred_at":now_iso}}]}
+            req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: dbg["steps"].append({"inventory":json.loads(r.read().decode())})
+        except Exception as e: dbg["steps"].append({"inventory_err":str(e)[:140]})
+    key="modifier_data" if is_mod else "item_variation_data"                # clear the catalog flag
+    o2=copy.deepcopy(obj); d=o2.get(key) or {}; los=d.get("location_overrides") or []; hit=False
+    for x in los:
+        if x.get("location_id")==loc: x["sold_out"]=False; x.pop("sold_out_valid_until",None); hit=True
+    if not hit: los.append({"location_id":loc,"sold_out":False})
+    d["location_overrides"]=los; o2[key]=d
     try:
-        if cached and cached.get("type")=="MODIFIER":
-            # add-ons aren't inventory-backed → clear sold_out via a catalog upsert of the MODIFIER object
-            obj=copy.deepcopy(cached); vd=obj.get("modifier_data") or {}; los=vd.get("location_overrides") or []; hit=False
-            for ov in los:
-                if ov.get("location_id")==loc: ov["sold_out"]=False; ov.pop("sold_out_valid_until",None); hit=True
-            if not hit: los.append({"location_id":loc,"sold_out":False})
-            vd["location_overrides"]=los; obj["modifier_data"]=vd
-            body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[obj]}]}
-            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
-            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-            _ENABLE_DBG={"endpoint":"catalog(mod)","loc":loc,"raw":res}
-            if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
-            cleared=any((not ov.get("sold_out")) for o in (res.get("objects") or []) for ov in ((o.get("modifier_data") or {}).get("location_overrides") or []) if ov.get("location_id")==loc)
-            if not cleared: return False,"Square won't clear this add-on from here — switch it on in the Square app"
-            _SQ_OBJ_CACHE.pop(vid,None); return True,None
-        # item variation: 'sold_out' is READ-ONLY in the Catalog API — it's an Inventory STATE. Un-86 = set IN_STOCK.
-        now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        body={"idempotency_key":_secrets.token_hex(16),
-              "changes":[{"type":"PHYSICAL_COUNT","physical_count":{
-                  "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":"1","occurred_at":now_iso}}]}
-        req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
+        body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-        _ENABLE_DBG={"endpoint":"inventory/batch-create","loc":loc,"vid":vid,"raw":res}
-        if res.get("errors"): return False,(res["errors"][0].get("detail") or "error")
-        if not any(c.get("state")=="IN_STOCK" for c in (res.get("counts") or [])):   # Square silently did nothing → don't claim success
-            return False,"Square didn't apply it from here — switch this one on in the Square app"
-        _SQ_OBJ_CACHE.pop(vid,None)
-        return True,None
+        dbg["steps"].append({"catalog_errors":res.get("errors")})
+        if res.get("errors"):
+            _ENABLE_DBG=dbg; return False,(res["errors"][0].get("detail") or "catalog error")
     except Exception as e:
-        rd=getattr(e,"read",None)
+        rd=getattr(e,"read",None); msg=str(e)[:140]
         if rd:
-            try: return False,"Square error: "+e.read().decode()[:180]
+            try: msg=e.read().decode()[:180]
             except Exception: pass
-        return False,str(e)
+        dbg["steps"].append({"catalog_err":msg}); _ENABLE_DBG=dbg; return False,"Square error: "+msg
+    still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
+    dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
+    _SQ_OBJ_CACHE.pop(vid,None)
+    if still: return False,"Square still shows it sold out — switch it on in the Square app"
+    return True,None
 @app.route("/api/products_offline")
 def api_products_offline():
     items,err=_sq_offline_products()
