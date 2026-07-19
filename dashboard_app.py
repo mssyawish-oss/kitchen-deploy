@@ -108,6 +108,25 @@ def record_batch(bt,mins):
             _hist_cache["mtime"]=None
     except Exception as e: print(f"record_batch:{e}")
 
+def _probe_eta(pid):
+    # Minutes until this probe reaches the Cooked temp, from its own recent rate of climb.
+    # Returns None unless the trail is long enough and the temp is genuinely rising.
+    ps=probe_state.get(pid) or {}
+    hist=ps.get("hist") or []
+    if len(hist)<2: return None
+    now_t,now_c=hist[-1]
+    old=next(((t,c) for t,c in hist if (now_t-t)>=180),None)   # need ≥3 min of trail
+    if not old: return None
+    dt=(now_t-old[0])/60.0
+    if dt<=0: return None
+    rate=(now_c-old[1])/dt                                     # °C per minute
+    target=float(settings.get("cooked_temp",88))
+    if now_c>=target: return {"mins":0,"rate":round(rate,2)}
+    if rate<0.15: return None                                  # flat or falling → no honest estimate
+    mins=(target-now_c)/rate
+    if mins<0 or mins>240: return None                         # nonsense → say nothing
+    return {"mins":int(round(mins)),"rate":round(rate,2),"at":int((time.time()+mins*60)*1000)}
+
 def record_cook(pid,name,temp,cook_mins):
     # food-safety cook log: one entry per cooked batch
     try:
@@ -264,6 +283,13 @@ def check_probe_status(pid,temp):
                 ps.update({"peak_temp":None,"printed":False,"cook_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
             ps["last_val"]=temp; ps["last_change_at"]=_now
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
+        # ETA: keep a short rolling trail of (time,temp) per probe and measure how fast THIS row is
+        # actually climbing, then project to the Cooked temp. Beats a historical average because every
+        # row heats differently (position, load, how cold the birds went on).
+        hist=ps.setdefault("hist",[])
+        if not hist or (_now-hist[-1][0])>=20:          # a sample every ~20s is plenty
+            hist.append((_now,temp))
+            while hist and (_now-hist[0][0])>900: hist.pop(0)   # keep 15 minutes
         prev=ps["status"]
         ns="overdone" if temp>=overdone else "ready" if temp>=cooked else "almost" if temp>=almost else "idle"
         ps["status"]=ns
@@ -3447,7 +3473,7 @@ def temps():
             if _lca and (_now-_lca)>60:                 # reading unchanged >1 min → probe parked on the dock / not in use → blank it
                 t[k]=None; item["status"]="idle"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():

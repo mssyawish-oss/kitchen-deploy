@@ -345,10 +345,10 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-msg{font-size:14px;color:var(--amber);font-weight:600;}
 .rl-src{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-top:3px;}
 .rl-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;}
-.rl-heroRow{display:flex;align-items:center;justify-content:center;gap:clamp(10px,3vw,22px);width:100%;}
+.rl-heroRow{display:flex;align-items:center;justify-content:center;gap:clamp(6px,2vw,18px);width:100%;min-width:0;}
 .rl-step{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:12px;width:clamp(40px,7vh,58px);height:clamp(40px,7vh,58px);font-size:clamp(24px,3.4vh,34px);font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;}
 .rl-step:active{transform:scale(.93);}
-.rl-hero-num{font-family:var(--font-mono);font-weight:800;font-size:clamp(56px,12vh,116px);line-height:.9;letter-spacing:-.02em;}
+.rl-hero-num{font-family:var(--font-mono);font-weight:800;font-size:clamp(56px,12vh,116px);line-height:.9;letter-spacing:-.02em;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:clip;}
 .rl-hero-lab{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.2em;color:var(--muted);margin-top:10px;}
 .rl-lowpill{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:4px 13px;border-radius:999px;margin-bottom:16px;}
 .rl-lowpill.warn{color:#3a2a06;background:var(--amber);}
@@ -1877,7 +1877,7 @@ function _applyRemoteSilence(list){
   try{ fresh.forEach(e=>{ if(e.key){ if(typeof silenceOneAlarm==='function')silenceOneAlarm(e.key); } else if(_anyAlarmActive()){ silenceAll(); } }); }
   finally{_applyingRemoteSilence=false;}
 }
-function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll(3600000);}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
@@ -2650,6 +2650,13 @@ function playStockWarn(){const v=_acfg('stock').volume;playChime(v);setTimeout((
 function updateStockAlert(key,lvl){if(appData.stock_alarm_enabled===false)return 'none';const s=stockAlert[key];if(lvl!==s.lvl){s.lvl=lvl;s.acked=false;stopAlarm('stock-'+key);if(lvl==='warn')playStockWarn();else if(lvl==='crit')playAlarm('stock-'+key);}return s.acked?'none':lvl;}
 function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';if(typeof _broadcastSilence==='function')_broadcastSilence('stock');}   // silence stock on all dashes too
 let _rotSig='';
+// the count can be "4", "12¾" or "-10½" — shrink the digits as they get longer so they never
+// collide with the +/- steppers on either side
+function _rlNumSize(txt){const n=String(txt).length;
+  if(n>=5)return 'clamp(30px,6vh,56px)';
+  if(n===4)return 'clamp(36px,7.5vh,68px)';
+  if(n===3)return 'clamp(44px,9.5vh,86px)';
+  return 'clamp(56px,12vh,116px)';}
 function renderRotLive(rot){
   const el=document.getElementById('rl-bbq');if(!el)return;const R=appData.rotisserie;
   if(!R||!R.profile||!rot){el.style.display='none';return;}el.style.display='';window._lastRotAvail=rot.available||0;
@@ -2668,7 +2675,7 @@ function renderRotLive(rot){
   const numCol=alvl==='crit'?'var(--red)':'var(--amber)';
   const lowPill=alvl==='none'?'':`<div class="rl-lowpill ${alvl}">Cook more</div>`;
   el.innerHTML=`<div class="rl-card ${alvl==='crit'?'crit':alvl==='warn'?'warn':''}" onclick="ackStock('bbq')"><div class="rl-top"><div class="rl-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 23a7 7 0 0 0 7-7c0-2.2-1.1-4.1-2.7-5.8-.5 1.1-1.3 1.9-2.1 2.2.6-2.4-.4-4.9-2.8-7-.3 2.7-2.1 4.1-3.5 5.6A7 7 0 0 0 5 16a7 7 0 0 0 7 7Z"/></svg></div><div class="rl-tag">ROTISSERIE</div>${cookHtml}${modePill}</div>
-    <div class="rl-hero">${lowPill}<div class="rl-heroRow"><button class="rl-step" onclick="event.stopPropagation();rotStep(-0.25)" title="Quarter bird down">&minus;</button><div class="rl-hero-num" style="color:${numCol};">${fmtBird(avail)}</div><button class="rl-step" onclick="event.stopPropagation();rotStep(0.25)" title="Quarter bird up">+</button></div><div class="rl-hero-lab">available</div></div>
+    <div class="rl-hero">${lowPill}<div class="rl-heroRow"><button class="rl-step" onclick="event.stopPropagation();rotStep(-0.25)" title="Quarter bird down">&minus;</button><div class="rl-hero-num" style="color:${numCol};font-size:${_rlNumSize(fmtBird(avail))};">${fmtBird(avail)}</div><button class="rl-step" onclick="event.stopPropagation();rotStep(0.25)" title="Quarter bird up">+</button></div><div class="rl-hero-lab">available</div></div>
     <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div><div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
     ${camErrHtml}
     <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button></div>
@@ -3223,7 +3230,13 @@ function prodOffMute(id,mode){                     // legacy single-id entry poi
   saveKeys(['prodoff_mutes']);_prodOffAfterMute();
 }
 function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
-function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};_prodOffList.forEach(p=>{appData.prodoff_mutes[p.id]=Math.max(appData.prodoff_mutes[p.id]||0,Date.now()+ms);});saveKeys(['prodoff_mutes']);}
+// Silencing products-off holds for the REST OF THE DAY (to the 10am reset), not an hour. A 1-hour mute
+// meant everything silenced together came back together an hour later — one wall of alarms mid-service.
+// Never shortens an existing longer mute. Products switched off AFTER this still alarm on their own.
+function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};
+  const until=(typeof ms==='number')?(Date.now()+ms):_pdOffNext10();
+  _prodOffList.forEach(p=>{appData.prodoff_mutes[p.id]=Math.max(appData.prodoff_mutes[p.id]||0,until);});
+  saveKeys(['prodoff_mutes']);}
 function checkProductsOff(){
   const fab=document.getElementById('prodoff-fab');if(!fab)return;
   const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
@@ -3328,7 +3341,7 @@ function _poNeverChips(){
 function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);_prodOffRenderModal();}
 function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
-function silenceProductsOff(){_prodOffMuteAll(3600000);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
+function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}
