@@ -2121,17 +2121,27 @@ function _paint(){try{const b=document.body;b.style.transform='translateZ(0)';re
 // so a probe only moves up when it's clearly hotter, and blank/idle probes sink to the bottom.
 let _probeOrder=[1,2,3,4];
 const _PROBE_SWAP_C=2;
+let _probeOrderAt=0;
 function _probeOrdered(){
-  const t=pid=>{const v=(probeData[pid]||{}).temp;return (typeof v==='number'&&isFinite(v))?v:-Infinity;};
+  const t=pid=>{const v=(probeData[pid]||{}).temp;return (typeof v==='number'&&isFinite(v))?v:null;};
   Object.keys(probeData).map(Number).forEach(p=>{if(_probeOrder.indexOf(p)<0)_probeOrder.push(p);});
   _probeOrder=_probeOrder.filter(p=>probeData[p]!==undefined);
-  for(let pass=0;pass<_probeOrder.length;pass++){
-    let moved=false;
-    for(let i=0;i<_probeOrder.length-1;i++){
-      const a=_probeOrder[i],b=_probeOrder[i+1];
-      if(t(b)>t(a)+_PROBE_SWAP_C){_probeOrder[i]=b;_probeOrder[i+1]=a;moved=true;}
+  // Re-rank at most every 20s. Without this the cards shuffle on every poll, and a probe that blanks
+  // (docked, or frozen >60s) shoots to the end — which reads as "that probe dropped out" when nothing
+  // is actually wrong. A probe with NO reading never moves; only live probes are ranked against
+  // each other, and only when one is clearly hotter.
+  const now=Date.now();
+  if(now-_probeOrderAt>=20000){
+    _probeOrderAt=now;
+    for(let pass=0;pass<_probeOrder.length;pass++){
+      let moved=false;
+      for(let i=0;i<_probeOrder.length-1;i++){
+        const a=_probeOrder[i],b=_probeOrder[i+1],ta=t(a),tb=t(b);
+        if(ta===null||tb===null)continue;                 // leave blank/idle probes exactly where they are
+        if(tb>ta+_PROBE_SWAP_C){_probeOrder[i]=b;_probeOrder[i+1]=a;moved=true;}
+      }
+      if(!moved)break;
     }
-    if(!moved)break;
   }
   return _probeOrder.map(p=>[String(p),probeData[p]]);
 }
