@@ -4404,6 +4404,8 @@ def _slip_state_load():
     except Exception: return {"printed":[]}
 def _slip_state_save(st):
     st["printed"]=st["printed"][-5000:]
+    pr=st.get("progress")
+    if isinstance(pr,dict) and len(pr)>200: st["progress"]=dict(list(pr.items())[-200:])
     tmp=SLIP_STATE+".tmp"
     with open(tmp,"w",encoding="utf-8") as f: json.dump(st,f)
     os.replace(tmp,SLIP_STATE)
@@ -4423,15 +4425,20 @@ def _slip_orders(minutes=15):
         out+=d.get("orders") or [];cursor=d.get("cursor")
         if not cursor: break
     return out
-def _slip_process(order):
+def _slip_process(order,start_at=1):
+    # Returns (sent, last_ok_box, complete). If the printer dies mid-order we remember which box
+    # we got to, so the retry resumes from there instead of reprinting BOX 1 — staff were otherwise
+    # packing duplicate boxes every time the printer hiccupped.
     combos,warns=_slip_group(order)
-    if not combos: return 0
+    if not combos: return 0,0,True
     num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);total=len(combos);sent=0
+    last_ok=start_at-1
     for i,c in enumerate(combos,1):
+        if i<start_at: continue                       # already printed on an earlier attempt
         box=("BOX %d of %d"%(i,total)) if total>1 else "BOX 1 of 1"
-        if _slip_print(_slip_bytes(num,src,tm,box,c,warns if i==1 else [])): sent+=1
-        else: raise RuntimeError("printer unreachable")
-    return sent
+        if _slip_print(_slip_bytes(num,src,tm,box,c,warns if i==1 else [])): sent+=1;last_ok=i
+        else: return sent,last_ok,False
+    return sent,last_ok,True
 def slip_loop():
     st=_slip_state_load();printed=set(st["printed"]);first=True
     print(f"combo slip printer ON -> {settings['printer_ip']} (known orders: {len(printed)})")
@@ -4443,11 +4450,17 @@ def slip_loop():
                 if not oid or oid in printed: continue
                 if first or paused:                    # startup/paused: mark seen, print nothing
                     printed.add(oid);continue
+                prog=st.setdefault("progress",{})
                 try:
-                    n=_slip_process(o)
+                    n,last_ok,done=_slip_process(o,int(prog.get(oid,0))+1)
                     if n: print(f"slips: order {(_slip_number(o))} -> {n} slip(s)")
                 except Exception as e:
                     print(f"slips: order {oid} FAILED: {e}");continue   # retry next pass
+                if not done:                                  # printer died part-way
+                    prog[oid]=last_ok                         # resume here, don't reprint what came out
+                    print(f"slips: order {oid} partial — printed to box {last_ok}, will resume")
+                    _slip_state_save(st);continue
+                prog.pop(oid,None)
                 printed.add(oid)
                 st["printed"]=list(printed);_slip_state_save(st)
             if first:
@@ -4551,7 +4564,7 @@ def api_slips_test():
                         {"name":"SIDE CHIPS","variation_name":"Regular","quantity":"1"},
                         {"name":"SIDE SLAW","variation_name":"Regular","quantity":"1","modifiers":[{"name":"HONEY MUSTARD"}]}]}
     if db.get("slips_enabled") is False: return jsonify({"ok":True,"paused":True,"note":"combo slip printing is switched OFF (slips_enabled=false)"})
-    try: return jsonify({"ok":True,"slips":_slip_process(demo),"enabled":_slips_enabled(),"printer":settings["printer_ip"]})
+    try: return jsonify({"ok":True,"slips":_slip_process(demo)[0],"enabled":_slips_enabled(),"printer":settings["printer_ip"]})
     except Exception as e: return jsonify({"ok":False,"error":str(e),"enabled":_slips_enabled()})
 # ==================================================================================
 

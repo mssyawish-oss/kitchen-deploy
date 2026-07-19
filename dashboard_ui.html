@@ -346,7 +346,7 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-src{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-top:3px;}
 .rl-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;}
 /* ── alarm notification bar: says WHAT is alarming, so nobody has to guess ── */
-.alarm-bar{display:none;position:fixed;top:0;left:0;right:0;z-index:300;align-items:center;gap:10px;
+.alarm-bar{display:none;flex-shrink:0;z-index:300;align-items:center;gap:10px;
   padding:9px 12px;background:#7f1d1d;border-bottom:2px solid #ef4444;box-shadow:0 3px 14px rgba(0,0,0,.5);}
 .alarm-bar.on{display:flex;animation:abPulse 1.1s infinite;}
 @keyframes abPulse{0%,100%{background:#7f1d1d;}50%{background:#b91c1c;}}
@@ -987,7 +987,6 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </style>
 </head>
 <body>
-<div id="alarm-bar" class="alarm-bar"><div class="ab-ic">!</div><div id="alarm-bar-list" class="ab-list"></div><button class="ab-all" onclick="silenceAll()">Silence all</button></div>
 <div id="lock-screen">
   <div id="lock-banners" style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;gap:8px;padding:14px;max-height:55vh;overflow-y:auto;z-index:2;"></div>
   <div id="lock-logo" role="img" aria-label="Bruno's Chicken Shop"></div>
@@ -1015,6 +1014,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <div class="app-shell" id="app-shell" style="display:none;">
+<div id="alarm-bar" class="alarm-bar"><div class="ab-ic">!</div><div id="alarm-bar-list" class="ab-list"></div><button class="ab-all" onclick="silenceAll()">Silence all</button></div>
   <aside class="sidebar" id="sidebar">
     <div class="side-logo"><div class="brand-logo"></div></div>
     <div class="side-nav" id="side-nav">
@@ -1881,7 +1881,7 @@ function _activeAlarmDetails(){
     Object.keys(_probeAlarms||{}).forEach(p=>{
       const tp=_probeAlarms[p];
       const nm=((typeof probeData!=='undefined'&&probeData[p]&&probeData[p].name)||('Probe '+p));
-      out.push({key:(tp==='overdone'?'probeOverdone':'probeReady'),label:nm+' — '+(tp==='overdone'?'OVERDONE':'cooked')});
+      out.push({key:(tp==='overdone'?'probeOverdone':'probeReady'),pid:p,label:nm+' — '+(tp==='overdone'?'OVERDONE':'cooked')});
     });
     Object.keys(alarms||{}).forEach(id=>{
       if(!alarms[id])return;
@@ -1896,16 +1896,24 @@ function _activeAlarmDetails(){
   }catch(e){}
   return out;
 }
+// Silence exactly one chip. Probe alarms share a key ('probeReady'), so silencing by key alone
+// would kill every cooked probe at once and lose the cue on the others.
+function _abSilence(key,pid){
+  if(pid!==null&&pid!==undefined&&typeof stopProbeAlarm==='function'){
+    stopProbeAlarm(parseInt(pid));
+    if(typeof _broadcastSilence==='function')_broadcastSilence(key);
+  }else if(typeof silenceOneAlarm==='function')silenceOneAlarm(key);
+  renderAlarmBar();
+}
 function renderAlarmBar(){
   const bar=document.getElementById('alarm-bar'),list=document.getElementById('alarm-bar-list');
   if(!bar||!list)return;
   const ls=document.getElementById('lock-screen');
   const locked=ls&&!ls.classList.contains('hidden');
   const items=locked?[]:_activeAlarmDetails();
-  if(!items.length){bar.classList.remove('on');document.body.style.paddingTop='';return;}
-  list.innerHTML=items.map(it=>'<span class="ab-chip">'+_mEsc(it.label)+'<button title="Silence this one" onclick="silenceOneAlarm(\''+it.key+'\');renderAlarmBar();">&#10005;</button></span>').join('');
+  if(!items.length){bar.classList.remove('on');return;}
+  list.innerHTML=items.map(it=>'<span class="ab-chip">'+_mEsc(it.label)+'<button title="Silence this one" onclick="_abSilence(\''+it.key+'\','+(it.pid!==undefined?it.pid:'null')+')">&#10005;</button></span>').join('');
   bar.classList.add('on');
-  document.body.style.paddingTop=bar.offsetHeight+'px';
 }
 function _updateFlash(){renderAlarmBar();const el=document.getElementById('alarm-flash');if(!el)return;
   const ov=document.getElementById('alarm-overlay');
@@ -1975,7 +1983,9 @@ function _initView(){
   window.DASH_VIEW=v;return v;
 }
 // where each device should land: the phone is for checking stock, the others live on the probes screen
-function _viewHome(){return window.DASH_VIEW==='phone'?'stock':'probes';}
+// NB: keep this OFF the PIN-gated pages (stock/cameras/sales/team) or sign-in immediately
+// throws a second PIN prompt and dumps you on Temp anyway.
+function _viewHome(){return 'probes';}
 try{_initView();}catch(e){}
 function openDashboard(){pinBuf='';updatePinDots();document.getElementById('lock-screen').classList.add('hidden');document.getElementById('app-shell').style.display='flex';document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('hidden'));const sb=document.getElementById('settings-btn');if(sb)sb.style.display='';clearLockBanners();updateNotesBadge();if(!window.matchMedia('(max-width:600px)').matches)document.getElementById('app-shell').classList.add('nosidebar');   // start collapsed → menu is PIN-protected from load (open it via the ☰, which asks for a Manager/Admin PIN)
 const _hp=(typeof _viewHome==='function')?_viewHome():'probes';navTo(_hp,document.querySelector('.nav-btn[data-page="'+_hp+'"]'));}
@@ -3828,7 +3838,10 @@ function renderLabelItems(){
   grid.innerHTML=items.length?items.map(p=>{const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';const sel=(_lblItem===p.id)?' sel':'';return '<div class="prep-card lbl-pick'+sel+'" onclick="_lblPickItem(\''+p.id+'\')"><div class="pc-row">'+img+'<div class="pc-name">'+_mEsc(p.name)+'</div></div></div>';}).join(''):'<div style="color:var(--muted);font-size:13px;padding:12px;">No items yet — add them under “Items”.</div>';
 }
 function _lblPickItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;_lblItem=id;_lblItemName=p.name||'';const sh=document.getElementById('lbl-shelf');if(sh&&!sh.value)sh.value=(p.shelf_days||'');renderLabelItems();renderLabelPreview();}
-function renderLabelStaff(){const el=document.getElementById('lbl-staff');if(!el)return;const staff=(appData.staff||[]);el.innerHTML=staff.length?staff.map(s=>'<div class="lbl-chip'+(_lblStaff===s.name?' on':'')+'" onclick="_lblPickStaff('+JSON.stringify(s.name)+')">'+_mEsc(s.name)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">Add staff in Settings → Staff to tag who prepped it.</div>';}
+function renderLabelStaff(){const el=document.getElementById('lbl-staff');if(!el)return;const staff=(appData.staff||[]);el.innerHTML=staff.length?staff.map(s=>'<div class="lbl-chip'+(_lblStaff===s.name?' on':'')+'" onclick="_lblPickStaff('+_jsq(s.name)+')">'+_mEsc(s.name)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">Add staff in Settings → Staff to tag who prepped it.</div>';}
+// A JS string literal that is safe INSIDE a double-quoted HTML attribute. JSON.stringify is not:
+// it emits double quotes, which terminate the attribute and leave a syntax error behind.
+function _jsq(s){return "'"+String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;')+"'";}
 function _lblPickStaff(name){_lblStaff=name;renderLabelStaff();renderLabelPreview();}
 function lblQty(d){_lblQty=Math.max(1,Math.min(50,_lblQty+d));const q=document.getElementById('lbl-qty');if(q)q.textContent=_lblQty;}
 function _lblFmt(d,withTime){const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];let s=DAYS[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()];if(withTime)s+=' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});return s;}
@@ -3854,11 +3867,11 @@ function openStaffPick(){
   if(g('lbl-sm-status'))g('lbl-sm-status').textContent='';
   const pick=g('lbl-staff-pick'); if(pick)pick.innerHTML='<div style="color:var(--muted);font-size:13px;">Loading who’s on…</div>';
   openModal('lbl-staff-modal');
-  const _drawAll=()=>{ const names=(appData.staff||[]).map(s=>s.name).filter(Boolean); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+JSON.stringify(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>'; };
+  const _drawAll=()=>{ const names=(appData.staff||[]).map(s=>s.name).filter(Boolean); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>'; };
   fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
     let names=((d&&d.names)||[]).filter(Boolean);
     if(!pick)return;
-    if(names.length){ pick.innerHTML=names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+JSON.stringify(n)+')">'+_mEsc(n)+'</div>').join(''); }
+    if(names.length){ pick.innerHTML=names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''); }
     else { _drawAll(); const ss=g('lbl-sm-status'); if(ss)ss.textContent='(Nobody clocked on — showing all staff.)'; }
   }).catch(_drawAll);
 }
