@@ -2086,8 +2086,27 @@ let _probePopDismissed={};   // pid -> the status it was dismissed at (re-shows 
 // Nudging the compositor with a momentary transform forces the new frame to paint on its own.
 function _paint(){try{const b=document.body;b.style.transform='translateZ(0)';requestAnimationFrame(()=>{requestAnimationFrame(()=>{b.style.transform='';});});}catch(e){}}
 
+// Probe cards run hottest-first, because the hottest probe is nearly always the top row of birds.
+// A plain sort would make cards swap places on every 0.1° wobble — right as someone goes to tap one —
+// so a probe only moves up when it's clearly hotter, and blank/idle probes sink to the bottom.
+let _probeOrder=[1,2,3,4];
+const _PROBE_SWAP_C=2;
+function _probeOrdered(){
+  const t=pid=>{const v=(probeData[pid]||{}).temp;return (typeof v==='number'&&isFinite(v))?v:-Infinity;};
+  Object.keys(probeData).map(Number).forEach(p=>{if(_probeOrder.indexOf(p)<0)_probeOrder.push(p);});
+  _probeOrder=_probeOrder.filter(p=>probeData[p]!==undefined);
+  for(let pass=0;pass<_probeOrder.length;pass++){
+    let moved=false;
+    for(let i=0;i<_probeOrder.length-1;i++){
+      const a=_probeOrder[i],b=_probeOrder[i+1];
+      if(t(b)>t(a)+_PROBE_SWAP_C){_probeOrder[i]=b;_probeOrder[i+1]=a;moved=true;}
+    }
+    if(!moved)break;
+  }
+  return _probeOrder.map(p=>[String(p),probeData[p]]);
+}
 function renderProbes(){
-  document.getElementById('probes-grid').innerHTML=Object.entries(probeData).map(([pid,p])=>{
+  document.getElementById('probes-grid').innerHTML=_probeOrdered().map(([pid,p])=>{
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
     const status=st.status,acked=st.alerted,cardCls=status==='idle'?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
