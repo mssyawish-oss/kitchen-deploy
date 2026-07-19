@@ -345,6 +345,14 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-msg{font-size:14px;color:var(--amber);font-weight:600;}
 .rl-src{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-top:3px;}
 .rl-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;}
+/* ── device view modes ── */
+body.view-wall .nav-btn span{font-size:15px;}
+body.view-wall .rl-hero-lab,body.view-wall .probe-name{letter-spacing:.16em;}
+body.view-wall .probe-temp{font-size:clamp(48px,11vh,104px);}
+body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+body.view-phone .rl-actions{flex-direction:column;gap:6px;}
+body.view-phone .nav-btn span{font-size:11px;}
+body.view-phone .rl-step{width:44px;height:44px;}
 .rl-heroRow{display:flex;align-items:center;justify-content:center;gap:clamp(6px,2vw,18px);width:100%;min-width:0;}
 .rl-step{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:12px;width:clamp(40px,7vh,58px);height:clamp(40px,7vh,58px);font-size:clamp(24px,3.4vh,34px);font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;}
 .rl-step:active{transform:scale(.93);}
@@ -1900,8 +1908,27 @@ function pinClear(){pinBuf='';updatePinDots();}
 function _renderDots(elId,len){const el=document.getElementById(elId);if(!el)return;const n=Math.max(4,len);let h='';for(let i=0;i<n;i++)h+='<span class="pin-dot'+(i<len?' filled':'')+'"></span>';el.innerHTML=h;}
 function updatePinDots(){_renderDots('pin-dots',pinBuf.length);}
 function checkPin(){const staff=appData.staff||[];if((staff.length===0&&pinBuf==='0000')||staff.some(s=>s.pin===pinBuf)){openDashboard();return;}document.getElementById('pin-error').textContent='Incorrect PIN';pinBuf='';updatePinDots();setTimeout(()=>document.getElementById('pin-error').textContent='',2000);}
+// ── DEVICE VIEWS: one codebase, three layouts. Bookmark ?view=wall (21" kitchen screen),
+// ?view=pad (iPad — probes + checklist) or ?view=phone (checking in). The choice sticks on that
+// device, so the bookmark keeps working. No param = pick from screen size. Same data everywhere.
+const DASH_VIEWS=['wall','pad','phone'];
+function _initView(){
+  let v=null;
+  try{v=new URLSearchParams(location.search).get('view');}catch(e){}
+  try{
+    if(v&&DASH_VIEWS.indexOf(v)>=0)localStorage.setItem('dashView',v);
+    else v=localStorage.getItem('dashView');
+  }catch(e){}
+  if(DASH_VIEWS.indexOf(v)<0)v=(window.innerWidth<820)?'phone':((window.innerWidth<1500)?'pad':'wall');
+  DASH_VIEWS.forEach(x=>document.body.classList.remove('view-'+x));
+  document.body.classList.add('view-'+v);
+  window.DASH_VIEW=v;return v;
+}
+// where each device should land: the phone is for checking stock, the others live on the probes screen
+function _viewHome(){return window.DASH_VIEW==='phone'?'stock':'probes';}
+try{_initView();}catch(e){}
 function openDashboard(){pinBuf='';updatePinDots();document.getElementById('lock-screen').classList.add('hidden');document.getElementById('app-shell').style.display='flex';document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('hidden'));const sb=document.getElementById('settings-btn');if(sb)sb.style.display='';clearLockBanners();updateNotesBadge();if(!window.matchMedia('(max-width:600px)').matches)document.getElementById('app-shell').classList.add('nosidebar');   // start collapsed → menu is PIN-protected from load (open it via the ☰, which asks for a Manager/Admin PIN)
-navTo('probes',document.querySelector('.nav-btn[data-page="probes"]'));}
+const _hp=(typeof _viewHome==='function')?_viewHome():'probes';navTo(_hp,document.querySelector('.nav-btn[data-page="'+_hp+'"]'));}
 function lockApp(){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));lockAlerts=[];sectionUnlockedAt={};document.getElementById('lock-screen').classList.remove('hidden');document.getElementById('app-shell').style.display='none';pinBuf='';updatePinDots();renderLockBanners();}
 // ── KIOSK: lock a dedicated tablet to ONE page. Open e.g.  <server>/?kiosk=checklist  (or temp/prep/routines/stock…). Persists on this device until exited. ──
 function _kioskResolve(v){v=(v||'').toLowerCase().trim();const map={checklist:'packdown',packdown:'packdown',temp:'probes',probes:'probes',prep:'jobs',jobs:'jobs',routines:'service',service:'service',stock:'stock',recipes:'recipes',sales:'sales',team:'team',cameras:'cameras'};return map[v]||null;}
