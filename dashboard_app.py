@@ -279,8 +279,17 @@ def check_probe_status(pid,temp):
         # state (peak/removed/…) doesn't carry over. temps() blanks the display while it's frozen.
         _now=time.time(); _lv=ps.get("last_val"); _lca=ps.get("last_change_at") or 0
         if _lv is None or abs(temp-_lv)>=0.05:
-            if _lca and (_now-_lca)>60:
+            # "Unchanged for 60s = the probe was parked" — but readings are rounded to 1dp, so a bird
+            # holding a steady plateau reports identical values too. Only treat it as parked when it is
+            # ALSO cold (below the pull temp); otherwise a plateau mid-cook wiped peak/printed/removed,
+            # double-logging the cook and re-arming the stock credit.
+            if _lca and (_now-_lca)>60 and temp<float(settings.get("probe_pull_temp",60)):
                 ps.update({"peak_temp":None,"printed":False,"cook_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
+                ps["hist"]=[]                       # drop the old trail too, or the ETA projects off a dead cook
+                if ps.get("removal_timer"):
+                    try: ps["removal_timer"].cancel()
+                    except Exception: pass
+                    ps["removal_timer"]=None
             ps["last_val"]=temp; ps["last_change_at"]=_now
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
         # ETA: keep a short rolling trail of (time,temp) per probe and measure how fast THIS row is
@@ -3598,10 +3607,17 @@ def get_db():
     return jsonify(safe)
 
 _PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/blank tablet must never wipe wholesale
+# Keys the SERVER owns. They are shipped in GET /api/data (so clients hold them) but nothing in the UI
+# ever saves them back — and a client posting e.g. {"timers":[]} would kill every countdown and make
+# trigger_timer_start raise inside a Timer thread, silently breaking the use-by clock after a probe pull.
+_SERVER_KEYS=("timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
+              "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state")
 @app.route("/api/data",methods=["POST"])
 def update_db():
     payload=request.get_json(silent=True) or {}
     dropped=[]
+    for k in _SERVER_KEYS:
+        if k in payload: payload.pop(k); dropped.append(k)   # server-owned: never take a client's copy
     with data_lock:
         for k in _PROTECT_KEYS:
             # guard: a tablet that loaded an empty list (mid-refresh / stale) must not clear a populated one.

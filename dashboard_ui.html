@@ -371,9 +371,23 @@ body.kiosk .topbar-title{cursor:default;}
   font-size:13px;font-weight:800;cursor:pointer;}
 body.view-wall .ab-chip{font-size:16px;}
 /* ── device view modes ── */
+/* The 21in wall screen is read from across the kitchen, so everything steps up. These have to be
+   ID-scoped: a plain `body.view-wall .probe-temp` (0,2,1) loses to `#page-probes .probe-temp` (1,0,1),
+   which is why wall mode previously did nothing at all. */
 body.view-wall .nav-btn span{font-size:15px;}
-body.view-wall .rl-hero-lab,body.view-wall .probe-name{letter-spacing:.16em;}
-body.view-wall .probe-temp{font-size:clamp(48px,11vh,104px);}
+body.view-wall .rl-hero-lab{letter-spacing:.16em;}
+body.view-wall .probe-name-input{font-size:21px;letter-spacing:.04em;}
+body.view-wall #page-probes .probe-temp,
+body.view-wall #page-probes .pb-sec .probe-temp,
+body.view-wall #page-probes .pb-sec .probe-no-data{font-size:clamp(52px,11vh,112px);}
+body.view-wall #page-probes .probe-status{font-size:17px;}
+body.view-wall .sec-head span{font-size:15px;letter-spacing:.14em;}
+body.view-wall .timer-display{font-size:clamp(30px,6vh,54px);}
+/* iPad: probes + checklist. Slightly larger touch text than desktop, tighter than the wall. */
+body.view-pad #page-probes .probe-temp,
+body.view-pad #page-probes .pb-sec .probe-temp{font-size:clamp(38px,7vh,64px);}
+body.view-pad .nav-btn span{font-size:13px;}
+body.view-pad .pd-name,body.view-pad .pc-name{font-size:15px;}
 body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 body.view-phone .rl-actions{flex-direction:column;gap:6px;}
 body.view-phone .nav-btn span{font-size:11px;}
@@ -840,31 +854,31 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .prodoff-banner.flashing{animation:prodoff-pulse 1.6s ease-in-out infinite;}
 @keyframes prodoff-pulse{0%,100%{box-shadow:0 0 0 rgba(239,68,68,0);border-color:#5b2330;}50%{box-shadow:0 0 22px rgba(239,68,68,.45);border-color:#ef6e6e;}}
 .prodoff-head{display:flex;align-items:center;gap:11px;margin-bottom:10px;}
-.prodoff-title{font-weight:800;color:#fff;font-size:15px;line-height:1.25;}
+.prodoff-title{font-weight:800;color:var(--text);font-size:15px;line-height:1.25;}
 .prodoff-sub{font-size:12px;color:#e7a7a7;margin-top:1px;}
-.prodoff-silence{flex-shrink:0;align-self:flex-start;background:transparent;border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;}
+.prodoff-silence{flex-shrink:0;align-self:flex-start;background:transparent;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;}
 .prodoff-silence:hover{background:rgba(255,255,255,.1);}
-.prodoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;margin-top:7px;transition:opacity .3s;}
-.prodoff-name{font-size:14px;color:#fff;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prodoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;margin-top:7px;transition:opacity .3s;}
+.prodoff-name{font-size:14px;color:var(--text);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .prodoff-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;color:#d8ccff;background:rgba(124,92,255,.2);border-radius:5px;padding:1px 6px;margin-left:7px;vertical-align:middle;}
 .prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
 .prodoff-on:hover{background:#15803d;}
 .prodoff-on:disabled{opacity:.65;cursor:default;}
 /* products-off panel: compact settings bar + per-row controls */
-.po-bar{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;margin-bottom:10px;flex-wrap:wrap;}
+.po-bar{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;margin-bottom:10px;flex-wrap:wrap;}
 .po-bar-t{font-size:13px;font-weight:600;flex:1;min-width:0;}
-.po-bar input[type=time]{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:5px 8px;font-size:12.5px;}
+.po-bar input[type=time]{background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px;}
 .po-sw{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;}
 .po-sw input{opacity:0;width:0;height:0;position:absolute;}
-.po-sl{position:absolute;inset:0;background:rgba(255,255,255,.18);border-radius:24px;cursor:pointer;transition:.18s;}
+.po-sl{position:absolute;inset:0;background:var(--border2);border-radius:24px;cursor:pointer;transition:.18s;}
 .po-sl:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.18s;}
 .po-sw input:checked + .po-sl{background:var(--green,#3ddc84);}
 .po-sw input:checked + .po-sl:before{transform:translateX(18px);}
 .po-sw.sm{width:36px;height:20px;}
 .po-sw.sm .po-sl:before{height:15px;width:15px;left:2.5px;top:2.5px;}
 .po-sw.sm input:checked + .po-sl:before{transform:translateX(15px);}
-.po-btn{flex-shrink:0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
-.po-btn:hover{background:rgba(255,255,255,.16);}
+.po-btn{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.po-btn:hover{background:var(--surface);}
 .po-btn.go{background:rgba(61,220,132,.16);border-color:rgba(61,220,132,.5);color:#8ff0b8;}
 .po-btn.go:hover{background:rgba(61,220,132,.3);}
 .po-ctl{display:flex;align-items:center;gap:6px;flex-shrink:0;}
