@@ -1113,57 +1113,14 @@ def _sq_enable_variation(vid):
     dbg.update({"type":obj.get("type"),"sold_out_before":bool(ov0.get("sold_out")),"track_inventory":tracked})
     if not ov0.get("sold_out"):
         _SQ_OBJ_CACHE.pop(vid,None); _ENABLE_DBG=dbg; return True,None      # already on
-    if (not is_mod) and tracked:                                            # inventory-backed → restock it
-        try:
-            now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            body={"idempotency_key":_secrets.token_hex(16),"changes":[{"type":"PHYSICAL_COUNT","physical_count":{
-                "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":"1","occurred_at":now_iso}}]}
-            req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
-            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: dbg["steps"].append({"inventory":json.loads(r.read().decode())})
-        except Exception as e: dbg["steps"].append({"inventory_err":str(e)[:140]})
-    key="modifier_data" if is_mod else "item_variation_data"                # clear the catalog flag
-    o2=copy.deepcopy(obj); d=o2.get(key) or {}; los=d.get("location_overrides") or []; hit=False
-    for x in los:
-        if x.get("location_id")==loc: x["sold_out"]=False; x.pop("sold_out_valid_until",None); hit=True
-    if not hit: los.append({"location_id":loc,"sold_out":False})
-    d["location_overrides"]=los; o2[key]=d
-    try:
-        body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
-        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-        dbg["steps"].append({"catalog_errors":res.get("errors")})
-        if res.get("errors"):
-            _ENABLE_DBG=dbg; return False,(res["errors"][0].get("detail") or "catalog error")
-    except Exception as e:
-        rd=getattr(e,"read",None); msg=str(e)[:140]
-        if rd:
-            try: msg=e.read().decode()[:180]
-            except Exception: pass
-        dbg["steps"].append({"catalog_err":msg}); _ENABLE_DBG=dbg; return False,"Square error: "+msg
-    still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
-    dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
-    _SQ_OBJ_CACHE.pop(vid,None)
-    if still: return False,"Square still shows it sold out — switch it on in the Square app"
-    return True,None
-@app.route("/api/sq_86_test/<vid>",methods=["POST"])
-def api_sq_86_test(vid):
-    # TEMPORARY EXPERIMENT (remove after): can enabling track_inventory + restocking clear a
-    # MANUALLY-set sold_out? Runs the full sequence on ONE variation and reverts tracking at the end.
-    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
-    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
-    rep={"ok":True,"vid":vid,"loc":loc,"steps":[]}
-    def read():
-        try:
-            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
-            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                o=(json.loads(r.read().decode()) or {}).get("object") or {}
-        except Exception as e: return None,{"read_err":str(e)[:140]}
-        d=o.get("item_variation_data") or {}
-        ov=next((x for x in (d.get("location_overrides") or []) if x.get("location_id")==loc),{}) or {}
-        return o,{"sold_out":ov.get("sold_out"),"track_inventory":ov.get("track_inventory"),"version":o.get("version")}
-    def set_tracking(val):
-        o,_=read()
-        if not o: return {"err":"read failed"}
+    if is_mod:
+        # Add-ons: Square ignores every write to a modifier's sold_out (verified — omitting the field and
+        # dropping the whole override both no-op). Nothing we can do from here.
+        _ENABLE_DBG=dbg
+        return False,"Square doesn't allow add-ons to be switched on from an app — switch this one on in the Square app"
+    def _set_tracking(val):
+        o=_get_obj()
+        if not o: return "read failed"
         o2=copy.deepcopy(o); d=o2.get("item_variation_data") or {}
         los=d.get("location_overrides") or []; hit=False
         for x in los:
@@ -1174,55 +1131,33 @@ def api_sq_86_test(vid):
             body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
             req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
             with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-            return {"errors":res.get("errors")}
-        except Exception as e: return {"err":str(e)[:160]}
-    def restock(q):
+            return (res.get("errors") or [{}])[0].get("detail") if res.get("errors") else None
+        except Exception as e:
+            rd=getattr(e,"read",None)
+            if rd:
+                try: return e.read().decode()[:180]
+                except Exception: pass
+            return str(e)[:160]
+    if tracked:
+        # genuinely inventory-tracked → the documented route: put stock back
         try:
             now_iso=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             body={"idempotency_key":_secrets.token_hex(16),"changes":[{"type":"PHYSICAL_COUNT","physical_count":{
-                "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":str(q),"occurred_at":now_iso}}]}
+                "catalog_object_id":vid,"location_id":loc,"state":"IN_STOCK","quantity":"1","occurred_at":now_iso}}]}
             req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
-            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-            return {"counts":[{"state":c.get("state"),"qty":c.get("quantity")} for c in (res.get("counts") or [])],"errors":res.get("errors")}
-        except Exception as e: return {"err":str(e)[:160]}
-    def mod_try(strategy):
-        # MODIFIERs have no track_inventory, so try clearing via the override itself
-        try:
-            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
-            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                o=(json.loads(r.read().decode()) or {}).get("object") or {}
-            o2=copy.deepcopy(o); d=o2.get("modifier_data") or {}
-            los=d.get("location_overrides") or []
-            if strategy=="omit_sold_out":
-                los=[{k:v for k,v in x.items() if k!="sold_out"} if x.get("location_id")==loc else x for x in los]
-            else:                                   # drop the override entry entirely
-                los=[x for x in los if x.get("location_id")!=loc]
-            d["location_overrides"]=los; o2["modifier_data"]=d
-            body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
-            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
-            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
-            cov=next((x for x in ((chk.get("modifier_data") or {}).get("location_overrides") or []) if x.get("location_id")==loc),{}) or {}
-            return {"strategy":strategy,"errors":res.get("errors"),"sold_out_after":cov.get("sold_out"),"override_present":bool(cov)}
-        except Exception as e: return {"strategy":strategy,"err":str(e)[:180]}
-    if (request.args.get("kind") or "")=="modifier":
-        rep["steps"].append({"m1_omit_sold_out":mod_try("omit_sold_out")})
-        last=rep["steps"][-1]["m1_omit_sold_out"]
-        if last.get("sold_out_after"): rep["steps"].append({"m2_drop_override":mod_try("drop")})
-        rep["verdict"]={"modifier_cleared":not bool((rep["steps"][-1].get("m2_drop_override") or rep["steps"][-1].get("m1_omit_sold_out") or {}).get("sold_out_after"))}
-        return jsonify(rep)
-    _,s0=read();                    rep["steps"].append({"1_before":s0})
-    rep["steps"].append({"2_set_tracking_true":set_tracking(True)})
-    _,s1=read();                    rep["steps"].append({"3_after_tracking_on":s1})
-    rep["steps"].append({"4_restock_100":restock(100)})
-    _,s2=read();                    rep["steps"].append({"5_after_restock":s2})   # ← the answer
-    rep["steps"].append({"6_revert_tracking_false":set_tracking(False)})
-    _,s3=read();                    rep["steps"].append({"7_after_revert":s3})
-    rep["verdict"]={"cleared_by_restock":(s2 or {}).get("sold_out") is False,
-                    "still_clear_after_revert":(s3 or {}).get("sold_out") is False}
-    return jsonify(rep)
-
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: dbg["steps"].append({"restock":json.loads(r.read().decode()).get("errors")})
+        except Exception as e: dbg["steps"].append({"restock_err":str(e)[:140]})
+    else:
+        # NOT inventory-tracked: sold_out is a manual flag and is read-only… but toggling track_inventory
+        # makes Square drop it. Flip it on then straight back off — ends in the original state, so Square
+        # never starts decrementing stock or auto-86ing at zero. (Verified live; no restock needed.)
+        dbg["steps"].append({"tracking_on":_set_tracking(True)})
+        dbg["steps"].append({"tracking_restore":_set_tracking(False)})
+    still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
+    dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
+    _SQ_OBJ_CACHE.pop(vid,None)
+    if still: return False,"Square still shows it sold out — switch it on in the Square app"
+    return True,None
 @app.route("/api/products_offline")
 def api_products_offline():
     items,err=_sq_offline_products()
