@@ -1185,6 +1185,33 @@ def api_sq_86_test(vid):
             with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
             return {"counts":[{"state":c.get("state"),"qty":c.get("quantity")} for c in (res.get("counts") or [])],"errors":res.get("errors")}
         except Exception as e: return {"err":str(e)[:160]}
+    def mod_try(strategy):
+        # MODIFIERs have no track_inventory, so try clearing via the override itself
+        try:
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                o=(json.loads(r.read().decode()) or {}).get("object") or {}
+            o2=copy.deepcopy(o); d=o2.get("modifier_data") or {}
+            los=d.get("location_overrides") or []
+            if strategy=="omit_sold_out":
+                los=[{k:v for k,v in x.items() if k!="sold_out"} if x.get("location_id")==loc else x for x in los]
+            else:                                   # drop the override entry entirely
+                los=[x for x in los if x.get("location_id")!=loc]
+            d["location_overrides"]=los; o2["modifier_data"]=d
+            body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
+            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+            cov=next((x for x in ((chk.get("modifier_data") or {}).get("location_overrides") or []) if x.get("location_id")==loc),{}) or {}
+            return {"strategy":strategy,"errors":res.get("errors"),"sold_out_after":cov.get("sold_out"),"override_present":bool(cov)}
+        except Exception as e: return {"strategy":strategy,"err":str(e)[:180]}
+    if (request.args.get("kind") or "")=="modifier":
+        rep["steps"].append({"m1_omit_sold_out":mod_try("omit_sold_out")})
+        last=rep["steps"][-1]["m1_omit_sold_out"]
+        if last.get("sold_out_after"): rep["steps"].append({"m2_drop_override":mod_try("drop")})
+        rep["verdict"]={"modifier_cleared":not bool((rep["steps"][-1].get("m2_drop_override") or rep["steps"][-1].get("m1_omit_sold_out") or {}).get("sold_out_after"))}
+        return jsonify(rep)
     _,s0=read();                    rep["steps"].append({"1_before":s0})
     rep["steps"].append({"2_set_tracking_true":set_tracking(True)})
     _,s1=read();                    rep["steps"].append({"3_after_tracking_on":s1})
