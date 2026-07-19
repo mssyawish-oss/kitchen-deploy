@@ -345,6 +345,22 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-msg{font-size:14px;color:var(--amber);font-weight:600;}
 .rl-src{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-top:3px;}
 .rl-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;}
+/* ── alarm notification bar: says WHAT is alarming, so nobody has to guess ── */
+.alarm-bar{display:none;position:fixed;top:0;left:0;right:0;z-index:300;align-items:center;gap:10px;
+  padding:9px 12px;background:#7f1d1d;border-bottom:2px solid #ef4444;box-shadow:0 3px 14px rgba(0,0,0,.5);}
+.alarm-bar.on{display:flex;animation:abPulse 1.1s infinite;}
+@keyframes abPulse{0%,100%{background:#7f1d1d;}50%{background:#b91c1c;}}
+.alarm-bar .ab-ic{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#ef4444;color:#fff;
+  font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;}
+.ab-list{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.ab-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.28);
+  border-radius:999px;padding:4px 6px 4px 12px;color:#fff;font-size:13.5px;font-weight:700;}
+.ab-chip button{background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:999px;width:22px;height:22px;
+  font-size:13px;font-weight:800;cursor:pointer;line-height:1;}
+.ab-chip button:hover{background:rgba(255,255,255,.34);}
+.ab-all{flex-shrink:0;background:#fff;color:#7f1d1d;border:none;border-radius:9px;padding:7px 13px;
+  font-size:13px;font-weight:800;cursor:pointer;}
+body.view-wall .ab-chip{font-size:16px;}
 /* ── device view modes ── */
 body.view-wall .nav-btn span{font-size:15px;}
 body.view-wall .rl-hero-lab,body.view-wall .probe-name{letter-spacing:.16em;}
@@ -971,6 +987,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </style>
 </head>
 <body>
+<div id="alarm-bar" class="alarm-bar"><div class="ab-ic">!</div><div id="alarm-bar-list" class="ab-list"></div><button class="ab-all" onclick="silenceAll()">Silence all</button></div>
 <div id="lock-screen">
   <div id="lock-banners" style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;gap:8px;padding:14px;max-height:55vh;overflow-y:auto;z-index:2;"></div>
   <div id="lock-logo" role="img" aria-label="Bruno's Chicken Shop"></div>
@@ -1857,7 +1874,40 @@ function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)retur
 function stopWaitAlarm(){_waitAlarm=false;_updateFlash();}
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
 function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');return ks;}
-function _updateFlash(){const el=document.getElementById('alarm-flash');if(!el)return;
+// Every alarm currently sounding, in plain words, with the key needed to silence just that one.
+function _activeAlarmDetails(){
+  const out=[];
+  try{
+    Object.keys(_probeAlarms||{}).forEach(p=>{
+      const tp=_probeAlarms[p];
+      const nm=((typeof probeData!=='undefined'&&probeData[p]&&probeData[p].name)||('Probe '+p));
+      out.push({key:(tp==='overdone'?'probeOverdone':'probeReady'),label:nm+' — '+(tp==='overdone'?'OVERDONE':'cooked')});
+    });
+    Object.keys(alarms||{}).forEach(id=>{
+      if(!alarms[id])return;
+      let lab;
+      if(id==='prod-off')lab='Products switched off';
+      else if(id==='rot-stopped')lab='Rotisserie not spinning';
+      else lab=_alarmLabel(id);
+      out.push({key:_keyForId(id),label:lab});
+    });
+    if(typeof _waitAlarm!=='undefined'&&_waitAlarm)out.push({key:'orders',label:'Orders waiting too long'});
+    if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
+  }catch(e){}
+  return out;
+}
+function renderAlarmBar(){
+  const bar=document.getElementById('alarm-bar'),list=document.getElementById('alarm-bar-list');
+  if(!bar||!list)return;
+  const ls=document.getElementById('lock-screen');
+  const locked=ls&&!ls.classList.contains('hidden');
+  const items=locked?[]:_activeAlarmDetails();
+  if(!items.length){bar.classList.remove('on');document.body.style.paddingTop='';return;}
+  list.innerHTML=items.map(it=>'<span class="ab-chip">'+_mEsc(it.label)+'<button title="Silence this one" onclick="silenceOneAlarm(\''+it.key+'\');renderAlarmBar();">&#10005;</button></span>').join('');
+  bar.classList.add('on');
+  document.body.style.paddingTop=bar.offsetHeight+'px';
+}
+function _updateFlash(){renderAlarmBar();const el=document.getElementById('alarm-flash');if(!el)return;
   const ov=document.getElementById('alarm-overlay');
   if(ov&&ov.classList.contains('active')){el.classList.remove('on');return;}   // full alarm modal up → no screen-edge flashing, the card glow is the cue
   const ks=_activeAlarmKeys();let col=null;for(const k of _ALARM_ORDER){if(ks.has(k)){const c=_acfg(k);if(c.flash){col=c.color;break;}}}if(col){el.style.setProperty('--af-col',col);el.classList.add('on');}else{el.classList.remove('on');}}
@@ -2367,7 +2417,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // new code too. Wait if someone's typing or a modal is open, then reload on the next idle tick.
   if(d.boot!=null){if(window._bootId==null)window._bootId=d.boot;else if(d.boot!==window._bootId)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){location.reload();return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
