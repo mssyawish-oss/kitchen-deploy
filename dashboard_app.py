@@ -1179,6 +1179,30 @@ def _prodoff_auto_enable(manual=False):
 def api_prodoff_auto_run():
     return jsonify(_prodoff_auto_enable(manual=True))
 
+@app.route("/api/products_all")
+def api_products_all():
+    # every product NAME at this location (items + add-on modifiers) — feeds the never-touch picker,
+    # so a product can be excluded even while it's currently switched ON
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}
+    if not hdr or not (cfg.get("location_id") or "").strip(): return jsonify({"ok":False,"error":"Square not configured"})
+    names=set()
+    try:
+        for typ,key in (("ITEM","item_data"),("MODIFIER","modifier_data")):
+            cursor=None
+            for _ in range(25):
+                url=SQUARE_BASE+"/v2/catalog/list?types="+typ+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                    data=json.loads(r.read().decode())
+                for obj in data.get("objects",[]) or []:
+                    if obj.get("type")!=typ: continue
+                    n=((obj.get(key) or {}).get("name") or "").strip()
+                    if n: names.add(n)
+                cursor=data.get("cursor")
+                if not cursor: break
+        return jsonify({"ok":True,"names":sorted(names)})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
 def prodoff_auto_loop():
     while True:
         try:
