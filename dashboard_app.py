@@ -1179,6 +1179,31 @@ def _prodoff_auto_enable(manual=False):
 def api_prodoff_auto_run():
     return jsonify(_prodoff_auto_enable(manual=True))
 
+@app.route("/api/sq_diag/<vid>")
+def api_sq_diag(vid):
+    # READ-ONLY diagnostic: how does Square actually hold this object's sold-out state?
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    out={"ok":True,"loc":loc,"id":vid}
+    def _get(u):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            rd=getattr(e,"read",None)
+            if rd:
+                try: return {"_err":e.read().decode()[:300]}
+                except Exception: pass
+            return {"_err":str(e)}
+    obj=_get(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid))
+    o=(obj or {}).get("object") or {}
+    out["type"]=o.get("type"); out["catalog_err"]=obj.get("_err")
+    d=o.get("item_variation_data") or o.get("modifier_data") or {}
+    out["track_inventory"]=d.get("track_inventory")
+    out["location_overrides"]=[ov for ov in (d.get("location_overrides") or []) if ov.get("location_id")==loc]
+    out["inventory"]=_get(SQUARE_BASE+"/v2/inventory/"+urllib.parse.quote(vid))
+    return jsonify(out)
+
 @app.route("/api/products_all")
 def api_products_all():
     # every product NAME at this location (items + add-on modifiers) — feeds the never-touch picker,
