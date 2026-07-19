@@ -803,6 +803,25 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
 .prodoff-on:hover{background:#15803d;}
 .prodoff-on:disabled{opacity:.65;cursor:default;}
+/* products-off panel: compact settings bar + per-row controls */
+.po-bar{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;margin-bottom:10px;flex-wrap:wrap;}
+.po-bar-t{font-size:13px;font-weight:600;flex:1;min-width:0;}
+.po-bar input[type=time]{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:5px 8px;font-size:12.5px;}
+.po-sw{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;}
+.po-sw input{opacity:0;width:0;height:0;position:absolute;}
+.po-sl{position:absolute;inset:0;background:rgba(255,255,255,.18);border-radius:24px;cursor:pointer;transition:.18s;}
+.po-sl:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.18s;}
+.po-sw input:checked + .po-sl{background:var(--green,#3ddc84);}
+.po-sw input:checked + .po-sl:before{transform:translateX(18px);}
+.po-sw.sm{width:36px;height:20px;}
+.po-sw.sm .po-sl:before{height:15px;width:15px;left:2.5px;top:2.5px;}
+.po-sw.sm input:checked + .po-sl:before{transform:translateX(15px);}
+.po-btn{flex-shrink:0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.po-btn:hover{background:rgba(255,255,255,.16);}
+.po-btn.go{background:rgba(61,220,132,.16);border-color:rgba(61,220,132,.5);color:#8ff0b8;}
+.po-btn.go:hover{background:rgba(61,220,132,.3);}
+.po-ctl{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.po-never{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted);white-space:nowrap;}
 .prodoff-sil{flex-shrink:0;background:rgba(251,155,36,.15);color:var(--amber);border:1px solid var(--amber-dim);border-radius:9px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .prodoff-sil:hover{background:rgba(251,155,36,.3);}
 .prodoff-sil.day{background:rgba(255,255,255,.06);color:#cbd5e1;border-color:rgba(255,255,255,.2);}
@@ -1087,7 +1106,13 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <div class="modal-overlay" id="prodoff-modal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.5;">These items are marked sold-out in Square and won’t sell until you switch them back on in the Square app. The alarm doesn’t sound straight away: switch-off between 10am–6:30pm starts alarming 1 hour later; between 6:30pm–9:30pm it stays quiet until the next morning with the rest. Silence each one for an hour or the rest of the day — everything resets at 10am for the new trading day. Full options (auto switch-on time, on/off, the never-switch-on list, turn everything on now) are in <b>Settings → Products auto switch-on</b>.</div>
+    <div class="po-bar">
+      <label class="po-sw"><input type="checkbox" id="po-auto" onchange="poSaveAuto()"><span class="po-sl"></span></label>
+      <span class="po-bar-t">Auto switch-on</span>
+      <input type="time" id="po-time" onchange="poSaveAuto()">
+      <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
+    </div>
+    <div id="po-status"></div>
     <div id="prodoff-list"></div>
   </div>
 </div>
@@ -1418,17 +1443,8 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div style="font-size:13px;color:var(--muted);margin:0 0 8px 26px;">Remind every <select id="ft-stock-prompt-hrs" class="input" style="width:auto;display:inline-block;padding:3px 6px;font-size:13px;"><option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option><option value="6">6 hours</option></select> during trading</div>
     <button class="btn btn-primary" style="width:100%;" onclick="saveFeatures()">Save prompt setting</button>
     <div class="divider"></div>
-    <div class="section-title">Products auto switch-on</div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:9px;">Staff switch a product off in Square and forget to switch it back, so it stays unavailable. This turns everything back on automatically each morning before you open. Anything on the never-switch-on list below is always left alone.</div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="pa-on" style="width:18px;height:18px;"> Switch products back on automatically</label>
-    <div style="font-size:13px;color:var(--muted);margin:0 0 10px 26px;">Run at <input type="time" id="pa-time" class="input" style="width:auto;display:inline-block;padding:3px 6px;font-size:13px;"> <span style="font-size:11.5px;">(before you open — it only ever runs within 2 hours of this time)</span></div>
-    <div class="row" style="gap:6px;"><button class="btn btn-primary" style="flex:1;" onclick="prodAutoSave()">Save settings</button><button class="btn" style="flex:1;" onclick="prodAutoRunNow()">Turn all products on now</button></div>
-    <div id="pa-status" style="font-size:12px;margin-top:6px;color:var(--muted);"></div>
-    <div style="font-size:13px;font-weight:600;margin-top:14px;">Never switch these back on</div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Seasonal or discontinued items you want to stay off. Tap to remove.</div>
-    <div id="pa-never" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-    <input class="input" id="pa-search" placeholder="Search a product to add to the never list…" oninput="paRenderPicker()">
-    <div id="pa-picker" style="max-height:190px;overflow-y:auto;margin-top:6px;"></div>
+    <div class="section-title">Products switched off</div>
+    <button class="btn" style="width:100%;" onclick="closeModal('settings-modal');prodOffOpen();">Open products panel</button>
     <div id="ft-status" style="font-size:12px;margin-top:6px;min-height:14px;"></div>
     <div class="divider"></div>
     <div class="section-title">Display</div>
@@ -3193,7 +3209,7 @@ function checkProductsOff(){
     if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();
   }).catch(()=>{});
 }
-// "Never auto-on" list — product NAMES the morning auto-switch-on must leave alone. Edited live here.
+// Never auto-on list (product NAMES the morning switch-on leaves alone)
 function _pdOffNever(name){return (appData.prodoff_never||[]).some(n=>String(n).toUpperCase()===String(name).toUpperCase());}
 function prodOffNeverToggle(i){
   const g=_pdOffGroupCache[i];if(!g)return;
@@ -3203,106 +3219,77 @@ function prodOffNeverToggle(i){
   if(ix>=0)appData.prodoff_never.splice(ix,1);else appData.prodoff_never.push(g.name);
   saveKeys(['prodoff_never']);_prodOffRenderModal();
 }
-function _pdOffAutoSummary(){                      // what this morning's auto switch-on actually did
-  const lg=appData.prodoff_autolog||{};if(!lg.date)return '';
-  const d=new Date();const local=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  if(lg.date!==local)return '';
-  const bits=[];
-  if((lg.enabled||[]).length)bits.push('<div style="color:var(--green);font-weight:600;">Switched back on: '+lg.enabled.map(_mEsc).join(', ')+'</div>');
-  if((lg.skipped||[]).length)bits.push('<div style="color:var(--muted);">Left off (never auto-on): '+lg.skipped.map(_mEsc).join(', ')+'</div>');
-  if((lg.addons||[]).length)bits.push('<div style="color:var(--amber);">Add-ons — switch these on in the Square app (Square won\'t allow it from here): '+lg.addons.map(_mEsc).join(', ')+'</div>');
-  if((lg.failed||[]).length)bits.push('<div style="color:var(--red);">Failed: '+lg.failed.map(_mEsc).join(', ')+'</div>');
-  if(!bits.length)bits.push('<div style="color:var(--muted);">Nothing needed switching on.</div>');
+function _poStatus(msg,col){const s=document.getElementById('po-status');if(!s)return;
+  s.innerHTML=msg?('<div style="font-size:11.5px;color:'+(col||'var(--muted)')+';margin:-2px 0 9px;">'+msg+'</div>'):'';}
+function _poSummary(lg){
+  lg=lg||appData.prodoff_autolog||{};
+  const d=new Date(),local=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  if(!lg.date||lg.date!==local){_poStatus('');return;}
+  const n=a=>(a||[]).length,bits=[];
+  if(n(lg.enabled))bits.push('<span style="color:var(--green);">'+n(lg.enabled)+' switched on</span>');
+  if(n(lg.skipped))bits.push(n(lg.skipped)+' left off');
+  if(n(lg.addons))bits.push('<span style="color:var(--amber);">'+n(lg.addons)+' add-on'+(n(lg.addons)>1?'s':'')+' need the Square app</span>');
+  if(n(lg.failed))bits.push('<span style="color:var(--red);">'+n(lg.failed)+' failed</span>');
   const t=new Date(lg.at||Date.now()).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
-  return '<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;background:var(--surface2);"><div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Morning auto switch-on &middot; '+t+(lg.manual?' (run by hand)':'')+'</div>'+bits.join('')+'</div>';
+  _poStatus(bits.length?(t+' &middot; '+bits.join(' &middot; ')):'');
+}
+function poSaveAuto(){
+  const on=document.getElementById('po-auto'),t=document.getElementById('po-time');
+  appData.prodoff_auto_on=!!(on&&on.checked);
+  let v=(t&&t.value)||'09:45';if(!/^\d{1,2}:\d{2}$/.test(v))v='09:45';
+  appData.prodoff_auto_time=v;saveKeys(['prodoff_auto_on','prodoff_auto_time']);
+  _poStatus(appData.prodoff_auto_on?('Switches everything on at '+v):'Auto switch-on is off');
+}
+function poRunAll(){
+  _poStatus('Switching on…');
+  fetch('/api/prodoff_auto_run',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(!d||!d.ok){_poStatus('Failed','var(--red)');return;}
+    appData.prodoff_autolog=d;_poSummary(d);checkProductsOff();
+  }).catch(()=>_poStatus('Failed','var(--red)'));
+}
+function prodOffTurnOnG(i){
+  const g=_pdOffGroupCache[i];if(!g)return;
+  _poStatus('Switching on '+_mEsc(g.name)+'…');
+  let on=0,addon=0,fail=0;
+  Promise.all(g.ids.map(id=>fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+    .then(r=>r.json()).then(d=>{if(d&&d.ok)on++;else if(d&&/add-on/i.test(d.error||''))addon++;else fail++;}).catch(()=>{fail++;})
+  )).then(()=>{
+    const bits=[];
+    if(on)bits.push(on+' switched on');
+    if(addon)bits.push(addon+' add-on'+(addon>1?'s':'')+' need the Square app');
+    if(fail)bits.push(fail+' failed');
+    _poStatus(_mEsc(g.name)+': '+bits.join(' &middot; '),(addon||fail)?'var(--amber)':'var(--green)');
+    checkProductsOff();
+  });
 }
 function _prodOffRenderModal(){
   const el=document.getElementById('prodoff-list');if(!el)return;
-  const sum=_pdOffAutoSummary();
-  if(!_prodOffList.length){el.innerHTML=sum+'<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on ✓</div>';return;}
-  el.innerHTML=sum+_pdOffGroups().map((g,i)=>{
+  const a=document.getElementById('po-auto');if(a)a.checked=(appData.prodoff_auto_on!==false);
+  const tm=document.getElementById('po-time');if(tm)tm.value=(appData.prodoff_auto_time||'09:45');
+  if(!_prodOffList.length){el.innerHTML='<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on &#10003;</div>';return;}
+  el.innerHTML=_pdOffGroups().map((g,i)=>{
     const tags=g.tags.map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('');
     const until=_pdOffGroupMutedUntil(g);
-    let right;
-    if(until>Date.now()){
-      const lbl=(until>=_pdOffNext10()-60000)?'today':('until '+new Date(until).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}));
-      right='<button class="prodoff-muted" onclick="prodOffUnmuteG('+i+')" title="Tap to un-silence">Silenced '+lbl+' &#10005;</button>';
-    }else{
-      right='<span style="display:flex;gap:6px;flex-shrink:0;"><button class="prodoff-sil" onclick="prodOffMuteG('+i+',\'hour\')">Silence 1 hr</button><button class="prodoff-sil day" onclick="prodOffMuteG('+i+',\'day\')">Rest of today</button></span>';
-    }
-    const _el=_pdOffEligibleAt(g.off_since);
-    const auto=(until<=Date.now()&&_el>Date.now())?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">Alarm starts '+_pdOffWhen(_el)+'</div>'):'';
-    const cnt=g.ids.length>1?('<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+g.ids.length+' variations/add-ons — silences all</div>'):'';
-    const nev=_pdOffNever(g.name);
-    const nevBtn='<button onclick="prodOffNeverToggle('+i+')" style="background:none;border:none;padding:0;margin-top:3px;font-size:11px;text-align:left;cursor:pointer;color:'+(nev?'var(--amber)':'var(--muted)')+';">'+(nev?'Never auto-on ✓ — tap to allow':'Auto-on each morning — tap to exclude')+'</button>';
-    return '<div class="prodoff-row"><div style="min-width:0;"><div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'+auto+cnt+nevBtn+'</div>'+right+'</div>';
-  }).join('');
+    const sil=(until>Date.now())
+      ?'<button class="po-btn" onclick="prodOffUnmuteG('+i+')">Unsilence</button>'
+      :'<button class="po-btn" onclick="prodOffMuteG('+i+',\'hour\')">1 hr</button><button class="po-btn" onclick="prodOffMuteG('+i+',\'day\')">Today</button>';
+    const nev=_pdOffNever(g.name)?' checked':'';
+    return '<div class="prodoff-row">'
+      +'<div style="min-width:0;flex:1;">'
+        +'<div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'
+        +'<label class="po-never"><span class="po-sw sm"><input type="checkbox"'+nev+' onchange="prodOffNeverToggle('+i+')"><span class="po-sl"></span></span>Never auto-on</label>'
+      +'</div>'
+      +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnG('+i+')">Turn on</button>'+sil+'</div>'
+    +'</div>';
+  }).join('')+_poNeverChips();
 }
-// ── Products auto switch-on: full settings (Settings → Products auto switch-on) ──
-let _paAllNames=null,_paHits=[];
-function renderProdAuto(){
-  const on=document.getElementById('pa-on');if(!on)return;
-  on.checked=(appData.prodoff_auto_on!==false);
-  const t=document.getElementById('pa-time');if(t)t.value=(appData.prodoff_auto_time||'09:45');
-  const st=document.getElementById('pa-status');if(st)st.textContent='';
-  paRenderNever();
-  if(_paAllNames===null)paLoadAll(); else paRenderPicker();
+function _poNeverChips(){
+  const list=appData.prodoff_never||[];if(!list.length)return '';
+  return '<div style="margin-top:11px;font-size:11px;color:var(--muted);">Never auto-on: '
+    +list.map((n,i)=>'<button class="po-btn" style="padding:3px 8px;font-size:11px;margin:3px 3px 0 0;" onclick="poNeverRemove('+i+')">'+_mEsc(n)+' &#10005;</button>').join('')+'</div>';
 }
-function prodAutoSave(){
-  const on=document.getElementById('pa-on'),t=document.getElementById('pa-time');
-  appData.prodoff_auto_on=!!(on&&on.checked);
-  let v=(t&&t.value)||'09:45';if(!/^\d{1,2}:\d{2}$/.test(v))v='09:45';
-  appData.prodoff_auto_time=v;
-  saveKeys(['prodoff_auto_on','prodoff_auto_time']);
-  const st=document.getElementById('pa-status');
-  if(st){st.textContent=appData.prodoff_auto_on?('Saved ✓ — products switch back on at '+v+' each morning'):'Saved ✓ — automatic switch-on is OFF';st.style.color='var(--green)';}
-}
-function prodAutoRunNow(){
-  const st=document.getElementById('pa-status');
-  if(!confirm('Switch ALL currently switched-off products back on now?\n\nAnything on the never list is skipped.'))return;
-  if(st){st.textContent='Switching on…';st.style.color='var(--muted)';}
-  fetch('/api/prodoff_auto_run',{method:'POST'}).then(r=>r.json()).then(d=>{
-    if(!d||!d.ok){if(st){st.textContent='Failed: '+((d&&d.error)||'error');st.style.color='var(--red)';}return;}
-    appData.prodoff_autolog=d;
-    const bits=[];
-    if((d.enabled||[]).length)bits.push('Switched on: '+d.enabled.join(', '));
-    if((d.skipped||[]).length)bits.push('Left off: '+d.skipped.join(', '));
-    if((d.addons||[]).length)bits.push('Add-ons need the Square app: '+d.addons.join(', '));
-    if((d.failed||[]).length)bits.push('Failed: '+d.failed.join(', '));
-    if(st){st.textContent=bits.length?bits.join(' · '):'Nothing needed switching on.';st.style.color=(d.failed||[]).length?'var(--amber)':'var(--green)';}
-    if(typeof checkProductsOff==='function')checkProductsOff();
-  }).catch(()=>{if(st){st.textContent='Failed.';st.style.color='var(--red)';}});
-}
-function paRenderNever(){
-  const el=document.getElementById('pa-never');if(!el)return;
-  const list=appData.prodoff_never||[];
-  el.innerHTML=list.length?list.map((n,i)=>'<button class="btn" style="padding:4px 10px;font-size:12px;" onclick="paRemoveNever('+i+')" title="Tap to remove">'+_mEsc(n)+' ✕</button>').join(''):'<span style="font-size:12px;color:var(--muted);">Nothing excluded — everything gets switched back on.</span>';
-}
-function paRemoveNever(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);paRenderNever();paRenderPicker();}
-function paAddNever(name){
-  appData.prodoff_never=appData.prodoff_never||[];
-  if(!appData.prodoff_never.some(n=>String(n).toUpperCase()===String(name).toUpperCase()))appData.prodoff_never.push(name);
-  saveKeys(['prodoff_never']);paRenderNever();paRenderPicker();
-}
-function paAddNeverIdx(i){const n=_paHits[i];if(n)paAddNever(n);}
-function paLoadAll(){
-  _paAllNames=[];
-  const el=document.getElementById('pa-picker');if(el)el.innerHTML='<div style="font-size:12px;color:var(--muted);">Loading products…</div>';
-  fetch('/api/products_all').then(r=>r.json()).then(d=>{_paAllNames=(d&&d.ok&&d.names)?d.names:[];paRenderPicker();}).catch(()=>{_paAllNames=[];paRenderPicker();});
-}
-function paRenderPicker(){
-  const el=document.getElementById('pa-picker');if(!el)return;
-  if(_paAllNames===null){el.innerHTML='';return;}
-  const q=((document.getElementById('pa-search')||{}).value||'').toLowerCase().trim();
-  if(!q){el.innerHTML='<div style="font-size:12px;color:var(--muted);">Type above to search '+_paAllNames.length+' products.</div>';return;}
-  const never=(appData.prodoff_never||[]).map(n=>String(n).toUpperCase());
-  _paHits=_paAllNames.filter(n=>n.toLowerCase().includes(q)).slice(0,40);
-  el.innerHTML=_paHits.length?_paHits.map((n,i)=>{
-    const has=never.indexOf(n.toUpperCase())>=0;
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;min-width:0;">'+_mEsc(n)+'</span>'+(has?'<span style="font-size:11px;color:var(--amber);flex-shrink:0;">on never list</span>':'<button class="btn" style="padding:3px 9px;font-size:12px;flex-shrink:0;" onclick="paAddNeverIdx('+i+')">Never switch on</button>')+'</div>';
-  }).join(''):'<div style="font-size:12px;color:var(--muted);">No match.</div>';
-}
-function prodOffOpen(){_prodOffRenderModal();openModal('prodoff-modal');}
+function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);_prodOffRenderModal();}
+function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
 function silenceProductsOff(){_prodOffMuteAll(3600000);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
 // ── Remote restart (apply backend updates from the dash) ──
@@ -3889,7 +3876,7 @@ function saveDevTasks(){fetch('/api/dev_tasks',{method:'POST',headers:{'Content-
 function openSettingsModal(){if(!gateUnlocked('settings')){requirePin('Manager Code','Settings needs a Manager or Admin PIN',u=>{sectionUnlockedAt['settings']=Date.now();_openSettingsModal();},SETTINGS_ROLES);return;}_openSettingsModal();}
 function applyFriedVis(){document.body.classList.toggle('hide-fried',appData.fried_enabled===false);}
 function saveFriedVis(on){appData.fried_enabled=!!on;applyFriedVis();fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fried_enabled:!!on})}).catch(()=>{});}
-function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-prompt',appData.stock_prompt_enabled);set('ft-fried',appData.fried_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';if(typeof renderAlarmCenter==='function')renderAlarmCenter();if(typeof renderProdAuto==='function')renderProdAuto();}
+function fillFeatures(){const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};set('ft-stock-prompt',appData.stock_prompt_enabled);set('ft-fried',appData.fried_enabled);const _sph=document.getElementById('ft-stock-prompt-hrs');if(_sph)_sph.value=String(appData.stock_prompt_hours||1);const s=document.getElementById('ft-status');if(s)s.textContent='';if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function saveFeatures(){const body={stock_prompt_enabled:document.getElementById('ft-stock-prompt').checked,stock_prompt_hours:parseInt((document.getElementById('ft-stock-prompt-hrs')||{}).value||'1')};const s=document.getElementById('ft-status');s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';s.style.color=d.ok?'var(--green)':'var(--red)';loadAppData();});}
 // ── Alarm Center UI ──
 const _IV_OPTS=[['Fast',600],['Quick',1000],['Normal',2000],['Relaxed',3600],['Gentle',6000],['Slow',10000]];

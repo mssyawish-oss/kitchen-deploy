@@ -1199,14 +1199,18 @@ def _prodoff_auto_enable(manual=False):
         except Exception as ex: ok,e=False,str(ex)
         if ok: enabled.append(nm)
         elif it.get("kind")=="modifier": addons.append(nm)      # Square can't do add-ons from an app
-        else: failed.append("%s (%s)"%(nm,str(e)[:40]))
+        else: failed.append(nm)
     def uniq(l):
         out=[]
         for x in l:
             if x not in out: out.append(x)
         return out
+    # one product = many Square objects, so the same name can land in several buckets. Report it once,
+    # under the most actionable outcome, or the summary reads as a contradiction.
+    fl=uniq(failed); ad=[x for x in uniq(addons) if x not in fl]
+    en=[x for x in uniq(enabled) if x not in fl and x not in ad]
     res={"ok":True,"at":int(time.time()*1000),"date":datetime.now().strftime("%Y-%m-%d"),
-         "enabled":uniq(enabled),"skipped":uniq(skipped),"failed":uniq(failed),"addons":uniq(addons),
+         "enabled":en,"skipped":uniq(skipped),"failed":fl,"addons":ad,
          "manual":bool(manual),"seen":True if manual else False}
     with data_lock:
         db["prodoff_autolog"]=res
