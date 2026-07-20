@@ -387,16 +387,13 @@ body.view-wall #page-probes .pb-sec .probe-no-data{font-size:clamp(52px,11vh,112
 body.view-wall #page-probes .probe-status{font-size:17px;}
 body.view-wall .sec-head span{font-size:15px;letter-spacing:.14em;}
 body.view-wall .timer-display{font-size:clamp(30px,6vh,54px);}
-/* iPad: probes + checklist. The Temp page has to fit WITHOUT scrolling, and the live-stock strip
-   already eats ~250px of it — so this trims rather than enlarges. An earlier version bumped the probe
-   temp to 7vh, which pushed the page 44px past the screen and made the iPad scroll. */
-body.view-pad #page-probes{padding:8px;}
-body.view-pad #page-probes .pb-sec .probes-grid,
-body.view-pad #page-probes .pb-sec .timers-grid{gap:7px;}
-body.view-pad #page-probes .pb-sec .probe-card,
-body.view-pad #page-probes .pb-sec .timer-card{padding:5px 9px;gap:2px;}
-body.view-pad #rot-live .rl-card{padding:9px 11px;}
-body.view-pad #rot-live .rl-hero-lab{margin-top:4px;font-size:10px;}
+/* iPad = the probes + checklist screen, and it must never scroll. The live-stock strip costs ~250px
+   of an ~670px content area, which forced everything else to be crammed and STILL didn't fit on the
+   smaller iPads. Hiding it here instead buys the probe cards ~130px each (189px -> 322px) and the page
+   fits with room to spare. Stock is one tap away on the Stock tab, and the 21" wall screen keeps it.
+   To bring it back: delete the #rot-live rule below. */
+body.view-pad #page-probes #rot-live{display:none;}
+body.view-pad #page-probes{padding:10px;}
 body.view-pad .nav-btn span{font-size:13px;}
 body.view-pad .pd-name,body.view-pad .pc-name{font-size:15px;}
 body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
