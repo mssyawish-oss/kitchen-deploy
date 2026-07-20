@@ -127,6 +127,22 @@ def _probe_eta(pid):
     if mins<0 or mins>240: return None                         # nonsense → say nothing
     return {"mins":int(round(mins)),"rate":round(rate,2),"at":int((time.time()+mins*60)*1000)}
 
+def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
+    # One row per confirmed probe pull, so the owner can see when the last row came off, how hot it got,
+    # what it read when pulled, and how long it was on. Kept newest-last, capped.
+    now=time.time()
+    total_mins=round((now-cycle_start)/60) if cycle_start else None   # from "row went on" to pulled
+    hot_mins=round((now-cook_start)/60) if cook_start else None       # from reaching Almost-ready to pulled
+    bpr=_rot_cfg().get("bpr",4) or 4
+    entry={"ts":int(now*1000),"probe":pid,"name":name,
+           "pull_temp":round(pull_temp,1) if pull_temp is not None else None,
+           "peak_temp":round(peak_temp,1) if peak_temp is not None else None,
+           "total_mins":total_mins,"hot_mins":hot_mins,"birds":bpr}
+    try:
+        with data_lock:
+            log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]; save_data(db)
+    except Exception as e: print(f"record_pull:{e}")
+
 def record_cook(pid,name,temp,cook_mins):
     # food-safety cook log: one entry per cooked batch
     try:
@@ -284,13 +300,14 @@ def check_probe_status(pid,temp):
             # ALSO cold (below the pull temp); otherwise a plateau mid-cook wiped peak/printed/removed,
             # double-logging the cook and re-arming the stock credit.
             if _lca and (_now-_lca)>60 and temp<float(settings.get("probe_pull_temp",60)):
-                ps.update({"peak_temp":None,"printed":False,"cook_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
+                ps.update({"peak_temp":None,"printed":False,"cook_start":None,"cycle_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
                 ps["hist"]=[]                       # drop the old trail too, or the ETA projects off a dead cook
                 if ps.get("removal_timer"):
                     try: ps["removal_timer"].cancel()
                     except Exception: pass
                     ps["removal_timer"]=None
             ps["last_val"]=temp; ps["last_change_at"]=_now
+        if ps.get("cycle_start") is None: ps["cycle_start"]=_now   # first reading of a fresh cook = "row went on"
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
         # ETA: keep a short rolling trail of (time,temp) per probe and measure how fast THIS row is
         # actually climbing, then project to the Cooked temp. Beats a historical average because every
@@ -327,7 +344,7 @@ def check_probe_status(pid,temp):
             lo=ps["low_since_pull"]
             rebound=(lo is not None and lo<almost and temp>=lo+10 and temp<cooked)
             if temp<rearm_below or rebound:
-                ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"status":"idle","low_since_pull":None});ns="idle"
+                ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"cycle_start":None,"status":"idle","low_since_pull":None});ns="idle"
         # COUNT threshold: a bird counts as cooked-enough-for-stock once its peak reaches the ALMOST temp
         # (auto-follows settings["almost_temp"]) — so a bird pulled at "almost" counts, not only fully-cooked
         # ones. Kept ≥ pull+1 so it can't misfire while heating. Doneness alarms/ticket use their own temps.
@@ -347,6 +364,9 @@ def check_probe_status(pid,temp):
                     ps["removed"]=True; ps["low_since_pull"]=temp; ps["pull_pending_at"]=None; ps["pull_min"]=None
                     if ps["removal_timer"]: ps["removal_timer"].cancel()
                     t=threading.Timer(0.5,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
+                    # PULL LOG: everything about this pull is known right here — save it before the cycle resets.
+                    threading.Thread(target=_record_pull,args=(pid,probe_names.get(pid,f"Probe {pid}"),
+                        temp,ps.get("peak_temp"),ps.get("cook_start"),ps.get("cycle_start")),daemon=True).start()
                     # PROBE-COUNTED STOCK: confirmed pull of a cooked rod → credit one row (probe mode only).
                     threading.Thread(target=_probe_credit_stock,args=(pid,probe_names.get(pid,f"Probe {pid}"),temp),daemon=True).start()
                     # USE-BY TICKET prints NOW (on pull), showing the cooked (peak) temp + a use-by clock from now.
@@ -461,7 +481,8 @@ def rot_state():
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
                 "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
                 "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
-                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:]}   # credit audit trail (newest last) for the on-screen log + debug shots
+                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:],   # credit audit trail (newest last) for the on-screen log + debug shots
+                "pulls":(db.get("pull_log",[]) or [])[-15:]}   # recent probe pulls (newest last) for the on-card "last pulled" log
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
@@ -1193,6 +1214,10 @@ def _sq_enable_variation(vid):
     _SQ_OBJ_CACHE.pop(vid,None)
     if still: return False,"Square still shows it sold out — switch it on in the Square app"
     return True,None
+@app.route("/api/pull_log")
+def api_pull_log():
+    return jsonify({"ok":True,"pulls":(db.get("pull_log",[]) or [])[-300:]})
+
 @app.route("/api/products_offline")
 def api_products_offline():
     items,err=_sq_offline_products()

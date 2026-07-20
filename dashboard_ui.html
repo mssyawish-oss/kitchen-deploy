@@ -347,6 +347,19 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-num{font-family:var(--font-mono);font-size:26px;font-weight:700;line-height:1;}
 .rl-lab{font-size:10px;color:var(--muted);font-family:var(--font-body);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
 .rl-actions{display:flex;flex-direction:row;gap:8px;width:100%;}
+/* pull log inside the stock card */
+.rl-pulls{width:100%;margin-top:8px;border-top:1px solid var(--border2);padding-top:6px;}
+.rl-pull-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;padding:2px 0;}
+.rl-pull-head:hover{color:var(--amber);}
+.rl-pull-x{font-size:11px;color:var(--muted);flex-shrink:0;}
+.rl-pull-body{margin-top:6px;max-height:190px;overflow-y:auto;font-size:11.5px;}
+.rl-pull-cols,.rl-pull-row{display:grid;grid-template-columns:52px 1fr auto auto;gap:8px;align-items:baseline;}
+.rl-pull-cols{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 0 4px;border-bottom:1px solid var(--border);}
+.rl-pull-row{padding:4px 0;border-bottom:1px solid var(--border);}
+.rl-pull-t{font-family:var(--font-mono);color:var(--text);}
+.rl-pull-n{color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rl-pull-d{color:var(--amber);font-weight:600;white-space:nowrap;}
+.rl-pull-tp{color:var(--muted);white-space:nowrap;text-align:right;}
 .rl-actions>*{flex:1;white-space:nowrap;font-size:13px;padding:9px 6px;}
 .rl-puton{background:linear-gradient(180deg,#16a34a,#15803d);color:#eafff1;border:none;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.3);}
 .rl-puton:active{transform:translateY(1px);filter:brightness(.92);}
@@ -2833,7 +2846,7 @@ function _rlNumSize(txt){const n=String(txt).length;
   return 'clamp(56px,12vh,116px)';}
 function renderRotLive(rot){
   const el=document.getElementById('rl-bbq');if(!el)return;const R=appData.rotisserie;
-  if(!R||!R.profile||!rot){el.style.display='none';return;}el.style.display='';window._lastRotAvail=rot.available||0;
+  if(!R||!R.profile||!rot){el.style.display='none';return;}el.style.display='';window._lastRotAvail=rot.available||0;window._lastRot=rot;
   const H=new Date().getHours();
   const avail=rot.available||0;
   const lvl=(H<(R.open_hour||10)||H>(R.close_hour||21))?'none':(avail<=2?'crit':avail<4?'warn':'none');
@@ -2841,7 +2854,8 @@ function renderRotLive(rot){
   const cerr=(rot.cam_err||'').trim();
   const showErr=rot.cam&&cerr&&!/block|skip/i.test(cerr);   // ignore the normal transient "view blocked" reads
   const nCook=(rot.levels&&/^[01]{6}$/.test(rot.levels))?rot.levels.split('').filter(c=>c==='1').length:(rot.rows_cooking||0);   // count from the SAME live pattern the animation shows → badge & animation always match
-  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:''].join('|');
+  const _lastPull=(rot.pulls&&rot.pulls.length)?rot.pulls[rot.pulls.length-1].ts:0;
+  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_pullLogOpen,_lastPull].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
   const modePill='';   // owner: dropped the "probe count" pill — counting mode lives in Settings
   const camErrHtml=showErr?`<div class="rl-camerr" title="${cerr.replace(/"/g,'&quot;')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Camera not counting: ${cerr.length>54?cerr.slice(0,54)+'…':cerr}</span></div>`:'';
@@ -2853,7 +2867,28 @@ function renderRotLive(rot){
     <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div><div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
     ${camErrHtml}
     <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button></div>
+    ${_pullLogHtml(rot.pulls)}
   </div>`;
+}
+// Pull log inside the stock card — a one-line "Last pulled …" summary that expands to the recent history.
+let _pullLogOpen=false;
+function togglePullLog(ev){if(ev){ev.stopPropagation();}_pullLogOpen=!_pullLogOpen;_rotSig='';renderRotLive(window._lastRot||{});}
+function _pullFmtClock(ms){try{return new Date(ms).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+function _pullFmtMins(m){if(m==null)return '–';if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+'h'+(r?(' '+r+'m'):'');}
+function _pullLogHtml(pulls){
+  pulls=pulls||[];
+  if(!pulls.length)return '<div class="rl-pulls"><div class="rl-pull-head" onclick="togglePullLog(event)"><span>Pull log</span><span class="rl-pull-x">no pulls yet</span></div></div>';
+  const last=pulls[pulls.length-1];
+  const head=`<div class="rl-pull-head" onclick="togglePullLog(event)"><span>Last pulled ${_pullFmtClock(last.ts)}${last.peak_temp!=null?(' · '+last.peak_temp+'°C'):''}${last.total_mins!=null?(' · '+_pullFmtMins(last.total_mins)):''}</span><span class="rl-pull-x">${_pullLogOpen?'▲':'▼'}</span></div>`;
+  let body='';
+  if(_pullLogOpen){
+    const rows=pulls.slice().reverse().slice(0,15).map(p=>{
+      const nm=_mEsc(p.name||('Probe '+p.probe));
+      return `<div class="rl-pull-row"><span class="rl-pull-t">${_pullFmtClock(p.ts)}</span><span class="rl-pull-n">${nm}</span><span class="rl-pull-d">${_pullFmtMins(p.total_mins)}${p.hot_mins!=null?(' <span style="opacity:.6">('+p.hot_mins+'m hot)</span>'):''}</span><span class="rl-pull-tp">${p.peak_temp!=null?('peak '+p.peak_temp+'°'):''}${p.pull_temp!=null?(' · pulled '+p.pull_temp+'°'):''}</span></div>`;
+    }).join('');
+    body=`<div class="rl-pull-body"><div class="rl-pull-cols"><span>Time</span><span>Probe</span><span>On for</span><span>Temps</span></div>${rows}</div>`;
+  }
+  return `<div class="rl-pulls" onclick="event.stopPropagation()">${head}${body}</div>`;
 }
 // --- camera count log: every credit the camera makes, with the screenshots it saw (for debugging) ---
 let _camLogSig='';let _camLogOpen=false;
