@@ -1418,6 +1418,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="btn btn-primary" style="width:100%;" onclick="restartDashboard()">↻ Restart dashboard now</button>
     <div id="restart-status" style="font-size:12px;margin-top:6px;color:var(--muted);min-height:14px;"></div>
     <div id="deploy-health" style="margin-top:10px;font-size:12px;border:1px solid var(--border2);border-radius:8px;padding:9px 11px;line-height:1.55;"></div>
+    <div id="screen-readout" style="font-size:11.5px;color:var(--muted);margin-top:6px;font-family:var(--font-mono);"></div>
     <div class="section-title">Email Config</div>
     <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--blue);line-height:1.6;">Google Workspace: myaccount.google.com &#8594; Security &#8594; App passwords &#8594; create one &#8594; paste 16-char password below.</div>
     <div class="form-row"><div class="label">From Email</div><input class="input" id="cfg-email" type="email" placeholder="orders@yourbusiness.com.au"></div>
@@ -3517,7 +3518,18 @@ function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function'
 // ── Remote restart (apply backend updates from the dash) ──
 function checkUpdateBanner(){const b=document.getElementById('update-banner');if(!b)return;b.style.display=appData.backend_update_pending?'flex':'none';}
 function _agoStr(s){s=Math.max(0,s);if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+' min ago';if(s<86400)return Math.round(s/3600)+' h ago';return Math.round(s/86400)+' d ago';}
-function renderDeployHealth(){const el=document.getElementById('deploy-health');if(!el)return;const ds=appData.deploy_status||{};const now=ds.now||Math.floor(Date.now()/1000);
+// Screen readout — so a layout problem on a real device can be diagnosed with numbers instead of
+// guesswork. Shows the actual viewport, which view mode is active, and whether the current page
+// overflows (i.e. whether it will scroll).
+function _screenReadout(){
+  const pg=document.querySelector('.page.active');
+  const over=pg?(pg.scrollHeight-pg.clientHeight):0;
+  const view=(document.body.className.match(/view-(wall|pad|phone)/)||[,'auto'])[1];
+  return 'Screen '+window.innerWidth+'\u00d7'+window.innerHeight+' \u00b7 view: '+view+
+         ' \u00b7 page: '+(pg?pg.id.replace('page-',''):'?')+
+         ' \u00b7 '+(over>1?('SCROLLS by '+over+'px'):'fits');
+}
+function renderDeployHealth(){const el=document.getElementById('deploy-health');if(!el)return;try{const _sr=document.getElementById('screen-readout');if(_sr)_sr.textContent=_screenReadout();}catch(e){}const ds=appData.deploy_status||{};const now=ds.now||Math.floor(Date.now()/1000);
   const built=ds.built?new Date(ds.built*1000):null;
   const builtStr=built?built.toLocaleString([],{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'unknown';
   let html='<div><b>This screen’s build:</b> '+builtStr+'</div>';
