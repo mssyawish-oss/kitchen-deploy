@@ -393,6 +393,13 @@ body.view-wall .timer-display{font-size:clamp(30px,6vh,54px);}
    fits with room to spare. Stock is one tap away on the Stock tab, and the 21" wall screen keeps it.
    To bring it back: delete the #rot-live rule below. */
 body.view-pad #page-probes{padding:8px;}
+/* The live strip is flex:0 0 auto, so it never shrinks — whatever it contains gets taken off the
+   probes/batches below it. On the iPad it also carries the rotisserie CAMERA panels, which measured
+   ~117px more than the stock cards alone and pushed the page 130px past the screen. Keep the chicken
+   and fried COUNTS (the owner wants those); drop the camera views here — the 21" wall screen keeps
+   them. Also let the strip shrink, so nothing can force the page to scroll again. */
+body.view-pad #rl-cam,body.view-pad #rl-benchcam{display:none;}
+body.view-pad #rot-live{flex:0 1 auto;min-height:0;}
 /* Compact the live-stock strip rather than hiding it — the owner wants the chicken count visible on
    the iPad. Everything here is about buying back the ~250px it costs so the page still never scrolls. */
 body.view-pad #rot-live .rl-card{padding:9px 12px;}
