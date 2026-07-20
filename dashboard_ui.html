@@ -400,6 +400,20 @@ body.view-pad #page-probes{padding:8px;}
    them. Also let the strip shrink, so nothing can force the page to scroll again. */
 body.view-pad #rl-cam,body.view-pad #rl-benchcam{display:none;}
 body.view-pad #rot-live{flex:0 1 auto;min-height:0;}
+/* Stack the two sections and run 4 cards across each, so the page needs TWO rows of cards instead of
+   four — then compact the live strip hard (244px -> ~177px). It only has to show two numbers here. */
+body.view-pad #page-probes .pb-split{flex-direction:column;gap:8px;}
+body.view-pad #page-probes .pb-sec .probes-grid,
+body.view-pad #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,minmax(0,1fr));}
+body.view-pad #rot-live .rl-card{padding:6px 10px;gap:2px;}
+body.view-pad #rot-live .rl-hero-num{font-size:clamp(22px,3.6vh,32px);}
+body.view-pad #rot-live .rl-hero{flex:0 0 auto;gap:0;}
+body.view-pad #rot-live .rl-hero-lab{margin-top:0;font-size:9px;letter-spacing:.12em;}
+body.view-pad #rot-live .rl-step{width:32px;height:32px;font-size:17px;}
+body.view-pad #rot-live .rl-foot{margin-top:2px;font-size:10px;}
+body.view-pad #rot-live .rl-actions{gap:5px;}
+body.view-pad #rot-live .rl-actions button{padding:4px 6px;font-size:11px;}
+body.view-pad #rot-live .rl-top{margin-bottom:0;}
 /* Compact the live-stock strip rather than hiding it — the owner wants the chicken count visible on
    the iPad. Everything here is about buying back the ~250px it costs so the page still never scrolls. */
 body.view-pad #rot-live .rl-card{padding:9px 12px;}
