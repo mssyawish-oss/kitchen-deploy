@@ -590,11 +590,16 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 @keyframes flash-green{0%,100%{background:var(--surface);border-color:var(--green-dim);}50%{background:var(--green-bg);border-color:var(--green);}}
 @keyframes flash-red{0%,100%{background:var(--surface);border-color:var(--red-dim);}50%{background:var(--red-bg);border-color:var(--red);}}
 .probe-label{font-size:12px;color:var(--muted);font-family:var(--font-body);font-weight:600;letter-spacing:.08em;text-transform:uppercase;}
-.probe-head{display:flex;align-items:center;gap:8px;}
-.probe-badge{background:var(--acc,var(--amber));color:#0a0a0c;font-family:var(--font-mono);font-weight:800;font-size:13px;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);}
+/* colour identity strip across the top of the card — the bit you read from across the kitchen */
+.probe-card{position:relative;overflow:hidden;}
+.probe-card::before{content:'';position:absolute;top:0;left:0;right:0;height:9px;
+  background:var(--acc,var(--amber));border-bottom:1px solid var(--accv,var(--acc));}
+.probe-card{border-color:color-mix(in srgb, var(--accv,var(--acc)) 45%, var(--border));}
+.probe-head{display:flex;align-items:center;gap:8px;margin-top:4px;}
+.probe-badge{background:var(--acc,var(--amber));color:#fff;border:1.5px solid var(--accv,var(--acc));font-family:var(--font-mono);font-weight:800;font-size:13px;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);}
 .probe-doneness{width:100%;height:7px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden;margin-bottom:2px;}
 .probe-doneness i{display:block;height:100%;border-radius:5px;transition:width .6s,background .6s;}
-.probe-ic{width:48px;height:48px;border-radius:50%;background:color-mix(in srgb, var(--acc,#fb9b24) 16%, transparent);display:flex;align-items:center;justify-content:center;margin:2px 0;}
+.probe-ic{width:48px;height:48px;border-radius:50%;background:color-mix(in srgb, var(--accv,#fb9b24) 18%, transparent);display:flex;align-items:center;justify-content:center;margin:2px 0;}
 .probe-btn{display:flex;align-items:center;justify-content:center;gap:5px;}
 .probe-name-input{width:100%;background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--text);font-size:18px;font-weight:600;padding:2px 4px;outline:none;text-align:center;}
 .probe-temp{font-family:var(--font-mono);font-size:clamp(40px,5vw,58px);font-weight:700;line-height:1;}
@@ -652,7 +657,13 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .timer-display.warning{color:var(--amber);}.timer-display.expired{color:var(--red);}.timer-display.idle{color:#7c8696;}
 :root{--gauge-track:rgba(255,255,255,.07);}
 body.light{--gauge-track:rgba(20,30,50,.12);}
-.ac0{--acc:var(--amber);}.ac1{--acc:var(--blue);}.ac2{--acc:var(--purple);}.ac3{--acc:var(--green);}
+/* Probe colours match the PHYSICAL probes: 1 black, 2 dark green, 3 dark brown, 4 dark orange.
+   --acc is the true colour (used for the big band + badge); --accv is a lifted version so it stays
+   legible against the dark card — a literal black band would vanish on a black UI. */
+.ac0{--acc:#111318;--accv:#8b93a7;}   /* 1 BLACK  */
+.ac1{--acc:#15803d;--accv:#22c55e;}   /* 2 DARK GREEN */
+.ac2{--acc:#7c4a21;--accv:#c98a4b;}   /* 3 DARK BROWN */
+.ac3{--acc:#c2410c;--accv:#fb923c;}   /* 4 DARK ORANGE */
 /* batch-timer display: a rectangular box (not a ring) with the countdown + a bottom progress bar */
 .gauge{width:100%;max-width:170px;margin:2px auto 4px;display:flex;flex-direction:column;align-items:stretch;justify-content:center;flex:0 0 auto;position:relative;background:var(--surface);border:2px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:inset 0 1px 5px rgba(0,0,0,.45);}
 .gauge-inner{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:9px 8px 7px;}
@@ -2235,18 +2246,16 @@ function _probeOrdered(){
   // (docked, or frozen >60s) shoots to the end — which reads as "that probe dropped out" when nothing
   // is actually wrong. A probe with NO reading never moves; only live probes are ranked against
   // each other, and only when one is clearly hotter.
+  // Re-rank at most every 20s. That gap is what stops cards shuffling under a finger mid-tap; the old
+  // 2-degree swap margin also blocked it, but that meant probes a degree or two apart NEVER sorted and
+  // the grid could sit in coldest-first order. Now it's a straight hottest-first sort, throttled.
   const now=Date.now();
-  if(now-_probeOrderAt>=20000){
-    _probeOrderAt=now;
-    for(let pass=0;pass<_probeOrder.length;pass++){
-      let moved=false;
-      for(let i=0;i<_probeOrder.length-1;i++){
-        const a=_probeOrder[i],b=_probeOrder[i+1],ta=t(a),tb=t(b);
-        if(ta===null||tb===null)continue;                 // leave blank/idle probes exactly where they are
-        if(tb>ta+_PROBE_SWAP_C){_probeOrder[i]=b;_probeOrder[i+1]=a;moved=true;}
-      }
-      if(!moved)break;
-    }
+  if(now-_probeOrderAt>=20000||_probeOrderAt===0){
+    const live=_probeOrder.filter(p=>t(p)!==null).sort((a,b)=>t(b)-t(a));   // hottest first
+    const blank=_probeOrder.filter(p=>t(p)===null);                         // no reading -> bottom
+    const next=live.concat(blank);
+    if(live.length)_probeOrderAt=now;      // don't start the clock until there is something to rank
+    _probeOrder=next;
   }
   return _probeOrder.map(p=>[String(p),probeData[p]]);
 }
@@ -2272,7 +2281,7 @@ function renderProbes(){
     return `<div class="probe-card ac${(pidN-1)%4} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
-      <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
+      <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
       ${tempHtml}<div class="probe-unit">&#176;C</div>
       <div class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
