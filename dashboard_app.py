@@ -1298,6 +1298,47 @@ def _clicksend_sms(to,body):
             except Exception: pass
         return False,str(e)[:180]
 
+def _clicksend_mms(to,subject,body,media_url):
+    """Send an MMS (logo + text). Returns (ok, error). ClickSend needs media_file to be a PUBLIC url."""
+    cs=db.get("clicksend") or {}
+    user=(cs.get("user") or "").strip(); key=(cs.get("key") or "").strip()
+    if not user or not key: return False,"ClickSend not set up yet"
+    if not media_url: return False,"No logo image set"
+    num=re.sub(r"[^\d+]","",to or "")
+    if num.startswith("0"): num="+61"+num[1:]
+    elif not num.startswith("+"): num="+"+num
+    m={"source":"kitchen-dash","to":num,"subject":(subject or "Voucher")[:20],"body":body,"country":"AU"}
+    sender=(cs.get("sender") or "").strip()
+    if sender: m["from"]=sender
+    payload={"media_file":media_url,"messages":[m]}
+    try:
+        req=urllib.request.Request("https://rest.clicksend.com/v3/mms/send",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type":"application/json",
+                     "Authorization":"Basic "+base64.b64encode((user+":"+key).encode()).decode()})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        msgs=((res.get("data") or {}).get("messages") or [{}])
+        st=(msgs[0].get("status") or "").upper()
+        if st in ("SUCCESS","QUEUED","SENT"): return True,None
+        return False,(msgs[0].get("status") or res.get("response_msg") or "send failed")
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return False,"ClickSend MMS: "+e.read().decode()[:180]
+            except Exception: pass
+        return False,str(e)[:180]
+
+@app.route("/api/comp_mms_test",methods=["POST"])
+def api_comp_mms_test():
+    d=request.get_json(silent=True) or {}
+    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    to=str(d.get("phone","")).strip()
+    if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
+    url=((db.get("clicksend") or {}).get("media_url") or "").strip()
+    if not url: return jsonify({"ok":False,"error":"No logo image URL saved — add one in Setup"})
+    ok,err=_clicksend_mms(to,"Test","Test MMS from the kitchen dashboard — the logo should appear above.",url)
+    return jsonify({"ok":bool(ok),"error":err or ""})
+
 def _comp_staff(pin):
     for s in (db.get("staff") or []):
         if str(s.get("pin","")) == str(pin): return s.get("name") or "Staff"
@@ -1316,6 +1357,8 @@ def api_comp_config():
             db["clicksend"]=cs
             if "new_code" in d: db["comp_code"]=str(d.get("new_code") or "1989").strip()[:8]
             if "online_url" in d: db["online_url"]=str(d.get("online_url") or "").strip()[:200]
+            if "media_url" in d: cs["media_url"]=str(d.get("media_url") or "").strip()[:400]
+            if "mms_default" in d: db["comp_mms_default"]=bool(d.get("mms_default"))
             if "amounts" in d and isinstance(d["amounts"],list):
                 db["comp_amounts"]=[float(x) for x in d["amounts"] if str(x).replace(".","",1).isdigit()][:8]
             if "expiry_months" in d:
@@ -1326,6 +1369,7 @@ def api_comp_config():
     return jsonify({"ok":True,"sms_ready":bool(cs.get("user") and cs.get("key")),
                     "user":cs.get("user",""),"sender":cs.get("sender",""),"has_key":bool(cs.get("key")),
                     "online_url":db.get("online_url",""),
+                    "media_url":cs.get("media_url",""),"mms_default":bool(db.get("comp_mms_default")),
                     "amounts":db.get("comp_amounts") or [5,10,15,20,25,50],
                     "expiry_months":db.get("comp_expiry_months",12)})
 
@@ -1493,10 +1537,20 @@ def api_comp_send():
     _url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
     msg+=("In store or online: %s\n"%_url) if _url else "Use in store or at online checkout.\n"
     msg+="Valid to %s"%expiry
-    sent,serr=_clicksend_sms(phone,msg)
+    want_mms=bool(d.get("mms")) if ("mms" in d) else bool(db.get("comp_mms_default"))
+    media=((db.get("clicksend") or {}).get("media_url") or "").strip()
+    sent=False; serr=None; via="sms"
+    if want_mms and media:
+        sent,serr=_clicksend_mms(phone,(shop[:20] or "Voucher"),msg,media)
+        via="mms"
+        if not sent:                       # never lose the voucher over a picture
+            sent,serr2=_clicksend_sms(phone,msg); via="sms"
+            serr=(("MMS failed (%s) — sent as a normal text instead"%serr) if sent else (serr or serr2))
+    else:
+        sent,serr=_clicksend_sms(phone,msg)
     entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
            "name":name,"phone":phone,"reason":reason,"staff":staff,
-           "expiry":expiry,"expiry_months":months,"sms":bool(sent),"sms_err":(serr or "")}
+           "expiry":expiry,"expiry_months":months,"sms":bool(sent),"sms_err":(serr or ""),"via":via}
     with data_lock:
         log=db.setdefault("comp_log",[]); log.append(entry); db["comp_log"]=log[-500:]; save_data(db)
     return jsonify({"ok":True,"gan":gan,"expiry":expiry,"sms":bool(sent),

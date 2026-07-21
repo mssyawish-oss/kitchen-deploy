@@ -1224,7 +1224,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-roster"></div>
     </div>
     <div class="page" id="page-comp">
-      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compCheckCreds()">Check login</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compRefreshStatus()">Check statuses</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
+      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compCheckCreds()">Check login</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compTestMms()">Test MMS</button><button class="btn" onclick="compRefreshStatus()">Check statuses</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
       <div id="comp-locked" style="text-align:center;padding:40px 16px;">
         <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
       </div>
@@ -1235,6 +1235,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
             <div class="comp-lab">Message</div>
             <div id="comp-types" class="comp-amts"></div>
             <input class="input" id="comp-custom-line" placeholder="Your own opening line" style="display:none;" maxlength="80">
+            <label id="comp-mms-wrap" style="display:none;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:2px;cursor:pointer;"><input type="checkbox" id="comp-mms" style="width:17px;height:17px;"> Send with logo (MMS)</label>
             <div class="comp-lab">Amount</div>
             <div id="comp-amts" class="comp-amts"></div>
             <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null)">
@@ -2163,6 +2164,9 @@ function compLoad(){
   fetch('/api/comp_config').then(r=>r.json()).then(c=>{
     _compCfg=c||_compCfg;
     const ex=document.getElementById('comp-exp');if(ex&&!ex._touched)ex.value=c.expiry_months||12;
+    const mw=document.getElementById('comp-mms-wrap'),mc=document.getElementById('comp-mms');
+    if(mw)mw.style.display=c.media_url?'inline-flex':'none';
+    if(mc&&!mc._touched)mc.checked=!!c.mms_default;
     compRenderAmts();compRenderTypes();
     if(!c.sms_ready)_compStatus('No SMS account connected yet — tap Setup. Vouchers will still be created; you read the code to the customer.','var(--amber)');
   }).catch(()=>{});
@@ -2202,7 +2206,7 @@ function compSend(){
   requirePin('Your PIN','Signing this $'+amt+' voucher',function(u){
     _compStatus('Creating voucher…','var(--muted)');
     fetch('/api/comp_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months,msg_type:_compType,custom_line:((document.getElementById('comp-custom-line')||{}).value||'')})})
+      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months,mms:!!((document.getElementById('comp-mms')||{}).checked),msg_type:_compType,custom_line:((document.getElementById('comp-custom-line')||{}).value||'')})})
       .then(r=>r.json()).then(d=>{
         if(!d||!d.ok){_compStatus(((d&&d.error)||'Failed'),'var(--red)');return;}
         _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+d.gan+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
@@ -2266,6 +2270,16 @@ function compTestSms(){
       _compStatus(d&&d.ok?'Test text sent ✓':('SMS failed: '+((d&&d.error)||'unknown')),d&&d.ok?'var(--green)':'var(--red)');
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
 }
+function compTestMms(){
+  if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compTestMms();});return;}
+  const to=prompt('Send a test picture message to which mobile?','');
+  if(!to)return;
+  _compStatus('Sending test MMS…','var(--muted)');
+  fetch('/api/comp_mms_test',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:_compCode,phone:to})}).then(r=>r.json()).then(d=>{
+      _compStatus(d&&d.ok?'Test MMS sent ✓ — check the logo looks right':('MMS failed: '+((d&&d.error)||'unknown')),d&&d.ok?'var(--green)':'var(--red)');
+    }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+}
 function compVerify(gan){
   fetch('/api/comp_verify?gan='+encodeURIComponent(gan)).then(r=>r.json()).then(d=>{
     if(!d||!d.ok){_toast('Check failed: '+((d&&d.error)||'unknown'));return;}
@@ -2283,8 +2297,9 @@ function compSetup(){
   if(key===null)return;
   const sender=prompt('Sender name on the text (optional).\nLetters/numbers only, max 11, no spaces or apostrophes.\nLeave BLANK to send from a shared number.','');
   const url=prompt('Your online ordering link (optional).\nAdded to the text so customers can order online.\nLeave blank to omit.',_compCfg.online_url||'');
+  const media=prompt('Logo image URL for picture messages (optional).\nMust be a PUBLIC link to a JPG or GIF, under 250kB.\nLeave blank to send plain texts only.',_compCfg.media_url||'');
   fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({code:_compCode,user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim()})})
+    body:JSON.stringify({code:_compCode,user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim(),media_url:(media||'').trim()})})
     .then(r=>r.json()).then(()=>{_toast('Saved — checking credentials…');compLoad();compCheckCreds();})
     .catch(()=>_toast('Could not save.'));
 }
