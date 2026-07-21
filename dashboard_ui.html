@@ -155,7 +155,35 @@ body.kiosk .topbar-title{cursor:default;}
 .ls-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 .ls-sub.on{color:var(--green);}
 .ls-spark{width:100%;height:40px;display:block;}
-#page-probes.active .probes-grid{flex:0.7 1 0;}
+#page-probes.active /* Batch timers as a slim strip under the probes: one row each instead of a big card, so the whole
+   Temp page fits without scrolling. Everything is still one tap away — label, time, adjust, start/end. */
+.tstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:8px;}
+.trow{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);
+  border-left:4px solid var(--acc,var(--amber));border-radius:10px;padding:7px 11px;min-height:52px;}
+.trow.alarm{animation:flash-red .6s infinite;}
+.trow .t-lab{flex:0 0 108px;min-width:0;}
+.trow .batch-input{width:100%;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;padding:1px 2px;outline:none;}
+.trow .t-time{font-family:var(--font-mono);font-size:23px;font-weight:800;line-height:1;letter-spacing:-.01em;min-width:112px;text-align:center;}
+.trow .t-time.warning{color:var(--amber);} .trow .t-time.expired{color:var(--red);}
+.trow .t-time.idle{opacity:.55;}
+.trow .t-mid{flex:1;min-width:60px;display:flex;flex-direction:column;gap:4px;}
+.trow .t-bar{height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+.trow .t-bar i{display:block;height:100%;width:0;background:var(--acc,var(--amber));transition:width .9s linear;}
+.trow .t-state{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);}
+.trow .t-adj{display:flex;gap:4px;flex-shrink:0;}
+.trow .t-adj button{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:7px;
+  min-width:44px;height:34px;font-size:11.5px;cursor:pointer;}
+.trow .t-act{display:flex;gap:6px;flex-shrink:0;}
+.trow .t-act button{border:none;border-radius:8px;height:36px;min-width:74px;font-size:12.5px;font-weight:700;cursor:pointer;}
+.trow .t-go{background:var(--acc,var(--amber));color:#0a0a0c;}
+.trow .t-stop{background:var(--surface2);color:var(--text);border:1px solid var(--border2)!important;}
+.trow .t-confirm{background:var(--red);color:#fff;min-width:150px;}
+@media(max-width:760px){
+  .tstrip{grid-template-columns:1fr;}
+  .trow{flex-wrap:wrap;gap:7px;}
+  .trow .t-lab{flex:1 0 100%;} .trow .t-mid{flex:1 0 100%;}
+}
+.probes-grid{flex:0.7 1 0;}
 .rl-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);height:100%;}
 .rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px;}
 .rl-chip{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
@@ -484,9 +512,10 @@ body.view-phone .rl-step{width:44px;height:44px;}
   #page-probes.active .probes-grid,#page-probes.active .timers-grid{flex:1 0 auto;}
 }
 body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the fried-chicken STOCK card only; batch cook timers stay (owner uses them) */
-.pb-split{display:flex;gap:14px;align-items:stretch;flex:1 1 0;min-height:0;}   /* Probes | Batches side by side, fills the spare height */
+.pb-split{display:flex;flex-direction:column;gap:14px;align-items:stretch;flex:1 1 0;min-height:0;}   /* Probes | Batches side by side, fills the spare height */
 .pb-sec{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0;}
-.pb-sec .probes-grid,.pb-sec .timers-grid{grid-template-columns:repeat(2,minmax(0,1fr));flex:1 1 0;min-height:0;grid-auto-rows:1fr;}   /* 2 wide, rows split the section height so it fits without scrolling */
+.pb-sec .probes-grid{grid-template-columns:repeat(4,minmax(0,1fr));flex:1 1 0;min-height:0;grid-auto-rows:1fr;}
+.pb-sec .timers-grid{flex:0 0 auto;}   /* 2 wide, rows split the section height so it fits without scrolling */
 @media(max-width:760px){.pb-split{flex-direction:column;flex:0 0 auto;gap:8px;}.pb-sec .probes-grid,.pb-sec .timers-grid{flex:0 0 auto;}}
 /* fit the whole TEMP screen — keep it to one screen without clipping */
 #page-probes>#rot-live{flex:0 0 auto;max-height:32vh;}
@@ -2706,18 +2735,22 @@ function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{m
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
 function fmt(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;if(h>0)return h+':'+String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');return String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');}
 function renderTimers(){
+  document.getElementById('timers-grid').className='tstrip';
   document.getElementById('timers-grid').innerHTML=timers.map(t=>{
     const pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;
-    const dispCls=(t.expired?'expired':warn&&t.running?'warning':(!t.running&&t.remaining===t.total)?'idle':'')+(fmt(t.remaining).length>6?' tlong':'');
+    const dispCls=(t.expired?'expired':warn&&t.running?'warning':(!t.running&&t.remaining===t.total)?'idle':'');
     const arc=t.expired?'var(--red)':'var(--acc)';
-    const sDot=t.expired?'expired':t.running?'running':t.remaining<t.total&&!t.expired?'paused':'ready';
-    return `<div class="timer-card ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
-      <input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label this timer…">
-      <div class="timer-status ${t.expired?'st-exp':t.running?'st-run':t.remaining<t.total?'st-pause':'st-ready'}"><span class="s-dot ${sDot}"></span>${t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'&#10003; Ready'}</div>
-      <div class="gauge" id="tg${t.id}"><div class="gauge-inner"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="gauge-sub">REMAINING</div></div><div class="tbar"><i id="tb${t.id}" style="width:${pct.toFixed(1)}%;background:${arc};"></i></div></div>
-      <div class="adj-row"><button class="adj-btn" onclick="adj(${t.id},-300)">-5m</button><button class="adj-btn" onclick="adj(${t.id},-600)">-10m</button><button class="adj-btn" onclick="adj(${t.id},300)">+5m</button><button class="adj-btn" onclick="adj(${t.id},600)">+10m</button></div>
-      <div class="action-row">${t.running?`<button class="action-btn btn-pause" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`:`<button class="action-btn btn-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}<button class="action-btn btn-end" onclick="endT(${t.id})">&#9632; End</button></div>
-      ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
+    const state=t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'Ready';
+    return `<div class="trow ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
+      <div class="t-lab"><input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label…"></div>
+      <div class="t-time ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div>
+      <div class="t-mid"><div class="t-state">${state}</div><div class="t-bar" id="tg${t.id}"><i id="tb${t.id}" style="width:${pct.toFixed(1)}%;background:${arc};"></i></div></div>
+      <div class="t-adj"><button onclick="adj(${t.id},-300)">-5m</button><button onclick="adj(${t.id},-600)">-10m</button><button onclick="adj(${t.id},300)">+5m</button><button onclick="adj(${t.id},600)">+10m</button></div>
+      <div class="t-act">${t.expired
+        ? `<button class="t-confirm" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`
+        : (t.running
+            ? `<button class="t-stop" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button><button class="t-stop" onclick="endT(${t.id})">&#9632; End</button>`
+            : `<button class="t-go" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button><button class="t-stop" onclick="endT(${t.id})">&#9632; End</button>`)}</div>
     </div>`;
   }).join('');
 }
@@ -2726,7 +2759,7 @@ function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause'
 function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;renderTimers();postTimer(id,'end');}
 function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
-function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}}
+function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='t-time '+(t.expired?'expired':warn&&t.running?'warning':((!t.running&&t.remaining===t.total)?'idle':''));}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});}
 function saveProbeSettingsFromModal(){const s={almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
 function fillCameraSettings(){const c=appData.camera_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('cam-ip',c.ip);set('cam-port',c.port);set('cam-channel',c.channel);set('cam-url',c.url_override);document.getElementById('cam-user').value='';document.getElementById('cam-pass').value='';const en=document.getElementById('cam-enabled');if(en)en.checked=!!c.enabled;const ph=appData.camera_public&&appData.camera_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('cam-user').placeholder=ph||'admin';document.getElementById('cam-pass').placeholder=ph||'camera password';document.getElementById('cam-status').textContent='';document.getElementById('cam-preview').innerHTML='';
