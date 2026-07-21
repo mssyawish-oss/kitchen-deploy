@@ -181,6 +181,7 @@ body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,m
 }
 /* summary strip — three roomy cards in a row */
 body.style-v2 #rot-live{gap:14px;}
+body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead container — bordered in v2 it showed as a blank card. The cam/orders cards have content when live, so they still appear */
 body.style-v2 #rot-live .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:14px 18px;border-radius:16px;border:1px solid var(--border2);}
 body.style-v2 #rot-live .rl-top{margin:0;}
 body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:3px;}
