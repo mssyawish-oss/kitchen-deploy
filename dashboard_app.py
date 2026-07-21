@@ -1232,13 +1232,31 @@ def _sq_gift_card(amount_cents,currency="AUD",note=""):
         if made.get("errors"): return None,None,(made["errors"][0].get("detail") or "create failed")
         gc=made.get("gift_card") or {}; gid=gc.get("id"); gan=gc.get("gan")
         if not gid: return None,None,"Square did not return a gift card"
-        act=_post("/v2/gift-cards/activities",{"idempotency_key":_secrets.token_hex(16),
-            "gift_card_activity":{"gift_card_id":gid,"type":"ACTIVATE","location_id":loc,
-                "activate_activity_details":{"amount_money":{"amount":int(amount_cents),"currency":currency},
-                                             "reference_id":(note or "comp")[:40]}}})
-        if act.get("errors"): return gan,gid,("activate failed: "+(act["errors"][0].get("detail") or ""))
-        gan=gan or ((act.get("gift_card_activity") or {}).get("gift_card_gan"))
-        return gan,gid,None
+        money={"amount":int(amount_cents),"currency":currency}
+        # A comp has no sale behind it, so ACTIVATE is the wrong verb — Square rejects it without either
+        # an order or a buyer payment instrument. ADJUST_INCREMENT with reason COMPLIMENTARY is the
+        # activity meant for adding balance for a non-purchase reason. Try that first, then fall back.
+        attempts=[
+            ("ADJUST_INCREMENT",{"amount_money":money,"reason":"COMPLIMENTARY"}),
+            ("ACTIVATE",{"amount_money":money,"reference_id":(note or "comp")[:40]}),
+        ]
+        errs=[]
+        for typ,details in attempts:
+            body={"idempotency_key":_secrets.token_hex(16),
+                  "gift_card_activity":{"gift_card_id":gid,"type":typ,"location_id":loc,
+                                        typ.lower()+"_activity_details":details}}
+            try: act=_post("/v2/gift-cards/activities",body)
+            except Exception as e:
+                rd=getattr(e,"read",None); msg=str(e)[:160]
+                if rd:
+                    try: msg=e.read().decode()[:200]
+                    except Exception: pass
+                errs.append(typ+": "+msg); continue
+            if act.get("errors"):
+                errs.append(typ+": "+(act["errors"][0].get("detail") or "failed")); continue
+            gan=gan or ((act.get("gift_card_activity") or {}).get("gift_card_gan"))
+            return gan,gid,None
+        return gan,gid,("could not add the balance — "+" | ".join(errs))
     except Exception as e:
         rd=getattr(e,"read",None)
         if rd:
