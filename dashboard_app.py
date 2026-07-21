@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, re, copy
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy
 from datetime import datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -1214,6 +1214,133 @@ def _sq_enable_variation(vid):
     _SQ_OBJ_CACHE.pop(vid,None)
     if still: return False,"Square still shows it sold out — switch it on in the Square app"
     return True,None
+# ══════════════════════════════════════════════════════════════════════════════════════════════════
+# COMP VOUCHERS — a customer rings up because something was missed, staff issue them a Square gift
+# card and it goes to their mobile. Square generates the code (no pre-made codes to manage) and it
+# redeems on the POS. Expiry is NOT settable through Square's API, so we track it ourselves and put
+# it in the message. Every voucher is logged against the staff member who issued it.
+def _sq_gift_card(amount_cents,currency="AUD",note=""):
+    """Create a digital gift card and activate it with a balance. Returns (gan, gift_card_id, error)."""
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return None,None,"Square not configured"
+    def _post(path,body):
+        req=urllib.request.Request(SQUARE_BASE+path,data=json.dumps(body).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: return json.loads(r.read().decode())
+    try:
+        made=_post("/v2/gift-cards",{"idempotency_key":_secrets.token_hex(16),"location_id":loc,
+                                     "gift_card":{"type":"DIGITAL"}})
+        if made.get("errors"): return None,None,(made["errors"][0].get("detail") or "create failed")
+        gc=made.get("gift_card") or {}; gid=gc.get("id"); gan=gc.get("gan")
+        if not gid: return None,None,"Square did not return a gift card"
+        act=_post("/v2/gift-cards/activities",{"idempotency_key":_secrets.token_hex(16),
+            "gift_card_activity":{"gift_card_id":gid,"type":"ACTIVATE","location_id":loc,
+                "activate_activity_details":{"amount_money":{"amount":int(amount_cents),"currency":currency},
+                                             "reference_id":(note or "comp")[:40]}}})
+        if act.get("errors"): return gan,gid,("activate failed: "+(act["errors"][0].get("detail") or ""))
+        gan=gan or ((act.get("gift_card_activity") or {}).get("gift_card_gan"))
+        return gan,gid,None
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return None,None,"Square error: "+e.read().decode()[:200]
+            except Exception: pass
+        return None,None,str(e)[:200]
+
+def _clicksend_sms(to,body):
+    """Send one SMS via ClickSend. Credentials live in db['clicksend'] — entered by the owner."""
+    cs=db.get("clicksend") or {}
+    user=(cs.get("user") or "").strip(); key=(cs.get("key") or "").strip()
+    if not user or not key: return False,"ClickSend not set up yet"
+    num=re.sub(r"[^\d+]","",to or "")
+    if num.startswith("0"): num="+61"+num[1:]              # AU mobile typed as 04xx
+    elif not num.startswith("+"): num="+"+num
+    payload={"messages":[{"source":"kitchen-dash","body":body,"to":num}]}
+    sender=(cs.get("sender") or "").strip()
+    if sender: payload["messages"][0]["from"]=sender
+    try:
+        req=urllib.request.Request("https://rest.clicksend.com/v3/sms/send",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type":"application/json",
+                     "Authorization":"Basic "+base64.b64encode((user+":"+key).encode()).decode()})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        msgs=((res.get("data") or {}).get("messages") or [{}])
+        st=(msgs[0].get("status") or "").upper()
+        if st in ("SUCCESS","QUEUED","SENT"): return True,None
+        return False,(msgs[0].get("status") or res.get("response_msg") or "send failed")
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return False,"ClickSend: "+e.read().decode()[:180]
+            except Exception: pass
+        return False,str(e)[:180]
+
+def _comp_staff(pin):
+    for s in (db.get("staff") or []):
+        if str(s.get("pin","")) == str(pin): return s.get("name") or "Staff"
+    return None
+
+@app.route("/api/comp_config",methods=["GET","POST"])
+def api_comp_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            cs=dict(db.get("clicksend") or {})
+            for k in ("user","key","sender"):
+                if k in d: cs[k]=str(d.get(k) or "").strip()
+            db["clicksend"]=cs
+            if "code" in d: db["comp_code"]=str(d.get("code") or "1989").strip()[:8]
+            if "amounts" in d and isinstance(d["amounts"],list):
+                db["comp_amounts"]=[float(x) for x in d["amounts"] if str(x).replace(".","",1).isdigit()][:8]
+            if "expiry_months" in d:
+                try: db["comp_expiry_months"]=max(1,min(60,int(d["expiry_months"])))
+                except Exception: pass
+            save_data(db)
+    cs=db.get("clicksend") or {}
+    return jsonify({"ok":True,"sms_ready":bool(cs.get("user") and cs.get("key")),
+                    "user":cs.get("user",""),"sender":cs.get("sender",""),"has_key":bool(cs.get("key")),
+                    "amounts":db.get("comp_amounts") or [5,10,15,20,25,50],
+                    "expiry_months":db.get("comp_expiry_months",12)})
+
+@app.route("/api/comp_check",methods=["POST"])
+def api_comp_check():
+    code=str((request.get_json(silent=True) or {}).get("code","")).strip()
+    return jsonify({"ok":code==str(db.get("comp_code","1989"))})
+
+@app.route("/api/comp_log")
+def api_comp_log():
+    return jsonify({"ok":True,"vouchers":(db.get("comp_log",[]) or [])[-200:]})
+
+@app.route("/api/comp_send",methods=["POST"])
+def api_comp_send():
+    d=request.get_json(silent=True) or {}
+    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    staff=_comp_staff(str(d.get("staff_pin","")).strip())
+    if not staff: return jsonify({"ok":False,"error":"That PIN doesn't match a staff member"})
+    try: amt=round(float(d.get("amount",0)),2)
+    except (TypeError,ValueError): amt=0
+    if amt<1 or amt>500: return jsonify({"ok":False,"error":"Amount must be between $1 and $500"})
+    phone=str(d.get("phone","")).strip(); name=str(d.get("name","")).strip()[:60]
+    reason=str(d.get("reason","")).strip()[:200]
+    if len(re.sub(r"\D","",phone))<8: return jsonify({"ok":False,"error":"Enter a valid mobile number"})
+    try: months=max(1,min(60,int(d.get("expiry_months",db.get("comp_expiry_months",12)))))
+    except Exception: months=12
+    gan,gid,err=_sq_gift_card(int(round(amt*100)),str(d.get("currency","AUD")),note="comp "+(name or ""))
+    if err or not gan: return jsonify({"ok":False,"error":err or "Square did not return a code"})
+    expiry=(datetime.now()+timedelta(days=int(months*30.44))).strftime("%d %b %Y")
+    shop=(db.get("shop_name") or "Bruno's Chicken Shop")
+    msg=(("Hi "+name.split(" ")[0]+", ") if name else "Hi, ")+ \
+        "sorry about that! Here's a $%s credit at %s.\nCode: %s\nUse it in store or online. Valid until %s."%(
+        ("%.2f"%amt).rstrip("0").rstrip("."),shop,gan,expiry)
+    sent,serr=_clicksend_sms(phone,msg)
+    entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
+           "name":name,"phone":phone,"reason":reason,"staff":staff,
+           "expiry":expiry,"expiry_months":months,"sms":bool(sent),"sms_err":(serr or "")}
+    with data_lock:
+        log=db.setdefault("comp_log",[]); log.append(entry); db["comp_log"]=log[-500:]; save_data(db)
+    return jsonify({"ok":True,"gan":gan,"expiry":expiry,"sms":bool(sent),
+                    "note":("" if sent else ("Voucher created, but the text didn't send: "+(serr or "unknown")+" — read the code to them.")),
+                    "entry":entry})
+
 @app.route("/api/pull_log")
 def api_pull_log():
     return jsonify({"ok":True,"pulls":(db.get("pull_log",[]) or [])[-300:]})

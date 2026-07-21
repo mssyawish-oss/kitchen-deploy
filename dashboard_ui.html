@@ -353,6 +353,16 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-pull-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;padding:2px 0;}
 .rl-pull-head:hover{color:var(--amber);}
 .rl-pull-x{font-size:11px;color:var(--muted);flex-shrink:0;}
+/* comp vouchers */
+.comp-grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:14px;align-items:start;}
+@media(max-width:900px){.comp-grid{grid-template-columns:1fr;}}
+.comp-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;}
+.comp-h{font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;}
+.comp-lab{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:11px 0 5px;font-weight:600;}
+.comp-amts{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px;}
+.comp-amt{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:10px;padding:10px 15px;font-size:15px;font-weight:700;cursor:pointer;min-width:60px;min-height:44px;}
+.comp-amt:hover{border-color:var(--amber-dim);}
+.comp-amt.on{background:var(--amber);border-color:var(--amber);color:#0a0a0c;}
 /* pull log popup — the card only carries a one-line summary */
 .pl-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 6px;flex-wrap:wrap;}
 .pl-day:first-child{margin-top:2px;}
@@ -1209,6 +1219,36 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-import-status" style="font-size:12px;margin:0 2px 8px;min-height:15px;color:var(--muted);"></div>
       <div id="team-roster"></div>
     </div>
+    <div class="page" id="page-comp">
+      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
+      <div id="comp-locked" style="text-align:center;padding:40px 16px;">
+        <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
+      </div>
+      <div id="comp-main" style="display:none;">
+        <div class="comp-grid">
+          <div class="comp-card">
+            <div class="comp-h">Send a credit</div>
+            <div class="comp-lab">Amount</div>
+            <div id="comp-amts" class="comp-amts"></div>
+            <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null)">
+            <div class="comp-lab">Customer name</div>
+            <input class="input" id="comp-name" placeholder="First name">
+            <div class="comp-lab">Mobile</div>
+            <input class="input" id="comp-phone" type="tel" inputmode="tel" placeholder="04xx xxx xxx">
+            <div class="comp-lab">Reason</div>
+            <input class="input" id="comp-reason" placeholder="e.g. missing chips from order #1234">
+            <div class="comp-lab">Valid for</div>
+            <div class="row" style="gap:8px;align-items:center;"><input class="input" id="comp-exp" type="number" min="1" max="60" value="12" style="width:90px;"><span style="font-size:12.5px;color:var(--muted);">months</span></div>
+            <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="compSend()">Send voucher</button>
+            <div id="comp-status" style="font-size:12.5px;margin-top:8px;min-height:18px;"></div>
+          </div>
+          <div class="comp-card">
+            <div class="comp-h">Vouchers issued</div>
+            <div id="comp-log"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="page" id="page-orders">
       <div class="page-header"><div class="page-title">Live Orders</div><div class="row" style="gap:10px;margin-left:auto;align-items:center;"><span id="orders-count" style="font-size:13px;color:var(--muted);"></span></div></div>
       <div id="orders-grid" class="orders-grid"></div>
@@ -1223,6 +1263,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="nav-btn" data-page="recipes" onclick="navTo('recipes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 14a4 4 0 0 1-1-7.86A5 5 0 0 1 15.4 4.6 4.5 4.5 0 0 1 17.5 14"/><path d="M6.5 14v6h11v-6"/><path d="M6.5 17.2h11"/></svg><span>Recipes</span></div></button>
     <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep/Tasks</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn" data-page="orders" onclick="navTo('orders',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l3 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Orders</span></div><div class="nav-badge" id="orders-badge">!</div></button>
+    <button class="nav-btn" data-page="comp" onclick="openComp(this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 12h20"/><path d="M12 7v14"/><path d="M12 7S9.5 3.5 7.5 4.2 6.4 7 8 7Z"/><path d="M12 7s2.5-3.5 4.5-2.8S17.6 7 16 7Z"/></svg><span>Comp</span></div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -2088,6 +2129,101 @@ function niimReconnect(ev){
     _toast(d&&d.ok?'Label printer connected ✓':('Printer: '+((d&&d.error)||'no answer')));
     refreshNiimStatus();
   }).catch(()=>{_toast('Could not reach the server.');refreshNiimStatus();});
+}
+// ══ COMP VOUCHERS ══════════════════════════════════════════════════════════════════════════════
+// Gated behind its own access code (default 1989) — separate from staff PINs, so it stays off-limits
+// to floor staff. Once inside, issuing a voucher still needs the staff member's OWN PIN, which is
+// what gets recorded against it. Square generates the code; ClickSend texts it.
+let _compUnlocked=false,_compAmt=null,_compCode='',_compCfg={amounts:[5,10,15,20,25,50],expiry_months:12,sms_ready:false};
+function openComp(btn){
+  if(_compUnlocked){navTo('comp',btn);compLoad();return;}
+  requireCompCode(()=>{_compUnlocked=true;navTo('comp',btn);compLoad();});
+}
+function requireCompCode(cb){
+  const code=prompt('Comp access code');
+  if(code===null)return;
+  fetch('/api/comp_check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})})
+    .then(r=>r.json()).then(d=>{
+      if(d&&d.ok){_compCode=code;cb();}
+      else{_toast('Wrong access code');}
+    }).catch(()=>_toast('Could not reach the server.'));
+}
+function compLoad(){
+  const lk=document.getElementById('comp-locked'),mn=document.getElementById('comp-main');
+  if(lk)lk.style.display=_compUnlocked?'none':'block';
+  if(mn)mn.style.display=_compUnlocked?'block':'none';
+  if(!_compUnlocked)return;
+  fetch('/api/comp_config').then(r=>r.json()).then(c=>{
+    _compCfg=c||_compCfg;
+    const ex=document.getElementById('comp-exp');if(ex&&!ex._touched)ex.value=c.expiry_months||12;
+    compRenderAmts();
+    if(!c.sms_ready)_compStatus('No SMS account connected yet — tap Setup. Vouchers will still be created; you read the code to the customer.','var(--amber)');
+  }).catch(()=>{});
+  fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[])).catch(()=>{});
+}
+function compRenderAmts(){
+  const el=document.getElementById('comp-amts');if(!el)return;
+  el.innerHTML=(_compCfg.amounts||[5,10,15,20,25,50]).map(a=>
+    '<button class="comp-amt'+(_compAmt===a?' on':'')+'" onclick="compPickAmt('+a+')">$'+a+'</button>').join('');
+}
+function compPickAmt(a){
+  _compAmt=a;
+  const c=document.getElementById('comp-amt-custom');
+  if(a!==null&&c)c.value='';
+  compRenderAmts();
+}
+function _compStatus(msg,col){const s=document.getElementById('comp-status');if(s){s.textContent=msg||'';s.style.color=col||'var(--muted)';}}
+function compSend(){
+  const custom=parseFloat((document.getElementById('comp-amt-custom')||{}).value||'');
+  const amt=(!isNaN(custom)&&custom>0)?custom:_compAmt;
+  const name=(document.getElementById('comp-name')||{}).value||'';
+  const phone=(document.getElementById('comp-phone')||{}).value||'';
+  const reason=(document.getElementById('comp-reason')||{}).value||'';
+  const months=parseInt((document.getElementById('comp-exp')||{}).value||'12')||12;
+  if(!amt||amt<1){_compStatus('Pick or type an amount first.','var(--red)');return;}
+  if(phone.replace(/\D/g,'').length<8){_compStatus('Enter the customer\'s mobile number.','var(--red)');return;}
+  if(!reason.trim()){_compStatus('Add a short reason — it goes in the log.','var(--red)');return;}
+  // the staff member signs it with their OWN pin; that name is what gets recorded
+  requirePin('Your PIN','Signing this $'+amt+' voucher',function(u){
+    _compStatus('Creating voucher…','var(--muted)');
+    fetch('/api/comp_send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months})})
+      .then(r=>r.json()).then(d=>{
+        if(!d||!d.ok){_compStatus(((d&&d.error)||'Failed'),'var(--red)');return;}
+        _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+d.gan+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
+        ['comp-name','comp-phone','comp-reason','comp-amt-custom'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+        _compAmt=null;compRenderAmts();
+        fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[])).catch(()=>{});
+      }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+  });
+}
+function compRenderLog(v){
+  const el=document.getElementById('comp-log');if(!el)return;
+  if(!v.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0;">No vouchers issued yet.</div>';return;}
+  el.innerHTML='<table class="pl-table"><thead><tr><th>When</th><th>Customer</th><th>Amount</th><th>Code</th><th>By</th><th>SMS</th></tr></thead><tbody>'
+    +v.slice().reverse().slice(0,60).map(x=>{
+      const d=new Date(x.ts);
+      return '<tr>'
+        +'<td class="pl-t">'+d.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+'</td>'
+        +'<td class="pl-n">'+_mEsc(x.name||'—')+'<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.phone||'')+'</div>'
+          +(x.reason?('<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.reason)+'</div>'):'')+'</td>'
+        +'<td class="pl-d">$'+(x.amount!=null?x.amount:'—')+'</td>'
+        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
+        +'<td class="pl-x">'+_mEsc(x.staff||'')+'</td>'
+        +'<td>'+(x.sms?'<span style="color:var(--green);">sent</span>':'<span style="color:var(--amber);" title="'+_mEsc(x.sms_err||'')+'">no</span>')+'</td>'
+      +'</tr>';}).join('')+'</tbody></table>';
+}
+function compSetup(){
+  if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compSetup();});return;}
+  const user=prompt('ClickSend username (from your ClickSend account)',_compCfg.user||'');
+  if(user===null)return;
+  const key=prompt('ClickSend API key');
+  if(key===null)return;
+  const sender=prompt('Sender name shown on the text (optional, letters only)',_compCfg.sender||'');
+  fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({user:user,key:key,sender:sender||''})})
+    .then(r=>r.json()).then(()=>{_toast('SMS settings saved');compLoad();})
+    .catch(()=>_toast('Could not save.'));
 }
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
