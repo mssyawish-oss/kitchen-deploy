@@ -363,6 +363,10 @@ body.kiosk .topbar-title{cursor:default;}
 .comp-amt{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:10px;padding:10px 15px;font-size:15px;font-weight:700;cursor:pointer;min-width:60px;min-height:44px;}
 .comp-amt:hover{border-color:var(--amber-dim);}
 .comp-amt.on{background:var(--amber);border-color:var(--amber);color:#0a0a0c;}
+.comp-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;}
+.comp-sum>div{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 11px;}
+.comp-sum-n{display:block;font-size:19px;font-weight:800;color:var(--text);line-height:1.1;}
+.comp-sum-l{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;}
 /* pull log popup — the card only carries a one-line summary */
 .pl-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 6px;flex-wrap:wrap;}
 .pl-day:first-child{margin-top:2px;}
@@ -1220,7 +1224,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-roster"></div>
     </div>
     <div class="page" id="page-comp">
-      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compCheckCreds()">Check login</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
+      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compCheckCreds()">Check login</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compRefreshStatus()">Check statuses</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
       <div id="comp-locked" style="text-align:center;padding:40px 16px;">
         <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
       </div>
@@ -2159,7 +2163,7 @@ function compLoad(){
     compRenderAmts();
     if(!c.sms_ready)_compStatus('No SMS account connected yet — tap Setup. Vouchers will still be created; you read the code to the customer.','var(--amber)');
   }).catch(()=>{});
-  fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[])).catch(()=>{});
+  fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[],(d&&d.summary)||null)).catch(()=>{});
 }
 function compRenderAmts(){
   const el=document.getElementById('comp-amts');if(!el)return;
@@ -2193,14 +2197,31 @@ function compSend(){
         _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+d.gan+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
         ['comp-name','comp-phone','comp-reason','comp-amt-custom'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
         _compAmt=null;compRenderAmts();
-        fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[])).catch(()=>{});
+        fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[],(x&&x.summary)||null)).catch(()=>{});
       }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
   });
 }
-function compRenderLog(v){
+function _compStatusCell(x){
+  const amt=x.amount||0,bal=x.balance;
+  const expired=x.expiry&&(new Date(x.expiry).getTime()<Date.now());
+  if(bal==null)return '<span style="color:var(--muted);">not checked</span>';
+  if(bal<=0)return '<span style="color:var(--green);font-weight:700;">used</span>';
+  if(bal<amt)return '<span style="color:var(--amber);font-weight:700;">$'+bal.toFixed(2)+' left</span>';
+  return '<span style="color:'+(expired?'var(--muted)':'var(--text)')+';">unused'+(expired?' · expired':'')+'</span>';
+}
+function compRenderLog(v,summary){
   const el=document.getElementById('comp-log');if(!el)return;
   if(!v.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0;">No vouchers issued yet.</div>';return;}
-  el.innerHTML='<table class="pl-table"><thead><tr><th>When</th><th>Customer</th><th>Amount</th><th>Code</th><th>By</th><th>SMS</th></tr></thead><tbody>'
+  let head='';
+  if(summary){
+    head='<div class="comp-sum">'
+      +'<div><span class="comp-sum-n">$'+(summary.today||0).toFixed(2)+'</span><span class="comp-sum-l">issued today</span></div>'
+      +'<div><span class="comp-sum-n">$'+(summary.month||0).toFixed(2)+'</span><span class="comp-sum-l">this month</span></div>'
+      +'<div><span class="comp-sum-n" style="color:var(--amber);">$'+(summary.outstanding||0).toFixed(2)+'</span><span class="comp-sum-l">still unused'+(summary.checked<summary.count?(' (of '+summary.checked+' checked)'):'')+'</span></div>'
+      +'<div><span class="comp-sum-n">'+(summary.count||0)+'</span><span class="comp-sum-l">vouchers</span></div>'
+    +'</div>';
+  }
+  el.innerHTML=head+'<table class="pl-table"><thead><tr><th>When</th><th>Customer</th><th>Amount</th><th>Status</th><th>Code</th><th>By</th><th>SMS</th></tr></thead><tbody>'
     +v.slice().reverse().slice(0,60).map(x=>{
       const d=new Date(x.ts);
       return '<tr>'
@@ -2208,10 +2229,21 @@ function compRenderLog(v){
         +'<td class="pl-n">'+_mEsc(x.name||'—')+'<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.phone||'')+'</div>'
           +(x.reason?('<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.reason)+'</div>'):'')+'</td>'
         +'<td class="pl-d">$'+(x.amount!=null?x.amount:'—')+'</td>'
-        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;cursor:pointer;" title="Tap to check the balance" onclick="compVerify(\''+_mEsc(x.gan||'')+'\')">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
+        +'<td>'+_compStatusCell(x)+'</td>'
+        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;cursor:pointer;" title="Tap to check this code now" onclick="compVerify(\''+_mEsc(x.gan||'')+'\')">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
         +'<td class="pl-x">'+_mEsc(x.staff||'')+'</td>'
         +'<td>'+(x.sms?'<span style="color:var(--green);">sent</span>':'<span style="color:var(--amber);" title="'+_mEsc(x.sms_err||'')+'">no</span>')+'</td>'
       +'</tr>';}).join('')+'</tbody></table>';
+}
+function compRefreshStatus(){
+  if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compRefreshStatus();});return;}
+  _compStatus('Checking vouchers with Square…','var(--muted)');
+  fetch('/api/comp_refresh',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:_compCode})}).then(r=>r.json()).then(d=>{
+      if(!d||!d.ok){_compStatus('Check failed: '+((d&&d.error)||'unknown'),'var(--red)');return;}
+      _compStatus('Checked '+d.checked+' voucher'+(d.checked===1?'':'s')+' ✓','var(--green)');
+      compLoad();
+    }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
 }
 function compTestSms(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compTestSms();});return;}

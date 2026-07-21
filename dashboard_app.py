@@ -1394,9 +1394,54 @@ def api_comp_check():
     code=str((request.get_json(silent=True) or {}).get("code","")).strip()
     return jsonify({"ok":code==str(db.get("comp_code","1989"))})
 
+def _sq_gift_balance(gan):
+    """Look one code up in Square → (state, balance_dollars, error)."""
+    hdr=_sq_headers()
+    if not hdr: return None,None,"Square not configured"
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/gift-cards/from-gan",
+            data=json.dumps({"gan":gan}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        if res.get("errors"): return None,None,(res["errors"][0].get("detail") or "not found")
+        gc=res.get("gift_card") or {}
+        amt=(gc.get("balance_money") or {}).get("amount")
+        return gc.get("state"),(amt/100.0 if amt is not None else None),None
+    except Exception as e:
+        return None,None,str(e)[:120]
+
+@app.route("/api/comp_refresh",methods=["POST"])
+def api_comp_refresh():
+    # Ask Square for the current state of recent vouchers and cache it on each log entry, so the
+    # dashboard can show what's been used without a call per page load.
+    if str((request.get_json(silent=True) or {}).get("code","")).strip()!=str(db.get("comp_code","1989")):
+        return jsonify({"ok":False,"error":"Wrong access code"})
+    log=list(db.get("comp_log",[]) or [])
+    checked=0
+    for e in log[-40:]:                                   # bounded so this can't hang on a long history
+        gan=e.get("gan")
+        if not gan: continue
+        st,bal,err=_sq_gift_balance(gan)
+        if err: e["check_err"]=err; continue
+        e["state"]=st; e["balance"]=bal; e["checked_at"]=int(time.time()*1000); e.pop("check_err",None)
+        checked+=1
+    with data_lock:
+        db["comp_log"]=log; save_data(db)
+    return jsonify({"ok":True,"checked":checked,"vouchers":log[-200:]})
+
 @app.route("/api/comp_log")
 def api_comp_log():
-    return jsonify({"ok":True,"vouchers":(db.get("comp_log",[]) or [])[-200:]})
+    log=(db.get("comp_log",[]) or [])[-200:]
+    now=datetime.now(); today=now.strftime("%Y-%m-%d"); month=now.strftime("%Y-%m")
+    def day(e): return datetime.fromtimestamp((e.get("ts") or 0)/1000).strftime("%Y-%m-%d")
+    issued_today=sum(e.get("amount",0) or 0 for e in log if day(e)==today)
+    issued_month=sum(e.get("amount",0) or 0 for e in log if day(e).startswith(month))
+    # money still sitting on vouchers we've checked — the real outstanding liability
+    known=[e for e in log if e.get("balance") is not None]
+    outstanding=sum(e.get("balance") or 0 for e in known)
+    redeemed=sum(1 for e in known if (e.get("balance") or 0)<=0)
+    return jsonify({"ok":True,"vouchers":log,
+                    "summary":{"count":len(log),"today":round(issued_today,2),"month":round(issued_month,2),
+                               "outstanding":round(outstanding,2),"redeemed":redeemed,"checked":len(known)}})
 
 @app.route("/api/comp_send",methods=["POST"])
 def api_comp_send():
