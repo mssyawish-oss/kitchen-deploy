@@ -431,33 +431,10 @@ body.view-wall .timer-display{font-size:clamp(30px,6vh,54px);}
    smaller iPads. Hiding it here instead buys the probe cards ~130px each (189px -> 322px) and the page
    fits with room to spare. Stock is one tap away on the Stock tab, and the 21" wall screen keeps it.
    To bring it back: delete the #rot-live rule below. */
-body.view-pad #page-probes{padding:8px;}
-/* The live strip is flex:0 0 auto, so it never shrinks — whatever it contains gets taken off the
-   probes/batches below it. On the iPad it also carries the rotisserie CAMERA panels, which measured
-   ~117px more than the stock cards alone and pushed the page 130px past the screen. Keep the chicken
-   and fried COUNTS (the owner wants those); drop the camera views here — the 21" wall screen keeps
-   them. Also let the strip shrink, so nothing can force the page to scroll again. */
-body.view-pad #rl-cam,body.view-pad #rl-benchcam{display:none;}
-/* NOTE ON SPECIFICITY: the base rules use #page-probes #rot-live (two IDs), so a plain
-   body.view-pad #rot-live selector LOSES to them and silently does nothing. Every override below
-   therefore carries #page-probes too. The hero number also gets an inline font-size from
-   _rlNumSize(), which only !important can beat. */
-body.view-pad #page-probes #rot-live{flex:0 1 auto;min-height:0;}
-body.view-pad #page-probes .pb-split{flex-direction:column;gap:8px;}
-body.view-pad #page-probes .pb-sec .probes-grid,
-body.view-pad #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
-body.view-pad #page-probes .pb-sec .probe-card,
-body.view-pad #page-probes .pb-sec .timer-card{padding:5px 9px;gap:2px;}
-body.view-pad #page-probes .sec-head{display:none;}
-body.view-pad #page-probes #rot-live .rl-card{padding:6px 10px;gap:2px;}
-body.view-pad #page-probes #rot-live .rl-hero-num{font-size:clamp(22px,3.6vh,32px)!important;}
-body.view-pad #page-probes #rot-live .rl-hero{flex:0 0 auto;gap:0;}
-body.view-pad #page-probes #rot-live .rl-hero-lab{margin-top:0;font-size:9px;letter-spacing:.12em;}
-body.view-pad #page-probes #rot-live .rl-step{width:32px;height:32px;font-size:17px;}
-body.view-pad #page-probes #rot-live .rl-foot{margin-top:2px;font-size:10px;}
-body.view-pad #page-probes #rot-live .rl-actions{gap:5px;}
-body.view-pad #page-probes #rot-live .rl-actions button{padding:4px 6px;font-size:11px;}
-body.view-pad #page-probes #rot-live .rl-top{margin-bottom:0;}
+/* iPad: type only. Layout overrides were removed deliberately — hiding the rotisserie camera panel,
+   restacking the split and forcing 4-across made the probe and batch grids stop lining up and left the
+   dash looking nothing like itself. Every device now uses the SAME layout; only text size differs.
+   Consequence: the iPad Temp page may scroll a little. That is the better trade. */
 body.view-pad .nav-btn span{font-size:13px;}
 body.view-pad .pd-name,body.view-pad .pc-name{font-size:15px;}
 body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
