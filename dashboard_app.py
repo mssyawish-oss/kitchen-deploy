@@ -1191,9 +1191,9 @@ def _sq_enable_variation(vid):
         except Exception as e:
             rd=getattr(e,"read",None)
             if rd:
-                try: return e.read().decode()[:180]
+                try: return e.read().decode()[:900]
                 except Exception: pass
-            return str(e)[:160]
+            return str(e)[:400]
     if tracked:
         # genuinely inventory-tracked → the documented route: put stock back
         try:
