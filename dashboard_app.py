@@ -1325,6 +1325,34 @@ def api_comp_config():
                     "amounts":db.get("comp_amounts") or [5,10,15,20,25,50],
                     "expiry_months":db.get("comp_expiry_months",12)})
 
+@app.route("/api/comp_sms_check",methods=["POST"])
+def api_comp_sms_check():
+    # Validate the ClickSend credentials on their own against the account endpoint — no SMS sent, so
+    # this separates "wrong username/key" from anything to do with sender IDs or numbers.
+    if str((request.get_json(silent=True) or {}).get("code","")).strip()!=str(db.get("comp_code","1989")):
+        return jsonify({"ok":False,"error":"Wrong access code"})
+    cs=db.get("clicksend") or {}
+    user=(cs.get("user") or "").strip(); key=(cs.get("key") or "").strip()
+    if not user or not key: return jsonify({"ok":False,"error":"Nothing saved yet — tap Setup."})
+    hint=""
+    if "@" in user: hint=" Your username is saved as an email address; ClickSend wants the USERNAME from Developers → API Credentials."
+    try:
+        req=urllib.request.Request("https://rest.clicksend.com/v3/account",
+            headers={"Authorization":"Basic "+base64.b64encode((user+":"+key).encode()).decode()})
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        d=(res.get("data") or {})
+        return jsonify({"ok":True,"account":d.get("username") or d.get("user_email") or "",
+                        "balance":d.get("balance"),"currency":d.get("currency",{}).get("currency_code") if isinstance(d.get("currency"),dict) else d.get("currency")})
+    except Exception as e:
+        body=""
+        rd=getattr(e,"read",None)
+        if rd:
+            try: body=e.read().decode()[:200]
+            except Exception: pass
+        code=getattr(e,"code",None)
+        msg=("HTTP %s "%code if code else "")+(body or str(e)[:160])
+        return jsonify({"ok":False,"error":msg+hint,"used_username":user})
+
 @app.route("/api/comp_sms_test",methods=["POST"])
 def api_comp_sms_test():
     # Prove the SMS credentials on their own — no gift card burned while getting ClickSend right.

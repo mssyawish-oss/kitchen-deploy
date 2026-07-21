@@ -1220,7 +1220,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-roster"></div>
     </div>
     <div class="page" id="page-comp">
-      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
+      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compCheckCreds()">Check login</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
       <div id="comp-locked" style="text-align:center;padding:40px 16px;">
         <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
       </div>
@@ -2231,15 +2231,27 @@ function compVerify(gan){
 }
 function compSetup(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compSetup();});return;}
-  const user=prompt('ClickSend username (from your ClickSend account)',_compCfg.user||'');
+  // Deliberately NOT pre-filled: pre-filling is how an email address kept getting re-saved as the
+  // username. ClickSend wants the USERNAME from Developers → API Credentials, not the login email.
+  const user=prompt('ClickSend USERNAME\n\nFind it in ClickSend → Developers → API Credentials.\nThis is NOT your email address.');
   if(user===null)return;
-  const key=prompt('ClickSend API key');
+  if(!user.trim()){_toast('Username cannot be blank');return;}
+  const key=prompt('ClickSend API KEY\n\nSame page — Developers → API Credentials.\nThis is NOT your account password.');
   if(key===null)return;
-  const sender=prompt('Sender name shown on the text (optional, letters only)',_compCfg.sender||'');
+  const sender=prompt('Sender name on the text (optional).\nLetters/numbers only, max 11, no spaces or apostrophes.\nLeave BLANK to send from a shared number.','');
   fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({user:user,key:key,sender:sender||''})})
-    .then(r=>r.json()).then(()=>{_toast('SMS settings saved');compLoad();})
+    body:JSON.stringify({user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11)})})
+    .then(r=>r.json()).then(()=>{_toast('Saved — checking credentials…');compLoad();compCheckCreds();})
     .catch(()=>_toast('Could not save.'));
+}
+function compCheckCreds(){
+  if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compCheckCreds();});return;}
+  _compStatus('Checking ClickSend credentials…','var(--muted)');
+  fetch('/api/comp_sms_check',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:_compCode})}).then(r=>r.json()).then(d=>{
+      if(d&&d.ok){_compStatus('ClickSend connected ✓'+(d.account?(' as '+d.account):'')+(d.balance!=null?('  ·  balance '+d.balance):''),'var(--green)');}
+      else{_compStatus('ClickSend rejected it: '+((d&&d.error)||'unknown'),'var(--red)');}
+    }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
 }
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
