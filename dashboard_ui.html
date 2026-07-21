@@ -155,7 +155,67 @@ body.kiosk .topbar-title{cursor:default;}
 .ls-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 .ls-sub.on{color:var(--green);}
 .ls-spark{width:100%;height:40px;display:block;}
-#page-probes.active .probes-grid{flex:0.7 1 0;}
+#page-probes.active /* ══ STYLE V2 — the owner's mock-up design. EVERY rule is scoped under body.style-v2, so the classic
+   look is untouched until a device opts in with ?style=v2 (?style=classic reverts). ══ */
+body.style-v2{--bg:#0a0d14;--card:#12161f;--surface:#161b26;--surface2:#1c2230;--border:#1d2432;--border2:#2a3244;}
+body.style-v2 .top-bar{border-bottom:1px solid var(--border);}
+body.style-v2 .sec-head span{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--text);padding-left:10px;border-left:3px solid var(--amber);}
+body.style-v2 #rot-live .rl-card{border-radius:16px;border:1px solid var(--border2);}
+body.style-v2 .probe-card,body.style-v2 .timer-card{border-radius:16px;}
+body.style-v2 #page-probes{padding:8px 14px;}
+body.style-v2 .pb-split{gap:8px;}
+body.style-v2 #page-probes .pb-sec .probes-grid,
+body.style-v2 #page-probes .pb-sec .timers-grid{gap:8px;}
+body.style-v2 #rot-live .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:8px 16px;}
+body.style-v2 #rot-live .rl-top{margin:0;}
+body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:row;align-items:center;gap:10px;}
+body.style-v2 #rot-live .rl-hero-num{font-size:clamp(26px,4.6vh,40px);}
+body.style-v2 #rot-live .rl-hero-lab{margin:0;}
+body.style-v2 #rot-live .rl-step{width:34px;height:34px;font-size:18px;}
+body.style-v2 #rot-live .rl-foot{margin:0 0 0 auto;flex-direction:column;align-items:flex-end;gap:2px;}
+body.style-v2 #rot-live .rl-actions{width:auto;flex:0 0 auto;}
+body.style-v2 #rot-live .rl-actions button{height:clamp(32px,4vh,40px);padding:0 14px;}
+body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:2px;border-top:none;padding-top:0;}
+body.style-v2 #rot-live .rl-heroRow{width:auto;}   /* classic forces 100% width, which wraps the strip */
+body.style-v2 #rot-live .rl-foot{flex-direction:row;align-items:baseline;gap:6px;}
+body.style-v2 #rot-live .rl-hero-num{font-size:clamp(24px,4vh,36px);}
+/* probe card v2 */
+body.style-v2 .probe-card.p2{align-items:stretch;text-align:left;padding:8px 13px;gap:5px;}
+body.style-v2 .probe-card.p2::before{height:4px;}
+.p2-head{display:flex;align-items:center;gap:10px;min-width:0;}
+.p2-names{min-width:0;flex:1;}
+.p2-kicker{font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:700;}
+.p2-name{width:100%;background:transparent;border:none;color:var(--text);font-size:16px;font-weight:700;outline:none;padding:0;}
+.p2-mid{display:flex;align-items:center;gap:12px;flex:0 0 auto;}
+.p2-ic{width:clamp(36px,4.6vh,46px);height:clamp(36px,4.6vh,46px);border-radius:50%;flex-shrink:0;background:color-mix(in srgb,var(--accv,var(--acc)) 16%,transparent);display:flex;align-items:center;justify-content:center;}
+.p2-temp{margin-left:auto;font-family:var(--font-mono);font-weight:800;font-size:clamp(24px,3.8vh,40px);display:flex;align-items:baseline;gap:6px;line-height:1;}
+.p2-dash{color:var(--muted);font-size:20px;letter-spacing:2px;}
+.p2-unit{font-size:13px;font-weight:600;color:var(--muted);}
+.p2-bar{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;}
+.p2-bar i{display:block;height:100%;border-radius:3px;background:var(--accv,var(--acc));transition:width .6s;}
+.p2-statusrow{display:flex;justify-content:center;}
+.p2-actions{display:flex;gap:10px;margin-top:auto;}
+.p2-actions .probe-btn{flex:1;height:clamp(30px,3.8vh,38px);border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;}
+/* timer card v2 */
+body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:8px 13px;gap:5px;}
+.t2-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.t2-head .batch-input{flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:14px;font-weight:800;letter-spacing:.03em;outline:none;padding:0;}
+.t2-state{flex-shrink:0;font-size:11px;font-weight:700;color:var(--green);}
+.t2-state.run{color:var(--accv,var(--acc));}.t2-state.pause{color:var(--muted);}.t2-state.exp{color:var(--red);}
+.t2-gauge{position:relative;width:min(48%,10vh);aspect-ratio:1;margin:0 auto;}
+.t2-gauge svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
+.t2-track{fill:none;stroke:var(--surface2);stroke-width:10;}
+.t2-prog{fill:none;stroke:var(--accv,var(--acc));stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset .9s linear;}
+.t2.alarm .t2-prog{stroke:var(--red);}
+.t2-timewrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+body.style-v2 .t2 .timer-display{font-family:var(--font-mono);font-weight:800;font-size:clamp(17px,2.6vh,26px);line-height:1;}
+.t2-rem{font-size:8.5px;letter-spacing:.16em;color:var(--muted);font-weight:700;}
+body.style-v2 .t2 .adj-row{display:flex;gap:6px;}
+body.style-v2 .t2 .adj-btn{flex:1;height:clamp(26px,3.3vh,34px);border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:12px;}
+.t2-actions{display:flex;gap:8px;}
+.t2-start{flex:1.4;height:clamp(32px,4vh,40px);border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:13.5px;font-weight:800;cursor:pointer;}
+.t2-end{flex:1;height:clamp(32px,4vh,40px);border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;}
+.probes-grid{flex:0.7 1 0;}
 .rl-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);height:100%;}
 .rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px;}
 .rl-chip{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
@@ -2418,6 +2478,19 @@ function _initView(){
 // throws a second PIN prompt and dumps you on Temp anyway.
 function _viewHome(){return 'probes';}
 try{_initView();}catch(e){}
+// NEW DESIGN, gated: nothing changes anywhere until a device opens ?style=v2. ?style=classic reverts.
+// The choice is stored per device, so the preview stays on the Mac and the kitchen stays classic.
+function _initStyle(){
+  let s=null;
+  try{s=new URLSearchParams(location.search).get('style');}catch(e){}
+  try{
+    if(s==='v2'||s==='classic')localStorage.setItem('dashStyle',s);
+    else s=localStorage.getItem('dashStyle');
+  }catch(e){}
+  if(s==='v2')document.body.classList.add('style-v2');
+  window.DASH_V2=(s==='v2');
+}
+try{_initStyle();}catch(e){}
 function openDashboard(){pinBuf='';updatePinDots();document.getElementById('lock-screen').classList.add('hidden');document.getElementById('app-shell').style.display='flex';document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('hidden'));const sb=document.getElementById('settings-btn');if(sb)sb.style.display='';clearLockBanners();updateNotesBadge();if(!window.matchMedia('(max-width:600px)').matches)document.getElementById('app-shell').classList.add('nosidebar');   // start collapsed → menu is PIN-protected from load (open it via the ☰, which asks for a Manager/Admin PIN)
 const _hp=(typeof _viewHome==='function')?_viewHome():'probes';navTo(_hp,document.querySelector('.nav-btn[data-page="'+_hp+'"]'));}
 function lockApp(){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));lockAlerts=[];sectionUnlockedAt={};document.getElementById('lock-screen').classList.remove('hidden');document.getElementById('app-shell').style.display='none';pinBuf='';updatePinDots();renderLockBanners();}
@@ -2653,6 +2726,25 @@ function renderProbes(){
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
+    if(window.DASH_V2){
+      const _od=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.overdone_temp)||91;
+      const _pct=(t===null)?0:Math.max(3,Math.min(100,t/_od*100));
+      const _nm=String(p.name||('Probe '+pidN)).replace(/"/g,'&quot;');
+      return `<div class="probe-card p2 ac${(pidN-1)%4} ${cardCls}">
+      ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
+      <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
+        <div class="p2-names"><div class="p2-kicker">PROBE ${pidN}</div>
+        <input class="p2-name" value="${_nm}" onchange="updateProbeName(${pidN},this.value)"></div></div>
+      <div class="p2-mid">
+        <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
+        <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
+      </div>
+      <div class="p2-bar"><i style="width:${_pct}%"></i></div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</span></div>
+      ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
+      <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
+      </div>`;
+    }
     return `<div class="probe-card ac${(pidN-1)%4} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
@@ -2711,6 +2803,22 @@ function renderTimers(){
     const dispCls=(t.expired?'expired':warn&&t.running?'warning':(!t.running&&t.remaining===t.total)?'idle':'')+(fmt(t.remaining).length>6?' tlong':'');
     const arc=t.expired?'var(--red)':'var(--acc)';
     const sDot=t.expired?'expired':t.running?'running':t.remaining<t.total&&!t.expired?'paused':'ready';
+    if(window.DASH_V2){
+      const C=402.12,off=(C*(1-pct/100)).toFixed(1);
+      const stCls=t.expired?'exp':t.running?'run':(t.remaining<t.total?'pause':'ready');
+      const stTxt=t.expired?'EXPIRED':t.running?'Running':(t.remaining<t.total?'Paused':'&#10003; Ready');
+      return `<div class="timer-card t2 ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
+      <div class="t2-head"><input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="BATCH ${t.id+1}"><span class="t2-state ${stCls}">${stTxt}</span></div>
+      <div class="t2-gauge"><svg viewBox="0 0 160 160"><circle class="t2-track" cx="80" cy="80" r="64"/><circle class="t2-prog" id="tr${t.id}" cx="80" cy="80" r="64" style="stroke-dasharray:${C};stroke-dashoffset:${off};"/></svg>
+        <div class="t2-timewrap"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="t2-rem">REMAINING</div><i id="tb${t.id}" style="display:none;"></i></div></div>
+      <div class="adj-row"><button class="adj-btn" onclick="adj(${t.id},-300)">-5m</button><button class="adj-btn" onclick="adj(${t.id},-600)">-10m</button><button class="adj-btn" onclick="adj(${t.id},300)">+5m</button><button class="adj-btn" onclick="adj(${t.id},600)">+10m</button></div>
+      <div class="t2-actions">${t.running
+        ?`<button class="t2-start" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`
+        :`<button class="t2-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}
+        <button class="t2-end" onclick="endT(${t.id})">&#9632; End</button></div>
+      ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
+      </div>`;
+    }
     return `<div class="timer-card ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
       <input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label this timer…">
       <div class="timer-status ${t.expired?'st-exp':t.running?'st-run':t.remaining<t.total?'st-pause':'st-ready'}"><span class="s-dot ${sDot}"></span>${t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'&#10003; Ready'}</div>
@@ -2726,7 +2834,7 @@ function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause'
 function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;renderTimers();postTimer(id,'end');}
 function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
-function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}}
+function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}const _rg=document.getElementById('tr'+id);if(_rg){_rg.style.strokeDashoffset=(402.12*(1-pct/100)).toFixed(1);_rg.style.stroke=t.expired?'var(--red)':'';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});}
 function saveProbeSettingsFromModal(){const s={almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
 function fillCameraSettings(){const c=appData.camera_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('cam-ip',c.ip);set('cam-port',c.port);set('cam-channel',c.channel);set('cam-url',c.url_override);document.getElementById('cam-user').value='';document.getElementById('cam-pass').value='';const en=document.getElementById('cam-enabled');if(en)en.checked=!!c.enabled;const ph=appData.camera_public&&appData.camera_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('cam-user').placeholder=ph||'admin';document.getElementById('cam-pass').placeholder=ph||'camera password';document.getElementById('cam-status').textContent='';document.getElementById('cam-preview').innerHTML='';
