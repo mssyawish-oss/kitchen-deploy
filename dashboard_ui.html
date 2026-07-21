@@ -186,6 +186,8 @@ body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead contain
    cards into what looked like a blank box. They keep their own layout, just with the v2 frame. */
 body.style-v2 #rl-bbq .rl-card,body.style-v2 #rl-fry .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px 30px;justify-content:center;padding:14px 18px;}
 body.style-v2 #rl-bbq .rl-pulls{display:none;}   /* owner: the last-pulled detail stays in the log, not on the card */
+body.style-v2 #rl-bbq .rl-chip{display:none;}                /* owner: no fire icon */
+body.style-v2 #rl-bbq .rl-foot .rl-foot-stat{display:none;}  /* owner: sold-today lives in the log now */
 body.style-v2 #rot-live .rl-card{border-radius:16px;border:1px solid var(--border2);}
 body.style-v2 #rot-live .rl-top{margin:0;}
 body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:3px;}
@@ -451,6 +453,8 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .comp-sum-n{display:block;font-size:19px;font-weight:800;color:var(--text);line-height:1.1;}
 .comp-sum-l{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;}
 /* pull log popup — the card only carries a one-line summary */
+.pl-sold{font-size:13px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:8px 12px;margin-bottom:4px;}
+.pl-sold b{color:var(--amber);font-size:15px;}
 .pl-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 6px;flex-wrap:wrap;}
 .pl-day:first-child{margin-top:2px;}
 .pl-day-n{font-size:15px;font-weight:700;color:var(--text);}
@@ -3385,10 +3389,12 @@ function openPullLog(ev){
 }
 function renderPullLog(pulls){
   const b=document.getElementById('pulllog-body');if(!b)return;
-  if(!pulls.length){b.innerHTML='<div style="color:var(--muted);font-size:13px;padding:18px 2px;text-align:center;">No pulls recorded yet. Each time a probe is pulled from a cooked row it will appear here.</div>';return;}
+  const _sold=(window._lastRot&&window._lastRot.sold_today)||0;
+  const soldLine='<div class="pl-sold">Sold today: <b>'+fmtBird(_sold)+'</b> birds</div>';
+  if(!pulls.length){b.innerHTML=soldLine+'<div style="color:var(--muted);font-size:13px;padding:18px 2px;text-align:center;">No pulls recorded yet. Each time a probe is pulled from a cooked row it will appear here.</div>';return;}
   const days={},order=[];
   pulls.slice().reverse().forEach(p=>{const k=_pullDayKey(p.ts);if(!days[k]){days[k]=[];order.push(k);}days[k].push(p);});
-  b.innerHTML=order.map(k=>{
+  b.innerHTML=soldLine+order.map(k=>{
     const list=days[k];
     const birds=list.reduce((s,p)=>s+(p.birds||0),0);
     const mins=list.filter(p=>p.total_mins!=null).map(p=>p.total_mins);
