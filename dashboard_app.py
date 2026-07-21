@@ -1236,9 +1236,15 @@ def _sq_gift_card(amount_cents,currency="AUD",note=""):
         # A comp has no sale behind it, so ACTIVATE is the wrong verb — Square rejects it without either
         # an order or a buyer payment instrument. ADJUST_INCREMENT with reason COMPLIMENTARY is the
         # activity meant for adding balance for a non-purchase reason. Try that first, then fall back.
+        # ACTIVATE needs EITHER an order (a real sale) OR amount + buyer_payment_instrument_ids. A comp has
+        # no sale, but per Square's own developer forum that instrument field is just a free-text reference
+        # for custom processing systems — it accepts any value. So we stamp it with our own comp reference.
+        # ADJUST_INCREMENT is kept as a fallback but can only run on an already-ACTIVE card.
+        ref=("comp-"+_secrets.token_hex(4))
         attempts=[
+            ("ACTIVATE",{"amount_money":money,"buyer_payment_instrument_ids":[ref],
+                         "reference_id":(note or "comp")[:40]}),
             ("ADJUST_INCREMENT",{"amount_money":money,"reason":"COMPLIMENTARY"}),
-            ("ACTIVATE",{"amount_money":money,"reference_id":(note or "comp")[:40]}),
         ]
         errs=[]
         for typ,details in attempts:
