@@ -3352,7 +3352,7 @@ function renderRotLive(rot){
     <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div>${rateHtml}<div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
     ${staleHtml}
     ${camErrHtml}
-    <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button>${window.DASH_V2?`<button class="rl-mini" onclick="openPullLog(event)">Pull log</button>`:''}</div>
+    <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="removeRow()">&minus; Row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button>${window.DASH_V2?`<button class="rl-mini" onclick="openPullLog(event)">Pull log</button>`:''}</div>
     ${_pullLogHtml(rot.pulls)}
   </div>`;
 }
@@ -3396,15 +3396,31 @@ function renderPullLog(pulls){
   if(!pulls.length){b.innerHTML=soldLine+'<div style="color:var(--muted);font-size:13px;padding:18px 2px;text-align:center;">No pulls recorded yet. Each time a probe is pulled from a cooked row it will appear here.</div>';return;}
   const days={},order=[];
   pulls.slice().reverse().forEach(p=>{const k=_pullDayKey(p.ts);if(!days[k]){days[k]=[];order.push(k);}days[k].push(p);});
+  const ADJ={row_add:'+1 row',row_remove:'\u22121 row',step:'quick adjust',set:'set count'};
   b.innerHTML=soldLine+order.map(k=>{
     const list=days[k];
-    const birds=list.reduce((s,p)=>s+(p.birds||0),0);
-    const mins=list.filter(p=>p.total_mins!=null).map(p=>p.total_mins);
+    const real=list.filter(p=>!p.kind||p.kind==='pull');            // day summary counts genuine pulls
+    const adjN=list.length-real.length;
+    const birds=real.reduce((s,p)=>s+(p.birds||0),0);
+    const mins=real.filter(p=>p.total_mins!=null).map(p=>p.total_mins);
     const avg=mins.length?Math.round(mins.reduce((a,c)=>a+c,0)/mins.length):null;
     const head='<div class="pl-day"><span class="pl-day-n">'+_pullDayLabel(list[0].ts)+'</span>'
-      +'<span class="pl-day-s">'+list.length+' row'+(list.length===1?'':'s')+' · '+birds+' birds'
-      +(avg!=null?(' · avg '+_pullFmtMins(avg)):'')+'</span></div>';
-    const rows=list.map(p=>'<tr>'
+      +'<span class="pl-day-s">'+real.length+' row'+(real.length===1?'':'s')+' · '+birds+' birds'
+      +(avg!=null?(' · avg '+_pullFmtMins(avg)):'')
+      +(adjN?(' · '+adjN+' adjustment'+(adjN===1?'':'s')):'')+'</span></div>';
+    const rows=list.map(p=>{
+      if(p.kind&&p.kind!=='pull'){
+        const d=(p.delta!=null)?p.delta:0;
+        const dc=d>0?'var(--green)':d<0?'var(--red)':'var(--muted)';
+        return '<tr style="opacity:.85;">'
+          +'<td class="pl-t">'+_pullFmtClock(p.ts)+'</td>'
+          +'<td class="pl-n" style="color:var(--muted);">'+(ADJ[p.kind]||'adjustment')+(p.note?(' <span style="font-size:10.5px;">('+_mEsc(p.note)+')</span>'):'')+'</td>'
+          +'<td class="pl-d" style="color:var(--muted);">–</td><td class="pl-h">–</td><td class="pl-p">–</td><td class="pl-x">–</td>'
+          +'<td class="pl-b" style="color:'+dc+';">'+(d>0?'+':d<0?'\u2212':'')+fmtBird(Math.abs(d))
+          +'<div style="font-size:10px;color:var(--muted);font-weight:400;">now '+fmtBird(p.avail_after!=null?p.avail_after:0)+'</div></td>'
+        +'</tr>';
+      }
+      return '<tr>'
       +'<td class="pl-t">'+_pullFmtClock(p.ts)+'</td>'
       +'<td class="pl-n">'+_mEsc(p.name||('Probe '+p.probe))+'</td>'
       +'<td class="pl-d">'+_pullFmtMins(p.total_mins)+'</td>'
@@ -3412,7 +3428,7 @@ function renderPullLog(pulls){
       +'<td class="pl-p">'+(p.peak_temp!=null?(p.peak_temp+'°'):'–')+'</td>'
       +'<td class="pl-x">'+(p.pull_temp!=null?(p.pull_temp+'°'):'–')+'</td>'
       +'<td class="pl-b">+'+(p.birds!=null?p.birds:'–')+'</td>'
-    +'</tr>').join('');
+    +'</tr>';}).join('');
     return head+'<table class="pl-table"><thead><tr>'
       +'<th>Pulled</th><th>Probe</th><th>On for</th><th>Hot</th><th>Peak</th><th>At pull</th><th>Stock</th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table>';
@@ -3591,6 +3607,7 @@ function _doneForRow(row){
 function renderCamRows(){const ov=document.getElementById('cam-overlay');if(ov)ov.innerHTML='';}  // doneness now lives on the probe cards; cam keeps only the spinning/stopped alarm
 setInterval(()=>{_camSpinCheck();renderCamRows();if(typeof renderRotAnim==='function')renderRotAnim();},1200);
 function putOnRow(){_rotSig='';fetch('/api/rot_put_on',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:1})}).then(r=>r.json()).then(renderRotLive);}
+function removeRow(){_rotSig='';fetch('/api/rot_put_on',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:-1})}).then(r=>r.json()).then(renderRotLive);}
 // quarter-bird steppers on the stock card — staff sell halves and quarters, so ±1 was never enough
 function rotStep(d){_rotSig='';fetch('/api/rot_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:d})}).then(r=>r.json()).then(renderRotLive).catch(()=>{});}
 let _frySig='';

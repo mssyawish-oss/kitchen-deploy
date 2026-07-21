@@ -482,7 +482,7 @@ def rot_state():
                 "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
                 "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
                 "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:],   # credit audit trail (newest last) for the on-screen log + debug shots
-                "pulls":(db.get("pull_log",[]) or [])[-15:]}   # recent probe pulls (newest last) for the on-card "last pulled" log
+                "pulls":[e for e in (db.get("pull_log",[]) or []) if e.get("kind") in (None,"pull","row_add")][-15:]}   # card line + stale-warning: real stock arrivals only, adjustments excluded
 def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
@@ -4576,9 +4576,30 @@ def api_fry_adjust():
     else: fry_adjust(float(d.get("delta",0) or 0))
     return jsonify(fry_state())
 
+def _log_stock(kind,delta,avail_after,note=""):
+    # Manual stock movements go in the SAME log as probe pulls, tagged with a kind. Rapid ±¼ taps
+    # within 45s merge into one entry so eight quick taps don't spam eight rows.
+    e={"ts":int(time.time()*1000),"kind":kind,"delta":round(float(delta),2),"avail_after":round(float(avail_after),2)}
+    if note: e["note"]=str(note)[:60]
+    try:
+        with data_lock:
+            log=db.setdefault("pull_log",[])
+            if kind=="step" and log and log[-1].get("kind")=="step" and (e["ts"]-log[-1].get("ts",0))<45000:
+                log[-1]["delta"]=round(log[-1]["delta"]+e["delta"],2)
+                log[-1]["ts"]=e["ts"]; log[-1]["avail_after"]=e["avail_after"]
+            else: log.append(e)
+            db["pull_log"]=log[-300:]; save_data(db)
+    except Exception as ex: print(f"log_stock:{ex}")
+
 @app.route("/api/rot_put_on",methods=["POST"])
 def api_rot_put_on():
-    d=request.get_json(silent=True) or {};rot_put_on(int(d.get("rows",1) or 1));return jsonify(rot_state())
+    d=request.get_json(silent=True) or {}
+    rows=int(d.get("rows",1) or 1)
+    rot_put_on(rows)
+    st=rot_state()
+    bpr=_rot_cfg().get("bpr",4) or 4
+    _log_stock("row_add" if rows>0 else "row_remove",rows*bpr,st["available"])
+    return jsonify(st)
 
 # ── SPIT SENSORS ── 6 inductive proximity sensors (one per spit) report a 6-char pattern, 1=spit present.
 # Deterministic: when a spit that was loaded long enough to be a real cook then goes empty, credit a cooked row.
@@ -4621,9 +4642,17 @@ def api_spit_state():
 @app.route("/api/rot_adjust",methods=["POST"])
 def api_rot_adjust():
     d=request.get_json(silent=True) or {}
-    if "set" in d: rot_set(d.get("set",0))
-    else: rot_adjust(float(d.get("delta",0) or 0))
-    return jsonify(rot_state())
+    if "set" in d:
+        prev=rot_state()["available"]
+        rot_set(d.get("set",0))
+        st=rot_state()
+        _log_stock("set",st["available"]-prev,st["available"],note="set to %s"%d.get("set"))
+        return jsonify(st)
+    delta=float(d.get("delta",0) or 0)
+    rot_adjust(delta)
+    st=rot_state()
+    if delta: _log_stock("step",delta,st["available"])
+    return jsonify(st)
 
 @app.route("/api/rot_reset",methods=["POST"])
 def api_rot_reset(): rot_reset_counts();return jsonify(rot_state())
