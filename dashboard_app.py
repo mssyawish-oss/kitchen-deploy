@@ -1223,7 +1223,13 @@ def _sq_enable_variation(vid):
     still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
     dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
     _SQ_OBJ_CACHE.pop(vid,None)
-    if still: return False,"Square still shows it sold out — switch it on in the Square app"
+    if still:
+        _errs=" ".join(str(s) for s in dbg.get("steps",[]))
+        if "may not be changed" in _errs:
+            # a Square RULE owns this override (timed sold-out / scheduled availability). Square blocks
+            # every API write while it holds — and will flip the product back on itself at the set time.
+            return False,"SCHEDULED: on a Square timer — it switches back on by itself, or use the Square app"
+        return False,"Square still shows it sold out — switch it on in the Square app"
     return True,None
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # COMP VOUCHERS — a customer rings up because something was missed, staff issue them a Square gift
@@ -1639,7 +1645,7 @@ def _prodoff_auto_enable(manual=False):
     items,err=_sq_offline_products()
     if err or items is None: return {"ok":False,"error":err or "no data"}
     never={str(n).strip().upper() for n in (db.get("prodoff_never") or [])}
-    enabled=[];skipped=[];failed=[];addons=[]
+    enabled=[];skipped=[];failed=[];addons=[];scheduled=[]
     for it in items:
         nm=(it.get("item") or "").strip()
         if nm.upper() in never: skipped.append(nm); continue
@@ -1647,6 +1653,7 @@ def _prodoff_auto_enable(manual=False):
         except Exception as ex: ok,e=False,str(ex)
         if ok: enabled.append(nm)
         elif it.get("kind")=="modifier": addons.append(nm)      # Square can't do add-ons from an app
+        elif e and str(e).startswith("SCHEDULED"): scheduled.append(nm)   # on a Square timer — comes back by itself
         else: failed.append(nm)
     def uniq(l):
         out=[]
@@ -1656,9 +1663,10 @@ def _prodoff_auto_enable(manual=False):
     # one product = many Square objects, so the same name can land in several buckets. Report it once,
     # under the most actionable outcome, or the summary reads as a contradiction.
     fl=uniq(failed); ad=[x for x in uniq(addons) if x not in fl]
-    en=[x for x in uniq(enabled) if x not in fl and x not in ad]
+    sc=[x for x in uniq(scheduled) if x not in fl and x not in ad]
+    en=[x for x in uniq(enabled) if x not in fl and x not in ad and x not in sc]
     res={"ok":True,"at":int(time.time()*1000),"date":datetime.now().strftime("%Y-%m-%d"),
-         "enabled":en,"skipped":uniq(skipped),"failed":fl,"addons":ad,
+         "enabled":en,"skipped":uniq(skipped),"failed":fl,"addons":ad,"scheduled":sc,
          "manual":bool(manual),"seen":True if manual else False}
     with data_lock:
         db["prodoff_autolog"]=res
