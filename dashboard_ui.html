@@ -161,6 +161,13 @@ body.kiosk .topbar-title{cursor:default;}
    under body.style-v2; classic untouched. ══ */
 body.style-v2{--bg:#0a0d14;--card:#12161f;--surface:#161b26;--surface2:#1c2230;--border:#1d2432;--border2:#2a3244;}
 body.style-v2 .top-bar{border-bottom:1px solid var(--border);}
+/* the mock's palette: 01 orange, 02 blue, 03 purple, 04 green — overrides the physical-probe colours
+   INSIDE v2 only (classic keeps black/green/brown/orange for matching the real probes) */
+body.style-v2 .ac0{--acc:#fb9b24;--accv:#fb9b24;}
+body.style-v2 .ac1{--acc:#60a5fa;--accv:#60a5fa;}
+body.style-v2 .ac2{--acc:#a78bfa;--accv:#a78bfa;}
+body.style-v2 .ac3{--acc:#34d399;--accv:#34d399;}
+body.style-v2 .probe-card.p2::before{display:none;}   /* mock cards have no top colour band */
 body.style-v2 .sec-head span{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--text);padding-left:10px;border-left:3px solid var(--amber);}
 /* layout — the mock's structure */
 body.style-v2 #page-probes{padding:14px 18px;}
@@ -176,7 +183,7 @@ body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,m
 body.style-v2 #rot-live{gap:14px;}
 body.style-v2 #rot-live .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:14px 18px;border-radius:16px;border:1px solid var(--border2);}
 body.style-v2 #rot-live .rl-top{margin:0;}
-body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:row;align-items:center;gap:10px;}
+body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:3px;}
 body.style-v2 #rot-live .rl-heroRow{width:auto;gap:10px;}
 body.style-v2 #rot-live .rl-hero-num{font-size:clamp(30px,4.8vh,44px);}
 body.style-v2 #rot-live .rl-hero-lab{margin:0;}
