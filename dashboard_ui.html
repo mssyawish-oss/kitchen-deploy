@@ -476,6 +476,7 @@ body.view-phone .rl-step{width:44px;height:44px;}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
 .status-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green);}
 .status-dot.scanning{background:var(--amber);animation:blink 1s infinite;}
+.status-dot.err{background:var(--red);box-shadow:0 0 6px var(--red);}
 #clock{font-family:var(--font-mono);font-size:16px;font-weight:700;}
 .page-area{flex:1;overflow:hidden;position:relative;}
 .page{position:absolute;inset:0;overflow-y:auto;padding:16px;display:none;}
@@ -1125,7 +1126,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="side-item" onclick="closeSidebar();toggleFullscreen()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span><span>Fullscreen</span></button>
     </div>
     <div class="side-foot">
-      <div class="side-card"><span class="side-dot"></span><div><div style="font-size:11px;font-weight:700;color:var(--text);">System OK</div><div style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;"><span class="status-dot scanning" id="ble-dot" style="width:6px;height:6px;"></span><span id="ble-msg">BLE</span></div></div></div>
+      <div class="side-card"><span class="side-dot"></span><div><div style="font-size:11px;font-weight:700;color:var(--text);">System OK</div><div style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;"><span class="status-dot scanning" id="ble-dot" style="width:6px;height:6px;"></span><span id="ble-msg">BLE</span><span id="niim-wrap" style="display:none;align-items:center;gap:4px;cursor:pointer;" onclick="niimReconnect(event)" title="Label printer — tap to reconnect"><span style="opacity:.45;">·</span><span class="status-dot" id="niim-dot" style="width:6px;height:6px;"></span><span id="niim-msg">Printer</span></span></div></div></div>
       <div class="side-clock" id="side-clock">—</div>
       <button class="side-item side-lock" onclick="closeSidebar();lockApp()"><span class="side-ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><span>Lock</span></button>
     </div>
@@ -2051,6 +2052,43 @@ function _applyRemoteSilence(list){
   finally{_applyingRemoteSilence=false;}
 }
 function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+// ── Label-printer status light ──────────────────────────────────────────────────────────────────
+// The B1 Pro is only connected DURING a print (BLE, one link at a time), so there is no live
+// connection to poll — and polling it would risk knocking the FM230 probe link over. The light
+// therefore shows how the LAST real contact went (a print, or a manual test), and tapping it does a
+// genuine connect attempt on demand.
+let _niimState=null;
+function _niimRender(s){
+  _niimState=s||null;
+  const wrap=document.getElementById('niim-wrap'),dot=document.getElementById('niim-dot'),msg=document.getElementById('niim-msg');
+  if(!wrap||!dot||!msg)return;
+  if(!s||!s.mac){wrap.style.display='none';return;}          // no printer paired yet → hide entirely
+  wrap.style.display='inline-flex';
+  const ageMin=s.last_at?((Date.now()-s.last_at)/60000):null;
+  let cls='',txt='Printer';
+  if(s.last_ok===true){ cls='connected'; txt=(ageMin!=null&&ageMin>240)?'Printer':'Printer'; }
+  else if(s.last_ok===false){ cls='err'; txt='Printer ✕'; }
+  else { cls=''; txt='Printer ?'; }                           // paired but never used yet
+  dot.className='status-dot '+cls;
+  msg.textContent=txt;
+  wrap.title=s.last_ok===false?('Last print failed'+(s.last_err?(': '+s.last_err):'')+' — tap to reconnect')
+            :s.last_ok===true?('Printer OK'+(ageMin!=null?(' · last used '+(ageMin<60?Math.round(ageMin)+'m':Math.round(ageMin/60)+'h')+' ago'):'')+' — tap to test')
+            :'Printer paired but not used yet — tap to test';
+}
+function refreshNiimStatus(){
+  fetch('/api/niimbot_status',{cache:'no-store'}).then(r=>r.json()).then(_niimRender).catch(()=>{});
+}
+function niimReconnect(ev){
+  if(ev){ev.stopPropagation();}
+  const msg=document.getElementById('niim-msg'),dot=document.getElementById('niim-dot');
+  if(msg)msg.textContent='Connecting…';
+  if(dot)dot.className='status-dot scanning';
+  _toast('Reconnecting to the label printer…');
+  fetch('/api/niimbot_test',{method:'POST'}).then(r=>r.json()).then(d=>{
+    _toast(d&&d.ok?'Label printer connected ✓':('Printer: '+((d&&d.error)||'no answer')));
+    refreshNiimStatus();
+  }).catch(()=>{_toast('Could not reach the server.');refreshNiimStatus();});
+}
 function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
@@ -4406,7 +4444,8 @@ async function init(){
   setInterval(checkStockPrompt,30000);
   checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
   checkUpdateBanner();setInterval(()=>{const _fin=()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();if(typeof renderDeployHealth==='function')renderDeployHealth();};if(typeof loadAppData==='function')loadAppData().then(_fin).catch(_fin);else _fin();},60000);   // refresh from server so the 'update ready' banner clears on every device once applied, + refresh deploy health
-  checkUiVersion();setInterval(checkUiVersion,60000);   // self-update: auto-reload when a new screen build is deployed
+  checkUiVersion();setInterval(checkUiVersion,60000);
+  refreshNiimStatus();setInterval(refreshNiimStatus,60000);   // reads stored state only — never touches Bluetooth   // self-update: auto-reload when a new screen build is deployed
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();

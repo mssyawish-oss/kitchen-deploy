@@ -3783,10 +3783,12 @@ def _niimbot_print(img,qty=1):
                 await asyncio.sleep(1.4)                                              # let it feed
             await send(_niim_pkt(0xF3,[1]),0.2)                                       # end print
             return True
-    try: return bool(asyncio.run(_run()))
+    try:
+        _r=bool(asyncio.run(_run())); _niim_note(_r); return _r
     except Exception as e:
         try: app.logger.warning("niimbot print failed: %s",e)
         except Exception: pass
+        _niim_note(False,e)
         return False
 @app.route("/api/ble_scan")
 def api_ble_scan():
@@ -3803,6 +3805,46 @@ def api_ble_scan():
                         "saved_mac":((db.get("niimbot") or {}).get("mac") or "")})
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)})
+
+def _niim_note(ok,err=""):
+    # Remember how the last contact with the printer went. We deliberately do NOT poll the printer:
+    # an idle BLE connect/scan can knock the FM230 probe link over, so the light reflects the last real
+    # attempt (print or manual test) rather than a live ping.
+    try:
+        with data_lock:
+            n=dict(db.get("niimbot") or {})
+            n["last_ok"]=bool(ok); n["last_at"]=int(time.time()*1000)
+            if err: n["last_err"]=str(err)[:160]
+            elif ok: n.pop("last_err",None)
+            db["niimbot"]=n; save_data(db)
+    except Exception: pass
+
+@app.route("/api/niimbot_status")
+def api_niimbot_status():
+    n=db.get("niimbot") or {}
+    return jsonify({"ok":True,"mac":n.get("mac",""),"last_ok":n.get("last_ok"),
+                    "last_at":n.get("last_at"),"last_err":n.get("last_err",""),
+                    "density":n.get("density",3)})
+
+@app.route("/api/niimbot_test",methods=["POST"])
+def api_niimbot_test():
+    # On-demand connect check / reconnect. Connects, then disconnects straight away — no print.
+    mac=((db.get("niimbot") or {}).get("mac") or "").strip()
+    if not mac: return jsonify({"ok":False,"error":"No printer saved yet — scan for it first."})
+    try:
+        import asyncio
+        from bleak import BleakClient
+    except Exception as e:
+        _niim_note(False,str(e)); return jsonify({"ok":False,"error":"Bluetooth unavailable on the server"})
+    async def _probe():
+        async with BleakClient(mac,timeout=12) as cl:
+            return bool(cl.is_connected)
+    try:
+        ok=bool(asyncio.run(_probe())); _niim_note(ok,"" if ok else "did not connect")
+        return jsonify({"ok":ok,"error":"" if ok else "Printer did not answer — is it switched on and in range?"})
+    except Exception as e:
+        _niim_note(False,e)
+        return jsonify({"ok":False,"error":"Couldn't reach the printer: "+str(e)[:120]})
 
 @app.route("/api/niimbot_mac",methods=["POST"])
 def api_niimbot_mac():
