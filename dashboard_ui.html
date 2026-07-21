@@ -1031,7 +1031,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 /* Cameras / Sales / Team live in the left menu now, not the bottom bar */
 .bottom-nav .nav-hidden{display:none;}
 /* floating "products switched off" pill — flashes at the bottom; tap opens the list + silences the alarm for 1h */
-.prodoff-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 14px);z-index:150;display:flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;color:#fff;border-radius:999px;padding:9px 15px 9px 13px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.prodoff-fab{display:none!important;position:fixed;right:16px;bottom:calc(var(--nav-h) + 14px);z-index:150;display:flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;color:#fff;border-radius:999px;padding:9px 15px 9px 13px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5);}
 .prodoff-fab svg{width:20px;height:20px;color:#fca5a5;flex-shrink:0;}
 .prodoff-fab .pf-num{background:#ef4444;color:#fff;border-radius:999px;min-width:22px;text-align:center;padding:1px 7px;font-size:13px;font-weight:800;}
 .prodoff-fab.flashing{animation:prodoff-pulse 1.1s ease-in-out infinite;}
@@ -1328,6 +1328,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep/Tasks</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn" data-page="orders" onclick="navTo('orders',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l3 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Orders</span></div><div class="nav-badge" id="orders-badge">!</div></button>
     <button class="nav-btn" data-page="comp" onclick="openComp(this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 12h20"/><path d="M12 7v14"/><path d="M12 7S9.5 3.5 7.5 4.2 6.4 7 8 7Z"/><path d="M12 7s2.5-3.5 4.5-2.8S17.6 7 16 7Z"/></svg><span>Comp</span></div></button>
+    <button class="nav-btn" id="nav-prodoff" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>OFF</span></div><div class="nav-badge" id="prodoff-nav-badge" style="display:block;">!</div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -3729,9 +3730,9 @@ function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};
   saveKeys(['prodoff_mutes']);}
 function checkProductsOff(){
   const fab=document.getElementById('prodoff-fab');if(!fab)return;
-  const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
+  const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');const _nb=document.getElementById('nav-prodoff');if(_nb){_nb.style.display='none';_nb.classList.remove('alarming');}if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
   if(appData.products_off_enabled===false){_prodOffList=[];hide();return;}
-  const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden')){fab.style.display='none';return;}   // not on lock screen
+  const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden')){fab.style.display='none';const _nb3=document.getElementById('nav-prodoff');if(_nb3)_nb3.style.display='none';return;}   // not on lock screen
   fetch('/api/products_offline').then(r=>r.json()).then(d=>{
     _prodOffList=(d&&d.ok&&d.off)?d.off:[];
     if(!_prodOffList.length){hide();return;}
@@ -3739,12 +3740,13 @@ function checkProductsOff(){
     // visible (even while the alarm is auto-delayed) and can never be hidden by an error further down.
     fab.style.display='flex';
     const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_pdOffGroups().length;   // count PRODUCTS, not each size/add-on object
+    const _nb=document.getElementById('nav-prodoff');if(_nb){_nb.style.display='';const _bg=document.getElementById('prodoff-nav-badge');if(_bg)_bg.textContent=_pdOffGroups().length;}
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
     const afterOpen=mins>=(10*60+10);                                // opening alarm sounds from 10:10am
     _pdOffPrune();                                                    // expired mutes (incl. the 10am day reset)
     const _t=Date.now();
     const alarmOn=afterOpen&&_prodOffList.some(p=>!_pdOffMuted(p.id)&&_t>=_pdOffEligibleAt(p.off_since));   // off, not silenced, AND past its auto-delay window
-    fab.classList.toggle('flashing',alarmOn);                        // flashes while the alarm is live; steady once silenced
+    fab.classList.toggle('flashing',alarmOn);const _nb2=document.getElementById('nav-prodoff');if(_nb2)_nb2.classList.toggle('alarming',alarmOn);                        // flashes while the alarm is live; steady once silenced
     if(alarmOn){startProdAlarm();}else{if(typeof stopAlarm==='function')stopAlarm('prod-off');}
     if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();
   }).catch(()=>{});
