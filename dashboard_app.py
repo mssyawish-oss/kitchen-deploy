@@ -1307,12 +1307,14 @@ def _comp_staff(pin):
 def api_comp_config():
     if request.method=="POST":
         d=request.get_json(silent=True) or {}
+        if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")):
+            return jsonify({"ok":False,"error":"Wrong access code"})   # settings hold the SMS credentials
         with data_lock:
             cs=dict(db.get("clicksend") or {})
             for k in ("user","key","sender"):
                 if k in d: cs[k]=str(d.get(k) or "").strip()
             db["clicksend"]=cs
-            if "code" in d: db["comp_code"]=str(d.get("code") or "1989").strip()[:8]
+            if "new_code" in d: db["comp_code"]=str(d.get("new_code") or "1989").strip()[:8]
             if "online_url" in d: db["online_url"]=str(d.get("online_url") or "").strip()[:200]
             if "amounts" in d and isinstance(d["amounts"],list):
                 db["comp_amounts"]=[float(x) for x in d["amounts"] if str(x).replace(".","",1).isdigit()][:8]
@@ -1468,13 +1470,29 @@ def api_comp_send():
     # into an online checkout field can silently fail — not worth the cosmetics.
     amt_s=("%.2f"%amt).rstrip("0").rstrip(".")
     first=(name.split(" ")[0] if name else "").strip()
-    msg=("%s\n$%s CREDIT\n"%(shop.upper(),amt_s)
-         +("\nHi %s, sorry about that!\n"%first if first else "\nSorry about that!\n")
-         +"\nGift card code:\n%s\n\n"%gan
-         +"Show this at the counter, or enter it as a gift card at online checkout.\n")
-    _url=(db.get("online_url") or "").strip()
-    if _url: msg+="Order online: %s\n"%_url
-    msg+="Valid until %s."%expiry
+    # Straight quotes/dashes only: a curly apostrophe silently flips SMS to UCS-2 encoding, where a
+    # segment is 70 characters instead of 160 — i.e. it quietly doubles the cost of every message.
+    def _gsm(s):
+        for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),
+                    ("\u2014","-"),("\u2013","-"),("\u2026","...")):
+            s=s.replace(a,b)
+        return s
+    LINES={"sorry":  "$%s credit - sorry about that!",
+           "thanks": "$%s credit - thank you!",
+           "gift":   "$%s credit, just for you!",
+           "loyal":  "$%s credit for a regular!"}
+    mtype=str(d.get("msg_type","sorry")).strip().lower()
+    custom=str(d.get("custom_line","")).strip()[:80]
+    if mtype=="custom" and custom: opener=custom
+    else: opener=(LINES.get(mtype) or LINES["sorry"])%amt_s
+    msg=_gsm(shop)+"\n"+_gsm(opener)+"\n"
+    if first: msg+="Hi %s!\n"%_gsm(first)
+    msg+="\nCODE %s\n\n"%gan
+    # Trim the scheme and trailing slash: phones still turn it into a link, and 8 characters is the
+    # difference between one SMS segment and two on most of these templates.
+    _url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
+    msg+=("In store or online: %s\n"%_url) if _url else "Use in store or at online checkout.\n"
+    msg+="Valid to %s"%expiry
     sent,serr=_clicksend_sms(phone,msg)
     entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
            "name":name,"phone":phone,"reason":reason,"staff":staff,

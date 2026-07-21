@@ -1232,6 +1232,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div class="comp-grid">
           <div class="comp-card">
             <div class="comp-h">Send a credit</div>
+            <div class="comp-lab">Message</div>
+            <div id="comp-types" class="comp-amts"></div>
+            <input class="input" id="comp-custom-line" placeholder="Your own opening line" style="display:none;" maxlength="80">
             <div class="comp-lab">Amount</div>
             <div id="comp-amts" class="comp-amts"></div>
             <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null)">
@@ -2138,7 +2141,7 @@ function niimReconnect(ev){
 // Gated behind its own access code (default 1989) — separate from staff PINs, so it stays off-limits
 // to floor staff. Once inside, issuing a voucher still needs the staff member's OWN PIN, which is
 // what gets recorded against it. Square generates the code; ClickSend texts it.
-let _compUnlocked=false,_compAmt=null,_compCode='',_compCfg={amounts:[5,10,15,20,25,50],expiry_months:12,sms_ready:false};
+let _compUnlocked=false,_compAmt=null,_compCode='',_compType='sorry',_compCfg={amounts:[5,10,15,20,25,50],expiry_months:12,sms_ready:false};
 function openComp(btn){
   if(_compUnlocked){navTo('comp',btn);compLoad();return;}
   requireCompCode(()=>{_compUnlocked=true;navTo('comp',btn);compLoad();});
@@ -2160,11 +2163,19 @@ function compLoad(){
   fetch('/api/comp_config').then(r=>r.json()).then(c=>{
     _compCfg=c||_compCfg;
     const ex=document.getElementById('comp-exp');if(ex&&!ex._touched)ex.value=c.expiry_months||12;
-    compRenderAmts();
+    compRenderAmts();compRenderTypes();
     if(!c.sms_ready)_compStatus('No SMS account connected yet — tap Setup. Vouchers will still be created; you read the code to the customer.','var(--amber)');
   }).catch(()=>{});
   fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[],(d&&d.summary)||null)).catch(()=>{});
 }
+const COMP_TYPES=[["sorry","Sorry"],["thanks","Thank you"],["gift","Just for you"],["loyal","Regular"],["custom","Custom"]];
+function compRenderTypes(){
+  const el=document.getElementById('comp-types');if(!el)return;
+  el.innerHTML=COMP_TYPES.map(t=>'<button class="comp-amt'+(_compType===t[0]?' on':'')+'" onclick="compPickType(\''+t[0]+'\')">'+t[1]+'</button>').join('');
+  const c=document.getElementById('comp-custom-line');
+  if(c)c.style.display=(_compType==='custom')?'':'none';
+}
+function compPickType(t){_compType=t;compRenderTypes();}
 function compRenderAmts(){
   const el=document.getElementById('comp-amts');if(!el)return;
   el.innerHTML=(_compCfg.amounts||[5,10,15,20,25,50]).map(a=>
@@ -2191,7 +2202,7 @@ function compSend(){
   requirePin('Your PIN','Signing this $'+amt+' voucher',function(u){
     _compStatus('Creating voucher…','var(--muted)');
     fetch('/api/comp_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months})})
+      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months,msg_type:_compType,custom_line:((document.getElementById('comp-custom-line')||{}).value||'')})})
       .then(r=>r.json()).then(d=>{
         if(!d||!d.ok){_compStatus(((d&&d.error)||'Failed'),'var(--red)');return;}
         _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+d.gan+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
@@ -2273,7 +2284,7 @@ function compSetup(){
   const sender=prompt('Sender name on the text (optional).\nLetters/numbers only, max 11, no spaces or apostrophes.\nLeave BLANK to send from a shared number.','');
   const url=prompt('Your online ordering link (optional).\nAdded to the text so customers can order online.\nLeave blank to omit.',_compCfg.online_url||'');
   fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim()})})
+    body:JSON.stringify({code:_compCode,user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim()})})
     .then(r=>r.json()).then(()=>{_toast('Saved — checking credentials…');compLoad();compCheckCreds();})
     .catch(()=>_toast('Could not save.'));
 }
