@@ -2244,13 +2244,8 @@ function openComp(btn){
   requireCompCode(()=>{_compUnlocked=true;navTo('comp',btn);compLoad();});
 }
 function requireCompCode(cb){
-  const code=prompt('Comp access code');
-  if(code===null)return;
-  fetch('/api/comp_check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})})
-    .then(r=>r.json()).then(d=>{
-      if(d&&d.ok){_compCode=code;cb();}
-      else{_toast('Wrong access code');}
-    }).catch(()=>_toast('Could not reach the server.'));
+  // same PIN system as everything else — a Manager/Admin staff PIN, not a separate code
+  requirePin('Manager Code','Comp vouchers need a Manager or Admin PIN',function(u){_compCode=(u&&u.pin)||'';cb();},SETTINGS_ROLES);
 }
 function compLoad(){
   const lk=document.getElementById('comp-locked'),mn=document.getElementById('comp-main');
@@ -2599,7 +2594,9 @@ function _sideSvg(p){return `<svg width="21" height="21" viewBox="0 0 24 24" fil
 function _setSidebar(show){const s=document.getElementById('app-shell');if(window.matchMedia('(max-width:820px)').matches){s.classList.toggle('drawer-open',show);return;}s.classList.toggle('nosidebar',!show);try{localStorage.setItem('nosidebar',show?'0':'1');}catch(e){}}
 function toggleSidebar(){const s=document.getElementById('app-shell');const mobile=window.matchMedia('(max-width:820px)').matches;const open=mobile?s.classList.contains('drawer-open'):!s.classList.contains('nosidebar');
   if(open){_setSidebar(false);return;}                                   // closing → free
-  requirePin('Manager Code','The menu needs a Manager or Admin PIN',()=>{_setSidebar(true);},SETTINGS_ROLES);}   // opening → ALWAYS ask (no grace window)
+  requirePin('Manager Code','The menu needs a Manager or Admin PIN',()=>{
+    const _n=Date.now();['settings','stock','recipes','cameras','sales','team'].forEach(k=>sectionUnlockedAt[k]=_n);   // one code unlocks everything behind the menu
+    _setSidebar(true);},SETTINGS_ROLES);}
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
@@ -4867,7 +4864,24 @@ async function init(){
   checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
   checkUpdateBanner();setInterval(()=>{const _fin=()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();if(typeof renderDeployHealth==='function')renderDeployHealth();};if(typeof loadAppData==='function')loadAppData().then(_fin).catch(_fin);else _fin();},60000);   // refresh from server so the 'update ready' banner clears on every device once applied, + refresh deploy health
   checkUiVersion();setInterval(checkUiVersion,60000);
-  refreshNiimStatus();setInterval(refreshNiimStatus,60000);   // reads stored state only — never touches Bluetooth   // self-update: auto-reload when a new screen build is deployed
+  refreshNiimStatus();setInterval(refreshNiimStatus,60000);   // reads stored state only — never touches Bluetooth
+  // Idle auto-close: an open menu or Settings shuts itself after 30s untouched, and the unlock lapses
+  // with it — walking away from an open admin surface must not leave it open for the next person.
+  window._uiIdleLast=Date.now();
+  ['pointerdown','keydown','touchstart','wheel'].forEach(ev=>document.addEventListener(ev,()=>{window._uiIdleLast=Date.now();},true));
+  setInterval(()=>{
+    if(Date.now()-window._uiIdleLast<30000)return;
+    const s=document.getElementById('app-shell');if(!s)return;
+    const mobile=window.matchMedia('(max-width:820px)').matches;
+    const sideOpen=mobile?s.classList.contains('drawer-open'):!s.classList.contains('nosidebar');
+    const sm=document.getElementById('settings-modal');
+    const setOpen=!!(sm&&sm.classList.contains('open'));
+    if(!sideOpen&&!setOpen)return;
+    if(setOpen)closeModal('settings-modal');
+    if(sideOpen)_setSidebar(false);
+    sectionUnlockedAt={};
+    if(typeof _toast==='function')_toast('Menu closed — idle for 30s');
+  },5000);   // self-update: auto-reload when a new screen build is deployed
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();

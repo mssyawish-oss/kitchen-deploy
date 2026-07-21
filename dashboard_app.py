@@ -1348,7 +1348,7 @@ def _clicksend_mms(to,subject,body,media_url):
 @app.route("/api/comp_mms_test",methods=["POST"])
 def api_comp_mms_test():
     d=request.get_json(silent=True) or {}
-    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Wrong access code"})
     to=str(d.get("phone","")).strip()
     if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
     url=((db.get("clicksend") or {}).get("media_url") or "").strip()
@@ -1361,11 +1361,21 @@ def _comp_staff(pin):
         if str(s.get("pin","")) == str(pin): return s.get("name") or "Staff"
     return None
 
+def _comp_ok(code):
+    # Comp gate: the old standalone access code still works, and so does any Manager/Admin staff PIN —
+    # the owner wants one PIN system, not a separate code to remember.
+    c=str(code or "").strip()
+    if not c: return False
+    if c==str(db.get("comp_code","1989")): return True
+    for s in (db.get("staff") or []):
+        if str(s.get("pin",""))==c and str(s.get("role","")).lower() in ("admin","manager"): return True
+    return False
+
 @app.route("/api/comp_config",methods=["GET","POST"])
 def api_comp_config():
     if request.method=="POST":
         d=request.get_json(silent=True) or {}
-        if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")):
+        if not _comp_ok(d.get("code")):
             return jsonify({"ok":False,"error":"Wrong access code"})   # settings hold the SMS credentials
         with data_lock:
             cs=dict(db.get("clicksend") or {})
@@ -1397,7 +1407,7 @@ def api_comp_config():
 def api_comp_sms_check():
     # Validate the ClickSend credentials on their own against the account endpoint — no SMS sent, so
     # this separates "wrong username/key" from anything to do with sender IDs or numbers.
-    if str((request.get_json(silent=True) or {}).get("code","")).strip()!=str(db.get("comp_code","1989")):
+    if not _comp_ok((request.get_json(silent=True) or {}).get("code")):
         return jsonify({"ok":False,"error":"Wrong access code"})
     cs=db.get("clicksend") or {}
     user=(cs.get("user") or "").strip(); key=(cs.get("key") or "").strip()
@@ -1425,7 +1435,7 @@ def api_comp_sms_check():
 def api_comp_sms_test():
     # Prove the SMS credentials on their own — no gift card burned while getting ClickSend right.
     d=request.get_json(silent=True) or {}
-    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Wrong access code"})
     to=str(d.get("phone","")).strip()
     if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
     ok,err=_clicksend_sms(to,"Test message from the kitchen dashboard — SMS is working.")
@@ -1458,7 +1468,7 @@ def api_comp_verify():
 @app.route("/api/comp_check",methods=["POST"])
 def api_comp_check():
     code=str((request.get_json(silent=True) or {}).get("code","")).strip()
-    return jsonify({"ok":code==str(db.get("comp_code","1989"))})
+    return jsonify({"ok":_comp_ok(code)})
 
 def _sq_gift_balance(gan):
     """Look one code up in Square → (state, balance_dollars, error)."""
@@ -1479,7 +1489,7 @@ def _sq_gift_balance(gan):
 def api_comp_refresh():
     # Ask Square for the current state of recent vouchers and cache it on each log entry, so the
     # dashboard can show what's been used without a call per page load.
-    if str((request.get_json(silent=True) or {}).get("code","")).strip()!=str(db.get("comp_code","1989")):
+    if not _comp_ok((request.get_json(silent=True) or {}).get("code")):
         return jsonify({"ok":False,"error":"Wrong access code"})
     log=list(db.get("comp_log",[]) or [])
     checked=0
@@ -1556,7 +1566,7 @@ def _comp_deliver(phone,msg,want_mms):
 def api_comp_resend():
     """Re-send an existing voucher — same code, optionally to a corrected number."""
     d=request.get_json(silent=True) or {}
-    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Wrong access code"})
     ts=d.get("ts"); gan=str(d.get("gan","")).strip()
     log=list(db.get("comp_log",[]) or [])
     v=next((e for e in log if (ts and e.get("ts")==ts) or (gan and e.get("gan")==gan)),None)
@@ -1578,7 +1588,7 @@ def api_comp_resend():
 @app.route("/api/comp_send",methods=["POST"])
 def api_comp_send():
     d=request.get_json(silent=True) or {}
-    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Wrong access code"})
     staff=_comp_staff(str(d.get("staff_pin","")).strip())
     if not staff: return jsonify({"ok":False,"error":"That PIN doesn't match a staff member"})
     try: amt=round(float(d.get("amount",0)),2)
