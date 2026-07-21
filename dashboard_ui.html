@@ -184,7 +184,8 @@ body.style-v2 #rot-live{gap:14px;}
 body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead container — bordered in v2 it showed as a blank card. The cam/orders cards have content when live, so they still appear */
 /* the ROW layout is for the two SUMMARY cards only — it mangled the camera and orders-waiting
    cards into what looked like a blank box. They keep their own layout, just with the v2 frame. */
-body.style-v2 #rl-bbq .rl-card,body.style-v2 #rl-fry .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:14px 18px;}
+body.style-v2 #rl-bbq .rl-card,body.style-v2 #rl-fry .rl-card{flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px 30px;justify-content:center;padding:14px 18px;}
+body.style-v2 #rl-bbq .rl-pulls{display:none;}   /* owner: the last-pulled detail stays in the log, not on the card */
 body.style-v2 #rot-live .rl-card{border-radius:16px;border:1px solid var(--border2);}
 body.style-v2 #rot-live .rl-top{margin:0;}
 body.style-v2 #rot-live .rl-hero{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:3px;}
@@ -193,7 +194,7 @@ body.style-v2 #rot-live .rl-hero-num{font-size:clamp(30px,4.8vh,44px);}
 body.style-v2 #rot-live .rl-hero-lab{margin:0;}
 body.style-v2 #rot-live .rl-step{width:36px;height:36px;font-size:19px;}
 body.style-v2 #rot-live .rl-foot{margin:0;flex-direction:column;align-items:flex-start;gap:2px;}
-body.style-v2 #rot-live .rl-actions{margin-left:auto;width:auto;flex:0 0 auto;flex-direction:column;gap:7px;}
+body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:7px;}
 body.style-v2 #rot-live .rl-actions button{height:34px;min-width:132px;padding:0 14px;border-radius:9px;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
 /* probe card v2 */
@@ -3345,7 +3346,7 @@ function renderRotLive(rot){
     <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div>${rateHtml}<div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
     ${staleHtml}
     ${camErrHtml}
-    <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button></div>
+    <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button>${window.DASH_V2?`<button class="rl-mini" onclick="openPullLog(event)">Pull log</button>`:''}</div>
     ${_pullLogHtml(rot.pulls)}
   </div>`;
 }
