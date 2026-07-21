@@ -1220,7 +1220,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-roster"></div>
     </div>
     <div class="page" id="page-comp">
-      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
+      <div class="page-header"><div class="page-title">Comp voucher</div><div class="row" style="gap:8px;margin-left:auto;"><button class="btn" onclick="compSetup()">Setup</button><button class="btn" onclick="compTestSms()">Test SMS</button><button class="btn" onclick="compLoad()">Refresh</button></div></div>
       <div id="comp-locked" style="text-align:center;padding:40px 16px;">
         <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
       </div>
@@ -2208,10 +2208,26 @@ function compRenderLog(v){
         +'<td class="pl-n">'+_mEsc(x.name||'—')+'<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.phone||'')+'</div>'
           +(x.reason?('<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.reason)+'</div>'):'')+'</td>'
         +'<td class="pl-d">$'+(x.amount!=null?x.amount:'—')+'</td>'
-        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
+        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;cursor:pointer;" title="Tap to check the balance" onclick="compVerify(\''+_mEsc(x.gan||'')+'\')">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
         +'<td class="pl-x">'+_mEsc(x.staff||'')+'</td>'
         +'<td>'+(x.sms?'<span style="color:var(--green);">sent</span>':'<span style="color:var(--amber);" title="'+_mEsc(x.sms_err||'')+'">no</span>')+'</td>'
       +'</tr>';}).join('')+'</tbody></table>';
+}
+function compTestSms(){
+  if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compTestSms();});return;}
+  const to=prompt('Send a test text to which mobile?','');
+  if(!to)return;
+  _compStatus('Sending test…','var(--muted)');
+  fetch('/api/comp_sms_test',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:_compCode,phone:to})}).then(r=>r.json()).then(d=>{
+      _compStatus(d&&d.ok?'Test text sent ✓':('SMS failed: '+((d&&d.error)||'unknown')),d&&d.ok?'var(--green)':'var(--red)');
+    }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+}
+function compVerify(gan){
+  fetch('/api/comp_verify?gan='+encodeURIComponent(gan)).then(r=>r.json()).then(d=>{
+    if(!d||!d.ok){_toast('Check failed: '+((d&&d.error)||'unknown'));return;}
+    _toast('Code '+gan+': '+(d.state||'?')+(d.balance!=null?(' · $'+d.balance.toFixed(2)+' left'):''));
+  }).catch(()=>_toast('Could not reach the server.'));
 }
 function compSetup(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compSetup();});return;}

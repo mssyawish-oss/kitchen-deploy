@@ -1325,6 +1325,40 @@ def api_comp_config():
                     "amounts":db.get("comp_amounts") or [5,10,15,20,25,50],
                     "expiry_months":db.get("comp_expiry_months",12)})
 
+@app.route("/api/comp_sms_test",methods=["POST"])
+def api_comp_sms_test():
+    # Prove the SMS credentials on their own — no gift card burned while getting ClickSend right.
+    d=request.get_json(silent=True) or {}
+    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    to=str(d.get("phone","")).strip()
+    if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
+    ok,err=_clicksend_sms(to,"Test message from the kitchen dashboard — SMS is working.")
+    return jsonify({"ok":bool(ok),"error":err or ""})
+
+@app.route("/api/comp_verify")
+def api_comp_verify():
+    # Look a voucher up in Square and report its real state + balance, so a code can be checked
+    # without walking to the till.
+    gan=(request.args.get("gan") or "").strip()
+    if not gan: return jsonify({"ok":False,"error":"no code given"})
+    hdr=_sq_headers()
+    if not hdr: return jsonify({"ok":False,"error":"Square not configured"})
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/gift-cards/from-gan",
+            data=json.dumps({"gan":gan}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        if res.get("errors"): return jsonify({"ok":False,"error":res["errors"][0].get("detail") or "not found"})
+        gc=res.get("gift_card") or {}
+        bal=(gc.get("balance_money") or {}).get("amount")
+        return jsonify({"ok":True,"state":gc.get("state"),"balance":(bal/100.0 if bal is not None else None),
+                        "currency":(gc.get("balance_money") or {}).get("currency"),"created_at":gc.get("created_at")})
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return jsonify({"ok":False,"error":e.read().decode()[:200]})
+            except Exception: pass
+        return jsonify({"ok":False,"error":str(e)[:180]})
+
 @app.route("/api/comp_check",methods=["POST"])
 def api_comp_check():
     code=str((request.get_json(silent=True) or {}).get("code","")).strip()
