@@ -2425,7 +2425,13 @@ function _initView(){
     if(v&&DASH_VIEWS.indexOf(v)>=0)localStorage.setItem('dashView',v);
     else v=localStorage.getItem('dashView');
   }catch(e){}
-  if(DASH_VIEWS.indexOf(v)<0)v=(window.innerWidth<820)?'phone':((window.innerWidth<1500)?'pad':'wall');
+  const W=window.innerWidth;
+  const auto=(W<820)?'phone':((W<1500)?'pad':'wall');
+  if(DASH_VIEWS.indexOf(v)<0)v=auto;
+  // A stored choice is a PREFERENCE, not a straitjacket. Opening ?view=pad once on a desktop used to
+  // pin the iPad layout to that machine for good — cramped cards and hidden panels on a big screen.
+  // If the window is nothing like the size the stored view targets, trust the screen instead.
+  else if((v==='pad'&&W>=1500)||(v==='phone'&&W>=820)||(v==='wall'&&W<1000)) v=auto;
   DASH_VIEWS.forEach(x=>document.body.classList.remove('view-'+x));
   document.body.classList.add('view-'+v);
   window.DASH_VIEW=v;return v;
