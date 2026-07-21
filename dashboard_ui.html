@@ -347,6 +347,7 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-num{font-family:var(--font-mono);font-size:26px;font-weight:700;line-height:1;}
 .rl-lab{font-size:10px;color:var(--muted);font-family:var(--font-body);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
 .rl-actions{display:flex;flex-direction:row;gap:8px;width:100%;}
+.rl-stale{width:100%;margin-top:6px;background:rgba(251,155,36,.14);border:1px solid var(--amber-dim);color:var(--amber);border-radius:8px;padding:6px 9px;font-size:11.5px;font-weight:600;line-height:1.35;}
 /* pull log inside the stock card */
 .rl-pulls{width:100%;margin-top:8px;border-top:1px solid var(--border2);padding-top:6px;}
 .rl-pull-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;padding:2px 0;}
@@ -2855,7 +2856,18 @@ function renderRotLive(rot){
   const showErr=rot.cam&&cerr&&!/block|skip/i.test(cerr);   // ignore the normal transient "view blocked" reads
   const nCook=(rot.levels&&/^[01]{6}$/.test(rot.levels))?rot.levels.split('').filter(c=>c==='1').length:(rot.rows_cooking||0);   // count from the SAME live pattern the animation shows → badge & animation always match
   const _lastPull=(rot.pulls&&rot.pulls.length)?rot.pulls[rot.pulls.length-1].ts:0;
-  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_pullLogOpen,_lastPull].join('|');
+  // sold-per-hour: sold today / hours open so far (min 0.5h so the first half hour isn't a wild number)
+  const _openH=(R.open_hour||10),_nowH=new Date().getHours()+new Date().getMinutes()/60;
+  const _hrsOpen=Math.max(0.5,_nowH-_openH);
+  const _rate=(rot.sold_today>0&&_nowH>=_openH)?(rot.sold_today/_hrsOpen):0;
+  const rateHtml=_rate>0?`<div class="rl-foot-stat"><span class="rl-foot-num">${_rate<10?_rate.toFixed(1):Math.round(_rate)}</span><span class="rl-foot-lab">/hr</span></div>`:'';
+  // stale-stock warning: if there IS stock but the most recent pull is older than the use-by, everything
+  // on the shelf is past its window. Uses the newest pull (most conservative → fewest false alarms).
+  const _ub=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.use_by_minutes)||120;
+  const _ageMin=_lastPull?((Date.now()-_lastPull)/60000):null;
+  const stale=(avail>=1 && _ageMin!=null && _ageMin>_ub);
+  const staleHtml=stale?`<div class="rl-stale">&#9888; Oldest stock ${_pullFmtMins(Math.round(_ageMin))} old — past ${_ub}min use-by, check freshness</div>`:'';
+  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_pullLogOpen,_lastPull,stale,Math.round(_rate*10)].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
   const modePill='';   // owner: dropped the "probe count" pill — counting mode lives in Settings
   const camErrHtml=showErr?`<div class="rl-camerr" title="${cerr.replace(/"/g,'&quot;')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Camera not counting: ${cerr.length>54?cerr.slice(0,54)+'…':cerr}</span></div>`:'';
@@ -2864,7 +2876,8 @@ function renderRotLive(rot){
   const lowPill=alvl==='none'?'':`<div class="rl-lowpill ${alvl}">Cook more</div>`;
   el.innerHTML=`<div class="rl-card ${alvl==='crit'?'crit':alvl==='warn'?'warn':''}" onclick="ackStock('bbq')"><div class="rl-top"><div class="rl-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 23a7 7 0 0 0 7-7c0-2.2-1.1-4.1-2.7-5.8-.5 1.1-1.3 1.9-2.1 2.2.6-2.4-.4-4.9-2.8-7-.3 2.7-2.1 4.1-3.5 5.6A7 7 0 0 0 5 16a7 7 0 0 0 7 7Z"/></svg></div>${cookHtml}${modePill}</div>
     <div class="rl-hero">${lowPill}<div class="rl-heroRow"><button class="rl-step" onclick="event.stopPropagation();rotStep(-0.25)" title="Quarter bird down">&minus;</button><div class="rl-hero-num" style="color:${numCol};font-size:${_rlNumSize(fmtBird(avail))};">${fmtBird(avail)}</div><button class="rl-step" onclick="event.stopPropagation();rotStep(0.25)" title="Quarter bird up">+</button></div><div class="rl-hero-lab">available</div></div>
-    <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div><div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
+    <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div>${rateHtml}<div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
+    ${staleHtml}
     ${camErrHtml}
     <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button></div>
     ${_pullLogHtml(rot.pulls)}
