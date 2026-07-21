@@ -353,14 +353,22 @@ body.kiosk .topbar-title{cursor:default;}
 .rl-pull-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;padding:2px 0;}
 .rl-pull-head:hover{color:var(--amber);}
 .rl-pull-x{font-size:11px;color:var(--muted);flex-shrink:0;}
-.rl-pull-body{margin-top:6px;max-height:190px;overflow-y:auto;font-size:11.5px;}
-.rl-pull-cols,.rl-pull-row{display:grid;grid-template-columns:52px 1fr auto auto;gap:8px;align-items:baseline;}
-.rl-pull-cols{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 0 4px;border-bottom:1px solid var(--border);}
-.rl-pull-row{padding:4px 0;border-bottom:1px solid var(--border);}
-.rl-pull-t{font-family:var(--font-mono);color:var(--text);}
-.rl-pull-n{color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.rl-pull-d{color:var(--amber);font-weight:600;white-space:nowrap;}
-.rl-pull-tp{color:var(--muted);white-space:nowrap;text-align:right;}
+/* pull log popup — the card only carries a one-line summary */
+.pl-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 6px;flex-wrap:wrap;}
+.pl-day:first-child{margin-top:2px;}
+.pl-day-n{font-size:15px;font-weight:700;color:var(--text);}
+.pl-day-s{font-size:12px;color:var(--muted);}
+.pl-table{width:100%;border-collapse:collapse;font-size:13px;}
+.pl-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:5px 8px 5px 0;border-bottom:1px solid var(--border2);white-space:nowrap;}
+.pl-table td{padding:8px 8px 8px 0;border-bottom:1px solid var(--border);white-space:nowrap;}
+.pl-table tr:last-child td{border-bottom:none;}
+.pl-t{font-family:var(--font-mono);color:var(--text);}
+.pl-n{color:var(--text);max-width:150px;overflow:hidden;text-overflow:ellipsis;}
+.pl-d{color:var(--amber);font-weight:700;}
+.pl-h,.pl-x{color:var(--muted);}
+.pl-p{color:var(--text);font-weight:600;}
+.pl-b{color:var(--green);font-weight:700;text-align:right;}
+@media(max-width:600px){.pl-table{font-size:12px;}.pl-table th:nth-child(4),.pl-table td:nth-child(4){display:none;}}
 .rl-actions>*{flex:1;white-space:nowrap;font-size:13px;padding:9px 6px;}
 .rl-puton{background:linear-gradient(180deg,#16a34a,#15803d);color:#eafff1;border:none;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.3);}
 .rl-puton:active{transform:translateY(1px);filter:brightness(.92);}
@@ -1223,6 +1231,12 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 
 <!-- Floating "products switched off" pill + its list modal -->
 <button id="prodoff-fab" class="prodoff-fab" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off — tap to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="pf-num">0</span><span style="font-size:11px;font-weight:700;letter-spacing:.5px;">OFF</span></button>
+<div class="modal-overlay" id="pulllog-modal">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-header"><div class="modal-title">Chicken pull log</div><button class="modal-close" onclick="closeModal('pulllog-modal')">Close</button></div>
+    <div id="pulllog-body"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="prodoff-modal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
@@ -2867,7 +2881,7 @@ function renderRotLive(rot){
   const _ageMin=_lastPull?((Date.now()-_lastPull)/60000):null;
   const stale=(avail>=1 && _ageMin!=null && _ageMin>_ub);
   const staleHtml=stale?`<div class="rl-stale">&#9888; Oldest stock ${_pullFmtMins(Math.round(_ageMin))} old — past ${_ub}min use-by, check freshness</div>`:'';
-  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_pullLogOpen,_lastPull,stale,Math.round(_rate*10)].join('|');
+  const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_lastPull,stale,Math.round(_rate*10)].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
   const modePill='';   // owner: dropped the "probe count" pill — counting mode lives in Settings
   const camErrHtml=showErr?`<div class="rl-camerr" title="${cerr.replace(/"/g,'&quot;')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Camera not counting: ${cerr.length>54?cerr.slice(0,54)+'…':cerr}</span></div>`:'';
@@ -2884,259 +2898,65 @@ function renderRotLive(rot){
   </div>`;
 }
 // Pull log inside the stock card — a one-line "Last pulled …" summary that expands to the recent history.
-let _pullLogOpen=false;
-function togglePullLog(ev){if(ev){ev.stopPropagation();}_pullLogOpen=!_pullLogOpen;_rotSig='';renderRotLive(window._lastRot||{});}
+// Pull log. The card shows ONE summary line; the full history opens in a popup — it never fits in the
+// card without the columns colliding, and the card must not grow or it pushes the page into scrolling.
 function _pullFmtClock(ms){try{return new Date(ms).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 function _pullFmtMins(m){if(m==null)return '–';if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+'h'+(r?(' '+r+'m'):'');}
+function _pullDayKey(ms){const d=new Date(ms);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function _pullDayLabel(ms){
+  const d=new Date(ms),n=new Date();
+  const same=(a,b)=>a.toDateString()===b.toDateString();
+  const y=new Date(n.getTime()-86400000);
+  if(same(d,n))return 'Today';
+  if(same(d,y))return 'Yesterday';
+  return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+}
 function _pullLogHtml(pulls){
   pulls=pulls||[];
-  if(!pulls.length)return '<div class="rl-pulls"><div class="rl-pull-head" onclick="togglePullLog(event)"><span>Pull log</span><span class="rl-pull-x">no pulls yet</span></div></div>';
+  if(!pulls.length)return '<div class="rl-pulls"><div class="rl-pull-head" onclick="openPullLog(event)"><span>Pull log</span><span class="rl-pull-x">no pulls yet ›</span></div></div>';
   const last=pulls[pulls.length-1];
-  const head=`<div class="rl-pull-head" onclick="togglePullLog(event)"><span>Last pulled ${_pullFmtClock(last.ts)}${last.peak_temp!=null?(' · '+last.peak_temp+'°C'):''}${last.total_mins!=null?(' · '+_pullFmtMins(last.total_mins)):''}</span><span class="rl-pull-x">${_pullLogOpen?'▲':'▼'}</span></div>`;
-  let body='';
-  if(_pullLogOpen){
-    const rows=pulls.slice().reverse().slice(0,15).map(p=>{
-      const nm=_mEsc(p.name||('Probe '+p.probe));
-      return `<div class="rl-pull-row"><span class="rl-pull-t">${_pullFmtClock(p.ts)}</span><span class="rl-pull-n">${nm}</span><span class="rl-pull-d">${_pullFmtMins(p.total_mins)}${p.hot_mins!=null?(' <span style="opacity:.6">('+p.hot_mins+'m hot)</span>'):''}</span><span class="rl-pull-tp">${p.peak_temp!=null?('peak '+p.peak_temp+'°'):''}${p.pull_temp!=null?(' · pulled '+p.pull_temp+'°'):''}</span></div>`;
-    }).join('');
-    body=`<div class="rl-pull-body"><div class="rl-pull-cols"><span>Time</span><span>Probe</span><span>On for</span><span>Temps</span></div>${rows}</div>`;
-  }
-  return `<div class="rl-pulls" onclick="event.stopPropagation()">${head}${body}</div>`;
+  const bits=[_pullFmtClock(last.ts)];
+  if(last.peak_temp!=null)bits.push(last.peak_temp+'°C');
+  if(last.total_mins!=null)bits.push(_pullFmtMins(last.total_mins));
+  return '<div class="rl-pulls"><div class="rl-pull-head" onclick="openPullLog(event)">'
+    +'<span>Last pulled '+bits.join(' · ')+'</span><span class="rl-pull-x">view log ›</span></div></div>';
 }
-// --- camera count log: every credit the camera makes, with the screenshots it saw (for debugging) ---
-let _camLogSig='';let _camLogOpen=false;
-function toggleCamLog(){_camLogOpen=!_camLogOpen;_camLogSig='';renderRotCreditLog(window._lastRot||{});}
-function _shotBig(src){let o=document.getElementById('shot-big');if(!o){o=document.createElement('div');o.id='shot-big';o.style.cssText='position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:14px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="'+src+'" style="max-width:96vw;max-height:92vh;border-radius:10px;background:#000;">';o.style.display='flex';}
-function _agoShort(ts){const s=Math.max(0,Math.floor(Date.now()/1000)-ts);if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m';return Math.floor(s/3600)+'h';}
-function _shotInfo(n){
-  if(n.indexOf('comp')>=0)return{label:'What the AI read',desc:'Your 6 shelves cropped out and stacked into strips — this exact picture is what the AI grades (empty / raw / almost / ready / overdone). It looks zoomed in because it is just the shelf crops, not the full oven.'};
-  if(n.indexOf('boxes')>=0)return{label:'Full view + shelf boxes',desc:'The whole camera frame with the 6 shelf boxes. The highlighted box is this shelf — amber if it counted, red if it skipped. If the boxes don’t line up with the chickens, fix them in Camera settings → Shelf box calibration.'};
-  if(n.indexOf('seq')>=0)return{label:'Live camera frame',desc:'The real camera a few seconds apart around this moment — earliest first. The exact time is on the photo itself (the camera’s own watermark).'};
-  return{label:'Photo',desc:''};
+function openPullLog(ev){
+  if(ev){ev.stopPropagation();}
+  openModal('pulllog-modal');
+  const b=document.getElementById('pulllog-body');
+  if(b)b.innerHTML='<div style="color:var(--muted);font-size:13px;padding:14px 2px;">Loading…</div>';
+  fetch('/api/pull_log',{cache:'no-store'}).then(r=>r.json())
+    .then(d=>renderPullLog((d&&d.pulls)||[]))
+    .catch(()=>renderPullLog(((window._lastRot||{}).pulls)||[]));
 }
-let _camEntryOpen=new Set();
-function toggleCamEntry(id){if(_camEntryOpen.has(id))_camEntryOpen.delete(id);else _camEntryOpen.add(id);_camLogSig='';renderRotCreditLog(window._lastRot||{});}
-function _camEntryTiles(e){
-  const shots=(e.shots||[]).map(function(s){return (typeof s==='string')?{n:s}:s;});
-  return shots.map(function(sh,idx){const n=sh.n,info=_shotInfo(n),u='/api/rotcam_credit_shot?id='+e.id+'&n='+n;
-    return '<div style="flex:0 0 auto;width:170px;">'
-      +'<div style="position:relative;">'
-        +'<img src="'+u+'" loading="lazy" onclick="_shotBig(\''+u+'\')" style="width:170px;height:104px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;">'
-        +'<div style="position:absolute;top:5px;left:5px;background:rgba(0,0,0,.74);color:#fff;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:5px;">'+(idx+1)+'</div>'
-      +'</div>'
-      +'<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px;">'+(idx+1)+'. '+info.label+'</div>'
-      +'<div style="font-size:10px;color:var(--muted);line-height:1.35;margin-top:1px;">'+info.desc+'</div>'
-    +'</div>';}).join('');
-}
-function renderRotCreditLog(rot){
-  const el=document.getElementById('rl-camlog');if(!el)return;window._lastRot=rot;
-  const log=(rot&&rot.credit_log)||[];
-  if(!rot||!rot.cam){el.style.display='none';el.innerHTML='';_camLogSig='';return;}   // only hidden when the camera is off
-  el.style.display='';
-  const counted=log.filter(function(e){return e.credited!==false;}).length, skipped=log.length-counted;
-  const sig=log.map(function(e){return e.id+(_camEntryOpen.has(e.id)?'*':'');}).join(',')+'|'+_camLogOpen;
-  if(sig===_camLogSig)return;_camLogSig=sig;
-  const items=log.slice().reverse();
-  const head='<div onclick="toggleCamLog()" style="cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text);padding:9px 11px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;">'
-    +'<span>📷 Camera count log</span><span style="color:var(--muted);font-weight:600;">('+counted+' counted'+(skipped?(' · '+skipped+' skipped'):'')+')</span>'
-    +'<span style="margin-left:auto;color:var(--muted);">'+(_camLogOpen?'▲ hide':'▼ show')+'</span></div>';
-  let body='';
-  if(_camLogOpen&&!items.length){
-    body='<div style="margin-top:6px;border:1px dashed var(--border2);border-radius:10px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.5;">No rows detected coming off yet. Each time the camera sees a shelf empty it adds a box here — <b style="color:var(--green)">green</b> when it counted the row (+4), <b style="color:var(--amber)">amber</b> when it skipped it (with the reason). Tap a box to open the photos.</div>';
-  } else if(_camLogOpen){
-    body='<div style="margin-top:6px;font-size:10.5px;color:var(--muted);margin-bottom:6px;line-height:1.5;">One box per row the camera saw come off — each has a <b>#number</b> you can quote to flag a wrong read. Tap a box to open its photos. <b>Shelf 1 = top rack, shelf 6 = bottom.</b></div>'
-      +'<div style="display:flex;flex-direction:column;gap:7px;">'+items.map(function(e){
-      const isC=(e.credited!==false);
-      const open=_camEntryOpen.has(e.id);
-      const t=new Date(e.ts*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-      const shelf=(e.shelf!=null)?e.shelf:((e.shelves||[]).join(', '));
-      const badge=isC?'<span style="color:#19e36b;font-weight:800;white-space:nowrap;">✓ +'+(e.birds||4)+'</span>':'<span style="color:var(--amber);font-weight:800;white-space:nowrap;">✗ not counted</span>';
-      const numTag=(e.num!=null)?'<span style="font-family:var(--font-mono);font-size:12px;font-weight:800;color:var(--text);background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:2px 7px;white-space:nowrap;">#'+e.num+'</span>':'';
-      const shelfTip=(shelf===1?' (top)':(shelf===6?' (bottom)':''));
-      const headRow='<div onclick="toggleCamEntry('+e.id+')" style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 12px;">'
-        +numTag+badge+'<span style="font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;">shelf '+shelf+shelfTip+'</span>'
-        +'<span style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">· '+t+' ('+_agoShort(e.ts)+' ago)</span>'
-        +'<span style="margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap;">'+(open?'▲ close':'▼ open')+'</span></div>';
-      let detail='';
-      if(open){
-        detail='<div style="padding:0 12px 12px;">'
-          +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px;">'+(e.person?'👤 someone was at the oven · ':'')+'stock after: '+e.avail_after+(isC?'':' (unchanged)')+'</div>'
-          +(!isC&&e.reason?'<div style="font-size:11.5px;color:var(--amber);background:rgba(240,160,40,.09);border:1px solid rgba(240,160,40,.3);border-radius:8px;padding:7px 10px;margin-bottom:9px;"><b>Not counted because:</b> '+e.reason+'</div>':'')
-          +'<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">Photos from this moment (tap any to enlarge):</div>'
-          +'<div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;">'+(_camEntryTiles(e)||'<span style="font-size:11px;color:var(--muted)">no images</span>')+'</div></div>';
-      }
-      return '<div style="border:1px solid '+(isC?'var(--border2)':'rgba(240,160,40,.35)')+';border-radius:10px;overflow:hidden;background:var(--surface2);">'+headRow+detail+'</div>';
-    }).join('')+'</div>';
-  }
-  el.innerHTML=head+body;
-}
-// --- AI debug inspector (Settings → Camera): live per-frame trace of what the AI sees + decides ---
-let _traceTimer=null,_traceLastId=null;
-function toggleTrace(){
-  const btn=document.getElementById('rc-trace-btn');
-  if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;_stopLiveCap();if(btn)btn.innerHTML='&#9654; Start live trace';return;}
-  if(btn)btn.innerHTML='&#9632; Stop live trace';_traceLastId=null;_startLiveCap();renderRotTrace();_traceTimer=setInterval(renderRotTrace,2500);
-}
-let _liveCapTimer=null,_capStrip=[],_capSeq=0,_capMap={},_lastFrameUrl='';
-function _startLiveCap(){
-  const w=document.getElementById('rc-live-wrap');if(w)w.style.display='block';
-  const box=document.getElementById('rc-live-box');if(box)box.style.display='';   // re-show the live video
-  const im=document.getElementById('rc-live');if(im)im.src='/api/rotcam_stream?t='+Date.now();   // desktop MJPEG — smooth (same as the dash card)
-  _capStrip=[];_capMap={};_lastFrameUrl='';
-  const lbl=document.getElementById('rc-capstrip-lbl');if(lbl)lbl.textContent='Recent frames (~½s apart) — tap the exact one where a row came off to correct it:';
-  const strip=document.getElementById('rc-capstrip');if(strip)strip.innerHTML='<span data-ph="1" style="font-size:11px;color:var(--muted);">waiting for live frames…</span>';
-  if(_liveCapTimer)clearInterval(_liveCapTimer);
-  _liveCapTimer=setInterval(_grabFrame,500);   // a fresh correctable frame every ~½ second
-}
-function _stopLiveCap(){
-  if(_liveCapTimer){clearInterval(_liveCapTimer);_liveCapTimer=null;}
-  const im=document.getElementById('rc-live');if(im)im.src='';
-  const box=document.getElementById('rc-live-box');if(box)box.style.display='none';   // hide ONLY the live video — KEEP every captured frame on screen so you can still tap to correct
-  const lbl=document.getElementById('rc-capstrip-lbl');if(lbl)lbl.textContent='Trace stopped — '+_capStrip.length+' frame(s) kept. Tap any to correct it:';
-}
-function _grabFrame(){
-  const im=document.getElementById('rc-live'),cv=document.getElementById('rc-capcanvas'),strip=document.getElementById('rc-capstrip');
-  if(!im||!cv||!strip||!im.naturalWidth)return;
-  try{
-    cv.width=im.naturalWidth;cv.height=im.naturalHeight;cv.getContext('2d').drawImage(im,0,0);
-    const url=cv.toDataURL('image/jpeg',0.7);
-    if(url===_lastFrameUrl) return;   // skip duplicate thumbnails when the frame hasn't changed
-    _lastFrameUrl=url;
-    const lid='cap_'+(++_capSeq);_capMap[lid]={url:url};
-    const d=new Date(),t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
-    if(strip.firstChild&&strip.firstChild.dataset&&strip.firstChild.dataset.ph)strip.innerHTML='';
-    const div=document.createElement('div');div.style.cssText='flex:0 0 auto;text-align:center;cursor:pointer;';div.onclick=function(){openCorrect(lid);};
-    div.innerHTML='<img src="'+url+'" style="width:96px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:#000;"><div style="font-size:9px;color:var(--muted);font-family:var(--font-mono);">'+t+'</div>';
-    strip.insertBefore(div,strip.firstChild);_capStrip.unshift(lid);
-    while(_capStrip.length>3000){const drop=_capStrip.pop();delete _capMap[drop];if(strip.lastChild)strip.removeChild(strip.lastChild);}  // keep ALL frames for the session (3000 = ~25 min of changed frames; only a runaway-memory backstop)
-  }catch(e){}
-}
-function captureNow(){_grabFrame();if(_capStrip.length)openCorrect(_capStrip[0]);}
-function renderRotTrace(){
-  const el=document.getElementById('rc-trace');if(!el)return;
-  const modal=document.getElementById('settings-modal');
-  if(modal&&!modal.classList.contains('open')){if(_traceTimer){clearInterval(_traceTimer);_traceTimer=null;_stopLiveCap();const b=document.getElementById('rc-trace-btn');if(b)b.innerHTML='&#9654; Start live trace';}return;}
-  fetch('/api/rotcam_trace',{cache:'no-store'}).then(r=>r.json()).then(d=>{
-    window._lastTrace=d.trace||[];
-    const corrected=new Set(d.corrected_ids||[]);
-    const ml=document.getElementById('rc-trace-model');if(ml)ml.textContent=(d.model?('model: '+d.model):'')+(d.corrections?('  ·  '+d.corrections+' corrections saved'):'');
-    renderAutoCaptures(d.auto_sessions||[],corrected);   // keep the persistent auto-AI trace fresh too
-    const tr=(d.trace||[]).slice().reverse().slice(0,25);   // newest first, cap 25
-    if(!tr.length){el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No checks captured yet — the camera records a trace every time it analyses a frame (during the active window 09:55–20:00).</div>';return;}
-    const _tsig=tr[0].id+'|'+(d.corrected_ids||[]).length;   // include corrections so a just-saved one shows its ✓ badge
-    if(_tsig===_traceLastId)return;_traceLastId=_tsig;        // nothing new → don't rebuild (no flicker)
-    el.innerHTML=tr.map(function(r){return _traceCardHTML(r,corrected,'check #'+r.id);}).join('');
-  }).catch(()=>{});
-}
-// one trace card (image + AI reply + per-shelf read + decision + correct button) — shared by the live trace AND the auto trace so they look identical
-function _traceCardHTML(r,corrected,headLabel){
-  const t=new Date((r.ts||0)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const shot='/api/rotcam_trace_shot?id='+r.id;
-  const grid=(r.shelves||[]).map(function(s){
-    const oc=s.occ==='loaded'?'#19e36b':(s.occ==='empty'?'#8a93a6':'#f0a93a');
-    const nc=(s.note&&s.note.indexOf('COUNTED')>=0)?'#19e36b':((s.note&&s.note.indexOf('not counted')>=0)?'var(--amber)':'var(--muted)');
-    return '<div style="display:flex;gap:8px;align-items:baseline;font-size:11px;padding:1px 0;">'
-      +'<span style="width:46px;color:var(--muted);">shelf '+s.i+'</span>'
-      +'<span style="width:52px;font-weight:700;color:'+oc+';">'+s.occ+'</span>'
-      +'<span style="width:58px;color:var(--muted);">'+(s.done||'')+'</span>'
-      +'<span style="color:'+nc+';">'+(s.note||'')+'</span></div>';
-  }).join('');
-  return '<div style="border:1px solid var(--border2);border-radius:10px;padding:9px;margin-bottom:8px;display:flex;gap:11px;flex-wrap:wrap;">'
-    +'<img src="'+shot+'" loading="lazy" onclick="_shotBig(\''+shot+'\')" style="width:160px;height:100px;object-fit:cover;border-radius:7px;border:1px solid var(--border2);cursor:pointer;background:#000;flex:0 0 auto;">'
-    +'<div style="flex:1;min-width:180px;">'
-      +'<div style="font-size:11px;color:var(--muted);margin-bottom:3px;">'+t+' &middot; '+headLabel+'</div>'
-      +'<div style="font-size:11.5px;margin-bottom:5px;"><span style="color:var(--muted);">AI replied:</span> <span style="font-family:var(--font-mono);color:var(--text);background:var(--surface2);padding:1px 6px;border-radius:5px;">'+(r.raw||'(none)').replace(/[<>]/g,'')+'</span></div>'
-      +grid
-      +'<div style="font-size:11.5px;margin-top:6px;padding-top:5px;border-top:1px solid var(--border2);"><span style="color:var(--muted);">Decision:</span> <b>'+(r.decision||'').replace(/[<>]/g,'')+'</b></div>'
-      +((corrected&&corrected.has(r.id))?'<span style="font-size:11px;color:var(--green);font-weight:700;margin-top:7px;display:inline-block;">✓ you corrected this</span> <button class="btn" style="font-size:11px;padding:4px 11px;margin-top:7px;" onclick="openCorrect('+r.id+')">edit</button>':'<button class="btn" style="font-size:11px;padding:4px 11px;margin-top:7px;" onclick="openCorrect('+r.id+')">✏️ Correct this frame</button>')
-    +'</div></div>';
-}
-// --- AUTO-AI trace: persistent sessions — each row the camera counted off, with an ORDERED reel of full trace frames
-//     (frame 1 = the moment it decided, then +5/+10/+15s) that look EXACTLY like the live trace and are each correctable. ---
-let _autoSig='';window._autoFrames=[];
-function renderAutoCaptures(sessions,corrected){
-  const el=document.getElementById('rc-auto');if(!el)return;
-  sessions=sessions||[];corrected=corrected||new Set();
-  const cnt=document.getElementById('rc-auto-count');if(cnt)cnt.textContent=sessions.length?(sessions.length+' saved'):'';
-  // flat lookup so the correction tool can find an auto frame by id
-  window._autoFrames=[];sessions.forEach(function(s){(s.frames||[]).forEach(function(f){window._autoFrames.push(f);});});
-  if(!sessions.length){if(_autoSig!=='empty'){_autoSig='empty';el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;border:1px dashed var(--border2);border-radius:8px;">No auto-captures yet — the moment the camera counts a row off by itself, the frame it decided on (plus the next ~15&nbsp;seconds, each with its own read) shows up here.</div>';}return;}
-  const sig=sessions.map(function(s){return s.eid+':'+((s.frames||[]).length);}).join(',')+'|'+corrected.size;
-  if(sig===_autoSig)return;_autoSig=sig;
-  el.innerHTML=sessions.map(function(s){
-    const f0=(s.frames||[])[0]||{};
-    const dt=new Date((s.ts||0)*1000);
-    const tm=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · '+dt.toLocaleDateString([],{day:'2-digit',month:'2-digit'});
-    const shelf=(f0.decision||'').replace(/[<>]/g,'');
-    const cards=(s.frames||[]).map(function(f){return _traceCardHTML(f,corrected,'frame '+(f.n||'?')+' &middot; +'+(f.after||0)+'s');}).join('');
-    return '<div style="border:1px solid rgba(25,227,107,.4);border-radius:12px;padding:10px;margin-bottom:10px;background:rgba(25,227,107,.05);">'
-      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-        +'<span style="font-size:10px;font-weight:800;letter-spacing:.05em;color:#0b0c10;background:#19e36b;padding:2px 8px;border-radius:999px;">🤖 AUTO AI</span>'
-        +'<span style="font-size:12.5px;font-weight:700;color:var(--text);">'+shelf+'</span>'
-        +'<span style="font-size:11px;color:var(--muted);margin-left:auto;font-family:var(--font-mono);">'+tm+'</span></div>'
-      +cards
-      +'</div>';
+function renderPullLog(pulls){
+  const b=document.getElementById('pulllog-body');if(!b)return;
+  if(!pulls.length){b.innerHTML='<div style="color:var(--muted);font-size:13px;padding:18px 2px;text-align:center;">No pulls recorded yet. Each time a probe is pulled from a cooked row it will appear here.</div>';return;}
+  const days={},order=[];
+  pulls.slice().reverse().forEach(p=>{const k=_pullDayKey(p.ts);if(!days[k]){days[k]=[];order.push(k);}days[k].push(p);});
+  b.innerHTML=order.map(k=>{
+    const list=days[k];
+    const birds=list.reduce((s,p)=>s+(p.birds||0),0);
+    const mins=list.filter(p=>p.total_mins!=null).map(p=>p.total_mins);
+    const avg=mins.length?Math.round(mins.reduce((a,c)=>a+c,0)/mins.length):null;
+    const head='<div class="pl-day"><span class="pl-day-n">'+_pullDayLabel(list[0].ts)+'</span>'
+      +'<span class="pl-day-s">'+list.length+' row'+(list.length===1?'':'s')+' · '+birds+' birds'
+      +(avg!=null?(' · avg '+_pullFmtMins(avg)):'')+'</span></div>';
+    const rows=list.map(p=>'<tr>'
+      +'<td class="pl-t">'+_pullFmtClock(p.ts)+'</td>'
+      +'<td class="pl-n">'+_mEsc(p.name||('Probe '+p.probe))+'</td>'
+      +'<td class="pl-d">'+_pullFmtMins(p.total_mins)+'</td>'
+      +'<td class="pl-h">'+(p.hot_mins!=null?(p.hot_mins+'m'):'–')+'</td>'
+      +'<td class="pl-p">'+(p.peak_temp!=null?(p.peak_temp+'°'):'–')+'</td>'
+      +'<td class="pl-x">'+(p.pull_temp!=null?(p.pull_temp+'°'):'–')+'</td>'
+      +'<td class="pl-b">+'+(p.birds!=null?p.birds:'–')+'</td>'
+    +'</tr>').join('');
+    return head+'<table class="pl-table"><thead><tr>'
+      +'<th>Pulled</th><th>Probe</th><th>On for</th><th>Hot</th><th>Peak</th><th>At pull</th><th>Stock</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table>';
   }).join('');
 }
-function loadAutoCaps(){const b=document.getElementById('rc-auto-btn');if(b)b.textContent='Loading…';_autoSig='';fetch('/api/rotcam_trace',{cache:'no-store'}).then(r=>r.json()).then(function(d){renderAutoCaptures(d.auto_sessions||[],new Set(d.corrected_ids||[]));if(b)b.innerHTML='&#8635; Reload auto-AI captures';}).catch(function(){if(b)b.innerHTML='&#8635; Load auto-AI captures';});}
-// --- correction / labelling tool: tap a frame, tell it the TRUTH, it saves as training data ---
-const _COR_ACTS=['nothing happening','loading 1 row on','loading 2+ rows on','took 1 row off','took 2 rows off','took 3+ rows off','opened the door, did nothing','closed the door','other (see notes)'];
-const _DNPCT={empty:0,raw:10,almost:50,ready:90,overdone:100};
-function openCorrect(id){
-  const isCap=(typeof id==='string'&&id.indexOf('cap_')===0);
-  let r,shot;
-  if(isCap){const c=_capMap[id];if(!c){_toast&&_toast('That frame scrolled off — grab a newer one');return;}r={shelves:[{},{},{},{},{},{}],raw:'(live capture)',decision:'tell it the truth about this exact moment'};shot=c.url;}
-  else{r=(window._lastTrace||[]).find(function(x){return x.id===id;})||(window._autoFrames||[]).find(function(x){return x.id===id;});if(!r){_toast&&_toast('Frame expired — pick a newer one');return;}shot='/api/rotcam_trace_shot?id='+id;}
-  let o=document.getElementById('correct-modal');
-  if(!o){o=document.createElement('div');o.id='correct-modal';o.className='modal-overlay';o.style.zIndex='720';document.body.appendChild(o);}
-  const shelfRows=((r.shelves&&r.shelves.length)?r.shelves:[{},{},{},{},{},{}]).map(function(s,i){
-    const pct=(_DNPCT[s.done]!=null)?_DNPCT[s.done]:(s.occ==='loaded'?50:0);
-    let opts='';for(let p=0;p<=100;p+=10){opts+='<option value="'+p+'"'+(p===pct?' selected':'')+'>'+p+'%</option>';}
-    return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;">'
-      +'<span style="width:48px;font-size:12px;color:var(--muted);">shelf '+(i+1)+'</span>'
-      +'<label style="font-size:12.5px;display:flex;gap:5px;align-items:center;"><input type="checkbox" class="cor-occ" data-i="'+i+'" '+(s.occ==='loaded'?'checked':'')+' style="width:16px;height:16px;"> has chickens</label>'
-      +'<span style="font-size:11.5px;color:var(--muted);margin-left:auto;">cooked</span><select class="cor-pct input" data-i="'+i+'" style="width:auto;background:var(--surface2);">'+opts+'</select>'
-      +'</div>';
-  }).join('');
-  const actOpts=_COR_ACTS.map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
-  o.innerHTML='<div class="modal" style="max-width:580px;width:100%;max-height:92vh;overflow:auto;">'
-    +'<div class="modal-header"><div class="modal-title">Tell it the truth · '+(isCap?'live capture':'frame #'+id)+'</div><button class="modal-close" onclick="closeCorrect()">Close</button></div>'
-    +'<div style="padding:2px;">'
-    +'<img src="'+shot+'" style="width:100%;border-radius:8px;border:1px solid var(--border2);margin-bottom:6px;background:#000;">'
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">AI read: <b>'+(r.raw||'?').replace(/[<>]/g,'')+'</b> → '+(r.decision||'').replace(/[<>]/g,'')+'</div>'
-    +'<div class="label" style="margin-bottom:6px;">Each shelf — does it really have chickens, and how cooked?</div>'+shelfRows
-    +'<div class="divider"></div>'
-    +'<div class="label" style="margin-bottom:6px;">The scene right now</div>'
-    +'<label style="display:block;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="cor-door" style="width:16px;height:16px;"> Oven door is OPEN</label>'
-    +'<label style="display:block;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="cor-person" style="width:16px;height:16px;"> Someone is standing at the oven</label>'
-    +'<label style="display:block;font-size:13px;margin-bottom:10px;"><input type="checkbox" id="cor-glare" style="width:16px;height:16px;"> Glare / reflection is hiding a shelf</label>'
-    +'<div class="label" style="margin-bottom:4px;">What action is happening in this frame?</div>'
-    +'<select class="input" id="cor-activity" style="width:100%;margin-bottom:10px;background:var(--surface2);">'+actOpts+'</select>'
-    +'<div class="label" style="margin-bottom:4px;">Notes (optional)</div>'
-    +'<input class="input" id="cor-notes" placeholder="anything else useful for accuracy" style="width:100%;margin-bottom:12px;">'
-    +'<button class="btn btn-primary" style="width:100%;" onclick="saveCorrect('+JSON.stringify(id)+')">✓ Save correction (teaches the camera)</button>'
-    +'<div id="cor-status" style="font-size:12px;margin-top:7px;text-align:center;min-height:15px;"></div>'
-    +'</div></div>';
-  o.classList.add('open');
-}
-function closeCorrect(){const o=document.getElementById('correct-modal');if(o)o.classList.remove('open');}
-function saveCorrect(id){
-  const shelves=[];
-  document.querySelectorAll('#correct-modal .cor-occ').forEach(function(c){const i=+c.dataset.i;const sel=document.querySelector('#correct-modal .cor-pct[data-i="'+i+'"]');shelves[i]={occ:c.checked?'loaded':'empty',cooked_pct:sel?+sel.value:0};});
-  const a=document.getElementById('cor-activity').value;
-  const rows_off=a.indexOf('took 1')>=0?1:(a.indexOf('took 2')>=0?2:(a.indexOf('took 3')>=0?3:0));
-  const rows_on=a.indexOf('loading 1')>=0?1:(a.indexOf('loading 2')>=0?2:0);
-  const isCap=(typeof id==='string'&&id.indexOf('cap_')===0);
-  const body={id:id,shelves:shelves,door_open:document.getElementById('cor-door').checked,person:document.getElementById('cor-person').checked,glare:document.getElementById('cor-glare').checked,activity:a,rows_off:rows_off,rows_on:rows_on,notes:document.getElementById('cor-notes').value};
-  if(isCap){body.img=(_capMap[id]||{}).url;delete body.id;}
-  const st=document.getElementById('cor-status');st.textContent='Saving…';st.style.color='var(--muted)';
-  fetch(isCap?'/api/rotcam_correct_img':'/api/rotcam_correct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){st.textContent='✓ Saved — '+d.count+' corrections collected so far';st.style.color='var(--green)';setTimeout(closeCorrect,1000);}
-    else{st.textContent='Error: '+(d.error||'?');st.style.color='var(--red)';}
-  }).catch(function(){st.textContent='Could not save.';st.style.color='var(--red)';});
-}
-// --- rotisserie live feed: continuous MJPEG stream (smooth like a webcam), in its own card next to the count ---
-function _rotcamCfgd(){return !!(appData.rotcam_public&&appData.rotcam_public.ip);}
 function renderRotcamCard(){
   const el=document.getElementById('rl-cam');if(!el)return;
   if(!_rotcamCfgd()||(appData.rotcam_public&&appData.rotcam_public.feed_enabled===false)){el.style.display='none';return;}
