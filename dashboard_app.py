@@ -1414,9 +1414,18 @@ def api_comp_send():
     if err or not gan: return jsonify({"ok":False,"error":err or "Square did not return a code"})
     expiry=(datetime.now()+timedelta(days=int(months*30.44))).strftime("%d %b %Y")
     shop=(db.get("shop_name") or "Bruno's Chicken Shop")
-    msg=(("Hi "+name.split(" ")[0]+", ") if name else "Hi, ")+ \
-        "sorry about that! Here's a $%s credit at %s.\nCode: %s\nUse it in store or online. Valid until %s."%(
-        ("%.2f"%amt).rstrip("0").rstrip("."),shop,gan,expiry)
+    # Reads like a voucher rather than a bare code. Square only hosts a proper gift-card page for cards
+    # bought through Square Online — their docs rule it out for API integrations — so the text IS the
+    # voucher. Code is grouped in 4s so it can be read over the phone without losing your place.
+    # NB: code stays unspaced. Grouping it in 4s reads better, but a customer pasting "7783 3290 …"
+    # into an online checkout field can silently fail — not worth the cosmetics.
+    amt_s=("%.2f"%amt).rstrip("0").rstrip(".")
+    first=(name.split(" ")[0] if name else "").strip()
+    msg=("%s\n$%s CREDIT\n"%(shop.upper(),amt_s)
+         +("\nHi %s, sorry about that!\n"%first if first else "\nSorry about that!\n")
+         +"\nGift card code:\n%s\n\n"%gan
+         +"Show this at the counter, or enter it as a gift card at online checkout.\n"
+         +"Valid until %s."%expiry)
     sent,serr=_clicksend_sms(phone,msg)
     entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
            "name":name,"phone":phone,"reason":reason,"staff":staff,
