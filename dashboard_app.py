@@ -1174,15 +1174,21 @@ def _sq_enable_variation(vid):
         # dropping the whole override both no-op). Nothing we can do from here.
         _ENABLE_DBG=dbg
         return False,"Square doesn't allow add-ons to be switched on from an app — switch this one on in the Square app"
-    def _set_tracking(val):
+    def _set_tracking(val,scope="override"):
         o=_get_obj()
         if not o: return "read failed"
         o2=copy.deepcopy(o); d=o2.get("item_variation_data") or {}
-        los=d.get("location_overrides") or []; hit=False
-        for x in los:
-            if x.get("location_id")==loc: x["track_inventory"]=val; hit=True
-        if not hit: los.append({"location_id":loc,"track_inventory":val})
-        d["location_overrides"]=los; o2["item_variation_data"]=d
+        if scope=="global":
+            # some overrides are governed by a Square rule (e.g. timed sold-out) and "may not be
+            # changed in place" — but the variation-level flag is still writable
+            d["track_inventory"]=val
+        else:
+            los=d.get("location_overrides") or []; hit=False
+            for x in los:
+                if x.get("location_id")==loc: x["track_inventory"]=val; hit=True
+            if not hit: los.append({"location_id":loc,"track_inventory":val})
+            d["location_overrides"]=los
+        o2["item_variation_data"]=d
         try:
             body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
             req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
@@ -1207,8 +1213,13 @@ def _sq_enable_variation(vid):
         # NOT inventory-tracked: sold_out is a manual flag and is read-only… but toggling track_inventory
         # makes Square drop it. Flip it on then straight back off — ends in the original state, so Square
         # never starts decrementing stock or auto-86ing at zero. (Verified live; no restock needed.)
-        dbg["steps"].append({"tracking_on":_set_tracking(True)})
+        e1=_set_tracking(True); dbg["steps"].append({"tracking_on":e1})
         dbg["steps"].append({"tracking_restore":_set_tracking(False)})
+        if e1 and "may not be changed" in str(e1):
+            # rule-managed override (timed sold-out etc) — try the variation-level flag instead
+            _orig=bool((( _get_obj() or {}).get("item_variation_data") or {}).get("track_inventory"))
+            dbg["steps"].append({"tracking_global_on":_set_tracking(True,"global")})
+            dbg["steps"].append({"tracking_global_restore":_set_tracking(_orig,"global")})
     still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
     dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
     _SQ_OBJ_CACHE.pop(vid,None)
