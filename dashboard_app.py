@@ -1492,6 +1492,72 @@ def api_comp_log():
                     "summary":{"count":len(log),"today":round(issued_today,2),"month":round(issued_month,2),
                                "outstanding":round(outstanding,2),"redeemed":redeemed,"checked":len(known)}})
 
+def _comp_gsm(s):
+    # Straight quotes/dashes only: one curly apostrophe flips SMS to UCS-2, where a segment is 70
+    # characters instead of 160 — i.e. it silently doubles the cost of every message.
+    for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),
+                ("\u2014","-"),("\u2013","-"),("\u2026","...")):
+        s=s.replace(a,b)
+    return s
+
+_COMP_LINES={"sorry":  "$%s credit - sorry about that!",
+             "thanks": "$%s credit - thank you!",
+             "gift":   "$%s credit, just for you!",
+             "loyal":  "$%s credit for a regular!"}
+
+def _comp_message(amt,gan,expiry,name="",mtype="sorry",custom=""):
+    """The customer-facing voucher text. Shared by send and resend so they can never drift apart."""
+    shop=(db.get("shop_name") or "Bruno's Chicken Shop")
+    amt_s=("%.2f"%float(amt)).rstrip("0").rstrip(".")
+    first=(str(name or "").split(" ")[0]).strip()
+    if str(mtype).lower()=="custom" and custom: opener=custom
+    else: opener=(_COMP_LINES.get(str(mtype).lower()) or _COMP_LINES["sorry"])%amt_s
+    msg=_comp_gsm(shop)+"\n"+_comp_gsm(opener)+"\n"
+    if first: msg+="Hi %s!\n"%_comp_gsm(first)
+    msg+="\nCODE %s\n\n"%gan
+    # scheme and trailing slash trimmed: phones still auto-link it, and those 8 characters are the
+    # difference between one SMS segment and two
+    url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
+    msg+=("In store or online: %s\n"%url) if url else "Use in store or at online checkout.\n"
+    return msg+"Valid to %s"%expiry
+
+def _comp_deliver(phone,msg,want_mms):
+    """Send it. Always falls back to plain SMS — a customer must never lose their credit over a picture.
+       Returns (sent, error, via)."""
+    shop=(db.get("shop_name") or "Bruno's Chicken Shop")
+    media=((db.get("clicksend") or {}).get("media_url") or "").strip()
+    if want_mms and media:
+        ok,err=_clicksend_mms(phone,(shop[:20] or "Voucher"),msg,media)
+        if ok: return True,None,"mms"
+        ok2,err2=_clicksend_sms(phone,msg)
+        if ok2: return True,("MMS failed (%s) - sent as a normal text instead"%err),"sms"
+        return False,(err or err2),"mms"
+    ok,err=_clicksend_sms(phone,msg)
+    return ok,err,"sms"
+
+@app.route("/api/comp_resend",methods=["POST"])
+def api_comp_resend():
+    """Re-send an existing voucher — same code, optionally to a corrected number."""
+    d=request.get_json(silent=True) or {}
+    if str(d.get("code","")).strip()!=str(db.get("comp_code","1989")): return jsonify({"ok":False,"error":"Wrong access code"})
+    ts=d.get("ts"); gan=str(d.get("gan","")).strip()
+    log=list(db.get("comp_log",[]) or [])
+    v=next((e for e in log if (ts and e.get("ts")==ts) or (gan and e.get("gan")==gan)),None)
+    if not v: return jsonify({"ok":False,"error":"Couldn't find that voucher"})
+    phone=str(d.get("phone","")).strip() or str(v.get("phone","")).strip()
+    if len(re.sub(r"\D","",phone))<8: return jsonify({"ok":False,"error":"Enter a valid mobile number"})
+    msg=_comp_message(v.get("amount",0),v.get("gan"),v.get("expiry",""),v.get("name",""),
+                      v.get("msg_type","sorry"),v.get("custom_line",""))
+    want_mms=bool(d.get("mms")) if ("mms" in d) else bool(db.get("comp_mms_default"))
+    sent,err,via=_comp_deliver(phone,msg,want_mms)
+    with data_lock:
+        v["phone"]=phone                                  # a corrected number replaces the old one
+        v["sms"]=bool(sent); v["sms_err"]=(err or ""); v["via"]=via
+        v["resent"]=int(v.get("resent",0))+1; v["resent_at"]=int(time.time()*1000)
+        db["comp_log"]=log; save_data(db)
+    return jsonify({"ok":bool(sent),"error":("" if sent else (err or "send failed")),
+                    "note":(err or ""),"via":via,"phone":phone})
+
 @app.route("/api/comp_send",methods=["POST"])
 def api_comp_send():
     d=request.get_json(silent=True) or {}
@@ -1510,50 +1576,15 @@ def api_comp_send():
     if err or not gan: return jsonify({"ok":False,"error":err or "Square did not return a code"})
     expiry=(datetime.now()+timedelta(days=int(months*30.44))).strftime("%d %b %Y")
     shop=(db.get("shop_name") or "Bruno's Chicken Shop")
-    # Reads like a voucher rather than a bare code. Square only hosts a proper gift-card page for cards
-    # bought through Square Online — their docs rule it out for API integrations — so the text IS the
-    # voucher. Code is grouped in 4s so it can be read over the phone without losing your place.
-    # NB: code stays unspaced. Grouping it in 4s reads better, but a customer pasting "7783 3290 …"
-    # into an online checkout field can silently fail — not worth the cosmetics.
-    amt_s=("%.2f"%amt).rstrip("0").rstrip(".")
-    first=(name.split(" ")[0] if name else "").strip()
-    # Straight quotes/dashes only: a curly apostrophe silently flips SMS to UCS-2 encoding, where a
-    # segment is 70 characters instead of 160 — i.e. it quietly doubles the cost of every message.
-    def _gsm(s):
-        for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),
-                    ("\u2014","-"),("\u2013","-"),("\u2026","...")):
-            s=s.replace(a,b)
-        return s
-    LINES={"sorry":  "$%s credit - sorry about that!",
-           "thanks": "$%s credit - thank you!",
-           "gift":   "$%s credit, just for you!",
-           "loyal":  "$%s credit for a regular!"}
     mtype=str(d.get("msg_type","sorry")).strip().lower()
     custom=str(d.get("custom_line","")).strip()[:80]
-    if mtype=="custom" and custom: opener=custom
-    else: opener=(LINES.get(mtype) or LINES["sorry"])%amt_s
-    msg=_gsm(shop)+"\n"+_gsm(opener)+"\n"
-    if first: msg+="Hi %s!\n"%_gsm(first)
-    msg+="\nCODE %s\n\n"%gan
-    # Trim the scheme and trailing slash: phones still turn it into a link, and 8 characters is the
-    # difference between one SMS segment and two on most of these templates.
-    _url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
-    msg+=("In store or online: %s\n"%_url) if _url else "Use in store or at online checkout.\n"
-    msg+="Valid to %s"%expiry
+    msg=_comp_message(amt,gan,expiry,name,mtype,custom)
     want_mms=bool(d.get("mms")) if ("mms" in d) else bool(db.get("comp_mms_default"))
-    media=((db.get("clicksend") or {}).get("media_url") or "").strip()
-    sent=False; serr=None; via="sms"
-    if want_mms and media:
-        sent,serr=_clicksend_mms(phone,(shop[:20] or "Voucher"),msg,media)
-        via="mms"
-        if not sent:                       # never lose the voucher over a picture
-            sent,serr2=_clicksend_sms(phone,msg); via="sms"
-            serr=(("MMS failed (%s) — sent as a normal text instead"%serr) if sent else (serr or serr2))
-    else:
-        sent,serr=_clicksend_sms(phone,msg)
+    sent,serr,via=_comp_deliver(phone,msg,want_mms)
     entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
            "name":name,"phone":phone,"reason":reason,"staff":staff,
-           "expiry":expiry,"expiry_months":months,"sms":bool(sent),"sms_err":(serr or ""),"via":via}
+           "expiry":expiry,"expiry_months":months,"sms":bool(sent),"sms_err":(serr or ""),"via":via,
+           "msg_type":mtype,"custom_line":custom}
     with data_lock:
         log=db.setdefault("comp_log",[]); log.append(entry); db["comp_log"]=log[-500:]; save_data(db)
     return jsonify({"ok":True,"gan":gan,"expiry":expiry,"sms":bool(sent),
