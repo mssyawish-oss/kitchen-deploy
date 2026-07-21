@@ -1352,8 +1352,11 @@ def api_comp_config():
             return jsonify({"ok":False,"error":"Wrong access code"})   # settings hold the SMS credentials
         with data_lock:
             cs=dict(db.get("clicksend") or {})
-            for k in ("user","key","sender"):
+            for k in ("user","sender"):
                 if k in d: cs[k]=str(d.get(k) or "").strip()
+            # the key is never sent back to the browser, so a blank field means "leave it alone" —
+            # otherwise saving any other setting would silently wipe the API key
+            if str(d.get("key") or "").strip(): cs["key"]=str(d["key"]).strip()
             db["clicksend"]=cs
             if "new_code" in d: db["comp_code"]=str(d.get("new_code") or "1989").strip()[:8]
             if "online_url" in d: db["online_url"]=str(d.get("online_url") or "").strip()[:200]

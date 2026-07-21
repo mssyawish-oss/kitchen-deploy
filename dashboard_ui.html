@@ -363,6 +363,9 @@ body.kiosk .topbar-title{cursor:default;}
 .comp-amt{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:10px;padding:10px 15px;font-size:15px;font-weight:700;cursor:pointer;min-width:60px;min-height:44px;}
 .comp-amt:hover{border-color:var(--amber-dim);}
 .comp-amt.on{background:var(--amber);border-color:var(--amber);color:#0a0a0c;}
+.cs-hint{font-size:11px;color:var(--muted);margin:3px 0 2px;line-height:1.4;}
+.cs-check{display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0 4px;cursor:pointer;}
+.cs-check input{width:17px;height:17px;}
 .comp-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;}
 .comp-sum>div{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 11px;}
 .comp-sum-n{display:block;font-size:19px;font-weight:800;color:var(--text);line-height:1.1;}
@@ -1281,6 +1284,37 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 
 <!-- Floating "products switched off" pill + its list modal -->
 <button id="prodoff-fab" class="prodoff-fab" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off — tap to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="pf-num">0</span><span style="font-size:11px;font-weight:700;letter-spacing:.5px;">OFF</span></button>
+<div class="modal-overlay" id="compsetup-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header"><div class="modal-title">Comp voucher setup</div><button class="modal-close" onclick="closeModal('compsetup-modal')">Close</button></div>
+    <div class="comp-lab" style="margin-top:0;">ClickSend username</div>
+    <input class="input" id="cs-user" placeholder="From ClickSend &rarr; Developers &rarr; API Credentials">
+    <div class="cs-hint">This is your ClickSend <b>username</b>, not your email address.</div>
+    <div class="comp-lab">ClickSend API key</div>
+    <input class="input" id="cs-key" type="password" placeholder="Leave blank to keep the saved key">
+    <div class="cs-hint" id="cs-key-hint"></div>
+    <div class="comp-lab">Sender name <span style="color:var(--muted);font-weight:400;">(optional)</span></div>
+    <input class="input" id="cs-sender" maxlength="11" placeholder="e.g. BRUNOS — blank sends from a shared number">
+    <div class="cs-hint">Letters and numbers only, max 11. Must be registered with ClickSend first. Customers can&rsquo;t reply to a named sender.</div>
+    <div class="comp-lab">Online ordering link</div>
+    <input class="input" id="cs-url" placeholder="brunos-chicken-shop.square.site">
+    <div class="comp-lab">Logo image URL <span style="color:var(--muted);font-weight:400;">(for picture messages)</span></div>
+    <input class="input" id="cs-media" placeholder="Public link to a JPG or GIF, under 250kB">
+    <div class="cs-hint">Right-click your logo on your own website &rarr; Copy image address.</div>
+    <label class="cs-check"><input type="checkbox" id="cs-mmsdef"> Send with the logo (MMS) by default</label>
+    <div class="row" style="gap:12px;">
+      <div style="flex:1;"><div class="comp-lab">Quick amounts</div><input class="input" id="cs-amounts" placeholder="5, 10, 15, 20, 25, 50"></div>
+      <div style="width:130px;"><div class="comp-lab">Expiry (months)</div><input class="input" id="cs-exp" type="number" min="1" max="60"></div>
+    </div>
+    <div class="comp-lab">Change access code <span style="color:var(--muted);font-weight:400;">(optional)</span></div>
+    <input class="input" id="cs-newcode" maxlength="8" placeholder="Leave blank to keep the current code">
+    <div id="cs-status" style="font-size:12.5px;margin-top:10px;min-height:18px;"></div>
+    <div class="row" style="gap:8px;margin-top:10px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="compSetupSave()">Save</button>
+      <button class="btn" style="flex:1;" onclick="closeModal('compsetup-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="pulllog-modal">
   <div class="modal" style="max-width:760px;">
     <div class="modal-header"><div class="modal-title">Chicken pull log</div><button class="modal-close" onclick="closeModal('pulllog-modal')">Close</button></div>
@@ -2288,20 +2322,45 @@ function compVerify(gan){
 }
 function compSetup(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compSetup();});return;}
-  // Deliberately NOT pre-filled: pre-filling is how an email address kept getting re-saved as the
-  // username. ClickSend wants the USERNAME from Developers → API Credentials, not the login email.
-  const user=prompt('ClickSend USERNAME\n\nFind it in ClickSend → Developers → API Credentials.\nThis is NOT your email address.');
-  if(user===null)return;
-  if(!user.trim()){_toast('Username cannot be blank');return;}
-  const key=prompt('ClickSend API KEY\n\nSame page — Developers → API Credentials.\nThis is NOT your account password.');
-  if(key===null)return;
-  const sender=prompt('Sender name on the text (optional).\nLetters/numbers only, max 11, no spaces or apostrophes.\nLeave BLANK to send from a shared number.','');
-  const url=prompt('Your online ordering link (optional).\nAdded to the text so customers can order online.\nLeave blank to omit.',_compCfg.online_url||'');
-  const media=prompt('Logo image URL for picture messages (optional).\nMust be a PUBLIC link to a JPG or GIF, under 250kB.\nLeave blank to send plain texts only.',_compCfg.media_url||'');
-  fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({code:_compCode,user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim(),media_url:(media||'').trim()})})
-    .then(r=>r.json()).then(()=>{_toast('Saved — checking credentials…');compLoad();compCheckCreds();})
-    .catch(()=>_toast('Could not save.'));
+  fetch('/api/comp_config').then(r=>r.json()).then(c=>{
+    _compCfg=c||_compCfg;
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};
+    set('cs-user',c.user); set('cs-key','');                     // key is never sent back to the browser
+    set('cs-sender',c.sender); set('cs-url',c.online_url); set('cs-media',c.media_url);
+    set('cs-amounts',(c.amounts||[]).join(', ')); set('cs-exp',c.expiry_months||12); set('cs-newcode','');
+    const mm=document.getElementById('cs-mmsdef'); if(mm)mm.checked=!!c.mms_default;
+    const kh=document.getElementById('cs-key-hint');
+    if(kh)kh.innerHTML=c.has_key?'A key is already saved &mdash; leave blank to keep it.':'<span style="color:var(--amber);">No key saved yet.</span>';
+    _csStatus('');
+    openModal('compsetup-modal');
+  }).catch(()=>_toast('Could not load settings.'));
+}
+function _csStatus(m,c){const s=document.getElementById('cs-status');if(s){s.textContent=m||'';s.style.color=c||'var(--muted)';}}
+function compSetupSave(){
+  const val=id=>((document.getElementById(id)||{}).value||'').trim();
+  const amounts=val('cs-amounts').split(',').map(x=>parseFloat(x)).filter(x=>!isNaN(x)&&x>0);
+  const body={code:_compCode,
+    user:val('cs-user'), key:val('cs-key'),
+    sender:val('cs-sender').replace(/[^A-Za-z0-9]/g,'').slice(0,11),
+    online_url:val('cs-url'), media_url:val('cs-media'),
+    mms_default:!!((document.getElementById('cs-mmsdef')||{}).checked),
+    expiry_months:parseInt(val('cs-exp')||'12')||12};
+  if(amounts.length)body.amounts=amounts;
+  if(val('cs-newcode'))body.new_code=val('cs-newcode');
+  if(!body.user){_csStatus('Username is required.','var(--red)');return;}
+  _csStatus('Saving…');
+  fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{
+      if(d&&d.ok===false){_csStatus((d.error||'Save failed'),'var(--red)');return;}
+      if(body.new_code)_compCode=body.new_code;          // keep this session working after a code change
+      _csStatus('Saved ✓ — checking ClickSend…','var(--green)');
+      compLoad();
+      fetch('/api/comp_sms_check',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({code:_compCode})}).then(r=>r.json()).then(x=>{
+          _csStatus(x&&x.ok?('ClickSend connected ✓'+(x.account?(' as '+x.account):'')):('ClickSend rejected it: '+((x&&x.error)||'unknown')),
+                    x&&x.ok?'var(--green)':'var(--red)');
+        }).catch(()=>{});
+    }).catch(()=>_csStatus('Could not reach the server.','var(--red)'));
 }
 function compCheckCreds(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compCheckCreds();});return;}
