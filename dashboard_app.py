@@ -1313,6 +1313,7 @@ def api_comp_config():
                 if k in d: cs[k]=str(d.get(k) or "").strip()
             db["clicksend"]=cs
             if "code" in d: db["comp_code"]=str(d.get("code") or "1989").strip()[:8]
+            if "online_url" in d: db["online_url"]=str(d.get("online_url") or "").strip()[:200]
             if "amounts" in d and isinstance(d["amounts"],list):
                 db["comp_amounts"]=[float(x) for x in d["amounts"] if str(x).replace(".","",1).isdigit()][:8]
             if "expiry_months" in d:
@@ -1322,6 +1323,7 @@ def api_comp_config():
     cs=db.get("clicksend") or {}
     return jsonify({"ok":True,"sms_ready":bool(cs.get("user") and cs.get("key")),
                     "user":cs.get("user",""),"sender":cs.get("sender",""),"has_key":bool(cs.get("key")),
+                    "online_url":db.get("online_url",""),
                     "amounts":db.get("comp_amounts") or [5,10,15,20,25,50],
                     "expiry_months":db.get("comp_expiry_months",12)})
 
@@ -1424,8 +1426,10 @@ def api_comp_send():
     msg=("%s\n$%s CREDIT\n"%(shop.upper(),amt_s)
          +("\nHi %s, sorry about that!\n"%first if first else "\nSorry about that!\n")
          +"\nGift card code:\n%s\n\n"%gan
-         +"Show this at the counter, or enter it as a gift card at online checkout.\n"
-         +"Valid until %s."%expiry)
+         +"Show this at the counter, or enter it as a gift card at online checkout.\n")
+    _url=(db.get("online_url") or "").strip()
+    if _url: msg+="Order online: %s\n"%_url
+    msg+="Valid until %s."%expiry
     sent,serr=_clicksend_sms(phone,msg)
     entry={"ts":int(time.time()*1000),"amount":amt,"gan":gan,"gift_card_id":gid,
            "name":name,"phone":phone,"reason":reason,"staff":staff,

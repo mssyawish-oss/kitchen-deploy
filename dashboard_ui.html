@@ -2239,8 +2239,9 @@ function compSetup(){
   const key=prompt('ClickSend API KEY\n\nSame page — Developers → API Credentials.\nThis is NOT your account password.');
   if(key===null)return;
   const sender=prompt('Sender name on the text (optional).\nLetters/numbers only, max 11, no spaces or apostrophes.\nLeave BLANK to send from a shared number.','');
+  const url=prompt('Your online ordering link (optional).\nAdded to the text so customers can order online.\nLeave blank to omit.',_compCfg.online_url||'');
   fetch('/api/comp_config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11)})})
+    body:JSON.stringify({user:user.trim(),key:key.trim(),sender:(sender||'').replace(/[^A-Za-z0-9]/g,'').slice(0,11),online_url:(url||'').trim()})})
     .then(r=>r.json()).then(()=>{_toast('Saved — checking credentials…');compLoad();compCheckCreds();})
     .catch(()=>_toast('Could not save.'));
 }
