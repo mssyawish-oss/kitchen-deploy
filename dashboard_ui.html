@@ -1543,6 +1543,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     </div>
     <div class="label">Favourites</div>
     <div id="music-favs" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);">SPEAKERS</div>
+      <button class="btn" style="padding:3px 10px;font-size:11.5px;" onclick="refreshSpeakers()">Refresh</button>
+    </div>
+    <div id="music-speakers" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;"></div>
   </div>
 </div>
 
@@ -3627,22 +3632,50 @@ function turnOffStockPrompt(){
 // ===== Sonos music control =====
 let _musicTimer=null,_musicPlaying=false,_musicVol=null;
 function _mEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function openMusic(){openModal('music-modal');refreshMusic();if(_musicTimer)clearInterval(_musicTimer);_musicTimer=setInterval(()=>{const m=document.getElementById('music-modal');if(m&&m.classList.contains('open'))refreshMusic();else{clearInterval(_musicTimer);_musicTimer=null;}},5000);}
+function openMusic(){openModal('music-modal');refreshMusic();refreshSpeakers();if(_musicTimer)clearInterval(_musicTimer);_musicTimer=setInterval(()=>{const m=document.getElementById('music-modal');if(m&&m.classList.contains('open'))refreshMusic();else{clearInterval(_musicTimer);_musicTimer=null;}},5000);}
+function refreshSpeakers(){
+  const el=document.getElementById('music-speakers');if(!el)return;
+  el.innerHTML='<div style="color:var(--muted);font-size:12px;">Checking speakers…</div>';
+  fetch('/api/sonos/speakers').then(r=>r.json()).then(d=>{
+    if(!d.ok){el.innerHTML='<div style="color:var(--muted);font-size:12px;">'+_mEsc(d.error||'No speakers found')+'</div>';return;}
+    el.innerHTML=(d.speakers||[]).map(s=>{
+      const dot=s.online?'<span style="color:var(--green);">&#9679;</span>':'<span style="color:var(--red);">&#9679;</span>';
+      const wifi=(s.wifi!=null)?((s.wifi<=0?s.wifi+' dBm':s.wifi+'%')):'&#8212;';
+      const grp=(s.group&&!s.is_coordinator)?('<span style="color:var(--muted);"> &middot; grouped with '+_mEsc(s.group)+'</span>'):'';
+      return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:7px 10px;font-size:12.5px;">'
+        +dot+'<span style="font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_mEsc(s.name||'')+'</span>'
+        +'<span style="color:var(--muted);font-size:11px;">'+_mEsc(s.model||'')+grp+'</span>'
+        +'<span style="margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap;">'
+        +(s.online?('vol '+(s.volume!=null?s.volume:'?')+(s.muted?' &middot; muted':'')+' &middot; wifi '+wifi+(s.ms!=null?(' &middot; '+s.ms+'ms'):'')) : 'offline')
+        +'</span></div>';
+    }).join('');
+  }).catch(()=>{el.innerHTML='<div style="color:var(--muted);font-size:12px;">Could not reach the music system.</div>';});
+}
 function closeMusic(){if(_musicTimer){clearInterval(_musicTimer);_musicTimer=null;}closeModal('music-modal');}
-function refreshMusic(){fetch('/api/sonos/status').then(r=>r.json()).then(d=>{
+let _musicBusy=false;
+function _musicTitleOk(t){
+  // while buffering, Sonos hands back stream URIs and internal ids as the "title" — never show those
+  if(!t)return false;
+  return !(/^(x-|aac:|mms:|https?:)/i.test(t)||t.indexOf('://')>=0||/\.(mp3|aac|m3u8?|pls)([?#]|$)/i.test(t));
+}
+function refreshMusic(){
+  if(_musicBusy)return;                       // a slow speaker must not stack requests — that WAS the lag
+  _musicBusy=true;
+  fetch('/api/sonos/status').then(r=>r.json()).then(d=>{_musicBusy=false;
   const st=document.getElementById('music-status'),now=document.getElementById('music-now'),vol=document.getElementById('music-vol'),favs=document.getElementById('music-favs'),pp=document.getElementById('music-playpause');
   if(!pp)return;
   const playSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg>';
   const pauseSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.5" height="16"/><rect x="13.5" y="4" width="4.5" height="16"/></svg>';
   if(!d.ok){st.textContent=d.error||'No Sonos found';now.innerHTML='';vol.textContent='';favs.innerHTML='';pp.innerHTML=playSvg;return;}
-  st.textContent='';
+  st.textContent=(d.state==='TRANSITIONING')?'Loading…':'';
+  if(!_musicTitleOk(d.title))d.title='';
   _musicPlaying=(d.state==='PLAYING');
   pp.innerHTML=_musicPlaying?pauseSvg:playSvg;
-  now.innerHTML=d.title?('<div style="font-weight:700;font-size:15px;">'+_mEsc(d.title)+'</div>'+(d.artist?'<div style="color:var(--muted);font-size:13px;">'+_mEsc(d.artist)+'</div>':'')):'<div style="color:var(--muted);">Nothing playing</div>';
+  now.innerHTML=d.title?('<div style="font-weight:700;font-size:15px;">'+_mEsc(d.title)+'</div>'+(d.artist?'<div style="color:var(--muted);font-size:13px;">'+_mEsc(d.artist)+'</div>':'')):('<div style="color:var(--muted);">'+(d.state==='TRANSITIONING'?'Loading station…':'Nothing playing')+'</div>');
   if(d.volume!=null)_musicVol=d.volume;
   vol.textContent=(d.volume!=null?d.volume:'—');
   favs.innerHTML=(d.favorites&&d.favorites.length)?d.favorites.map((f,i)=>'<button class="btn" style="text-align:left;justify-content:flex-start;" onclick="sonosFav('+i+')">'+_mEsc(f)+'</button>').join(''):'<div style="color:var(--muted);font-size:12px;">No favourites found — add some in the Sonos app.</div>';
-}).catch(()=>{const st=document.getElementById('music-status');if(st)st.textContent='Could not reach the music system.';});}
+}).catch(()=>{_musicBusy=false;const st=document.getElementById('music-status');if(st)st.textContent='Could not reach the music system.';});}
 function sonosCmd(a){fetch('/api/sonos/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(()=>setTimeout(refreshMusic,600));}
 function sonosPlayPause(){sonosCmd(_musicPlaying?'pause':'play');}
 function sonosVol(delta){if(_musicVol==null)_musicVol=30;_musicVol=Math.max(0,Math.min(100,_musicVol+delta));const v=document.getElementById('music-vol');if(v)v.textContent=_musicVol;fetch('/api/sonos/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_volume',volume:_musicVol})}).then(()=>setTimeout(refreshMusic,500));}

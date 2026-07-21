@@ -4736,9 +4736,71 @@ def api_sonos_status():
     except Exception:
         try: out["volume"]=c.volume
         except Exception: out["volume"]=None
-    try: out["favorites"]=[f.title for f in c.music_library.get_sonos_favorites()]
-    except Exception: out["favorites"]=[]
+    try:
+        _fc=_SONOS.get("favs"); _now=time.time()
+        if not _fc or (_now-_fc[0])>120:                      # refresh at most every 2 min
+            _SONOS["favs"]=(_now,[f.title for f in c.music_library.get_sonos_favorites()])
+        out["favorites"]=_SONOS["favs"][1]
+    except Exception: out["favorites"]=(_SONOS.get("favs") or (0,[]))[1]
     return jsonify(out)
+def _sonos_wifi(ip):
+    # Best-effort: the speaker's own diagnostics page. Not every model/firmware reports a figure —
+    # when it doesn't, the UI shows a dash rather than a made-up number.
+    try:
+        with urllib.request.urlopen("http://%s:1400/support/review"%ip,timeout=3) as r:
+            t=r.read().decode("utf-8","ignore")
+        m=re.search(r'(?:WifiStrength|WiFiStrength|SignalStrength|RSSI)\D{0,20}(-?\d{1,3})',t,re.I)
+        if m:
+            v=int(m.group(1))
+            if -100<=v<=0 or 0<v<=100: return v
+    except Exception: pass
+    return None
+
+@app.route("/api/sonos/speakers")
+def api_sonos_speakers():
+    try:
+        import soco
+    except Exception:
+        return jsonify({"ok":False,"error":"Sonos library not installed"})
+    zones=[]
+    d=_SONOS.get("dev")
+    try:
+        if d is not None: zones=list(d.all_zones)
+    except Exception: zones=[]
+    if not zones:
+        try: zones=list(soco.discover(timeout=4) or [])
+        except Exception: zones=[]
+    if not zones: return jsonify({"ok":False,"error":"No Sonos speakers found on the network"})
+    info_cache=_SONOS.setdefault("info",{})
+    out=[]
+    for z in zones:
+        ip=getattr(z,"ip_address","")
+        e={"ip":ip}
+        t0=time.time()
+        try:
+            e["name"]=z.player_name; e["online"]=True
+            e["ms"]=int((time.time()-t0)*1000)                # how quickly it answered = link health proxy
+        except Exception:
+            e["name"]=ip or "speaker"; e["online"]=False; out.append(e); continue
+        try: e["volume"]=z.volume
+        except Exception: pass
+        try: e["muted"]=bool(z.mute)
+        except Exception: pass
+        ic=info_cache.get(ip)
+        if not ic or (time.time()-ic[0])>3600:
+            try: info_cache[ip]=(time.time(),(z.get_speaker_info() or {}).get("model_name",""))
+            except Exception: info_cache[ip]=(time.time(),"")
+        e["model"]=info_cache[ip][1]
+        try:
+            co=z.group.coordinator
+            e["group"]=co.player_name
+            e["is_coordinator"]=(getattr(co,"uid",None)==getattr(z,"uid",""))
+        except Exception: pass
+        e["wifi"]=_sonos_wifi(ip)
+        out.append(e)
+    out.sort(key=lambda x:(not x.get("online"),str(x.get("name",""))))
+    return jsonify({"ok":True,"speakers":out})
+
 @app.route("/api/sonos/cmd",methods=["POST"])
 def api_sonos_cmd():
     c,err=_sonos_coordinator()
