@@ -456,6 +456,12 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .pl2-item{font-size:17px;font-weight:800;line-height:1.2;margin-bottom:6px;}
 .pl2-useby{font-size:13px;color:var(--muted);margin-bottom:12px;}
 .pl2-useby b{color:var(--amber);font-size:15px;font-weight:800;}
+.iph{width:100%;max-width:250px;margin:0 auto;background:#1b1d22;border:2px solid #34363c;border-radius:26px;padding:8px 6px 12px;}
+.iph-scr{background:#000;border-radius:19px;overflow:hidden;}
+.iph-top{background:#101012;color:#e8e8ea;font-size:11px;text-align:center;padding:8px 6px;border-bottom:1px solid #26262a;font-weight:600;}
+.iph-body{padding:10px 8px;min-height:150px;max-height:280px;overflow-y:auto;}
+.iph-bub{background:#26262a;color:#fff;border-radius:15px;border-bottom-left-radius:4px;padding:8px 11px;font-size:12px;line-height:1.42;white-space:pre-wrap;word-break:break-word;}
+.iph-note{text-align:center;font-size:11px;color:var(--muted);margin-top:7px;}
 .pl2-prev{display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border2);border-radius:8px;padding:5px;margin-bottom:11px;min-height:52px;}
 .pl2-prev img{display:block;width:100%;max-width:270px;height:auto;image-rendering:pixelated;}
 .pl2-prev-wait{font-size:11.5px;color:#888;}
@@ -1313,13 +1319,13 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div class="comp-grid">
           <div class="comp-card">
             <div class="comp-h">Send a credit</div>
-            <div class="comp-lab">Message</div>
+            <div class="comp-lab">Message &mdash; pick the tone</div>
             <div id="comp-types" class="comp-amts"></div>
-            <input class="input" id="comp-custom-line" placeholder="Your own opening line" style="display:none;" maxlength="80">
+            <input class="input" id="comp-custom-line" oninput="compPreview()" placeholder="Your own opening line" style="display:none;" maxlength="80">
             <label id="comp-mms-wrap" style="display:none;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:2px;cursor:pointer;"><input type="checkbox" id="comp-mms" style="width:17px;height:17px;"> Send with logo (MMS)</label>
             <div class="comp-lab">Amount</div>
             <div id="comp-amts" class="comp-amts"></div>
-            <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null)">
+            <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null);compPreview()">
             <div class="comp-lab">Customer name</div>
             <input class="input" id="comp-name" placeholder="First name">
             <div class="comp-lab">Mobile</div>
@@ -1330,6 +1336,16 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
             <div class="row" style="gap:8px;align-items:center;"><input class="input" id="comp-exp" type="number" min="1" max="60" value="12" style="width:90px;"><span style="font-size:12.5px;color:var(--muted);">months</span></div>
             <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="compSend()">Send voucher</button>
             <div id="comp-status" style="font-size:12.5px;margin-top:8px;min-height:18px;"></div>
+          </div>
+          <div class="comp-card" id="comp-prevcard">
+            <div class="comp-h">What the customer sees</div>
+            <div class="iph">
+              <div class="iph-scr">
+                <div class="iph-top"><span id="iph-from">Bruno&rsquo;s Chicken Shop</span></div>
+                <div class="iph-body"><div class="iph-bub" id="iph-msg"></div></div>
+              </div>
+            </div>
+            <div class="iph-note" id="iph-note"></div>
           </div>
           <div class="comp-card">
             <div class="comp-h">Vouchers issued</div>
@@ -2320,7 +2336,26 @@ function compRenderTypes(){
   const c=document.getElementById('comp-custom-line');
   if(c)c.style.display=(_compType==='custom')?'':'none';
 }
-function compPickType(t){_compType=t;compRenderTypes();}
+function compPickType(t){_compType=t;compRenderTypes();compPreview();}
+let _compPrevT=null;
+function compPreview(){
+  const bub=document.getElementById('iph-msg');if(!bub||!_compUnlocked)return;
+  clearTimeout(_compPrevT);
+  _compPrevT=setTimeout(()=>{
+    const amt=_compAmt||parseFloat((document.getElementById('comp-amt-custom')||{}).value)||0;
+    const g=i=>(document.getElementById(i)||{}).value||'';
+    fetch('/api/comp_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code:_compCode,amount:amt,name:g('comp-name'),mtype:_compType,
+        custom:g('comp-custom-line'),expiry_months:parseInt(g('comp-expiry'))||0})})
+      .then(r=>r.json()).then(d=>{
+        if(!d.ok){bub.textContent='';return;}
+        bub.textContent=d.message;
+        const n=document.getElementById('iph-note');
+        if(n&&d.sms)n.textContent=d.sms.segments+' text'+(d.sms.segments>1?'s':'')+' \u00b7 '+d.sms.chars+' characters'
+          +(d.sms.encoding==='Unicode'?' \u00b7 Unicode (shorter limit)':'');
+      }).catch(()=>{});
+  },200);
+}
 function compRenderAmts(){
   const el=document.getElementById('comp-amts');if(!el)return;
   el.innerHTML=(_compCfg.amounts||[5,10,15,20,25,50]).map(a=>
@@ -2350,7 +2385,7 @@ function compSend(){
       body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months,mms:!!((document.getElementById('comp-mms')||{}).checked),msg_type:_compType,custom_line:((document.getElementById('comp-custom-line')||{}).value||'')})})
       .then(r=>r.json()).then(d=>{
         if(!d||!d.ok){_compStatus(((d&&d.error)||'Failed'),'var(--red)');return;}
-        _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+d.gan+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
+        _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+_ganFmt(d.gan)+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
         ['comp-name','comp-phone','comp-reason','comp-amt-custom'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
         _compAmt=null;compRenderAmts();
         fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[],(x&&x.summary)||null)).catch(()=>{});
@@ -2388,7 +2423,7 @@ function compRenderLog(v,summary){
           +(x.reason?('<div style="font-size:11px;color:var(--muted);">'+_mEsc(x.reason)+'</div>'):'')+'</td>'
         +'<td class="pl-d">$'+(x.amount!=null?x.amount:'—')+'</td>'
         +'<td>'+_compStatusCell(x)+'</td>'
-        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;cursor:pointer;" title="Tap to check this code now" onclick="compVerify(\''+_mEsc(x.gan||'')+'\')">'+_mEsc(x.gan||'')+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
+        +'<td class="pl-p" style="font-family:var(--font-mono);font-size:12px;cursor:pointer;" title="Tap to check this code now" onclick="compVerify(\''+_mEsc(x.gan||'')+'\')">'+_mEsc(_ganFmt(x.gan||''))+'<div style="font-size:10.5px;color:var(--muted);">to '+_mEsc(x.expiry||'')+'</div></td>'
         +'<td class="pl-x">'+_mEsc(x.staff||'')+'</td>'
         +'<td>'+(x.sms?('<span style="color:var(--green);">'+(x.via==='mms'?'MMS':'sent')+'</span>'):('<span style="color:var(--amber);" title="'+_mEsc(x.sms_err||'')+'">failed</span>'))
           +(x.resent?('<div style="font-size:10.5px;color:var(--muted);">resent '+x.resent+'&times;</div>'):'')+'</td>'
@@ -2442,6 +2477,7 @@ function compResend(ts){
       compLoad();
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
 }
+function _ganFmt(g){const d=String(g||'').replace(/\D/g,'');return d.length>=8?d.replace(/(\d{4})(?=\d)/g,'$1 '):String(g||'');}
 function compVerify(gan){
   fetch('/api/comp_verify?gan='+encodeURIComponent(gan)).then(r=>r.json()).then(d=>{
     if(!d||!d.ok){_toast('Check failed: '+((d&&d.error)||'unknown'));return;}

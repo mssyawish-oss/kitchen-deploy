@@ -1449,7 +1449,7 @@ def api_comp_sms_test():
 def api_comp_verify():
     # Look a voucher up in Square and report its real state + balance, so a code can be checked
     # without walking to the till.
-    gan=(request.args.get("gan") or "").strip()
+    gan="".join(ch for ch in (request.args.get("gan") or "") if ch.isdigit())   # tolerate grouped input
     if not gan: return jsonify({"ok":False,"error":"no code given"})
     hdr=_sq_headers()
     if not hdr: return jsonify({"ok":False,"error":"Square not configured"})
@@ -1536,6 +1536,24 @@ _COMP_LINES={"sorry":  "$%s credit - sorry about that!",
              "gift":   "$%s credit, just for you!",
              "loyal":  "$%s credit for a regular!"}
 
+_GSM7=set("@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?"
+            "\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0")
+def _comp_segments(msg):
+    """How many SMS this text costs. GSM-7 = 160 chars (153 when concatenated); anything outside the
+       GSM alphabet forces UCS-2 = 70 (67 concatenated). Staff see the cost before they send."""
+    s=str(msg or "")
+    gsm=all(ch in _GSM7 for ch in s)
+    single,multi=(160,153) if gsm else (70,67)
+    n=len(s)
+    segs=1 if n<=single else -(-n//multi)
+    return {"chars":n,"segments":segs,"encoding":("GSM-7" if gsm else "Unicode")}
+
+def _comp_gan_fmt(gan):
+    """16 digits in one run is unreadable off a phone screen — group in 4s. Display/SMS only;
+       every lookup strips back to digits so a grouped code still verifies."""
+    d="".join(ch for ch in str(gan or "") if ch.isdigit())
+    return " ".join(d[i:i+4] for i in range(0,len(d),4)) if len(d)>=8 else str(gan or "")
+
 def _comp_message(amt,gan,expiry,name="",mtype="sorry",custom=""):
     """The customer-facing voucher text. Shared by send and resend so they can never drift apart."""
     shop=(db.get("shop_name") or "Bruno's Chicken Shop")
@@ -1545,7 +1563,7 @@ def _comp_message(amt,gan,expiry,name="",mtype="sorry",custom=""):
     else: opener=(_COMP_LINES.get(str(mtype).lower()) or _COMP_LINES["sorry"])%amt_s
     msg=_comp_gsm(shop)+"\n"+_comp_gsm(opener)+"\n"
     if first: msg+="Hi %s!\n"%_comp_gsm(first)
-    msg+="\nCODE %s\n\n"%gan
+    msg+="\nCODE %s\n\n"%_comp_gan_fmt(gan)
     # scheme and trailing slash trimmed: phones still auto-link it, and those 8 characters are the
     # difference between one SMS segment and two
     url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
@@ -1588,6 +1606,19 @@ def api_comp_resend():
         db["comp_log"]=log; save_data(db)
     return jsonify({"ok":bool(sent),"error":("" if sent else (err or "send failed")),
                     "note":(err or ""),"via":via,"phone":phone})
+
+@app.route("/api/comp_preview",methods=["POST"])
+def api_comp_preview():
+    # Builds the REAL customer text (same _comp_message as send/resend) with a placeholder code, so the
+    # iPhone preview can never drift from what actually gets sent. Creates nothing, sends nothing.
+    d=request.get_json(silent=True) or {}
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Wrong access code"})
+    try: amt=float(d.get("amount") or 0)
+    except (TypeError,ValueError): amt=0.0
+    months=int(d.get("expiry_months") or db.get("comp_expiry_months",12) or 12)
+    expiry=(datetime.now()+timedelta(days=30*months)).strftime("%d %b %Y")
+    msg=_comp_message(amt,"0000000000000000",expiry,d.get("name",""),d.get("mtype","sorry"),d.get("custom",""))
+    return jsonify({"ok":True,"message":msg,"expiry":expiry,"sms":_comp_segments(msg)})
 
 @app.route("/api/comp_send",methods=["POST"])
 def api_comp_send():
