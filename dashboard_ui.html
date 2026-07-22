@@ -2415,7 +2415,11 @@ function compLoad(){
   }).catch(()=>{});
   fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[],(d&&d.summary)||null)).catch(()=>{});
 }
-const COMP_TYPES=[["sorry","Sorry"],["thanks","Thank you"],["gift","Just for you"],["loyal","Regular"],["custom","Custom"]];
+const COMP_TYPES=[["sorry","Sorry","Something went wrong with their order"],
+                  ["thanks","Thank you","Thanking them for something"],
+                  ["gift","Just for you","A gift with no particular reason"],
+                  ["loyal","Regular","A thank-you for a regular customer"],
+                  ["custom","Custom","Write your own opening line"]];
 let _compPrevT=null;
 
 function _compStatus(msg,colour){
@@ -2463,7 +2467,7 @@ function compWizRender(){
   if(s==='tone'){
     q.textContent='What kind of message?';sub.textContent='Sets the opening line the customer reads.';
     body.innerHTML='<div class="cw-opts">'+COMP_TYPES.map(t=>
-      '<button class="cw-opt'+(_cw.tone===t[0]?' on':'')+'" onclick="_cwSet(\'tone\','+_jsq(t[0])+')"><b>'+_mEsc(t[1])+'</b></button>').join('')
+      '<button class="cw-opt'+(_cw.tone===t[0]?' on':'')+'" onclick="_cwSet(\'tone\','+_jsq(t[0])+')"><span><b>'+_mEsc(t[1])+'</b><small>'+_mEsc(t[2]||'')+'</small></span></button>').join('')
       +'</div>'+(_cw.tone==='custom'?'<input class="input" id="cw-custom" style="margin-top:11px;height:46px;" maxlength="80" placeholder="Your own opening line" value="'+_mEsc(_cw.custom)+'" oninput="_cw.custom=this.value;compWizPreview()">':'');
     const ci=document.getElementById('cw-custom');if(ci)ci.focus();
   } else if(s==='amount'){

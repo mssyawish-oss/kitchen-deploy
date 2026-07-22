@@ -1531,10 +1531,26 @@ def _comp_gsm(s):
         s=s.replace(a,b)
     return s
 
-_COMP_LINES={"sorry":  "$%s credit - sorry about that!",
-             "thanks": "$%s credit - thank you!",
-             "gift":   "$%s credit, just for you!",
-             "loyal":  "$%s credit for a regular!"}
+# Opening lines. The old set led with the shop name and price and only THEN said "Hi Sarah!" —
+# the greeting arrived after the pitch, which reads like spam. These greet first and say it in one
+# natural sentence. Two variants each: with and without a customer name.
+_COMP_LINES={
+ "sorry":  ("Hi %(n)s, sorry about that - here's $%(a)s credit at %(s)s.",
+            "Sorry about that - here's $%(a)s credit at %(s)s."),
+ "thanks": ("Hi %(n)s, thank you! Here's $%(a)s credit at %(s)s.",
+            "Thank you! Here's $%(a)s credit at %(s)s."),
+ "gift":   ("Hi %(n)s, here's $%(a)s credit at %(s)s - enjoy!",
+            "Here's $%(a)s credit at %(s)s - enjoy!"),
+ "loyal":  ("Hi %(n)s, thanks for being a regular - $%(a)s credit at %(s)s.",
+            "Thanks for being a regular - $%(a)s credit at %(s)s."),
+}
+def _comp_short():
+    """Short shop name for inside the sentence — the URL already spells the full one out, and the
+       long form is what pushed these texts over 160 characters (= double the send cost)."""
+    s=(db.get("shop_short") or "").strip()
+    if s: return s
+    full=(db.get("shop_name") or "Bruno's Chicken Shop").strip()
+    return full.split(" ")[0] or full
 
 _GSM7=set("@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?"
             "\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0")
@@ -1556,18 +1572,21 @@ def _comp_gan_fmt(gan):
 
 def _comp_message(amt,gan,expiry,name="",mtype="sorry",custom=""):
     """The customer-facing voucher text. Shared by send and resend so they can never drift apart."""
-    shop=(db.get("shop_name") or "Bruno's Chicken Shop")
     amt_s=("%.2f"%float(amt)).rstrip("0").rstrip(".")
-    first=(str(name or "").split(" ")[0]).strip()
-    if str(mtype).lower()=="custom" and custom: opener=custom
-    else: opener=(_COMP_LINES.get(str(mtype).lower()) or _COMP_LINES["sorry"])%amt_s
-    msg=_comp_gsm(shop)+"\n"+_comp_gsm(opener)+"\n"
-    if first: msg+="Hi %s!\n"%_comp_gsm(first)
-    msg+="\nCODE %s\n\n"%_comp_gan_fmt(gan)
+    first=_comp_gsm((str(name or "").split(" ")[0]).strip())
+    shop=_comp_gsm(_comp_short())
+    if str(mtype).lower()=="custom" and custom:
+        opener=_comp_gsm(custom)
+        if first: opener="Hi %s! %s"%(first,opener)
+    else:
+        pair=_COMP_LINES.get(str(mtype).lower()) or _COMP_LINES["sorry"]
+        tpl=pair[0] if first else pair[1]
+        opener=_comp_gsm(tpl%{"n":first,"a":amt_s,"s":shop})
+    msg=opener+"\n\nCODE %s\n\n"%_comp_gan_fmt(gan)
     # scheme and trailing slash trimmed: phones still auto-link it, and those 8 characters are the
     # difference between one SMS segment and two
     url=re.sub(r"^https?://","",(db.get("online_url") or "").strip()).rstrip("/")
-    msg+=("In store or online: %s\n"%url) if url else "Use in store or at online checkout.\n"
+    msg+=("Use at %s\n"%url) if url else "Use in store or at online checkout.\n"
     return msg+"Valid to %s"%expiry
 
 def _comp_deliver(phone,msg,want_mms):
