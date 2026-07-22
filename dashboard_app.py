@@ -2007,9 +2007,15 @@ def api_books_summary():
     wages=s(lambda t:_bk_bucket(t)=="wage"); other=s(lambda t:_bk_bucket(t)=="other")
     sup=sum((float(t.get("amt") or 0)*0.12) for t in wt if _bk_bucket(t)=="wage" and t.get("staffId"))
     wtot=wages+sup; net=sales-cogs-wtot-other
+    # A week can have expenses posted daily while income is only entered later (income has always
+    # come from hand-maintained lists, not a live feed). Net then reads as a huge loss that isn't
+    # real, so flag it rather than presenting the number as fact.
+    warn=""
+    if wt and sales<=0 and (cogs or wtot or other):
+        warn="No income entered for this week yet — net is not meaningful until sales are added."
     return jsonify({"week":monday,"has_data":bool(wt),"updated":b.get("ts") or "",
                     "sales":round(sales,2),"cogs":round(cogs,2),"wages":round(wtot,2),"other":round(other,2),"net":round(net,2),
-                    "gross":round(sales-cogs,2)})
+                    "gross":round(sales-cogs,2),"warn":warn,"income_missing":bool(warn)})
 
 @app.route("/api/rotcam_prompts",methods=["GET","POST"])
 def api_rotcam_prompts():
@@ -2066,194 +2072,6 @@ def api_square_week_test():
     except Exception as e:
         try: return jsonify({"ok":False,"error":e.read().decode()[:200]})
         except Exception: return jsonify({"ok":False,"error":str(e)[:200]})
-
-@app.route("/api/bills_probe")
-def api_bills_probe():
-    # Diagnostic: where do specific suppliers' invoices actually live — Drive folder PDFs vs Xero emails?
-    out={}
-    try:
-        files=[]; tok=None; pages=0
-        while pages<15:
-            q={"query":"parentId = '1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'","pageSize":100}
-            if tok: q["pageToken"]=tok
-            r=_drive_search(q) or {}
-            files+=(r.get("files") or [])
-            tok=r.get("nextPageToken"); pages+=1
-            if not tok: break
-        titles=[(f.get("title") or f.get("name") or "") for f in files]
-        low=[t.lower() for t in titles]
-        out["drive_total"]=len(titles)
-        out["united"]=[titles[i] for i,t in enumerate(low) if "united" in t or "zoghaib" in t]
-        out["gw"]=[titles[i] for i,t in enumerate(low) if "g&w" in t or "g & w" in t or "gnw" in t or "packag" in t]
-        out["baiada"]=[titles[i] for i,t in enumerate(low) if "baiada" in t]
-        out["asahi"]=[titles[i] for i,t in enumerate(low) if "asahi" in t]
-        out["russel"]=[titles[i] for i,t in enumerate(low) if "russel" in t]
-        out["all_titles"]=titles   # full list so I can spot generically-named suppliers
-        def read_sample(idx_list):
-            if not idx_list: return None
-            try:
-                fid=files[idx_list[0]].get("id") or files[idx_list[0]].get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                lw=txt.lower()
-                hits=[k for k in ("russel","poultry","asahi","schweppes","meat merchant","baiada","total","amount due","balance") if k in lw]
-                return {"name":titles[idx_list[0]],"head":txt[:700],"tail":txt[-700:],"hits":hits,"len":len(txt)}
-            except Exception as e: return {"error":str(e)[:150]}
-        out["asahi_sample"]=read_sample([i for i,t in enumerate(low) if "asahi" in t])
-        # FULL text of one Asahi invoice to find its total label
-        ai=[i for i,t in enumerate(low) if "asahi" in t]
-        if ai:
-            try:
-                fid=files[ai[0]].get("id") or files[ai[0]].get("fileId")
-                out["asahi_full"]=((_drive_read({"fileId":fid}) or {}).get("fileContent","") or "")[:3500]
-            except Exception as e: out["asahi_full_err"]=str(e)[:150]
-        out["invoice72_files"]=[titles[i] for i,t in enumerate(low) if "invoice_72" in t or "invoice 72" in t]
-        out["russel72_sample"]=read_sample([i for i,t in enumerate(low) if "invoice_72" in t or "invoice 72" in t])
-        out["si_files"]=[titles[i] for i,t in enumerate(low) if "sales invoice si" in t or "sales invoice" in t][:12]
-        out["inv5_files"]=[titles[i] for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t or "inv-5" in t][:12]
-        out["sample"]=titles[:50]
-        # read one "Sales Invoice SI" file to see which supplier it actually is
-        si_idx=[i for i,t in enumerate(low) if "sales invoice si" in t]
-        if si_idx:
-            try:
-                fid=files[si_idx[0]].get("id") or files[si_idx[0]].get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                out["si_sample_name"]=titles[si_idx[0]]
-                out["si_sample_tail"]=txt[-700:]   # the TOTAL lives at the bottom
-                kws=[k for k in ("united","zoghaib","pfd","bidfood","fiesta","feel good","melbourne chilli") if k in txt.lower()]
-                out["si_sample_vendor_hits"]=kws
-            except Exception as e: out["si_read_error"]=str(e)[:150]
-        gw_idx=[i for i,t in enumerate(low) if "inv-50" in t]
-        if gw_idx:
-            try:
-                fid=files[gw_idx[0]].get("id") or files[gw_idx[0]].get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                out["gw_sample_name"]=titles[gw_idx[0]]
-                out["gw_sample_tail"]=txt[-700:]
-                out["gw_sample_vendor_hits"]=[k for k in ("g & w","g&w","packaging","gnw") if k in txt.lower()]
-            except Exception as e: out["gw_read_error"]=str(e)[:150]
-        # PARSE every G&W file the way the books would: vendor hit, "Invoice Total", and the date (numeric + textual)
-        import re as _re
-        gwfiles=[i for i,t in enumerate(low) if "inv-50" in t or "inv-49" in t]
-        out["gw_parsed"]=[]
-        for i in gwfiles[:14]:
-            try:
-                fid=files[i].get("id") or files[i].get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                vend = ("g&w" in txt.lower() or "g & w" in txt.lower())
-                am=_re.search(r"Invoice Total\s*\$?\s*([\d,]+\.\d{2})", txt, _re.I) or _re.search(r"Amount Due\s*(?:AUD)?\s*\$?\s*([\d,]+\.\d{2})", txt, _re.I)
-                amt=float(am.group(1).replace(",","")) if am else 0
-                dnum=_re.search(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})", txt)
-                dtxt=_re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})", txt, _re.I)
-                out["gw_parsed"].append({"file":titles[i],"gw_vendor":vend,"amount":amt,"date_numeric":(dnum.group(0) if dnum else None),"date_textual":(dtxt.group(0) if dtxt else None)})
-            except Exception as e: out["gw_parsed"].append({"file":titles[i],"err":str(e)[:80]})
-        # PRODUCE (Fresho / Fruit Talk) — parse vendor + date (full logic) + the WEEK it lands in, vs the upload-week fallback
-        import datetime as _dt
-        def _monday(ds):
-            try: d=_dt.date.fromisoformat(ds); return (d-_dt.timedelta(days=d.weekday())).isoformat()
-            except Exception: return None
-        _MN={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
-        def _pdate(txt):
-            m=_re.search(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})",txt) or _re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})",txt)
-            if m:
-                d,mo,y=int(m.group(1)),int(m.group(2)),int(m.group(3))
-                if y<100:y+=2000
-                if 1<=mo<=12 and 1<=d<=31: return "%04d-%02d-%02d"%(y,mo,d)
-            m=_re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})",txt,_re.I)
-            if m:
-                d=int(m.group(1));mo=_MN[m.group(2).lower()[:3]];y=int(m.group(3))
-                if 1<=d<=31: return "%04d-%02d-%02d"%(y,mo,d)
-            return None
-        prod=[i for i,t in enumerate(low) if "fresho" in t or "fruit" in t or "talk" in t]
-        out["produce_parsed"]=[]
-        for i in prod[:16]:
-            try:
-                f=files[i]; fid=f.get("id") or f.get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                tl=txt.lower(); vend="Fruit Talk" if ("fruit talk" in tl or "fruittalk" in tl) else ("Fresho" if "fresho" in tl else "?")
-                pd=_pdate(txt); ct=(f.get("createdTime") or "")[:10]
-                out["produce_parsed"].append({"file":titles[i],"vendor":vend,"invoice_date":pd,"week_invoice":(_monday(pd) if pd else None),"createdTime":ct,"week_upload":_monday(ct)})
-            except Exception as e: out["produce_parsed"].append({"file":titles[i],"err":str(e)[:80]})
-        fr=[i for i,t in enumerate(low) if "fresho" in t and "credit" not in t]
-        if fr:
-            try:
-                fid=files[fr[0]].get("id") or files[fr[0]].get("fileId")
-                ft=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                out["fresho_full"]={"name":titles[fr[0]],"text":ft[:2600]}
-            except Exception as e: out["fresho_full"]={"err":str(e)[:120]}
-        # ASAHI — vendor + 5-column "AUD Total" amount + date + week
-        ai=[i for i,t in enumerate(low) if "asahi" in t]
-        out["asahi_parsed"]=[]
-        for i in ai[:8]:
-            try:
-                f=files[i]; fid=f.get("id") or f.get("fileId")
-                txt=(_drive_read({"fileId":fid}) or {}).get("fileContent","") or ""
-                vend="asahi" in txt.lower()
-                am=_re.search(r"AUD\s+Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})",txt,_re.I)
-                amt=float(am.group(5).replace(",","")) if am else 0
-                pd=_pdate(txt)
-                out["asahi_parsed"].append({"file":titles[i],"asahi":vend,"amount":amt,"date":pd,"week":(_monday(pd) if pd else None)})
-            except Exception as e: out["asahi_parsed"].append({"file":titles[i],"err":str(e)[:80]})
-    except Exception as e:
-        out["drive_error"]=str(e)[:200]
-    try:
-        gw=_gmail_search({"query":'from:post.xero.com ("G & W" OR "G&W" OR Packaging OR CFM) newer_than:35d',"pageSize":12}) or {}
-        subs=[]
-        for th in (gw.get("threads") or []):
-            for m in (th.get("messages") or []):
-                if m.get("subject"): subs.append(m["subject"][:90]); break
-        out["xero_emails"]=subs
-    except Exception as e:
-        out["gmail_error"]=str(e)[:200]
-    return jsonify(out)
-
-# ── Task-completion photos: grab a still from a Dahua IP camera instead of a PIN ──
-PHOTOS_DIR=os.path.join(BASE_DIR,"task_photos")
-try: os.makedirs(PHOTOS_DIR,exist_ok=True)
-except Exception: pass
-
-def _crop_jpeg(data,cr):
-    # Zoom into a focused area of the frame. cr={zoom>1, cx, cy} where cx,cy are the focus CENTRE (0..1).
-    try:
-        z=max(1.0,min(8.0,float(cr.get("zoom",1) or 1)))
-        if z<=1.01: return data
-        from PIL import Image; import io
-        cx=max(0.0,min(1.0,float(cr.get("cx",0.5)))); cy=max(0.0,min(1.0,float(cr.get("cy",0.5))))
-        im=Image.open(io.BytesIO(data)); im.load()
-        if im.mode!="RGB": im=im.convert("RGB")
-        W,H=im.size; cw=W/z; chh=H/z
-        x=min(max(0.0,cx*W-cw/2),W-cw); y=min(max(0.0,cy*H-chh/2),H-chh)
-        im=im.crop((int(x),int(y),int(x+cw),int(y+chh)))
-        out=io.BytesIO(); im.save(out,"JPEG",quality=88); return out.getvalue()
-    except Exception: return data
-
-def _camera_snapshot(cfg_key="camera_config",apply_crop=True):
-    cfg=db.get(cfg_key,{}) or {}
-    if not cfg.get("ip"): return None,"No camera configured"
-    ip=str(cfg["ip"]).strip(); port=cfg.get("port") or 80; ch=cfg.get("channel") or 1
-    user=cfg.get("user","") or ""; pw=cfg.get("pass","") or ""
-    url=(cfg.get("url_override") or "").strip() or ("http://%s:%s/cgi-bin/snapshot.cgi?channel=%s"%(ip,port,ch))
-    try:
-        pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,url,user,pw)
-        # cameras use self-signed certs on a trusted local IP — verifying the cert is meaningless and just fails
-        cam_ctx=ssl.create_default_context(); cam_ctx.check_hostname=False; cam_ctx.verify_mode=ssl.CERT_NONE
-        opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
-            urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=cam_ctx))
-        with opener.open(urllib.request.Request(url),timeout=8) as r: data=r.read()
-        if data[:2]==b"\xff\xd8":
-            if apply_crop and (cfg.get("crop") or {}): data=_crop_jpeg(data,cfg["crop"])   # focus every photo on the chosen area
-            return data,None
-        return None,"Camera did not return a photo (%d bytes) — check the address/login."%len(data)
-    except Exception as e:
-        return None,str(e)
-
-def _prune_photos(days=45):
-    try:
-        cutoff=time.time()-days*86400
-        for fn in os.listdir(PHOTOS_DIR):
-            if fn.startswith("prep_"): continue   # prep-item preset pictures are permanent, never prune them
-            fp=os.path.join(PHOTOS_DIR,fn)
-            if os.path.isfile(fp) and os.path.getmtime(fp)<cutoff: os.remove(fp)
-    except Exception: pass
 
 @app.route("/api/prep_image/<pid>",methods=["POST"])
 def api_prep_image(pid):
@@ -4058,7 +3876,7 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_fin")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin")}
     safe["cameras_public"]=[]
     for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
