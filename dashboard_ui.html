@@ -453,6 +453,20 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .comp-sum-n{display:block;font-size:19px;font-weight:800;color:var(--text);line-height:1.1;}
 .comp-sum-l{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;}
 /* pull log popup — the card only carries a one-line summary */
+.pl2-item{font-size:17px;font-weight:800;line-height:1.2;margin-bottom:6px;}
+.pl2-useby{font-size:13px;color:var(--muted);margin-bottom:12px;}
+.pl2-useby b{color:var(--amber);font-size:15px;font-weight:800;}
+.pl2-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.pl2-lab{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;}
+.pl2-qty{display:flex;align-items:center;gap:4px;}
+.pl2-qty button{width:44px;height:38px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:19px;font-weight:700;cursor:pointer;}
+.pl2-qty span{min-width:44px;text-align:center;font-family:var(--font-mono);font-size:19px;font-weight:800;}
+.pl2-staff{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.pl2-staff .lbl-chip{margin:0;}
+.pl2-status{font-size:12.5px;min-height:17px;margin-bottom:8px;color:var(--muted);}
+.pl2-actions{display:flex;gap:9px;}
+.pl2-actions .btn{flex:1;height:44px;font-size:14.5px;}
+.pl2-actions .btn-primary{flex:1.5;}
 .pl-sold{font-size:13px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:8px 12px;margin-bottom:4px;}
 .pl-sold b{color:var(--amber);font-size:15px;}
 .pl-day{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 6px;flex-wrap:wrap;}
@@ -649,7 +663,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* Pop-ups use (nearly) the whole screen — we can't use the background anyway, so this means far less scrolling. Tiny confirm dialogs stay compact. */
 .modal-overlay>.modal{width:97vw!important;max-width:1500px!important;max-height:95vh!important;}
 #pin-confirm-modal>.modal{width:100%!important;max-width:340px!important;max-height:92vh!important;}
-#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
+#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal,#preplbl-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
 #prodoff-modal>.modal{width:100%!important;max-width:520px!important;max-height:88vh!important;}
 /* Live AI trace: live video + decision cards side-by-side on a wide screen */
 .trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -1525,6 +1539,32 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
   </div>
 </div>
 
+<!-- Just-prepped label prompt — fires the moment a PREP ITEM is ticked (never a daily task).
+     Compact by design: the item is already known, so it only asks how many labels and who prepped it. -->
+<div class="modal-overlay" id="preplbl-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Print labels</div><button class="modal-close" onclick="closeModal('preplbl-modal')">&times;</button></div>
+    <div class="pl2-item" id="pl2-item"></div>
+    <div class="pl2-useby" id="pl2-useby"></div>
+    <div id="pl2-shelfrow" style="display:none;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:12.5px;color:var(--muted);">Shelf life</span>
+      <input id="pl2-shelf" type="number" min="0" step="0.5" inputmode="decimal" oninput="_pl2Useby()"
+             style="width:70px;padding:6px 8px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:14px;">
+      <span style="font-size:12.5px;color:var(--muted);">days &mdash; saved for next time</span>
+    </div>
+    <div class="pl2-row">
+      <span class="pl2-lab">Labels</span>
+      <div class="pl2-qty"><button onclick="_pl2Step(-1)">&minus;</button><span id="pl2-qty">1</span><button onclick="_pl2Step(1)">+</button></div>
+    </div>
+    <div class="pl2-lab" style="margin-bottom:5px;">Who prepped it</div>
+    <div class="pl2-staff" id="pl2-staff"></div>
+    <div class="pl2-status" id="pl2-status"></div>
+    <div class="pl2-actions">
+      <button class="btn" onclick="closeModal('preplbl-modal')">Skip</button>
+      <button class="btn btn-primary" id="pl2-print" onclick="_pl2Print()">Print</button>
+    </div>
+  </div>
+</div>
 <!-- Music (Sonos) modal -->
 <div class="modal-overlay" id="music-modal">
   <div class="modal" style="max-width:420px;">
@@ -4169,6 +4209,7 @@ function completePrep(id){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);
   completeWithProof('Prepped: '+(p?p.name:''),'Snap a photo of the prepped item',function(rec){
     appData.prep_today.done[id]=rec;saveKeys(['prep_today']);renderPrepPage();
+    if(p&&!p.recur)setTimeout(()=>_pl2Open(id),260);   // straight into the label prompt (prep items only)
   });
 }
 function addPrepToToday(id){
@@ -4348,6 +4389,65 @@ function _doPrintLabels(){
     if(btn)btn.disabled=false;
     if(d.ok&&d.printed){if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'')+' — '+_lblStaff;st.style.color='var(--green)';}}
     else if(d.ok){if(st){st.innerHTML='Label built ✓ — no printer connected yet.<br><span style="color:var(--muted);">'+_mEsc(d.note||'Pair the NIIMBOT B1 to start printing.')+'</span>';st.style.color='var(--amber)';}}
+    else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
+  }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
+}
+// ===== Just-prepped label prompt =====
+// Opens straight after a prep item is ticked. Use-by comes from that item's preset shelf life, counted
+// from the moment it was completed — so "cucumber, 2 days" is always 2 days from now, no typing.
+let _pl2Id=null,_pl2Name='',_pl2Shelf=0,_pl2Qty=1,_pl2Staff='',_pl2At=0;
+function _pl2Open(id){
+  const p=(appData.prep_presets||[]).find(x=>x.id===id);
+  if(!p||p.recur)return;                       // daily tasks never get a use-by sticker
+  _pl2Id=id;_pl2Name=p.name||'';_pl2Shelf=parseFloat(p.shelf_days)||0;_pl2Qty=1;_pl2Staff='';_pl2At=Date.now();
+  const g=i=>document.getElementById(i);
+  if(g('pl2-item'))g('pl2-item').textContent=_pl2Name;
+  if(g('pl2-qty'))g('pl2-qty').textContent='1';
+  if(g('pl2-status'))g('pl2-status').textContent='';
+  const sr=g('pl2-shelfrow'),si=g('pl2-shelf');
+  if(sr)sr.style.display=_pl2Shelf>0?'none':'flex';   // only ask when the item has no shelf life yet
+  if(si)si.value=_pl2Shelf>0?_pl2Shelf:'';
+  _pl2Useby();
+  const el=g('pl2-staff');
+  if(el){
+    el.innerHTML='<span style="color:var(--muted);font-size:12.5px;">Loading who&rsquo;s on&hellip;</span>';
+    const draw=names=>{el.innerHTML=names.length?names.map(n=>'<div class="lbl-chip'+(_pl2Staff===n?' on':'')+'" onclick="_pl2Pick('+_jsq(n)+')">'+_mEsc(n)+'</div>').join('')
+      :'<span style="color:var(--muted);font-size:12.5px;">No staff yet &mdash; add them in Settings &rarr; Staff.</span>';};
+    const all=()=>draw((appData.staff||[]).map(s=>s.name).filter(Boolean));
+    fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
+      const n=((d&&d.names)||[]).filter(Boolean);
+      if(n.length===1){_pl2Staff=n[0];}          // only one person on — preselect them
+      n.length?draw(n):all();
+    }).catch(all);
+  }
+  openModal('preplbl-modal');
+}
+function _pl2Useby(){
+  const el=document.getElementById('pl2-useby');if(!el)return;
+  const si=document.getElementById('pl2-shelf');
+  const sh=(_pl2Shelf>0)?_pl2Shelf:(parseFloat(si&&si.value)||0);
+  el.innerHTML=sh>0?('Use by <b>'+_lblFmt(new Date(_pl2At+sh*86400000),sh<1)+'</b>')
+                   :'<span style="color:var(--muted);">Set a shelf life to get a use-by date</span>';
+}
+function _pl2Step(d){_pl2Qty=Math.max(1,Math.min(50,_pl2Qty+d));const q=document.getElementById('pl2-qty');if(q)q.textContent=_pl2Qty;}
+function _pl2Pick(n){_pl2Staff=n;const el=document.getElementById('pl2-staff');
+  if(el)[...el.querySelectorAll('.lbl-chip')].forEach(c=>c.classList.toggle('on',c.textContent===n));}
+function _pl2Print(){
+  const st=document.getElementById('pl2-status'),btn=document.getElementById('pl2-print');
+  const si=document.getElementById('pl2-shelf');
+  const sh=(_pl2Shelf>0)?_pl2Shelf:(parseFloat(si&&si.value)||0);
+  if(!_pl2Staff){if(st){st.textContent='Tap your name first.';st.style.color='var(--red)';}return;}
+  if(sh>0&&!(_pl2Shelf>0)){                        // learned a shelf life — remember it on the preset
+    const p=(appData.prep_presets||[]).find(x=>x.id===_pl2Id);
+    if(p){p.shelf_days=sh;saveKeys(['prep_presets']);}
+  }
+  if(btn)btn.disabled=true;
+  if(st){st.textContent='Sending '+_pl2Qty+' label'+(_pl2Qty>1?'s':'')+'\u2026';st.style.color='var(--muted)';}
+  fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({item:_pl2Name,staff:_pl2Staff,shelf_days:sh,qty:_pl2Qty})}).then(r=>r.json()).then(d=>{
+    if(btn)btn.disabled=false;
+    if(d.ok&&d.printed){_toast('\u2713 '+_pl2Qty+' label'+(_pl2Qty>1?'s':'')+' printed');closeModal('preplbl-modal');}
+    else if(d.ok){if(st){st.textContent=d.note||'Label built \u2014 no printer connected.';st.style.color='var(--amber)';}}
     else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
   }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
