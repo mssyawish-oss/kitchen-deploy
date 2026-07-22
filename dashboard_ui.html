@@ -456,6 +456,9 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .pl2-item{font-size:17px;font-weight:800;line-height:1.2;margin-bottom:6px;}
 .pl2-useby{font-size:13px;color:var(--muted);margin-bottom:12px;}
 .pl2-useby b{color:var(--amber);font-size:15px;font-weight:800;}
+.pl2-prev{display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border2);border-radius:8px;padding:5px;margin-bottom:11px;min-height:52px;}
+.pl2-prev img{display:block;width:100%;max-width:270px;height:auto;image-rendering:pixelated;}
+.pl2-prev-wait{font-size:11.5px;color:#888;}
 .pl2-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .pl2-lab{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;}
 .pl2-qty{display:flex;align-items:center;gap:4px;}
@@ -1546,9 +1549,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="modal-header"><div class="modal-title">Print labels</div><button class="modal-close" onclick="closeModal('preplbl-modal')">&times;</button></div>
     <div class="pl2-item" id="pl2-item"></div>
     <div class="pl2-useby" id="pl2-useby"></div>
+    <div class="pl2-prev" id="pl2-prev"><span class="pl2-prev-wait">Building label&hellip;</span></div>
     <div id="pl2-shelfrow" style="display:none;align-items:center;gap:8px;margin-bottom:10px;">
       <span style="font-size:12.5px;color:var(--muted);">Shelf life</span>
-      <input id="pl2-shelf" type="number" min="0" step="0.5" inputmode="decimal" oninput="_pl2Useby()"
+      <input id="pl2-shelf" type="number" min="0" step="0.5" inputmode="decimal" oninput="_pl2Useby();_pl2Prev()"
              style="width:70px;padding:6px 8px;border-radius:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:14px;">
       <span style="font-size:12.5px;color:var(--muted);">days &mdash; saved for next time</span>
     </div>
@@ -4407,7 +4411,7 @@ function _pl2Open(id){
   const sr=g('pl2-shelfrow'),si=g('pl2-shelf');
   if(sr)sr.style.display=_pl2Shelf>0?'none':'flex';   // only ask when the item has no shelf life yet
   if(si)si.value=_pl2Shelf>0?_pl2Shelf:'';
-  _pl2Useby();
+  _pl2Useby();_pl2Prev();
   const el=g('pl2-staff');
   if(el){
     el.innerHTML='<span style="color:var(--muted);font-size:12.5px;">Loading who&rsquo;s on&hellip;</span>';
@@ -4416,7 +4420,7 @@ function _pl2Open(id){
     const all=()=>draw((appData.staff||[]).map(s=>s.name).filter(Boolean));
     fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
       const n=((d&&d.names)||[]).filter(Boolean);
-      if(n.length===1){_pl2Staff=n[0];}          // only one person on — preselect them
+      if(n.length===1){_pl2Staff=n[0];_pl2Prev();}   // only one person on — preselect them
       n.length?draw(n):all();
     }).catch(all);
   }
@@ -4429,9 +4433,25 @@ function _pl2Useby(){
   el.innerHTML=sh>0?('Use by <b>'+_lblFmt(new Date(_pl2At+sh*86400000),sh<1)+'</b>')
                    :'<span style="color:var(--muted);">Set a shelf life to get a use-by date</span>';
 }
-function _pl2Step(d){_pl2Qty=Math.max(1,Math.min(50,_pl2Qty+d));const q=document.getElementById('pl2-qty');if(q)q.textContent=_pl2Qty;}
+function _pl2Step(d){_pl2Qty=Math.max(1,Math.min(50,_pl2Qty+d));const q=document.getElementById('pl2-qty');if(q)q.textContent=_pl2Qty;_pl2Prev();}
+let _pl2PrevT=null;
+function _pl2Prev(){
+  const el=document.getElementById('pl2-prev');if(!el||!_pl2Id)return;
+  clearTimeout(_pl2PrevT);
+  _pl2PrevT=setTimeout(()=>{
+    const si=document.getElementById('pl2-shelf');
+    const sh=(_pl2Shelf>0)?_pl2Shelf:(parseFloat(si&&si.value)||0);
+    const q='item='+encodeURIComponent(_pl2Name)+'&staff='+encodeURIComponent(_pl2Staff)
+      +'&shelf_days='+sh+'&qty='+_pl2Qty+'&_='+Date.now();
+    const im=new Image();
+    im.onload=()=>{el.innerHTML='';el.appendChild(im);};
+    im.onerror=()=>{el.innerHTML='<span class="pl2-prev-wait">Preview unavailable</span>';};
+    im.alt='Label preview';
+    im.src='/api/label_preview?'+q;
+  },220);
+}
 function _pl2Pick(n){_pl2Staff=n;const el=document.getElementById('pl2-staff');
-  if(el)[...el.querySelectorAll('.lbl-chip')].forEach(c=>c.classList.toggle('on',c.textContent===n));}
+  if(el)[...el.querySelectorAll('.lbl-chip')].forEach(c=>c.classList.toggle('on',c.textContent===n));_pl2Prev();}
 function _pl2Print(){
   const st=document.getElementById('pl2-status'),btn=document.getElementById('pl2-print');
   const si=document.getElementById('pl2-shelf');

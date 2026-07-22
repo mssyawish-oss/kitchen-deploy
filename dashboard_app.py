@@ -4259,6 +4259,24 @@ def api_niimbot_mac():
         n=dict(db.get("niimbot") or {}); n["mac"]=mac; db["niimbot"]=n; save_data(db)
     return jsonify({"ok":True,"mac":mac})
 
+@app.route("/api/label_preview")
+def api_label_preview():
+    # The EXACT image the printer is sent, rendered on demand so the prep popup can show the real
+    # label instead of an HTML lookalike. Renders copy 1 of the batch (so the "1/4" corner is honest).
+    item=str(request.args.get("item","")).strip()[:60]; staff=str(request.args.get("staff","")).strip()[:30]
+    try: shelf=float(request.args.get("shelf_days",0) or 0)
+    except (TypeError,ValueError): shelf=0.0
+    try: qty=max(1,min(50,int(request.args.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    if not item: return ("no item",400)
+    now=datetime.now()
+    useby_s=_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-"
+    img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s,1 if qty>1 else 0,qty)
+    if img is None: return ("Pillow not installed on the server",500)
+    import io as _io
+    buf=_io.BytesIO(); img.save(buf,format="PNG")
+    return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
+
 @app.route("/api/print_labels",methods=["POST"])
 def api_print_labels():
     d=request.get_json(silent=True) or {}
