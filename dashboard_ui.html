@@ -456,12 +456,25 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .pl2-item{font-size:17px;font-weight:800;line-height:1.2;margin-bottom:6px;}
 .pl2-useby{font-size:13px;color:var(--muted);margin-bottom:12px;}
 .pl2-useby b{color:var(--amber);font-size:15px;font-weight:800;}
-.iph{width:100%;max-width:250px;margin:0 auto;background:#1b1d22;border:2px solid #34363c;border-radius:26px;padding:8px 6px 12px;}
-.iph-scr{background:#000;border-radius:19px;overflow:hidden;}
-.iph-top{background:#101012;color:#e8e8ea;font-size:11px;text-align:center;padding:8px 6px;border-bottom:1px solid #26262a;font-weight:600;}
-.iph-body{padding:10px 8px;min-height:150px;max-height:280px;overflow-y:auto;}
-.iph-bub{background:#26262a;color:#fff;border-radius:15px;border-bottom-left-radius:4px;padding:8px 11px;font-size:12px;line-height:1.42;white-space:pre-wrap;word-break:break-word;}
-.iph-note{text-align:center;font-size:11px;color:var(--muted);margin-top:7px;}
+/* iPhone Messages mock — matches the reference the owner sent: light mode, green sent bubble */
+.iph{width:100%;max-width:258px;margin:0 auto;background:#0d0d0f;border-radius:34px;padding:5px;box-shadow:0 0 0 2px #3a3c42,0 8px 22px rgba(0,0,0,.5);}
+.iph-scr{position:relative;background:#fff;border-radius:30px;overflow:hidden;display:flex;flex-direction:column;}
+.iph-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:44%;height:17px;background:#0d0d0f;border-radius:0 0 12px 12px;z-index:3;}
+.iph-status{display:flex;align-items:center;justify-content:space-between;padding:6px 14px 3px;font-size:10px;font-weight:700;color:#000;}
+.iph-sig{font-size:7px;letter-spacing:1px;}
+.iph-nav{background:#f7f7f7cc;backdrop-filter:blur(6px);border-bottom:1px solid #dededf;padding:4px 8px 5px;min-height:44px;display:flex;align-items:center;position:relative;}
+.iph-back{color:#0a7cff;font-size:20px;line-height:1;font-weight:500;}
+.iph-who{position:absolute;left:0;right:0;top:4px;bottom:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;pointer-events:none;}
+.iph-av{width:26px;height:26px;border-radius:50%;background:linear-gradient(160deg,#b8bcc4,#8d919b);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.iph-name{font-size:9.5px;color:#000;font-weight:500;}
+.iph-body{flex:1;background:#fff;padding:9px 9px 6px;min-height:132px;max-height:250px;overflow-y:auto;display:flex;flex-direction:column;}
+.iph-stamp{text-align:center;font-size:8.5px;color:#8a8a8e;line-height:1.5;margin-bottom:7px;}
+.iph-stamp b{color:#6d6d72;}
+.iph-bub{align-self:flex-end;max-width:88%;background:#34c759;color:#fff;border-radius:17px;padding:7px 11px;font-size:11.5px;line-height:1.4;white-space:pre-wrap;word-break:break-word;text-align:left;box-shadow:0 1px 1px rgba(0,0,0,.06);}
+.iph-compose{display:flex;align-items:center;gap:6px;background:#f7f7f7;border-top:1px solid #dededf;padding:7px 9px 11px;}
+.iph-field{flex:1;border:1px solid #d6d6da;border-radius:14px;padding:4px 9px;font-size:10px;color:#a3a3a8;background:#fff;}
+.iph-send{width:20px;height:20px;border-radius:50%;background:#c8e6c9;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.iph-note{text-align:center;font-size:11px;color:var(--muted);margin-top:9px;}
 .pl2-prev{display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border2);border-radius:8px;padding:5px;margin-bottom:11px;min-height:52px;}
 .pl2-prev img{display:block;width:100%;max-width:270px;height:auto;image-rendering:pixelated;}
 .pl2-prev-wait{font-size:11.5px;color:#888;}
@@ -1341,8 +1354,17 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
             <div class="comp-h">What the customer sees</div>
             <div class="iph">
               <div class="iph-scr">
-                <div class="iph-top"><span id="iph-from">Bruno&rsquo;s Chicken Shop</span></div>
-                <div class="iph-body"><div class="iph-bub" id="iph-msg"></div></div>
+                <div class="iph-notch"></div>
+                <div class="iph-status"><span id="iph-clock">9:41</span><span class="iph-sig">&#9646;&#9646;&#9646; &#9679; &#9632;</span></div>
+                <div class="iph-nav">
+                  <span class="iph-back">&#8249;</span>
+                  <span class="iph-who"><span class="iph-av" id="iph-av">B</span><span class="iph-name" id="iph-from">Bruno&rsquo;s &#8250;</span></span>
+                </div>
+                <div class="iph-body">
+                  <div class="iph-stamp"><b>Text Message</b><br><span id="iph-when">Today 9:41 AM</span></div>
+                  <div class="iph-bub" id="iph-msg"></div>
+                </div>
+                <div class="iph-compose"><span class="iph-field">Text Message</span><span class="iph-send">&#8593;</span></div>
               </div>
             </div>
             <div class="iph-note" id="iph-note"></div>
@@ -2350,6 +2372,14 @@ function compPreview(){
       .then(r=>r.json()).then(d=>{
         if(!d.ok){bub.textContent='';return;}
         bub.textContent=d.message;
+        const shop=(d.message.split("\n")[0]||"Bruno's").trim();
+        const nm=document.getElementById('iph-from'),av=document.getElementById('iph-av');
+        if(nm)nm.innerHTML=_mEsc(shop)+' \u203a';
+        if(av)av.textContent=(shop[0]||'B').toUpperCase();
+        const now=new Date(),t=now.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});
+        const ck=document.getElementById('iph-clock'),wh=document.getElementById('iph-when');
+        if(ck)ck.textContent=t;
+        if(wh)wh.textContent='Today '+t;
         const n=document.getElementById('iph-note');
         if(n&&d.sms)n.textContent=d.sms.segments+' text'+(d.sms.segments>1?'s':'')+' \u00b7 '+d.sms.chars+' characters'
           +(d.sms.encoding==='Unicode'?' \u00b7 Unicode (shorter limit)':'');
