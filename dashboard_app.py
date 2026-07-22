@@ -338,17 +338,21 @@ def check_probe_status(pid,temp):
         #      reading climbs back >=10C while still under cooked temp: it's now in a new row heating up. This
         #      catches the owner's case where the probe is moved straight into a row that's already warm and
         #      never goes fully cold, which the cold rule alone would miss.
+        # COUNT threshold: its OWN setting, independent of the almost/cooked/overdone alarm temps
+        # (owner 2026-07-22 — those stay for "is it ready", this decides what counts into stock).
+        # Falls back to almost_temp only if never configured, which is what it used to follow.
+        try: _ct=float(settings.get("probe_count_temp") or 0) or float(almost)
+        except (TypeError,ValueError): _ct=float(almost)
+        count_temp=max(_ct,pull+1.0)      # kept just above pull so it can't misfire while heating
         rearm_below=pull-15
         if ps["removed"]:
             lp=ps.get("low_since_pull"); ps["low_since_pull"]=temp if lp is None else min(lp,temp)
             lo=ps["low_since_pull"]
-            rebound=(lo is not None and lo<almost and temp>=lo+10 and temp<cooked)
+            # re-arm bounds ride the COUNTING temps too, so the alarm temps can move without
+            # changing when a new row starts being tracked
+            rebound=(lo is not None and lo<count_temp and temp>=lo+10 and temp<count_temp)
             if temp<rearm_below or rebound:
                 ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"cycle_start":None,"status":"idle","low_since_pull":None});ns="idle"
-        # COUNT threshold: a bird counts as cooked-enough-for-stock once its peak reaches the ALMOST temp
-        # (auto-follows settings["almost_temp"]) — so a bird pulled at "almost" counts, not only fully-cooked
-        # ones. Kept ≥ pull+1 so it can't misfire while heating. Doneness alarms/ticket use their own temps.
-        count_temp=max(almost,pull+1.0)   # 'count as cooked' AUTO-FOLLOWS the Almost temp; kept just above pull so it can't misfire while heating
         confirm_secs=settings.get("probe_confirm_secs",15) or 15
         peak=ps["peak_temp"]
         # CONFIRMATION WINDOW: when the reading first drops below pull temp after cooking, DON'T count yet —
