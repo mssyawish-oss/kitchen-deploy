@@ -170,11 +170,18 @@ body.style-v2 .ac3{--acc:#34d399;--accv:#34d399;}
 body.style-v2 .probe-card.p2::before{display:none;}   /* mock cards have no top colour band */
 body.style-v2 .sec-head span{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--text);padding-left:10px;border-left:3px solid var(--amber);}
 /* layout — the mock's structure */
-body.style-v2 #page-probes{padding:14px 18px;}
-body.style-v2 #page-probes .pb-split{flex-direction:column;gap:14px;flex:0 0 auto;}
-body.style-v2 #page-probes .pb-sec{flex:0 0 auto;min-height:0;}
+/* FIT-TO-HEIGHT: the page fills the screen and the two sections divide the leftover height, so the
+   layout lines up and never scrolls on ANY device — Mac, 21" wall, iPad — instead of being a fixed
+   size tuned to one screen. Card internals below use vh units so they shrink with the screen. */
+body.style-v2 #page-probes{padding:clamp(8px,1.4vh,16px) 18px;display:flex;flex-direction:column;overflow:hidden;}
+body.style-v2 #page-probes #rot-live{flex:0 0 auto;}
+body.style-v2 #page-probes .pb-split{flex-direction:column;gap:clamp(8px,1.4vh,14px);flex:1 1 auto;min-height:0;}
+body.style-v2 #page-probes .pb-sec{flex:1 1 0;min-height:0;display:flex;flex-direction:column;}
+body.style-v2 #page-probes .pb-sec .sec-head{flex:0 0 auto;}
 body.style-v2 #page-probes .pb-sec .probes-grid,
-body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;grid-auto-rows:auto;}
+body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(8px,1.3vw,14px);grid-auto-rows:1fr;flex:1 1 0;min-height:0;}
+body.style-v2 .probe-card.p2,body.style-v2 .timer-card.t2{min-height:0;overflow:hidden;}
+body.style-v2 .probe-card.p2{container-type:size;}
 @media(max-width:900px){
   body.style-v2 #page-probes .pb-sec .probes-grid,
   body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
@@ -199,9 +206,23 @@ body.style-v2 #rot-live .rl-foot{margin:0;flex-direction:column;align-items:flex
 body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:7px;}
 body.style-v2 #rot-live .rl-actions button{height:34px;min-width:132px;padding:0 14px;border-radius:9px;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
+/* Short-card fallbacks — driven by each card's OWN height, so they trigger on whatever device makes
+   the card small (portrait iPad, phones) and never on roomy landscape screens. */
+@container (max-height:185px){
+  body.style-v2 .t2 .adj-row{display:none!important;}   /* keep gauge + Start/End; drop fine-tune */
+  body.style-v2 .p2-bar{display:none!important;}         /* drop the progress bar on a cramped probe card */
+}
+@container (max-height:150px){
+  body.style-v2 .p2-statusrow{display:none!important;}   /* the status also shows on the coloured band */
+  body.style-v2 .p2-kicker{display:none!important;}
+  body.style-v2 .t2-head .t2-state{display:none!important;}
+  body.style-v2 .p2-ic{width:34px!important;height:34px!important;}
+  body.style-v2 .p2-actions .probe-btn{height:32px!important;}
+  body.style-v2 .probe-card.p2{padding:6px 12px!important;gap:3px!important;}
+}
 /* probe card v2 */
 body.style-v2 .probe-card,body.style-v2 .timer-card{border-radius:16px;}
-body.style-v2 .probe-card.p2{align-items:stretch;text-align:left;padding:15px 17px;gap:11px;}
+body.style-v2 .probe-card.p2{align-items:stretch;text-align:left;padding:clamp(7px,1.2vh,15px) 15px;gap:clamp(4px,0.9vh,11px);}
 body.style-v2 .probe-card.p2::before{height:4px;}
 .p2-head{display:flex;align-items:center;gap:10px;min-width:0;}
 .p2-names{min-width:0;flex:1;}
@@ -219,12 +240,13 @@ body.style-v2 .probe-card.p2::before{height:4px;}
 .p2-actions{display:flex;gap:10px;margin-top:auto;}
 .p2-actions .probe-btn{flex:1;height:40px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13.5px;font-weight:600;}
 /* timer card v2 — the big ring is the point */
-body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:15px 17px;gap:10px;}
+body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:clamp(8px,1.4vh,15px) 15px;gap:clamp(4px,0.9vh,10px);container-type:size;}
 .t2-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .t2-head .batch-input{flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:14.5px;font-weight:800;letter-spacing:.03em;outline:none;padding:0;}
 .t2-state{flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--green);}
 .t2-state.run{color:var(--accv,var(--acc));}.t2-state.pause{color:var(--muted);}.t2-state.exp{color:var(--red);}
-.t2-gauge{position:relative;width:clamp(118px,14vh,158px);aspect-ratio:1;margin:2px auto;}
+.t2-gauge{position:relative;width:clamp(84px,11vh,158px);aspect-ratio:1;margin:1px auto;}
+body.style-v2 .t2 .t2-gauge{width:auto;height:min(clamp(84px,11vh,158px),44cqh);}   /* never taller than 44% of the card */
 .t2-gauge svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
 .t2-track{fill:none;stroke:var(--surface2);stroke-width:11;}
 .t2-prog{fill:none;stroke:var(--accv,var(--acc));stroke-width:11;stroke-linecap:round;transition:stroke-dashoffset .9s linear;}
@@ -233,10 +255,10 @@ body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:15px 17
 body.style-v2 .t2 .timer-display{font-family:var(--font-mono);font-weight:800;font-size:clamp(19px,2.8vh,28px);line-height:1;}
 .t2-rem{font-size:9px;letter-spacing:.16em;color:var(--muted);font-weight:700;}
 body.style-v2 .t2 .adj-row{display:flex;gap:7px;}
-body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:12px;}
+body.style-v2 .t2 .adj-btn{flex:1;height:clamp(28px,3.9vh,34px);border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:12px;}
 .t2-actions{display:flex;gap:9px;}
-.t2-start{flex:1.4;height:42px;border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:14px;font-weight:800;cursor:pointer;}
-.t2-end{flex:1;height:42px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;}
+.t2-start{flex:1.4;height:clamp(34px,5vh,44px);border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:14px;font-weight:800;cursor:pointer;}
+.t2-end{flex:1;height:clamp(34px,5vh,44px);border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;}
 .probes-grid{flex:0.7 1 0;}
 .rl-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);height:100%;}
 .rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px;}
