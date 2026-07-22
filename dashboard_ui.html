@@ -457,6 +457,59 @@ body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(-
 .pl2-useby{font-size:13px;color:var(--muted);margin-bottom:12px;}
 .pl2-useby b{color:var(--amber);font-size:15px;font-weight:800;}
 /* iPhone Messages mock — matches the reference the owner sent: light mode, green sent bubble */
+/* ── Comp wizard ── one decision per screen, phone preview at full size ── */
+.cw-start{width:100%;display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:18px 20px;color:var(--text);cursor:pointer;text-align:left;}
+.cw-start:hover{border-color:var(--amber);}
+.cw-start-ic{width:46px;height:46px;flex-shrink:0;border-radius:50%;background:var(--amber);color:#0a0a0c;font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.cw-start b{display:block;font-size:16px;}
+.cw-start small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;}
+.cw-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.cw-x{width:34px;height:34px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:19px;line-height:1;cursor:pointer;}
+.cw-dots{display:flex;gap:6px;flex:1;}
+.cw-dot{height:4px;flex:1;border-radius:2px;background:var(--surface2);}
+.cw-dot.on{background:var(--amber);}
+.cw-dot.done{background:var(--green);}
+.cw-of{font-size:12px;color:var(--muted);white-space:nowrap;}
+.cw-grid{display:grid;grid-template-columns:1fr auto;gap:22px;align-items:start;}
+@media(max-width:900px){.cw-grid{grid-template-columns:1fr;}.cw-phone{order:-1;}}
+.cw-panel{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px;min-height:330px;display:flex;flex-direction:column;}
+.cw-q{font-size:21px;font-weight:800;line-height:1.2;}
+.cw-sub{font-size:12.5px;color:var(--muted);margin:5px 0 16px;}
+.cw-err{font-size:12.5px;color:var(--red);min-height:17px;margin-top:9px;}
+.cw-nav{display:flex;gap:10px;margin-top:auto;}
+.cw-nav .btn{flex:1;height:46px;font-size:15px;}
+.cw-nav .btn-primary{flex:1.6;}
+.cw-opts{display:flex;flex-direction:column;gap:9px;}
+.cw-opt{display:flex;align-items:center;gap:12px;width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:11px;padding:14px 16px;color:var(--text);font-size:15px;cursor:pointer;text-align:left;}
+.cw-opt:hover{border-color:var(--border2);background:var(--card);}
+.cw-opt.on{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 13%,transparent);}
+.cw-opt b{font-weight:700;}
+.cw-opt small{display:block;color:var(--muted);font-size:12px;margin-top:1px;}
+.cw-amts{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+.cw-amt{height:58px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--text);font-size:19px;font-weight:800;cursor:pointer;}
+.cw-amt.on{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 13%,transparent);color:var(--amber);}
+.cw-field{margin-bottom:13px;}
+.cw-field .label{font-size:11px;font-weight:700;letter-spacing:.07em;color:var(--muted);text-transform:uppercase;margin-bottom:5px;}
+.cw-field .input{width:100%;height:46px;font-size:16px;}
+.cw-rev{display:flex;flex-direction:column;gap:1px;background:var(--border2);border:1px solid var(--border2);border-radius:11px;overflow:hidden;margin-bottom:13px;}
+.cw-rev-r{display:flex;justify-content:space-between;gap:12px;background:var(--surface2);padding:11px 14px;font-size:13.5px;}
+.cw-rev-r span:first-child{color:var(--muted);}
+.cw-rev-r b{text-align:right;word-break:break-word;}
+.cw-phone{display:flex;flex-direction:column;align-items:center;}
+.cw-phone-h{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+/* full size, per the owner — was half this */
+.cw-phone .iph{max-width:310px;}
+.cw-phone .iph-body{min-height:300px;max-height:430px;}
+.cw-phone .iph-bub{font-size:13.5px;border-radius:19px;padding:9px 13px;}
+.cw-phone .iph-status{font-size:12px;padding:8px 16px 4px;}
+.cw-phone .iph-name{font-size:11px;}
+.cw-phone .iph-av{width:31px;height:31px;font-size:14px;}
+.cw-phone .iph-nav{min-height:50px;}
+.cw-phone .iph-stamp{font-size:10px;}
+.cw-phone .iph-field{font-size:11.5px;padding:6px 11px;}
+.cw-done{text-align:center;padding:6px 0 2px;}
+.cw-done-ic{width:62px;height:62px;margin:0 auto 14px;border-radius:50%;background:var(--green);color:#08130c;font-size:33px;display:flex;align-items:center;justify-content:center;}
+.cw-code{font-family:var(--font-mono);font-size:23px;font-weight:800;letter-spacing:1.5px;margin:10px 0 4px;word-break:break-all;}
 .iph{width:100%;max-width:258px;margin:0 auto;background:#0d0d0f;border-radius:34px;padding:5px;box-shadow:0 0 0 2px #3a3c42,0 8px 22px rgba(0,0,0,.5);}
 .iph-scr{position:relative;background:#fff;border-radius:30px;overflow:hidden;display:flex;flex-direction:column;}
 .iph-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:44%;height:17px;background:#0d0d0f;border-radius:0 0 12px 12px;z-index:3;}
@@ -1329,30 +1382,40 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div style="font-size:15px;color:var(--muted);">This section is locked.</div>
       </div>
       <div id="comp-main" style="display:none;">
-        <div class="comp-grid">
-          <div class="comp-card">
-            <div class="comp-h">Send a credit</div>
-            <div class="comp-lab">Message &mdash; pick the tone</div>
-            <div id="comp-types" class="comp-amts"></div>
-            <input class="input" id="comp-custom-line" oninput="compPreview()" placeholder="Your own opening line" style="display:none;" maxlength="80">
-            <label id="comp-mms-wrap" style="display:none;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:2px;cursor:pointer;"><input type="checkbox" id="comp-mms" style="width:17px;height:17px;"> Send with logo (MMS)</label>
-            <div class="comp-lab">Amount</div>
-            <div id="comp-amts" class="comp-amts"></div>
-            <input class="input" id="comp-amt-custom" type="number" step="0.50" min="1" placeholder="Or type an amount" oninput="compPickAmt(null);compPreview()">
-            <div class="comp-lab">Customer name</div>
-            <input class="input" id="comp-name" placeholder="First name">
-            <div class="comp-lab">Mobile</div>
-            <input class="input" id="comp-phone" type="tel" inputmode="tel" placeholder="04xx xxx xxx">
-            <div class="comp-lab">Reason</div>
-            <input class="input" id="comp-reason" placeholder="e.g. missing chips from order #1234">
-            <div class="comp-lab">Valid for</div>
-            <div class="row" style="gap:8px;align-items:center;"><input class="input" id="comp-exp" type="number" min="1" max="60" value="12" style="width:90px;"><span style="font-size:12.5px;color:var(--muted);">months</span></div>
-            <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="compSend()">Send voucher</button>
-            <div id="comp-status" style="font-size:12.5px;margin-top:8px;min-height:18px;"></div>
+
+        <!-- HOME: what you land on — one button to start, plus the log and settings -->
+        <div id="comp-home">
+          <button class="cw-start" onclick="compWizStart()">
+            <span class="cw-start-ic">+</span>
+            <span><b>Send a voucher</b><small>Steps you through it</small></span>
+          </button>
+          <div class="comp-card" style="margin-top:14px;">
+            <div class="comp-h">Vouchers issued</div>
+            <div id="comp-log"></div>
           </div>
-          <div class="comp-card" id="comp-prevcard">
-            <div class="comp-h">What the customer sees</div>
-            <div class="iph">
+        </div>
+
+        <!-- WIZARD: one decision per screen, with the customer's phone alongside -->
+        <div id="comp-wiz" style="display:none;">
+          <div class="cw-bar">
+            <button class="cw-x" onclick="compWizCancel()" title="Cancel">&times;</button>
+            <div class="cw-dots" id="cw-dots"></div>
+            <div class="cw-of" id="cw-of"></div>
+          </div>
+          <div class="cw-grid">
+            <div class="cw-panel">
+              <div class="cw-q" id="cw-q"></div>
+              <div class="cw-sub" id="cw-sub"></div>
+              <div id="cw-body"></div>
+              <div class="cw-err" id="cw-err"></div>
+              <div class="cw-nav">
+                <button class="btn" id="cw-back" onclick="compWizBack()">Back</button>
+                <button class="btn btn-primary" id="cw-next" onclick="compWizNext()">Next</button>
+              </div>
+            </div>
+            <div class="cw-phone">
+              <div class="cw-phone-h">What the customer gets</div>
+              <div class="iph">
               <div class="iph-scr">
                 <div class="iph-notch"></div>
                 <div class="iph-status"><span id="iph-clock">9:41</span><span class="iph-sig">&#9646;&#9646;&#9646; &#9679; &#9632;</span></div>
@@ -1368,12 +1431,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
               </div>
             </div>
             <div class="iph-note" id="iph-note"></div>
-          </div>
-          <div class="comp-card">
-            <div class="comp-h">Vouchers issued</div>
-            <div id="comp-log"></div>
+            </div>
           </div>
         </div>
+
       </div>
     </div>
     <div class="page" id="page-orders">
@@ -2342,85 +2403,151 @@ function compLoad(){
   if(!_compUnlocked)return;
   fetch('/api/comp_config').then(r=>r.json()).then(c=>{
     _compCfg=c||_compCfg;
-    const ex=document.getElementById('comp-exp');if(ex&&!ex._touched)ex.value=c.expiry_months||12;
-    const mw=document.getElementById('comp-mms-wrap'),mc=document.getElementById('comp-mms');
-    if(mw)mw.style.display=c.media_url?'inline-flex':'none';
-    if(mc&&!mc._touched)mc.checked=!!c.mms_default;
-    compRenderAmts();compRenderTypes();
-    if(!c.sms_ready)_compStatus('No SMS account connected yet — tap Setup. Vouchers will still be created; you read the code to the customer.','var(--amber)');
+    if(!c.sms_ready)_toast('No SMS account connected — tap Setup. Vouchers still get created; you read the code out.');
   }).catch(()=>{});
   fetch('/api/comp_log').then(r=>r.json()).then(d=>compRenderLog((d&&d.vouchers)||[],(d&&d.summary)||null)).catch(()=>{});
 }
 const COMP_TYPES=[["sorry","Sorry"],["thanks","Thank you"],["gift","Just for you"],["loyal","Regular"],["custom","Custom"]];
-function compRenderTypes(){
-  const el=document.getElementById('comp-types');if(!el)return;
-  el.innerHTML=COMP_TYPES.map(t=>'<button class="comp-amt'+(_compType===t[0]?' on':'')+'" onclick="compPickType(\''+t[0]+'\')">'+t[1]+'</button>').join('');
-  const c=document.getElementById('comp-custom-line');
-  if(c)c.style.display=(_compType==='custom')?'':'none';
-}
-function compPickType(t){_compType=t;compRenderTypes();compPreview();}
 let _compPrevT=null;
-function compPreview(){
-  const bub=document.getElementById('iph-msg');if(!bub||!_compUnlocked)return;
-  clearTimeout(_compPrevT);
-  _compPrevT=setTimeout(()=>{
-    const amt=_compAmt||parseFloat((document.getElementById('comp-amt-custom')||{}).value)||0;
-    const g=i=>(document.getElementById(i)||{}).value||'';
+
+function _compStatus(msg,colour){
+  // the old inline status line lived in the single-form comp screen; the wizard has no such strip,
+  // so these (Setup, Check codes, SMS tests, Resend) surface as toasts
+  if(typeof _toast==='function')_toast(String(msg||'').replace(/<[^>]*>/g,''));
+}
+// ===== Comp wizard — one decision per screen, phone preview alongside the whole way =====
+// Answers live in _cw; nothing is created in Square until the final Send.
+const CW_STEPS=['tone','amount','who','reason','review'];
+let _cwStep=0,_cw={tone:'sorry',custom:'',amount:null,name:'',phone:'',reason:'',months:12,mms:false};
+function compWizStart(){
+  _cwStep=0;_cw={tone:'sorry',custom:'',amount:null,name:'',phone:'',reason:'',
+                 months:(_compCfg&&_compCfg.expiry_months)||12,mms:!!(_compCfg&&_compCfg.mms_default)};
+  document.getElementById('comp-home').style.display='none';
+  document.getElementById('comp-wiz').style.display='';
+  compWizRender();
+}
+function compWizCancel(){
+  document.getElementById('comp-wiz').style.display='none';
+  document.getElementById('comp-home').style.display='';
+}
+function compWizBack(){ if(_cwStep>0){_cwStep--;compWizRender();} else compWizCancel(); }
+function _cwErr(m){const e=document.getElementById('cw-err');if(e)e.textContent=m||'';}
+function compWizNext(){
+  const s=CW_STEPS[_cwStep];
+  if(s==='tone'&&_cw.tone==='custom'&&!_cw.custom.trim())return _cwErr('Type your own opening line, or pick another message.');
+  if(s==='amount'&&(!_cw.amount||_cw.amount<1))return _cwErr('Pick or type an amount.');
+  if(s==='who'&&_cw.phone.replace(/\D/g,'').length<8)return _cwErr('Enter the customer\u2019s mobile number.');
+  if(s==='reason'&&!_cw.reason.trim())return _cwErr('Add a short reason \u2014 it goes in the log.');
+  if(s==='review')return compWizSend();
+  _cwStep++;compWizRender();
+}
+function _cwSet(k,v){_cw[k]=v;compWizRender();}
+function compWizRender(){
+  const s=CW_STEPS[_cwStep];
+  _cwErr('');
+  const dots=document.getElementById('cw-dots');
+  if(dots)dots.innerHTML=CW_STEPS.map((_,i)=>'<span class="cw-dot'+(i<_cwStep?' done':(i===_cwStep?' on':''))+'"></span>').join('');
+  const of=document.getElementById('cw-of');if(of)of.textContent='Step '+(_cwStep+1)+' of '+CW_STEPS.length;
+  const q=document.getElementById('cw-q'),sub=document.getElementById('cw-sub'),body=document.getElementById('cw-body');
+  const nx=document.getElementById('cw-next'),bk=document.getElementById('cw-back');
+  if(nx){nx.textContent=(s==='review')?'Send voucher':'Next';nx.disabled=false;}
+  if(bk)bk.textContent=(_cwStep===0)?'Cancel':'Back';
+  if(s==='tone'){
+    q.textContent='What kind of message?';sub.textContent='Sets the opening line the customer reads.';
+    body.innerHTML='<div class="cw-opts">'+COMP_TYPES.map(t=>
+      '<button class="cw-opt'+(_cw.tone===t[0]?' on':'')+'" onclick="_cwSet(\'tone\','+_jsq(t[0])+')"><b>'+_mEsc(t[1])+'</b></button>').join('')
+      +'</div>'+(_cw.tone==='custom'?'<input class="input" id="cw-custom" style="margin-top:11px;height:46px;" maxlength="80" placeholder="Your own opening line" value="'+_mEsc(_cw.custom)+'" oninput="_cw.custom=this.value;compWizPreview()">':'');
+    const ci=document.getElementById('cw-custom');if(ci)ci.focus();
+  } else if(s==='amount'){
+    q.textContent='How much credit?';sub.textContent='Creates a Square gift card for this amount.';
+    const amts=(_compCfg&&_compCfg.amounts)||[5,10,15,20,25,50];
+    body.innerHTML='<div class="cw-amts">'+amts.map(a=>
+      '<button class="cw-amt'+(_cw.amount===a?' on':'')+'" onclick="_cwSet(\'amount\','+a+')">$'+a+'</button>').join('')+'</div>'
+      +'<div class="cw-field" style="margin-top:13px;"><div class="label">Or another amount</div>'
+      +'<input class="input" id="cw-amt" type="number" step="0.50" min="1" placeholder="e.g. 12.50" value="'+((_cw.amount&&amts.indexOf(_cw.amount)<0)?_cw.amount:'')+'" oninput="_cw.amount=parseFloat(this.value)||null;compWizPreview();[...document.querySelectorAll(\'.cw-amt\')].forEach(b=>b.classList.remove(\'on\'))"></div>';
+  } else if(s==='who'){
+    q.textContent='Who is it for?';sub.textContent='The name is used in the message. The mobile is where it goes.';
+    body.innerHTML='<div class="cw-field"><div class="label">First name (optional)</div><input class="input" id="cw-name" placeholder="e.g. Sarah" value="'+_mEsc(_cw.name)+'" oninput="_cw.name=this.value;compWizPreview()"></div>'
+      +'<div class="cw-field"><div class="label">Mobile</div><input class="input" id="cw-phone" type="tel" inputmode="tel" placeholder="04xx xxx xxx" value="'+_mEsc(_cw.phone)+'" oninput="_cw.phone=this.value"></div>';
+    const n=document.getElementById('cw-name');if(n)n.focus();
+  } else if(s==='reason'){
+    q.textContent='What happened?';sub.textContent='Recorded in the log. The customer never sees this.';
+    body.innerHTML='<div class="cw-field"><div class="label">Reason</div><input class="input" id="cw-reason" placeholder="e.g. missing chips from order #1234" value="'+_mEsc(_cw.reason)+'" oninput="_cw.reason=this.value"></div>';
+    const r=document.getElementById('cw-reason');if(r)r.focus();
+  } else if(s==='review'){
+    q.textContent='Ready to send?';sub.textContent='Check it over \u2014 the voucher is created when you send.';
+    const tone=(COMP_TYPES.find(t=>t[0]===_cw.tone)||['','']);
+    body.innerHTML='<div class="cw-rev">'
+      +'<div class="cw-rev-r"><span>Amount</span><b>$'+(_cw.amount||0)+'</b></div>'
+      +'<div class="cw-rev-r"><span>Message</span><b>'+_mEsc(_cw.tone==='custom'?_cw.custom:tone[1])+'</b></div>'
+      +'<div class="cw-rev-r"><span>To</span><b>'+_mEsc((_cw.name?_cw.name+' \u00b7 ':'')+_cw.phone)+'</b></div>'
+      +'<div class="cw-rev-r"><span>Reason</span><b>'+_mEsc(_cw.reason)+'</b></div>'
+      +'</div>'
+      +'<div class="cw-field"><div class="label">Valid for</div><div class="row" style="gap:9px;align-items:center;">'
+      +'<input class="input" id="cw-months" type="number" min="1" max="60" value="'+_cw.months+'" style="width:100px;height:46px;" oninput="_cw.months=parseInt(this.value)||12;compWizPreview()">'
+      +'<span style="font-size:13px;color:var(--muted);">months</span></div></div>'
+      +'<label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer;"><input type="checkbox" id="cw-mms" style="width:17px;height:17px;" '+(_cw.mms?'checked':'')+' onchange="_cw.mms=this.checked"> Send with the logo (MMS)</label>';
+  }
+  compWizPreview();
+}
+// live preview from the SAME builder the send uses
+let _cwPrevT=null;
+function compWizPreview(){
+  const bub=document.getElementById('iph-msg');if(!bub)return;
+  clearTimeout(_cwPrevT);
+  _cwPrevT=setTimeout(()=>{
     fetch('/api/comp_preview',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({code:_compCode,amount:amt,name:g('comp-name'),mtype:_compType,
-        custom:g('comp-custom-line'),expiry_months:parseInt(g('comp-expiry'))||0})})
+      body:JSON.stringify({code:_compCode,amount:_cw.amount||0,name:_cw.name,mtype:_cw.tone,custom:_cw.custom,expiry_months:_cw.months})})
       .then(r=>r.json()).then(d=>{
-        if(!d.ok){bub.textContent='';return;}
+        if(!d.ok)return;
         bub.textContent=d.message;
-        const shop=(d.message.split("\n")[0]||"Bruno's").trim();
+        const shop=(d.message.split('\n')[0]||'Bruno\u2019s').trim();
         const nm=document.getElementById('iph-from'),av=document.getElementById('iph-av');
         if(nm)nm.innerHTML=_mEsc(shop)+' \u203a';
         if(av)av.textContent=(shop[0]||'B').toUpperCase();
         const now=new Date(),t=now.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});
         const ck=document.getElementById('iph-clock'),wh=document.getElementById('iph-when');
-        if(ck)ck.textContent=t;
-        if(wh)wh.textContent='Today '+t;
-        const n=document.getElementById('iph-note');
-        if(n&&d.sms)n.textContent=d.sms.segments+' text'+(d.sms.segments>1?'s':'')+' \u00b7 '+d.sms.chars+' characters'
-          +(d.sms.encoding==='Unicode'?' \u00b7 Unicode (shorter limit)':'');
+        if(ck)ck.textContent=t; if(wh)wh.textContent='Today '+t;
+        const n2=document.getElementById('iph-note');
+        if(n2&&d.sms)n2.textContent=d.sms.segments+' text'+(d.sms.segments>1?'s':'')+' \u00b7 '+d.sms.chars+' characters';
       }).catch(()=>{});
-  },200);
+  },180);
 }
-function compRenderAmts(){
-  const el=document.getElementById('comp-amts');if(!el)return;
-  el.innerHTML=(_compCfg.amounts||[5,10,15,20,25,50]).map(a=>
-    '<button class="comp-amt'+(_compAmt===a?' on':'')+'" onclick="compPickAmt('+a+')">$'+a+'</button>').join('');
-}
-function compPickAmt(a){
-  _compAmt=a;
-  const c=document.getElementById('comp-amt-custom');
-  if(a!==null&&c)c.value='';
-  compRenderAmts();
-}
-function _compStatus(msg,col){const s=document.getElementById('comp-status');if(s){s.textContent=msg||'';s.style.color=col||'var(--muted)';}}
-function compSend(){
-  const custom=parseFloat((document.getElementById('comp-amt-custom')||{}).value||'');
-  const amt=(!isNaN(custom)&&custom>0)?custom:_compAmt;
-  const name=(document.getElementById('comp-name')||{}).value||'';
-  const phone=(document.getElementById('comp-phone')||{}).value||'';
-  const reason=(document.getElementById('comp-reason')||{}).value||'';
-  const months=parseInt((document.getElementById('comp-exp')||{}).value||'12')||12;
-  if(!amt||amt<1){_compStatus('Pick or type an amount first.','var(--red)');return;}
-  if(phone.replace(/\D/g,'').length<8){_compStatus('Enter the customer\'s mobile number.','var(--red)');return;}
-  if(!reason.trim()){_compStatus('Add a short reason — it goes in the log.','var(--red)');return;}
-  // the staff member signs it with their OWN pin; that name is what gets recorded
-  requirePin('Your PIN','Signing this $'+amt+' voucher',function(u){
-    _compStatus('Creating voucher…','var(--muted)');
+function compWizSend(){
+  const nx=document.getElementById('cw-next');
+  requirePin('Your PIN','Signing this $'+_cw.amount+' voucher',function(u){
+    if(nx){nx.disabled=true;nx.textContent='Creating\u2026';}
     fetch('/api/comp_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:amt,name:name,phone:phone,reason:reason,expiry_months:months,mms:!!((document.getElementById('comp-mms')||{}).checked),msg_type:_compType,custom_line:((document.getElementById('comp-custom-line')||{}).value||'')})})
+      body:JSON.stringify({code:_compCode,staff_pin:(u&&u.pin)||'',amount:_cw.amount,name:_cw.name,
+        phone:_cw.phone,reason:_cw.reason,expiry_months:_cw.months,mms:_cw.mms,
+        msg_type:_cw.tone,custom_line:_cw.custom})})
       .then(r=>r.json()).then(d=>{
-        if(!d||!d.ok){_compStatus(((d&&d.error)||'Failed'),'var(--red)');return;}
-        _compStatus((d.sms?'Sent ✓  ':'Created ✓  ')+'Code '+_ganFmt(d.gan)+'  ·  valid to '+d.expiry+(d.note?('  —  '+d.note):''),d.sms?'var(--green)':'var(--amber)');
-        ['comp-name','comp-phone','comp-reason','comp-amt-custom'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-        _compAmt=null;compRenderAmts();
-        fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[],(x&&x.summary)||null)).catch(()=>{});
-      }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+        if(nx){nx.disabled=false;nx.textContent='Send voucher';}
+        if(!d||!d.ok){_cwErr((d&&d.error)||'Failed');return;}
+        compWizFinish(d);
+      }).catch(()=>{if(nx){nx.disabled=false;nx.textContent='Send voucher';}_cwErr('Could not reach the server.');});
   });
+}
+function compWizFinish(d){
+  // show the outcome, then drop back to the home screen with the log refreshed
+  const q=document.getElementById('cw-q'),sub=document.getElementById('cw-sub'),body=document.getElementById('cw-body');
+  const bk=document.getElementById('cw-back'),nx=document.getElementById('cw-next');
+  document.getElementById('cw-dots').innerHTML='';
+  document.getElementById('cw-of').textContent='';
+  q.textContent='';sub.textContent='';
+  body.innerHTML='<div class="cw-done"><div class="cw-done-ic">\u2713</div>'
+    +'<div style="font-size:17px;font-weight:700;">'+(d.sms?'Sent to the customer':'Voucher created')+'</div>'
+    +'<div class="cw-code">'+_mEsc(_ganFmt(d.gan))+'</div>'
+    +'<div style="font-size:12.5px;color:var(--muted);">Valid to '+_mEsc(d.expiry||'')+'</div>'
+    +(d.sms?'':'<div style="font-size:12.5px;color:var(--amber);margin-top:9px;">Text did not send \u2014 read this code out to the customer.'+(d.note?('<br>'+_mEsc(d.note)):'')+'</div>')
+    +(d.note&&d.sms?'<div style="font-size:12px;color:var(--muted);margin-top:7px;">'+_mEsc(d.note)+'</div>':'')
+    +'</div>';
+  if(bk)bk.style.display='none';
+  if(nx){nx.textContent='Done';nx.disabled=false;nx.onclick=function(){
+    nx.onclick=compWizNext;if(bk)bk.style.display='';
+    compWizCancel();
+    fetch('/api/comp_log').then(r=>r.json()).then(x=>compRenderLog((x&&x.vouchers)||[],(x&&x.summary)||null)).catch(()=>{});
+  };}
 }
 function _compStatusCell(x){
   const amt=x.amount||0,bal=x.balance;
@@ -2500,7 +2627,7 @@ function compResend(ts){
   _compStatus('Resending…','var(--muted)');
   fetch('/api/comp_resend',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({code:_compCode,ts:ts,phone:to,
-      mms:!!((document.getElementById('comp-mms')||{}).checked)})})
+      mms:!!(_compCfg&&_compCfg.mms_default)})})   // the wizard's per-send toggle doesn't apply to a resend
     .then(r=>r.json()).then(d=>{
       if(!d||!d.ok){_compStatus('Resend failed: '+((d&&d.error)||'unknown'),'var(--red)');return;}
       _compStatus('Resent to '+d.phone+' ✓'+(d.note?('  —  '+d.note):''),'var(--green)');
