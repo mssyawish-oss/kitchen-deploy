@@ -3172,6 +3172,16 @@ function _probeSpark(pid){
     +'<polyline points="'+pts+'" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
     +'</svg>';
 }
+// A probe whose temp is trending UP is in use (a chicken warming up), even while still below 40°C —
+// so it reads "cooking", not "idle". Uses the same sampled history the sparkline draws.
+function _probeRising(pid){
+  const h=(_tempHist[pid]||[]).filter(p=>p&&isFinite(p.v));
+  if(h.length<2) return false;
+  const now=h[h.length-1];
+  let ref=h[0];
+  for(let i=h.length-2;i>=0;i--){ if(now.t-h[i].t>=45000){ ref=h[i]; break; } }   // ~45s+ back
+  return (now.v-ref.v)>=1.0;   // up ≥1°C over the window = actively heating
+}
 let probeStates={1:{status:'idle',alerted:false},2:{status:'idle',alerted:false},3:{status:'idle',alerted:false},4:{status:'idle',alerted:false}};
 const prevStatuses={};
 let _probePopDismissed={};   // pid -> the status it was dismissed at (re-shows on status change)
@@ -3334,7 +3344,7 @@ function renderProbes(){
     if(status!=='almost'&&status!=='ready'&&status!=='overdone'){
       if(t===null||t===undefined) dstatus='none';
       else if(status==='standby') dstatus='standby';
-      else if(t>=40) dstatus='cooking';
+      else if(t>=40||_probeRising(pidN)) dstatus='cooking';   // hot OR warming up (in a chicken) = cooking
       else dstatus='idle';
     }
     const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone'};
