@@ -945,11 +945,12 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .stk-summary{display:none;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-radius:14px;margin:2px 0 14px;font-size:16px;font-weight:600;}
 .stk-summary b{font-size:22px;}
 .stk-order-btns{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
-.stk-order-btn{flex:1;min-width:200px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface2);border:1.5px solid var(--amber);border-radius:13px;padding:14px 16px;cursor:pointer;text-align:left;position:relative;}
+.stk-order-btn{flex:1;min-width:240px;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:14px;background:var(--surface2);border:1.5px solid var(--amber);border-radius:13px;padding:15px 18px;cursor:pointer;text-align:left;}
 .stk-order-btn.dim{border-color:var(--border2);}
-.stk-order-btn .son-nm{font-size:16px;font-weight:700;color:var(--text);}
+.stk-order-btn .son-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.stk-order-btn .son-nm{font-size:16px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .stk-order-btn .son-sub{font-size:12px;color:var(--muted);}
-.stk-order-btn .son-go{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:14px;font-weight:700;color:var(--amber);}
+.stk-order-btn .son-go{flex-shrink:0;font-size:15px;font-weight:800;color:var(--amber);}
 .stk-order-btn.dim .son-go{color:var(--muted);}
 .stk-status-tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
 .stk-stab{flex:1;min-width:96px;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;}
@@ -979,17 +980,21 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-run{flex:1;min-width:120px;padding:11px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;text-align:center;}
 .orun-run.on{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
 .orun-run small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;}
+.orun-head{display:flex;align-items:center;gap:12px;padding:4px 13px 8px;position:sticky;top:0;background:var(--bg);z-index:2;}
+.orun-h-item{flex:1;min-width:0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.orun-h-have{width:96px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+.orun-h-order{width:104px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
 .orun-row{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:11px 13px;margin-bottom:7px;}
 .orun-nm{flex:1;min-width:0;}
 .orun-nm .n{font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .orun-nm .s{font-size:11.5px;color:var(--muted);margin-top:2px;}
-.orun-have{display:flex;align-items:center;gap:5px;flex-shrink:0;}
-.orun-have input{width:66px;height:46px;text-align:center;font-size:18px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
+.orun-have{width:96px;flex-shrink:0;display:flex;justify-content:center;}
+.orun-have input{width:78px;height:48px;text-align:center;font-size:19px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
 .orun-have input:focus{border-color:var(--amber);}
-.orun-order{flex-shrink:0;min-width:96px;text-align:right;font-weight:800;}
-.orun-order .q{font-size:20px;color:var(--amber);}
+.orun-order{width:104px;flex-shrink:0;text-align:center;font-weight:800;}
+.orun-order .q{font-size:21px;color:var(--amber);}
 .orun-order.zero .q{color:var(--muted);font-size:15px;font-weight:600;}
-.orun-order .u{font-size:11px;color:var(--muted);}
+.orun-order .u{font-size:11px;color:var(--muted);display:block;font-weight:600;}
 .ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
 .ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
 .ord-line{display:flex;align-items:center;gap:10px;padding:5px 0;}
@@ -3471,7 +3476,7 @@ function renderStockStatusTabs(){
       const ready=days.length>0;
       const sub=ready?days.map(d=>_WD[d]).join(' & ')+' orders':'set order days in Setup';
       return '<button class="stk-order-btn'+(ready?'':' dim')+'" onclick="'+(ready?('openOrderRun(\''+s.id+'\')'):('openStockAdmin()'))+'">'
-        +'<span class="son-nm">'+_mEsc(s.name)+'</span><span class="son-sub">'+sub+'</span>'
+        +'<span class="son-main"><span class="son-nm">'+_mEsc(s.name)+'</span><span class="son-sub">'+sub+'</span></span>'
         +'<span class="son-go">'+(ready?'Order &rarr;':'Setup &rarr;')+'</span></button>';
     }).join('')+'</div>';
 }
@@ -3589,7 +3594,8 @@ function renderOrderRun(){
   const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const list=document.getElementById('orun-list');
   if(!items.length){list.innerHTML='<div style="color:var(--muted);padding:16px;text-align:center;">No items for this supplier.</div>';return;}
-  list.innerHTML=items.map(p=>{
+  const head='<div class="orun-head"><div class="orun-h-item">Item</div><div class="orun-h-have">Stock on hand</div><div class="orun-h-order">To order</div></div>';
+  list.innerHTML=head+items.map(p=>{
     const par=((p.run_pars||{})[_orunDay]);
     const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
     const unit=p.unit||'unit';
@@ -3602,7 +3608,7 @@ function renderOrderRun(){
     const oq=parN===null?'—':(order>0?('+'+order+' <span class="u">'+unit+'</span>'):'ok');
     return '<div class="orun-row">'
       +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="have" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
+      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="0" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
       +'<div class="orun-order'+oc+'" data-id="'+p.id+'"><span class="q">'+oq+'</span></div>'
       +'</div>';
   }).join('');
