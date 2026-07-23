@@ -2779,6 +2779,11 @@ function _initStyle(){
     if(s==='v2'||s==='classic')localStorage.setItem('dashStyle',s);
     else s=localStorage.getItem('dashStyle');
   }catch(e){}
+  // Home-screen app: iOS launches it standalone with its OWN storage, so the v2 choice made in Safari
+  // does not carry over and it fell back to classic. Default a standalone app to v2 unless told classic.
+  if(!s){
+    try{ if(window.navigator.standalone===true || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)) s='v2'; }catch(e){}
+  }
   if(s==='v2')document.body.classList.add('style-v2');
   window.DASH_V2=(s==='v2');
 }
