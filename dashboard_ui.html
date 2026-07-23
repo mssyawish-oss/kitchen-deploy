@@ -237,6 +237,24 @@ body.style-v2 .t2 .timer-display{font-family:var(--font-mono);font-weight:800;fo
 .t2-rem{font-size:9px;letter-spacing:.16em;color:var(--muted);font-weight:700;}
 body.style-v2 .t2 .adj-row{display:flex;gap:7px;}
 body.style-v2 .t2 .adj-btn{flex:1;height:34px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:12px;}
+/* ===== v2 extension: shared building blocks across every page ===== */
+/* section headers get the amber left-bar, matching the Temp screen */
+body.style-v2 .section-title{font-size:13px;letter-spacing:.12em;padding-left:10px;border-left:3px solid var(--amber);margin:20px 2px 11px;}
+body.style-v2 .page-title{font-size:20px;font-weight:800;letter-spacing:.005em;}
+/* cards: softer 16px radius + v2 borders */
+body.style-v2 .kpi-card{border-radius:16px;border-color:var(--border2);padding:15px 17px;}
+body.style-v2 .kpi-value{font-size:31px;}
+/* inputs / selects / textareas: rounder, v2 surface */
+body.style-v2 .input,body.style-v2 input[type=text],body.style-v2 input[type=number],body.style-v2 input[type=tel],body.style-v2 input[type=password],body.style-v2 select,body.style-v2 textarea{border-radius:11px;background:var(--surface);border:1px solid var(--border2);}
+body.style-v2 .input:focus,body.style-v2 input:focus,body.style-v2 select:focus,body.style-v2 textarea:focus{border-color:var(--amber);}
+/* day pills: rounder, and the on-state uses the amber accent */
+body.style-v2 .day-pill{border-radius:9px;padding:5px 11px;}
+body.style-v2 .day-pill.on,body.style-v2 .day-pill.active{background:var(--amber);border-color:var(--amber);color:#0a0a0c;font-weight:800;}
+/* dividers subtler; empty-states get a soft dashed panel */
+body.style-v2 .divider{background:var(--border2);opacity:.7;}
+body.style-v2 .empty-state{border:1px dashed var(--border2);border-radius:16px;padding:34px 20px;margin:8px 2px;background:var(--card);}
+/* primary/danger buttons: 12px radius to match cards */
+body.style-v2 .btn,body.style-v2 .btn-primary,body.style-v2 .btn-danger{border-radius:12px;}
 .t2-actions{display:flex;gap:9px;}
 .t2-start{flex:1.4;height:42px;border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:14px;font-weight:800;cursor:pointer;}
 .t2-end{flex:1;height:42px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;}
