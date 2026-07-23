@@ -3077,13 +3077,16 @@ function _dbgReadout(){
       document.body.appendChild(d);}
     const pg=document.getElementById('page-probes');
     const nav=document.querySelector('.bottom-nav')||document.getElementById('bottom-nav');
-    const mc=document.querySelector('.main-col'), sh=document.getElementById('app-shell');
-    const pgb=pg?Math.round(pg.getBoundingClientRect().bottom):0;
+    const rl=document.getElementById('rot-live');
+    const split=document.querySelector('.pb-split');
+    const tg=document.getElementById('timers-grid');
+    const cards=document.querySelectorAll('.timer-card');
+    const lastCard=cards.length?cards[cards.length-1]:null;
+    const bot=e=>e?Math.round(e.getBoundingClientRect().bottom):0;
     const navt=nav?Math.round(nav.getBoundingClientRect().top):0;
     d.innerHTML='win '+innerWidth+'x'+innerHeight+' view '+(window.DASH_VIEW||'?')+' zoom '+((pg&&pg.style.zoom)||'-')
-      +'<br>pageArea '+(pg?pg.clientHeight:'?')+' content '+(pg?pg.scrollHeight:'?')+' pgBottom '+pgb
-      +'<br>navTop '+navt+' GAP '+(navt-pgb)+' | shell '+(sh?Math.round(sh.getBoundingClientRect().height):'?')
-      +' mainCol '+(mc?Math.round(mc.getBoundingClientRect().height):'?');
+      +'<br>rotLiveBot '+bot(rl)+' splitBot '+bot(split)+' timersGridBot '+bot(tg)+' lastCardBot '+bot(lastCard)
+      +'<br>pageAreaBot '+bot(pg)+' navTop '+navt+' | VISUAL GAP(card->nav) '+(navt-bot(lastCard));
   }catch(e){}
 }
 function _fitPad(){
