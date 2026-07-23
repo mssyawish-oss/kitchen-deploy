@@ -994,6 +994,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-order{width:104px;flex-shrink:0;text-align:center;font-weight:800;}
 .orun-order .q{font-size:21px;color:var(--amber);}
 .orun-order.zero .q{color:var(--muted);font-size:15px;font-weight:600;}
+.orun-order .q.count{font-size:12px;color:var(--amber);font-weight:700;letter-spacing:.03em;}
+.orun-row.needcount{border-color:var(--amber);}
+.orun-row.needcount .orun-have input{border-color:var(--amber);}
 .orun-order .u{font-size:11px;color:var(--muted);display:block;font-weight:600;}
 .ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
 .ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
@@ -3596,22 +3599,33 @@ function renderOrderRun(){
   if(!items.length){list.innerHTML='<div style="color:var(--muted);padding:16px;text-align:center;">No items for this supplier.</div>';return;}
   const head='<div class="orun-head"><div class="orun-h-item">Item</div><div class="orun-h-have">Stock on hand</div><div class="orun-h-order">To order</div></div>';
   list.innerHTML=head+items.map(p=>{
-    const par=((p.run_pars||{})[_orunDay]);
-    const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
-    const unit=p.unit||'unit';
+    const c=_orunCalc(p);
+    const _pn=p.par_note?(' · '+p.par_note):'';const sub=c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set';
+    const needCount=(c.state==='uncounted');
     const have=_orunHave[p.id];
-    const haveN=(have===undefined||have==='')?null:parseFloat(have);
-    let order=0;
-    if(parN!==null){const short=parN-(haveN||0); order=short>0?Math.ceil(short):0;}
-    const _pn=p.par_note?(' · '+p.par_note):'';const sub=parN!==null?('need '+_fmtQ(parN)+' '+unit+_pn):'no level set';
-    const oc=order>0?'':' zero';
-    const oq=parN===null?'—':(order>0?('+'+order+' <span class="u">'+unit+'</span>'):'ok');
-    return '<div class="orun-row">'
+    return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
       +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="0" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
-      +'<div class="orun-order'+oc+'" data-id="'+p.id+'"><span class="q">'+oq+'</span></div>'
+      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
+      +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
       +'</div>';
   }).join('');
+}
+function _orunCalc(p){
+  const par=((p.run_pars||{})[_orunDay]);
+  const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+  const have=_orunHave[p.id];
+  const haveN=(have===undefined||have==='')?null:parseFloat(have);   // BLANK = not counted, NOT zero
+  let order=null, state;
+  if(parN===null) state='nolevel';                       // nothing to order this run
+  else if(haveN===null) state='uncounted';               // must be counted before ordering
+  else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
+  return {parN,haveN,order,state,unit:(p.unit||'unit')};
+}
+function _orunCellHtml(c){
+  if(c.state==='nolevel') return '<span class="q">&mdash;</span>';
+  if(c.state==='uncounted') return '<span class="q count">count</span>';
+  if(c.state==='order') return '<span class="q">+'+c.order+' <span class="u">'+c.unit+'</span></span>';
+  return '<span class="q">ok</span>';
 }
 function _fmtQ(v){ // pretty fractions for the "need" line
   if(v===0.25)return '1/4'; if(v===0.5)return '1/2'; if(v===0.75)return '3/4';
@@ -3621,22 +3635,26 @@ function _fmtQ(v){ // pretty fractions for the "need" line
 function _orunRecalc(pid){
   const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
   const cell=document.querySelector('.orun-order[data-id="'+pid+'"]'); if(!cell)return;
-  const par=((p.run_pars||{})[_orunDay]);
-  const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
-  const have=_orunHave[pid]; const haveN=(have===undefined||have==='')?null:parseFloat(have);
-  let order=0; if(parN!==null){const short=parN-(haveN||0);order=short>0?Math.ceil(short):0;}
-  cell.className='orun-order'+(order>0?'':' zero');
-  cell.innerHTML='<span class="q">'+(parN===null?'—':(order>0?('+'+order+' <span class="u">'+(p.unit||'unit')+'</span>'):'ok'))+'</span>';
+  const c=_orunCalc(p);
+  cell.className='orun-order'+(c.state==='order'?'':' zero');
+  cell.innerHTML=_orunCellHtml(c);
+  const row=document.querySelector('.orun-row[data-row="'+pid+'"]');
+  if(row)row.classList.toggle('needcount',c.state==='uncounted');
 }
 function sendOrderRun(){
   const sup=_orunSup; if(!sup)return;
-  const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id).map(p=>{
-    const par=((p.run_pars||{})[_orunDay]); const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
-    const have=_orunHave[p.id]; const haveN=(have===undefined||have==='')?null:parseFloat(have);
-    let order=0; if(parN!==null){const short=parN-(haveN||0);order=short>0?Math.ceil(short):0;}
-    return {code:p.code||'',name:p.name,qty:order,unit:p.unit||'unit'};
-  }).filter(x=>x.qty>0);
+  const supProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const st=document.getElementById('orun-status');
+  // SAFETY: every item that has a level for this run MUST be counted first — a blank is not zero.
+  const uncounted=supProds.filter(p=>_orunCalc(p).state==='uncounted');
+  if(uncounted.length){
+    st.innerHTML='&#9888; Count '+uncounted.length+' more item'+(uncounted.length>1?'s':'')+' first — type what you have (0 is fine). Blank items are highlighted.';
+    st.style.color='var(--amber)';
+    document.querySelectorAll('.orun-row.needcount .orun-have input').forEach(i=>{i.style.borderColor='var(--amber)';});
+    const first=document.querySelector('.orun-row.needcount'); if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+  const items=supProds.map(p=>{const c=_orunCalc(p);return {code:p.code||'',name:p.name,qty:c.order||0,unit:c.unit};}).filter(x=>x.qty>0);
   if(!items.length){st.textContent='Nothing to order — everything is at or above its level.';st.style.color='var(--muted)';return;}
   const btn=document.getElementById('orun-send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
