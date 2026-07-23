@@ -3610,7 +3610,7 @@ function renderOrderRun(){
     const have=_orunHave[p.id];
     const cu=_orunCountUnit(p);
     const toggle=_orunHasAlt(p)
-      ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(p.alt_unit):_mEsc(c.unit))+' &#8646;</button>'
+      ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(_orunAltName(p)):_mEsc(c.unit))+' &#8646;</button>'
       : '';
     return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
       +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
@@ -3619,10 +3619,9 @@ function renderOrderRun(){
       +'</div>';
   }).join('');
 }
-function _orunHasAlt(p){return !!(p.alt_unit&&parseFloat(p.alt_per)>0);}
-function _orunCountUnit(p){ // which unit the count box is currently in for this item
-  return (_orunUnit[p.id]==='alt'&&_orunHasAlt(p))?'alt':'base';
-}
+function _orunHasAlt(p){const ps=parseFloat(p.pack_size);return ps>1 && p.count_unit && p.count_unit!==(p.unit||'');}
+function _orunAltName(p){return p.count_unit||'units';}          // the smaller counting unit (e.g. bottles)
+function _orunCountUnit(p){ return (_orunUnit[p.id]==='alt'&&_orunHasAlt(p))?'alt':'base'; }
 function _orunCalc(p){
   const par=((p.run_pars||{})[_orunDay]);
   const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
@@ -3630,7 +3629,7 @@ function _orunCalc(p){
   const typed=(have===undefined||have==='')?null:parseFloat(have);   // BLANK = not counted, NOT zero
   // convert the typed amount to BASE units (par is always in base units)
   let haveN=typed;
-  if(typed!==null&&_orunCountUnit(p)==='alt') haveN=typed*parseFloat(p.alt_per);
+  if(typed!==null&&_orunCountUnit(p)==='alt') haveN=typed/parseFloat(p.pack_size);   // small count-unit → order unit
   let order=null, state;
   if(parN===null||parN<=0) state='nolevel';   // no level (or 0) for this run → nothing to order, no count needed
   else if(typed===null) state='uncounted';
