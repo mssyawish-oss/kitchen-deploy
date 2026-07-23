@@ -3066,6 +3066,20 @@ function _mpAnswer(yes){
 // FIT TO SCREEN (v2): shrink the Temp content UNIFORMLY so it fits whatever device it is on — same look
 // as the Mac, just smaller — with NO special URL needed. It only ever SHRINKS, and only when the content
 // genuinely overflows (>8px), so a screen that already fits (the Mac / 21" wall) is left exactly as-is.
+// Diagnostic: append ?debug=1 to the URL to show the real screen numbers in the corner. Lets me see
+// exactly what a device reports (its own dimensions can differ from any preview) and fix to those.
+function _dbgReadout(){
+  try{
+    if(new URLSearchParams(location.search).get('debug')!=='1')return;
+    let d=document.getElementById('__dbg');
+    if(!d){d=document.createElement('div');d.id='__dbg';
+      d.style.cssText='position:fixed;bottom:2px;left:2px;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:3px 6px;border:1px solid #0f0;border-radius:4px;pointer-events:none;';
+      document.body.appendChild(d);}
+    const pg=document.getElementById('page-probes');
+    d.textContent='win '+innerWidth+'x'+innerHeight+' | view '+(window.DASH_VIEW||'?')+' | v2 '+(window.DASH_V2?'Y':'N')
+      +' | zoom '+((pg&&pg.style.zoom)||'-')+' | avail '+(pg?pg.clientHeight:'?')+' content '+(pg?pg.scrollHeight:'?');
+  }catch(e){}
+}
 function _fitPad(){
   try{
     const pg=document.getElementById('page-probes'); if(!pg)return;
@@ -3127,6 +3141,7 @@ function renderProbes(){
   }).join('');
   renderProbeAlerts();
   _fitPad();
+  _dbgReadout();
 }
 function renderProbeAlerts(){
   const ov=document.getElementById('probe-alert');if(!ov)return;
