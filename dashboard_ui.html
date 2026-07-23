@@ -3720,8 +3720,9 @@ function _orunCalc(p){
   // batch add-on: a chosen batch contributes this item's quantity
   const badd=_orunBatch[p.id];
   if(badd!=null){
-    if(_orunBatchRepl[p.id] || parN===null || parN<=0){ order=badd; state=(badd>0)?'order':'ok'; }   // batch drives it (no count needed)
-    else if(state!=='uncounted'){ order=(order||0)+badd; state=(order>0)?'order':'ok'; }              // keep: add on top of the top-up
+    if(_orunBatchRepl[p.id] || parN===null || parN<=0){ order=badd; state=(badd>0)?'order':'ok'; }   // batch drives it
+    else if(typed===null){ order=badd; state=(badd>0)?'order':'ok'; }   // uncounted: show the batch qty now (a later count adds the top-up on top)
+    else { order=(order||0)+badd; state=(order>0)?'order':'ok'; }        // counted: top-up + batch
   }
   return {parN,haveN,order,state,unit:(p.unit||'unit'),batch:badd};
 }
