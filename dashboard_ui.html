@@ -179,6 +179,16 @@ body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,m
   body.style-v2 #page-probes .pb-sec .probes-grid,
   body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
+/* 21" wall: make Probes + Batches FILL the height so the cards grow into the space instead of
+   leaving a gap under them. Every link in the chain carries min-height:0 or the grid rows
+   collapse (that's what shrank cards to slivers in the earlier attempt). Scoped to view-wall
+   (auto only at >=1500px wide) so the Mac / iPad ('pad' view) are left exactly as they are. */
+body.style-v2.view-wall #page-probes .pb-split{flex:1 1 auto;min-height:0;}
+body.style-v2.view-wall #page-probes .pb-sec{flex:1 1 0;min-height:0;}
+body.style-v2.view-wall #page-probes .pb-sec .probes-grid,
+body.style-v2.view-wall #page-probes .pb-sec .timers-grid{flex:1 1 0;min-height:0;grid-auto-rows:minmax(0,1fr);align-items:stretch;}
+body.style-v2.view-wall #page-probes .probe-card,
+body.style-v2.view-wall #page-probes .timer-card{min-height:0;height:auto;justify-content:space-evenly;}
 /* summary strip — three roomy cards in a row */
 body.style-v2 #rot-live{gap:14px;}
 body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead container — bordered in v2 it showed as a blank card. The cam/orders cards have content when live, so they still appear */
@@ -3238,12 +3248,9 @@ function _fitPad(){
       // TALLER than the screen (e.g. probes cooking add Silence buttons) → shrink to fit.
       // Zoom is a v2-only affordance; classic is left exactly as it always was.
       if(window.DASH_V2) pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3);
-    } else if(avail-content>24){
-      // SHORTER than the screen (big wall / iPad, probes idle) → centre the block so the
-      // leftover height is shared top & bottom instead of dumped as empty space under the cards.
-      pg.style.justifyContent='center';
     }
-    // else: content ~fills the screen (Mac) → leave top-aligned, exactly as approved.
+    // else: the flex-fill CSS (view-wall / view-pad) grows the cards to fill the height,
+    // so there is no slack to absorb here. Leave it be.
   }catch(e){}
 }
 function renderProbes(){
