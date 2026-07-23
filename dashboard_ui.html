@@ -219,8 +219,8 @@ body.style-v2 #rot-live .rl-hero-num{font-size:clamp(30px,4.8vh,44px);}
 body.style-v2 #rot-live .rl-hero-lab{margin:0;}
 body.style-v2 #rot-live .rl-step{width:36px;height:36px;font-size:19px;}
 body.style-v2 #rot-live .rl-foot{margin:0;flex-direction:column;align-items:flex-start;gap:2px;}
-body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:7px;}
-body.style-v2 #rot-live .rl-actions button{height:34px;min-width:132px;padding:0 14px;border-radius:9px;}
+body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:10px;}
+body.style-v2 #rot-live .rl-actions button{height:42px;min-width:150px;width:100%;padding:0 16px;border-radius:10px;font-size:14px;font-weight:700;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
 .probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
 body.style-v2 .probe-lost{align-self:center;}
@@ -251,6 +251,8 @@ body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:15px 17
 .t2-state{flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--green);}
 .t2-state.run{color:var(--accv,var(--acc));}.t2-state.pause{color:var(--muted);}.t2-state.exp{color:var(--red);}
 .t2-gauge{position:relative;width:clamp(118px,14vh,158px);aspect-ratio:1;margin:2px auto;}
+/* wall: a bigger ring so the digits sit well inside it (and it soaks up the space-between air) */
+body.style-v2.view-wall #page-probes .t2-gauge{width:clamp(150px,19vh,190px);}
 .t2-gauge svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
 .t2-track{fill:none;stroke:var(--surface2);stroke-width:11;}
 .t2-prog{fill:none;stroke:var(--accv,var(--acc));stroke-width:11;stroke-linecap:round;transition:stroke-dashoffset .9s linear;}
@@ -614,6 +616,12 @@ body.style-v2 .btn,body.style-v2 .btn-primary,body.style-v2 .btn-danger{border-r
 .rl-actions>*{flex:1;white-space:nowrap;font-size:13px;padding:9px 6px;}
 .rl-puton{background:linear-gradient(180deg,#16a34a,#15803d);color:#eafff1;border:none;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.3);}
 .rl-puton:active{transform:translateY(1px);filter:brightness(.92);}
+/* rotisserie action buttons — one uniform size/font, colour-coded by role */
+.rl-abtn{flex:1;border:none;border-radius:10px;height:40px;padding:0 14px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+.rl-abtn:active{transform:translateY(1px);filter:brightness(.93);}
+.rl-add{background:linear-gradient(180deg,#16a34a,#15803d);color:#eafff1;}
+.rl-remove{background:linear-gradient(180deg,#dc2626,#b91c1c);color:#fee2e2;}
+.rl-adjust{background:linear-gradient(180deg,#f2b90d,#dca400);color:#3a2c00;}
 .rl-adj{display:flex;gap:6px;}
 .rl-mini{flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px;font-size:14px;cursor:pointer;}
 .rl-mini.rl-set{flex:1.4;font-weight:700;color:var(--amber);}
@@ -4271,7 +4279,7 @@ function renderRotLive(rot){
     <div class="rl-foot"><div class="rl-foot-stat"><span class="rl-foot-num">${fmtBird(rot.sold_today||0)}</span><span class="rl-foot-lab">sold today</span></div>${rateHtml}<div class="rl-foot-src">${rot.square?'<span class="rl-dot"></span> Square live':'○ manual'}</div></div>
     ${staleHtml}
     ${camErrHtml}
-    <div class="rl-actions"><button class="rl-puton" onclick="putOnRow()">+ Cooked row</button><button class="rl-mini" onclick="removeRow()">&minus; Row</button><button class="rl-mini" onclick="openAdjust('bbq')">Adjust</button>${window.DASH_V2?`<button class="rl-mini" onclick="openPullLog(event)">Pull log</button>`:''}</div>
+    <div class="rl-actions"><button class="rl-abtn rl-add" onclick="putOnRow()">+ Cooked row</button><button class="rl-abtn rl-remove" onclick="removeRow()">&minus; Row</button><button class="rl-abtn rl-adjust" onclick="openAdjust('bbq')">Adjust</button>${window.DASH_V2?`<button class="rl-abtn rl-adjust" onclick="openPullLog(event)">Pull log</button>`:''}</div>
     ${_pullLogHtml(rot.pulls)}
   </div>`;
 }
@@ -4546,7 +4554,7 @@ function renderFryLive(fry){
       <div class="rl-stat"><span class="rl-num">${Math.round(avail)}</span><span class="rl-lab">pcs avail</span></div>
       <div class="rl-stat"><span class="rl-num">${Math.round(fry.sold_today||0)}</span><span class="rl-lab">sold today</span></div>
     </div>
-    <div class="rl-actions"><button class="rl-puton" onclick="cookFryBatch()">+ Cooked batch</button><button class="rl-mini" onclick="openAdjust('fry')">Adjust</button></div>
+    <div class="rl-actions"><button class="rl-abtn rl-add" onclick="cookFryBatch()">+ Cooked batch</button><button class="rl-abtn rl-adjust" onclick="openAdjust('fry')">Adjust</button></div>
     <div class="rl-right"><div class="rl-src">${fry.square?'&#9679; Square live':'&#9675; manual'}</div></div>
   </div>`;
 }
