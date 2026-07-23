@@ -968,6 +968,21 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .stk-stepper button{width:52px;height:52px;background:transparent;border:none;color:var(--text);font-size:26px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .stk-stepper button:active{background:var(--surface2);}
 .stk-stepper input{width:58px;height:52px;font-size:19px !important;background:transparent;border:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);color:var(--text);font-size:16px;font-family:var(--font-mono);text-align:center;outline:none;}
+.orun-runs{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.orun-run{flex:1;min-width:120px;padding:11px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;text-align:center;}
+.orun-run.on{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
+.orun-run small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;}
+.orun-row{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:11px 13px;margin-bottom:7px;}
+.orun-nm{flex:1;min-width:0;}
+.orun-nm .n{font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.orun-nm .s{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.orun-have{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.orun-have input{width:66px;height:46px;text-align:center;font-size:18px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
+.orun-have input:focus{border-color:var(--amber);}
+.orun-order{flex-shrink:0;min-width:96px;text-align:right;font-weight:800;}
+.orun-order .q{font-size:20px;color:var(--amber);}
+.orun-order.zero .q{color:var(--muted);font-size:15px;font-weight:600;}
+.orun-order .u{font-size:11px;color:var(--muted);}
 .ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
 .ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
 .ord-line{display:flex;align-items:center;gap:10px;padding:5px 0;}
@@ -2106,6 +2121,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div class="form-row mt-8"><div class="label">Category</div><input class="input" id="new-supplier-category" list="supplier-cat-list" placeholder="Dry Goods / Meat / Veg / Packaging"><datalist id="supplier-cat-list"><option value="Dry Goods"></option><option value="Meat"></option><option value="Veg"></option><option value="Dairy"></option><option value="Frozen"></option><option value="Packaging"></option><option value="Drinks"></option></datalist></div>
         <div class="grid-2 mt-8"><div><div class="label">Reminder Time</div><input class="input" id="new-sup-remind-time" placeholder="09:00"></div><div><div class="label">Notify Email</div><input class="input" id="new-sup-remind-email" placeholder="your@email.com"></div></div>
         <div class="form-row mt-8"><div class="label">SMS (e.g. 0412345678@sms.clicksend.com)</div><input class="input" id="new-sup-remind-sms"></div>
+        <div style="margin-bottom:10px;"><div class="label">Order days <span style="color:var(--muted);font-weight:400;">(which days you place orders with this supplier)</span></div><div class="day-pills" id="new-sup-order-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
         <div><div class="label">Remind on days</div><div class="day-pills" id="new-sup-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
         <button class="btn btn-primary mt-8" id="btn-add-supplier" style="width:100%;" onclick="addSupplier()">+ Add Supplier</button>
       </div>
@@ -2114,6 +2130,18 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <!-- Order modal -->
+<!-- Order run: top-up-to-par count screen (per supplier, per order day) -->
+<div class="modal-overlay" id="orderrun-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="orun-title">Order</div><button class="modal-close" onclick="closeModal('orderrun-modal')">Close</button></div>
+    <div class="orun-runs" id="orun-runs"></div>
+    <div style="font-size:12px;color:var(--muted);margin:6px 2px 10px;">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div>
+    <div id="orun-list"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Send order to supplier</button>
+    <div id="orun-status" style="font-size:12.5px;margin-top:8px;min-height:16px;text-align:center;"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="order-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">PLACE ORDER</div><button class="modal-close" onclick="closeModal('order-modal')">Close</button></div>
@@ -3514,7 +3542,112 @@ function renderStockPage(){
   updateStockSummary();
 }
 let _orderAdj={};
-function openOrderModal(){const today=(new Date().getDay()+6)%7;_orderAdj={};document.querySelectorAll('#order-day-pills .day-pill').forEach(p=>p.classList.remove('on'));const tp=document.querySelector(`#order-day-pills .day-pill[data-d="${today}"]`);if(tp)tp.classList.add('on');updateOrderPreview();openModal('order-modal');}
+// ===== Order run: top-up-to-par ordering, per supplier, per order day =====
+// Each supplier has order_days (weekday indices, Mon=0..Sun=6). Each product has run_pars keyed by that
+// day = the "total needed" for the order placed that day. You count what you HAVE; order = round up
+// (par - have) to whole units. "SAME" is stored by copying the number, so every run has an explicit par.
+const _WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+let _orunSup=null,_orunDay=null,_orunHave={};
+function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
+  const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
+}
+function openOrderRun(supId){
+  const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
+  _orunSup=sup; _orunHave={};
+  const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
+  const today=_todayIdx();
+  _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
+  document.getElementById('orun-title').textContent='Order — '+sup.name;
+  openModal('orderrun-modal');
+  renderOrderRun();
+}
+function _orunSetDay(d){_orunDay=d;_orunHave={};renderOrderRun();}
+function renderOrderRun(){
+  const sup=_orunSup; if(!sup)return;
+  const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
+  const runsEl=document.getElementById('orun-runs');
+  if(!days.length){runsEl.innerHTML='<div style="color:var(--amber);font-size:13px;padding:8px;">No order days set for this supplier yet — add them in Setup → Suppliers.</div>';document.getElementById('orun-list').innerHTML='';return;}
+  runsEl.innerHTML=days.map(d=>{const to=_orunNextOrderDay(days,d);
+    return '<div class="orun-run '+(_orunDay===d?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>lasts to '+_WD[to]+'</small></div>';}).join('');
+  const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
+  const list=document.getElementById('orun-list');
+  if(!items.length){list.innerHTML='<div style="color:var(--muted);padding:16px;text-align:center;">No items for this supplier.</div>';return;}
+  list.innerHTML=items.map(p=>{
+    const par=((p.run_pars||{})[_orunDay]);
+    const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+    const unit=p.unit||'unit';
+    const have=_orunHave[p.id];
+    const haveN=(have===undefined||have==='')?null:parseFloat(have);
+    let order=0;
+    if(parN!==null){const short=parN-(haveN||0); order=short>0?Math.ceil(short):0;}
+    const sub=parN!==null?('need '+_fmtQ(parN)+' '+unit):'no level set';
+    const oc=order>0?'':' zero';
+    const oq=parN===null?'—':(order>0?('+'+order+' <span class="u">'+unit+'</span>'):'ok');
+    return '<div class="orun-row">'
+      +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
+      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="have" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
+      +'<div class="orun-order'+oc+'" data-id="'+p.id+'"><span class="q">'+oq+'</span></div>'
+      +'</div>';
+  }).join('');
+}
+function _fmtQ(v){ // pretty fractions for the "need" line
+  if(v===0.25)return '1/4'; if(v===0.5)return '1/2'; if(v===0.75)return '3/4';
+  if(v===1.25)return '1 1/4'; if(v===1.5)return '1 1/2';
+  return (Math.round(v*100)/100).toString();
+}
+function _orunRecalc(pid){
+  const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
+  const cell=document.querySelector('.orun-order[data-id="'+pid+'"]'); if(!cell)return;
+  const par=((p.run_pars||{})[_orunDay]);
+  const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+  const have=_orunHave[pid]; const haveN=(have===undefined||have==='')?null:parseFloat(have);
+  let order=0; if(parN!==null){const short=parN-(haveN||0);order=short>0?Math.ceil(short):0;}
+  cell.className='orun-order'+(order>0?'':' zero');
+  cell.innerHTML='<span class="q">'+(parN===null?'—':(order>0?('+'+order+' <span class="u">'+(p.unit||'unit')+'</span>'):'ok'))+'</span>';
+}
+function sendOrderRun(){
+  const sup=_orunSup; if(!sup)return;
+  const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id).map(p=>{
+    const par=((p.run_pars||{})[_orunDay]); const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+    const have=_orunHave[p.id]; const haveN=(have===undefined||have==='')?null:parseFloat(have);
+    let order=0; if(parN!==null){const short=parN-(haveN||0);order=short>0?Math.ceil(short):0;}
+    return {code:p.code||'',name:p.name,qty:order,unit:p.unit||'unit'};
+  }).filter(x=>x.qty>0);
+  const st=document.getElementById('orun-status');
+  if(!items.length){st.textContent='Nothing to order — everything is at or above its level.';st.style.color='var(--muted)';return;}
+  const btn=document.getElementById('orun-send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({orders:{[sup.id]:items},suppliers:appData.suppliers,days:_WD[_orunDay]+' order'})}).then(r=>r.json()).then(d=>{
+    if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}
+    if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';}
+    else{st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}
+  }).catch(()=>{if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function openOrderModal(){
+  // supplier chooser → each opens its top-up-to-par order run (new) or the legacy day flow
+  const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
+  if(!sups.length){_toast&&_toast('Add a supplier and products first.');return;}
+  const box=document.getElementById('order-preview');
+  document.querySelector('#order-modal .modal-title').textContent='PLACE ORDER — pick a supplier';
+  const pills=document.getElementById('order-day-pills'); if(pills)pills.style.display='none';
+  const hint=document.querySelector('#order-modal .label'); if(hint)hint.style.display='none';
+  box.innerHTML=sups.map(s=>{
+    const n=(appData.products||[]).filter(p=>p.supplier_id===s.id).length;
+    const days=(s.order_days||[]);
+    const dayStr=days.length?days.slice().sort((a,b)=>a-b).map(d=>_WD[d]).join(', ')+' orders':'set order days in Setup';
+    return '<button class="btn" style="width:100%;justify-content:space-between;display:flex;align-items:center;height:56px;margin-bottom:9px;font-size:15px;" onclick="closeModal(\'order-modal\');'
+      +(days.length?('openOrderRun(\''+s.id+'\')'):('_orderLegacy(\''+s.id+'\')'))+'">'
+      +'<span>'+_mEsc(s.name)+' <span style="color:var(--muted);font-size:12px;">('+n+' items)</span></span>'
+      +'<span style="color:var(--muted);font-size:12px;">'+dayStr+' &rsaquo;</span></button>';
+  }).join('');
+  openModal('order-modal');
+}
+function _orderLegacy(supId){  // old day-pill flow for suppliers without order days configured
+  openModal('order-modal');
+  document.querySelector('#order-modal .modal-title').textContent='PLACE ORDER';
+  const pills=document.getElementById('order-day-pills'); if(pills)pills.style.display='';
+  const hint=document.querySelector('#order-modal .label'); if(hint)hint.style.display='';
+  const today=(new Date().getDay()+6)%7;_orderAdj={};document.querySelectorAll('#order-day-pills .day-pill').forEach(p=>p.classList.remove('on'));const tp=document.querySelector(`#order-day-pills .day-pill[data-d="${today}"]`);if(tp)tp.classList.add('on');updateOrderPreview();openModal('order-modal');}
 function adjustOrderLine(pid,delta){const cell=document.querySelector('.ord-line[data-id="'+pid+'"]');if(!cell)return;const q=cell.querySelector('.ord-qty');const cur=parseFloat(q.textContent)||0;let v=cur+delta;if(v<0)v=0;_orderAdj[pid]=v;q.textContent=v;}
 function updateOrderPreview(){
   const sel=[];document.querySelectorAll('#order-day-pills .day-pill.on').forEach(p=>sel.push(parseInt(p.dataset.d)));
@@ -3555,8 +3688,8 @@ function renderProductAdmin(){
   group('No supplier',products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id)));
   document.getElementById('product-list-admin').innerHTML=html;
 }
-function addSupplier(){const name=document.getElementById('new-supplier-name').value.trim();const email=document.getElementById('new-supplier-email').value.trim();if(!name||!email){alert('Enter name and email.');return;}const category=document.getElementById('new-supplier-category').value.trim()||'Uncategorised';const remind_time=document.getElementById('new-sup-remind-time').value.trim();const remind_email=document.getElementById('new-sup-remind-email').value.trim();const remind_sms=document.getElementById('new-sup-remind-sms').value.trim();const remind_days=[];document.querySelectorAll('#new-sup-days .day-pill.on').forEach(p=>remind_days.push(parseInt(p.dataset.d)));appData.suppliers=appData.suppliers||[];if(editingSupplier){const ex=appData.suppliers.find(s=>s.id===editingSupplier);if(ex)Object.assign(ex,{name,email,category,remind_time,remind_email,remind_sms,remind_days});editingSupplier=null;setBtn('btn-add-supplier','+ Add Supplier');}else{appData.suppliers.push({id:'sup_'+Date.now(),name,email,category,remind_time,remind_email,remind_sms,remind_days});}saveAppData();renderSupplierAdmin();renderProductAdmin();['new-supplier-name','new-supplier-email','new-supplier-category','new-sup-remind-time','new-sup-remind-email','new-sup-remind-sms'].forEach(id=>document.getElementById(id).value='');document.querySelectorAll('#new-sup-days .day-pill').forEach(p=>p.classList.remove('on'));setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);}
-function editSupplier(i){const s=(appData.suppliers||[])[i];if(!s)return;editingSupplier=s.id;document.getElementById('new-supplier-name').value=s.name||'';document.getElementById('new-supplier-email').value=s.email||'';document.getElementById('new-supplier-category').value=s.category||'';document.getElementById('new-sup-remind-time').value=s.remind_time||'';document.getElementById('new-sup-remind-email').value=s.remind_email||'';document.getElementById('new-sup-remind-sms').value=s.remind_sms||'';setDayPills('#new-sup-days',s.remind_days);setBtn('btn-add-supplier','Save Changes');toggleSupplierForm(true);document.getElementById('new-supplier-name').scrollIntoView({behavior:'smooth',block:'center'});}
+function addSupplier(){const name=document.getElementById('new-supplier-name').value.trim();const email=document.getElementById('new-supplier-email').value.trim();if(!name||!email){alert('Enter name and email.');return;}const category=document.getElementById('new-supplier-category').value.trim()||'Uncategorised';const remind_time=document.getElementById('new-sup-remind-time').value.trim();const remind_email=document.getElementById('new-sup-remind-email').value.trim();const remind_sms=document.getElementById('new-sup-remind-sms').value.trim();const remind_days=[];document.querySelectorAll('#new-sup-days .day-pill.on').forEach(p=>remind_days.push(parseInt(p.dataset.d)));const order_days=[];document.querySelectorAll('#new-sup-order-days .day-pill.on').forEach(p=>order_days.push(parseInt(p.dataset.d)));appData.suppliers=appData.suppliers||[];if(editingSupplier){const ex=appData.suppliers.find(s=>s.id===editingSupplier);if(ex)Object.assign(ex,{name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days});editingSupplier=null;setBtn('btn-add-supplier','+ Add Supplier');}else{appData.suppliers.push({id:'sup_'+Date.now(),name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days});}saveAppData();renderSupplierAdmin();renderProductAdmin();['new-supplier-name','new-supplier-email','new-supplier-category','new-sup-remind-time','new-sup-remind-email','new-sup-remind-sms'].forEach(id=>document.getElementById(id).value='');document.querySelectorAll('#new-sup-days .day-pill').forEach(p=>p.classList.remove('on'));setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);}
+function editSupplier(i){const s=(appData.suppliers||[])[i];if(!s)return;editingSupplier=s.id;document.getElementById('new-supplier-name').value=s.name||'';document.getElementById('new-supplier-email').value=s.email||'';document.getElementById('new-supplier-category').value=s.category||'';document.getElementById('new-sup-remind-time').value=s.remind_time||'';document.getElementById('new-sup-remind-email').value=s.remind_email||'';document.getElementById('new-sup-remind-sms').value=s.remind_sms||'';setDayPills('#new-sup-days',s.remind_days);setBtn('btn-add-supplier','Save Changes');toggleSupplierForm(true);document.querySelectorAll('#new-sup-order-days .day-pill').forEach(p=>p.classList.toggle('on',(s.order_days||[]).includes(parseInt(p.dataset.d))));document.getElementById('new-supplier-name').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeSupplier(i){appData.suppliers.splice(i,1);saveAppData();renderSupplierAdmin();}
 let _prodMode='reorder';
 function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier');sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');if(val)sel.value=val;}
