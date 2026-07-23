@@ -3580,7 +3580,7 @@ function renderOrderRun(){
     const haveN=(have===undefined||have==='')?null:parseFloat(have);
     let order=0;
     if(parN!==null){const short=parN-(haveN||0); order=short>0?Math.ceil(short):0;}
-    const sub=parN!==null?('need '+_fmtQ(parN)+' '+unit):'no level set';
+    const _pn=p.par_note?(' · '+p.par_note):'';const sub=parN!==null?('need '+_fmtQ(parN)+' '+unit+_pn):'no level set';
     const oc=order>0?'':' zero';
     const oq=parN===null?'—':(order>0?('+'+order+' <span class="u">'+unit+'</span>'):'ok');
     return '<div class="orun-row">'
