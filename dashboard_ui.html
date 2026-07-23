@@ -1029,6 +1029,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-row.needcount{border-color:var(--amber);}
 .orun-row.needcount .orun-have input{border-color:var(--amber);}
 .orun-order .u{font-size:11px;color:var(--muted);display:block;font-weight:600;}
+.orun-ordwrap{display:flex;flex-direction:column;align-items:center;gap:5px;}
+.orun-adj{display:inline-flex;gap:6px;}
+.orun-adj button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:18px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.orun-adj button:active{background:var(--amber);color:#0a0a0c;border-color:var(--amber);}
 .ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
 .ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
 .ord-line{display:flex;align-items:center;gap:10px;padding:5px 0;}
@@ -3649,13 +3653,14 @@ let _orderAdj={};
 const _WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let _orunSup=null,_orunDay=null,_orunHave={};
 let _orunUnit={};   // pid -> 'base'|'alt'
+let _orunAdj={};    // pid -> manual +/- nudge on the calculated order (in base units)
 let _orunBatchOn={}, _orunBatch={}, _orunBatchRepl={};   // selected batches; per-item batch qty; per-item replace-flag
 function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
   const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
 }
 function openOrderRun(supId){
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
-  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={};
+  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
@@ -3693,7 +3698,7 @@ function _orunRowHtml(p){
   return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
     +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
     +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
-    +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
+    +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c,p.id)+'</div>'
     +'</div>';
 }
 function _orunRebuildBatch(){
@@ -3722,7 +3727,7 @@ function _orunBatchPrompt(batchName,names,apply){
   window._baApply=apply; openModal('batchask-modal');
 }
 function _baChoose(replace){ closeModal('batchask-modal'); if(window._baApply){ window._baApply(replace); window._baApply=null; } }
-function _orunSetDay(d){_orunDay=d;_orunHave={};renderOrderRun();}
+function _orunSetDay(d){_orunDay=d;_orunHave={};_orunAdj={};renderOrderRun();}
 function renderOrderRun(){
   const sup=_orunSup; if(!sup)return;
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
@@ -3776,13 +3781,32 @@ function _orunCalc(p){
     else if(typed===null){ order=badd; state=(badd>0)?'order':'ok'; }   // uncounted: show the batch qty now (a later count adds the top-up on top)
     else { order=(order||0)+badd; state=(order>0)?'order':'ok'; }        // counted: top-up + batch
   }
-  return {parN,haveN,order,state,unit:(p.unit||'unit'),batch:badd};
+  // manual override: the +/- arrows nudge the final order up or down (in base units)
+  const adj=parseFloat(_orunAdj[p.id]);
+  if(!isNaN(adj)&&adj!==0){
+    order=Math.max(0,(order==null?0:order)+adj);
+    if(order>0) state='order';
+    else if(state!=='uncounted'&&state!=='nolevel') state='ok';
+  }
+  return {parN,haveN,order,state,unit:(p.unit||'unit'),batch:badd,adj:(isNaN(adj)?0:adj)};
 }
-function _orunCellHtml(c){
-  if(c.state==='nolevel') return '<span class="q">&mdash;</span>';
-  if(c.state==='uncounted') return '<span class="q count">count</span>';
-  if(c.state==='order') return '<span class="q">+'+c.order+' <span class="u">'+c.unit+'</span></span>';
-  return '<span class="q">ok</span>';
+function _orunCellHtml(c,pid){
+  let mid;
+  if(c.state==='nolevel') mid='<span class="q">&mdash;</span>';
+  else if(c.state==='uncounted') mid='<span class="q count">count</span>';
+  else if(c.state==='order') mid='<span class="q">+'+_fmtQ(c.order)+' <span class="u">'+c.unit+'</span></span>';
+  else mid='<span class="q">ok</span>';
+  if(pid===undefined) return mid;
+  const arrows='<div class="orun-adj">'
+    +'<button type="button" aria-label="less" onclick="_orunBump(\''+pid+'\',-1)">&minus;</button>'
+    +'<button type="button" aria-label="more" onclick="_orunBump(\''+pid+'\',1)">+</button></div>';
+  return '<div class="orun-ordwrap">'+mid+arrows+'</div>';
+}
+function _orunBump(pid,dir){
+  const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
+  if(dir<0 && (_orunCalc(p).order||0)<=0) return;   // can't drop below 0
+  _orunAdj[pid]=(parseFloat(_orunAdj[pid])||0)+dir;
+  _orunRecalc(pid);
 }
 function _fmtQ(v){ // pretty fractions for the "need" line
   if(v===0.25)return '1/4'; if(v===0.5)return '1/2'; if(v===0.75)return '3/4';
@@ -3796,7 +3820,7 @@ function _orunRecalc(pid){
   const cell=document.querySelector('.orun-order[data-id="'+pid+'"]'); if(!cell)return;
   const c=_orunCalc(p);
   cell.className='orun-order'+(c.state==='order'?'':' zero');
-  cell.innerHTML=_orunCellHtml(c);
+  cell.innerHTML=_orunCellHtml(c,pid);
   const row=document.querySelector('.orun-row[data-row="'+pid+'"]');
   if(row)row.classList.toggle('needcount',c.state==='uncounted');
 }
