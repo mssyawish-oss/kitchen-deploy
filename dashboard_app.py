@@ -3961,6 +3961,20 @@ def api_silence():
         ALARM_SILENCES.append({"ts":now,"key":key})
         del ALARM_SILENCES[:-20]                     # keep only the most recent handful
     return jsonify({"ok":True,"ts":now})
+_UI_VER={"tag":"","mtime":0.0,"checked":0.0}
+def _ui_ver():
+    # a tag that changes whenever dashboard_ui.html is redeployed, so open screens can reload themselves
+    # on a FRONTEND-only update (the server doesn't restart for those, so boot id alone misses them).
+    try:
+        now=time.time()
+        if now-_UI_VER["checked"]>3:                      # stat at most every 3s
+            _UI_VER["checked"]=now
+            m=os.path.getmtime(os.path.join(BASE_DIR,"dashboard_ui.html"))
+            if m!=_UI_VER["mtime"]:
+                _UI_VER["mtime"]=m; _UI_VER["tag"]=str(int(m))
+    except Exception: pass
+    return _UI_VER["tag"]
+
 @app.route("/temps")
 def temps():
     _now=time.time()
@@ -3973,7 +3987,7 @@ def temps():
             if _lca and (_now-_lca)>60:                 # reading unchanged >1 min → probe parked on the dock / not in use → blank it
                 t[k]=None; item["status"]="idle"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
