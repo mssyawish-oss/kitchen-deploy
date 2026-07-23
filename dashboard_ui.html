@@ -3076,8 +3076,14 @@ function _dbgReadout(){
       d.style.cssText='position:fixed;bottom:2px;left:2px;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:3px 6px;border:1px solid #0f0;border-radius:4px;pointer-events:none;';
       document.body.appendChild(d);}
     const pg=document.getElementById('page-probes');
-    d.textContent='win '+innerWidth+'x'+innerHeight+' | view '+(window.DASH_VIEW||'?')+' | v2 '+(window.DASH_V2?'Y':'N')
-      +' | zoom '+((pg&&pg.style.zoom)||'-')+' | avail '+(pg?pg.clientHeight:'?')+' content '+(pg?pg.scrollHeight:'?');
+    const nav=document.querySelector('.bottom-nav')||document.getElementById('bottom-nav');
+    const mc=document.querySelector('.main-col'), sh=document.getElementById('app-shell');
+    const pgb=pg?Math.round(pg.getBoundingClientRect().bottom):0;
+    const navt=nav?Math.round(nav.getBoundingClientRect().top):0;
+    d.innerHTML='win '+innerWidth+'x'+innerHeight+' view '+(window.DASH_VIEW||'?')+' zoom '+((pg&&pg.style.zoom)||'-')
+      +'<br>pageArea '+(pg?pg.clientHeight:'?')+' content '+(pg?pg.scrollHeight:'?')+' pgBottom '+pgb
+      +'<br>navTop '+navt+' GAP '+(navt-pgb)+' | shell '+(sh?Math.round(sh.getBoundingClientRect().height):'?')
+      +' mainCol '+(mc?Math.round(mc.getBoundingClientRect().height):'?');
   }catch(e){}
 }
 function _fitPad(){
