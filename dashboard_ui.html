@@ -944,6 +944,13 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .stk-search:focus{border-color:var(--amber);}
 .stk-summary{display:none;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-radius:14px;margin:2px 0 14px;font-size:16px;font-weight:600;}
 .stk-summary b{font-size:22px;}
+.stk-order-btns{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+.stk-order-btn{flex:1;min-width:200px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface2);border:1.5px solid var(--amber);border-radius:13px;padding:14px 16px;cursor:pointer;text-align:left;position:relative;}
+.stk-order-btn.dim{border-color:var(--border2);}
+.stk-order-btn .son-nm{font-size:16px;font-weight:700;color:var(--text);}
+.stk-order-btn .son-sub{font-size:12px;color:var(--muted);}
+.stk-order-btn .son-go{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:14px;font-weight:700;color:var(--amber);}
+.stk-order-btn.dim .son-go{color:var(--muted);}
 .stk-status-tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
 .stk-stab{flex:1;min-width:96px;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;}
 .stk-stab .n{font-size:16px;}
@@ -3444,7 +3451,7 @@ function orderQty(p,sel,onHand){
 }
 let stockFilter='All',stockSearch='';
 let stockStatus='all';   // 'all' | 'order' | 'count'
-function setStockStatus(s){stockStatus=s;renderStockPage();}
+function setStockStatus(s){stockStatus='all';renderStockPage();}   // status filter retired; list always shows all (category chips still filter)
 function _stockCounts(){
   const products=appData.products||[],soh=appData.stock_on_hand||{},today=_todayIdx();
   let order=0,count=0;
@@ -3453,10 +3460,20 @@ function _stockCounts(){
   return {order,count,all:products.length};
 }
 function renderStockStatusTabs(){
+  // The old To-order/To-count/All tabs were confusing (and their counts ignored the category filter).
+  // Replaced with a clear "Order <supplier>" button per supplier → opens the count-and-send run.
   const el=document.getElementById('stock-status-tabs');if(!el)return;
-  const c=_stockCounts();
-  const tab=(k,cls,label,n)=>`<div class="stk-stab ${cls} ${stockStatus===k?'on':''}" onclick="setStockStatus('${k}')">${label} <span class="n">${n}</span></div>`;
-  el.innerHTML=tab('order','order','&#9888; To order',c.order)+tab('count','count','&#9711; To count',c.count)+tab('all','','All',c.all);
+  const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
+  if(!sups.length){el.innerHTML='';return;}
+  el.innerHTML='<div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin:2px 2px 8px;">Place an order</div>'
+    +'<div class="stk-order-btns">'+sups.map(s=>{
+      const days=(s.order_days||[]).slice().sort((a,b)=>a-b);
+      const ready=days.length>0;
+      const sub=ready?days.map(d=>_WD[d]).join(' & ')+' orders':'set order days in Setup';
+      return '<button class="stk-order-btn'+(ready?'':' dim')+'" onclick="'+(ready?('openOrderRun(\''+s.id+'\')'):('openStockAdmin()'))+'">'
+        +'<span class="son-nm">'+_mEsc(s.name)+'</span><span class="son-sub">'+sub+'</span>'
+        +'<span class="son-go">'+(ready?'Order &rarr;':'Setup &rarr;')+'</span></button>';
+    }).join('')+'</div>';
 }
 function setStockFilter(c){stockFilter=c;renderStockPage();}
 function setStockSearch(v){stockSearch=v;renderStockPage();}
@@ -3500,7 +3517,7 @@ function resetStockCounts(){
 }
 function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;let v=cur+delta;if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
-function updateStockSummary(){const el=document.getElementById('stock-summary');if(!el)return;const products=appData.products||[];const soh=appData.stock_on_hand||{};const today=_todayIdx();let need=0,uncounted=0;products.forEach(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';if(!c)uncounted++;const oh=c?parseFloat(soh[p.id]):0;if(orderQty(p,[today],oh)>0)need++;});if(products.length===0){el.style.display='none';return;}el.style.display='flex';if(need>0){el.className='stk-summary warn';el.innerHTML=`<span><b>${need}</b> item${need>1?'s':''} to order${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button>`;}else{el.className='stk-summary ok';el.innerHTML=`<span>All items stocked for today${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn" onclick="openOrderModal()">Place Order</button>`;}}
+function updateStockSummary(){const el=document.getElementById('stock-summary');if(el)el.style.display='none';}   // retired: supplier order buttons replace this
 function renderStockPage(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const list=document.getElementById('stock-list'),empty=document.getElementById('stock-empty');
