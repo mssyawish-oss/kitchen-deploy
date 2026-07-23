@@ -3058,17 +3058,17 @@ function _mpAnswer(yes){
   closeModal('mp-modal');
   if(yes){ putOnRow(); _toast('\u2713 Added the missed row to stock'); }
 }
-// iPad fit: the iPad (view-pad) is smaller than the Mac (view-wall), so the same v2 layout scrolls a
-// little. This shrinks the Temp content UNIFORMLY to fit — same look as the Mac, just smaller — and does
-// NOTHING on the Mac (wall) or phone, because it is gated to view-pad. Runs after each probe render.
+// FIT TO SCREEN (v2): shrink the Temp content UNIFORMLY so it fits whatever device it is on — same look
+// as the Mac, just smaller — with NO special URL needed. It only ever SHRINKS, and only when the content
+// genuinely overflows (>8px), so a screen that already fits (the Mac / 21" wall) is left exactly as-is.
 function _fitPad(){
   try{
     const pg=document.getElementById('page-probes'); if(!pg)return;
-    if(!document.body.classList.contains('view-pad')){ pg.style.zoom=''; return; }  // Mac/phone: untouched
+    if(!window.DASH_V2){ pg.style.zoom=''; return; }     // classic look: never touched
     pg.style.zoom='1';                                   // reset, then measure the natural height
     const avail=pg.clientHeight, content=pg.scrollHeight;
-    if(content>avail+2){ pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3); }  // shrink to fit
-    else pg.style.zoom='1';                              // already fits → leave exactly as-is
+    if(content>avail+8){ pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3); }  // overflowing → shrink to fit
+    else pg.style.zoom='1';                              // fits (Mac / wall) → leave exactly as-is
   }catch(e){}
 }
 function renderProbes(){
