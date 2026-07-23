@@ -778,7 +778,10 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .rc-prompt-badge{font-size:10px;font-weight:700;color:#1a1205;background:var(--amber);border-radius:5px;padding:1px 6px;margin-left:6px;}
 .rc-prompt-body{padding:0 12px 12px;}
 .rc-prompt-ta{width:100%;min-height:130px;max-height:360px;resize:vertical;font-family:var(--font-mono);font-size:12px;line-height:1.5;padding:9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box;}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;position:sticky;top:-22px;z-index:6;margin:-22px -22px 14px;padding:20px 22px 12px;background:linear-gradient(180deg,#1a1e26 82%,rgba(26,30,38,0));}
+/* sticky action footer: the Save/Send/Add/Confirm row stays pinned at the bottom of any modal */
+.modal-foot{position:sticky;bottom:-22px;z-index:5;margin:14px -22px -22px;padding:14px 22px 20px;background:linear-gradient(0deg,#15181f 82%,rgba(21,24,31,0));}
+.modal-foot .btn,.modal-foot button{margin-top:0;}
 .modal-title{font-size:14px;font-weight:700;color:var(--amber);font-family:var(--font-mono);}
 .modal-close{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;}
 #lock-screen{position:fixed;inset:0;background:radial-gradient(900px 500px at 50% 25%,rgba(251,191,36,.07),transparent 60%),var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
@@ -1537,10 +1540,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="comp-lab">Change access code <span style="color:var(--muted);font-weight:400;">(optional)</span></div>
     <input class="input" id="cs-newcode" maxlength="8" placeholder="Leave blank to keep the current code">
     <div id="cs-status" style="font-size:12.5px;margin-top:10px;min-height:18px;"></div>
-    <div class="row" style="gap:8px;margin-top:10px;">
+    <div class="modal-foot"><div class="row" style="gap:8px;margin-top:10px;">
       <button class="btn btn-primary" style="flex:1;" onclick="compSetupSave()">Save</button>
       <button class="btn" style="flex:1;" onclick="closeModal('compsetup-modal')">Cancel</button>
-    </div>
+    </div></div>
   </div>
 </div>
 <div class="modal-overlay" id="pulllog-modal">
@@ -1599,7 +1602,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <button class="btn" onclick="savePrepSaved()">Save current as…</button>
     </div>
     <div id="prep-build-grid" class="prep-grid"></div>
-    <button class="btn btn-primary" id="prep-build-save" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepList()">Save prep list</button>
+    <div class="modal-foot"><button class="btn btn-primary" id="prep-build-save" style="width:100%;margin-top:16px;font-size:16px;padding:12px;" onclick="savePrepList()">Save prep list</button></div>
   </div>
 </div>
 <!-- Today's Prep: manage preset items -->
@@ -1686,7 +1689,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Quick count — how many do you actually have <b>right now</b>? Keeps the live counts honest.</div>
     <div class="form-row" id="sc-bbq-row"><div class="label"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg> BBQ chickens available</div><input class="input" id="sc-bbq" type="number" step="0.25" style="text-align:center;font-size:22px;"></div>
     <div class="form-row" id="sc-fry-row"><div class="label">Fried chicken pieces available</div><input class="input" id="sc-fry" type="number" style="text-align:center;font-size:22px;"></div>
-    <div class="row mt-8"><button class="btn btn-primary" style="flex:1.4;" onclick="submitStockCheck()">Confirm counts</button><button class="btn" onclick="closeModal('stockcheck-modal')">Looks right</button></div>
+    <div class="modal-foot"><div class="row mt-8"><button class="btn btn-primary" style="flex:1.4;" onclick="submitStockCheck()">Confirm counts</button><button class="btn" onclick="closeModal('stockcheck-modal')">Looks right</button></div></div>
     <button class="btn" style="margin-top:10px;font-size:12px;padding:5px 12px;color:var(--muted);" onclick="turnOffStockPrompt()">Turn off these reminders</button>
   </div>
 </div>
@@ -2117,7 +2120,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
         <div><div class="label" style="text-align:center;">Sun</div><input class="input" id="pe-t6" type="number" style="text-align:center;padding:5px 3px;"></div>
       </div>
     </div>
-    <button class="btn btn-primary mt-8" style="width:100%;" onclick="saveProductEdit()">Save Product</button>
+    <div class="modal-foot"><button class="btn btn-primary mt-8" style="width:100%;" onclick="saveProductEdit()">Save Product</button></div>
   </div>
 </div>
 
@@ -2208,7 +2211,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="form-row"><div class="label">Name</div><input class="input" id="recipe-name-input" placeholder="BBQ Marinade"></div>
     <div class="form-row"><div class="label">Category <span style="color:var(--muted);font-weight:400;font-size:11px;">(pick one or type a new one — clear it to remove)</span></div><input class="input" id="recipe-cat-input" list="recipe-cat-list" placeholder="BBQ / Sides / Sauces"><datalist id="recipe-cat-list"></datalist></div>
     <div class="form-row"><div class="label">Recipe</div><textarea class="input" id="recipe-body-input" rows="8" style="resize:vertical;"></textarea></div>
-    <button class="btn btn-primary" style="width:100%;" onclick="saveRecipe()">Save Recipe</button>
+    <div class="modal-foot"><button class="btn btn-primary" style="width:100%;" onclick="saveRecipe()">Save Recipe</button></div>
   </div>
 </div>
 
