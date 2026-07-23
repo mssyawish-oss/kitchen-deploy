@@ -982,14 +982,15 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-run small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;}
 .orun-head{display:flex;align-items:center;gap:12px;padding:4px 13px 8px;position:sticky;top:0;background:var(--bg);z-index:2;}
 .orun-h-item{flex:1;min-width:0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
-.orun-h-have{width:96px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+.orun-h-have{width:112px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
 .orun-h-order{width:104px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
 .orun-row{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:11px 13px;margin-bottom:7px;}
 .orun-nm{flex:1;min-width:0;}
 .orun-nm .n{font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .orun-nm .s{font-size:11.5px;color:var(--muted);margin-top:2px;}
-.orun-have{width:96px;flex-shrink:0;display:flex;justify-content:center;}
-.orun-have input{width:78px;height:48px;text-align:center;font-size:19px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
+.orun-have{width:112px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.orun-have input{width:88px;height:46px;text-align:center;font-size:19px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
+.orun-unit-tog{background:var(--surface);border:1px solid var(--border2);border-radius:7px;color:var(--amber);font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;}
 .orun-have input:focus{border-color:var(--amber);}
 .orun-order{width:104px;flex-shrink:0;text-align:center;font-weight:800;}
 .orun-order .q{font-size:21px;color:var(--amber);}
@@ -3573,12 +3574,13 @@ let _orderAdj={};
 // (par - have) to whole units. "SAME" is stored by copying the number, so every run has an explicit par.
 const _WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let _orunSup=null,_orunDay=null,_orunHave={};
+let _orunUnit={};   // pid -> 'base'|'alt' : which unit the stock-on-hand box is counted in
 function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
   const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
 }
 function openOrderRun(supId){
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
-  _orunSup=sup; _orunHave={};
+  _orunSup=sup; _orunHave={}; _orunUnit={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
@@ -3603,21 +3605,32 @@ function renderOrderRun(){
     const _pn=p.par_note?(' · '+p.par_note):'';const sub=c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set';
     const needCount=(c.state==='uncounted');
     const have=_orunHave[p.id];
+    const cu=_orunCountUnit(p);
+    const toggle=_orunHasAlt(p)
+      ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(p.alt_unit):_mEsc(c.unit))+' &#8646;</button>'
+      : '';
     return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
       +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')"></div>'
+      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
       +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
       +'</div>';
   }).join('');
+}
+function _orunHasAlt(p){return !!(p.alt_unit&&parseFloat(p.alt_per)>0);}
+function _orunCountUnit(p){ // which unit the count box is currently in for this item
+  return (_orunUnit[p.id]==='alt'&&_orunHasAlt(p))?'alt':'base';
 }
 function _orunCalc(p){
   const par=((p.run_pars||{})[_orunDay]);
   const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
   const have=_orunHave[p.id];
-  const haveN=(have===undefined||have==='')?null:parseFloat(have);   // BLANK = not counted, NOT zero
+  const typed=(have===undefined||have==='')?null:parseFloat(have);   // BLANK = not counted, NOT zero
+  // convert the typed amount to BASE units (par is always in base units)
+  let haveN=typed;
+  if(typed!==null&&_orunCountUnit(p)==='alt') haveN=typed*parseFloat(p.alt_per);
   let order=null, state;
-  if(parN===null) state='nolevel';                       // nothing to order this run
-  else if(haveN===null) state='uncounted';               // must be counted before ordering
+  if(parN===null||parN<=0) state='nolevel';   // no level (or 0) for this run → nothing to order, no count needed
+  else if(typed===null) state='uncounted';
   else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
   return {parN,haveN,order,state,unit:(p.unit||'unit')};
 }
@@ -3632,6 +3645,7 @@ function _fmtQ(v){ // pretty fractions for the "need" line
   if(v===1.25)return '1 1/4'; if(v===1.5)return '1 1/2';
   return (Math.round(v*100)/100).toString();
 }
+function _orunToggleUnit(pid){ _orunUnit[pid]=(_orunUnit[pid]==='alt')?'base':'alt'; renderOrderRun(); }
 function _orunRecalc(pid){
   const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
   const cell=document.querySelector('.orun-order[data-id="'+pid+'"]'); if(!cell)return;
