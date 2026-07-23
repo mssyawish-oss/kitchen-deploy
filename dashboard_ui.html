@@ -3222,11 +3222,28 @@ function _dbgReadout(){
 function _fitPad(){
   try{
     const pg=document.getElementById('page-probes'); if(!pg)return;
-    if(!window.DASH_V2){ pg.style.zoom=''; return; }     // classic look: never touched
-    pg.style.zoom='1';                                   // reset, then measure the natural height
-    const avail=pg.clientHeight, content=pg.scrollHeight;
-    if(content>avail+8){ pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3); }  // overflowing → shrink to fit
-    else pg.style.zoom='1';                              // fits (Mac / wall) → leave exactly as-is
+    // reset both knobs before measuring the natural height
+    pg.style.zoom = window.DASH_V2 ? '1' : '';
+    pg.style.justifyContent='';
+    const cs=getComputedStyle(pg);
+    const avail=pg.clientHeight-parseFloat(cs.paddingTop||0)-parseFloat(cs.paddingBottom||0);
+    // Real content height: scrollHeight can never read below the visible box, so it can't detect
+    // slack — measure the actual stack from the first visible child's top to the last child's bottom.
+    const kids=[...pg.children].filter(c=>c.offsetParent!==null && c.getBoundingClientRect().height>1);
+    if(!kids.length) return;
+    const top=kids[0].getBoundingClientRect().top;
+    const bot=kids[kids.length-1].getBoundingClientRect().bottom;
+    const content=bot-top;
+    if(content>avail+8){
+      // TALLER than the screen (e.g. probes cooking add Silence buttons) → shrink to fit.
+      // Zoom is a v2-only affordance; classic is left exactly as it always was.
+      if(window.DASH_V2) pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3);
+    } else if(avail-content>24){
+      // SHORTER than the screen (big wall / iPad, probes idle) → centre the block so the
+      // leftover height is shared top & bottom instead of dumped as empty space under the cards.
+      pg.style.justifyContent='center';
+    }
+    // else: content ~fills the screen (Mac) → leave top-aligned, exactly as approved.
   }catch(e){}
 }
 function renderProbes(){
@@ -3353,6 +3370,7 @@ function renderTimers(){
       ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
     </div>`;
   }).join('');
+  _fitPad();   // batch count changed the content height → re-balance the vertical fit
 }
 function startT(id){const t=timers[id];if(t.remaining<=0&&!t.expired)return;t.running=true;t.expired=false;renderTimers();postTimer(id,'start');}
 function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause');}
