@@ -220,6 +220,9 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
   body.style-v2 .p2-actions .probe-btn{height:32px!important;}
   body.style-v2 .probe-card.p2{padding:6px 12px!important;gap:3px!important;}
 }
+.probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
+body.style-v2 .probe-lost{align-self:center;}
+.p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
 /* probe card v2 */
 body.style-v2 .probe-card,body.style-v2 .timer-card{border-radius:16px;}
 body.style-v2 .probe-card.p2{align-items:stretch;text-align:left;padding:clamp(7px,1.2vh,15px) 15px;gap:clamp(4px,0.9vh,11px);}
@@ -768,7 +771,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* Pop-ups use (nearly) the whole screen — we can't use the background anyway, so this means far less scrolling. Tiny confirm dialogs stay compact. */
 .modal-overlay>.modal{width:97vw!important;max-width:1500px!important;max-height:95vh!important;}
 #pin-confirm-modal>.modal{width:100%!important;max-width:340px!important;max-height:92vh!important;}
-#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal,#preplbl-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
+#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal,#preplbl-modal>.modal,#mp-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
 #prodoff-modal>.modal{width:100%!important;max-width:520px!important;max-height:88vh!important;}
 /* Live AI trace: live video + decision cards side-by-side on a wide screen */
 .trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -1695,6 +1698,17 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="pl2-actions">
       <button class="btn" onclick="closeModal('preplbl-modal')">Skip</button>
       <button class="btn btn-primary" id="pl2-print" onclick="_pl2Print()">Print</button>
+    </div>
+  </div>
+</div>
+<!-- Missed-pull prompt: probe reconnected much lower → a row likely came off during the blackout -->
+<div class="modal-overlay" id="mp-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Row came off?</div><button class="modal-close" onclick="closeModal('mp-modal')">&times;</button></div>
+    <div id="mp-text" style="font-size:14px;line-height:1.5;margin-bottom:16px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" style="flex:1;height:46px;" onclick="_mpAnswer(false)">No</button>
+      <button class="btn btn-primary" style="flex:1.4;height:46px;" onclick="_mpAnswer(true)">Yes &mdash; add the row</button>
     </div>
   </div>
 </div>
@@ -3009,6 +3023,60 @@ function _probeOrdered(){
   }
   return _probeOrder.map(p=>[String(p),probeData[p]]);
 }
+// ===== Probe connection-loss watch =====
+// A probe channel can drop mid-cook. When it does the reading FREEZES (identical value) then goes
+// blank — so a row pulled during the blackout never registers. This keeps showing the last temp with
+// a "connection lost" tag, and when the probe returns 20C+ LOWER (a cooked bird came off, a raw one
+// went on) it asks whether to credit the row the outage missed. Tunables below.
+const _PROBE_LOST_MS=30000;      // frozen/blank this long = connection lost
+const _PROBE_DROP_C=20;          // returns this many C lower (or more) = likely a pull happened
+window._probeConn=window._probeConn||{};
+function _probeConnCheck(d){
+  const now=Date.now();
+  const cooked=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.cooked_temp)||88;
+  const probes=(d&&d.probes)||{};
+  const bleDown=(d&&d.connected===false);
+  [1,2,3,4].forEach(pid=>{
+    const c=(_probeConn[pid]&&_probeConn[pid].init)?_probeConn[pid]:(_probeConn[pid]={init:true,live:null,changed:now,lost:false,from:null,prompted:false});
+    const raw=probes[pid];
+    const t=(typeof raw==='number'&&isFinite(raw))?raw:null;
+    if(t!==null){
+      const moved=(c.live===null||Math.abs(t-c.live)>0.05);
+      if(moved){
+        // the reading is alive again
+        if(c.lost&&c.from!=null&&c.from>=cooked&&(c.from-t)>=_PROBE_DROP_C&&!c.prompted){
+          c.prompted=true; _askMissedPull(pid,c.from,t);   // teleported down while offline → ask
+        }
+        c.live=t; c.changed=now; c.lost=false;
+        if(t>=cooked) c.prompted=false;   // a new bird is cooking → re-arm the question for next time
+      } else {
+        // identical value: frozen feed. A live probe wiggles; an exact hold this long = dropped.
+        if(!c.lost&&(now-c.changed)>_PROBE_LOST_MS){ c.lost=true; c.from=c.live; }
+      }
+      if(bleDown&&!c.lost&&c.live!=null){ c.lost=true; c.from=c.live; }
+    } else {
+      // blank reading — if it was live and it's been a while, treat as lost and hold the last temp
+      if(c.live!=null&&(now-c.changed)>_PROBE_LOST_MS&&!c.lost){ c.lost=true; c.from=c.live; }
+    }
+    // when lost, keep the last known temp on screen instead of blanking, and flag it for the badge
+    if(c.lost&&c.live!=null){ probeData[pid]=probeData[pid]||{}; probeData[pid].temp=c.live; }
+    probeData[pid]&&(probeData[pid]._lost=!!c.lost);
+  });
+}
+function _askMissedPull(pid,fromT,nowT){
+  const nm=((probeData[pid]||{}).name)||('Probe '+pid);
+  const m=document.getElementById('mp-modal'); if(!m)return;
+  document.getElementById('mp-text').innerHTML=
+    _mEsc(nm)+' was <b>'+fromT.toFixed(0)+'&#176;C</b>, lost connection, and is back at <b>'+nowT.toFixed(0)+'&#176;C</b>.'
+    +'<br>Looks like a cooked row came off while it was disconnected and never counted.';
+  m.dataset.pid=pid;
+  openModal('mp-modal');
+}
+function _mpAnswer(yes){
+  const m=document.getElementById('mp-modal');
+  closeModal('mp-modal');
+  if(yes){ putOnRow(); _toast('\u2713 Added the missed row to stock'); }
+}
 function renderProbes(){
   document.getElementById('probes-grid').innerHTML=_probeOrdered().map(([pid,p])=>{
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
@@ -3037,7 +3105,8 @@ function renderProbes(){
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
         <div class="p2-names"><div class="p2-kicker">PROBE ${pidN}</div>
         <input class="p2-name" value="${_nm}" onchange="updateProbeName(${pidN},this.value)"></div></div>
-      <div class="p2-mid">
+      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
+      <div class="p2-mid${p._lost?' lost':''}">
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
@@ -3051,7 +3120,7 @@ function renderProbes(){
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
-      ${tempHtml}<div class="probe-unit">&#176;C</div>
+      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}${tempHtml}<div class="probe-unit">&#176;C</div>
       <div class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
@@ -3266,7 +3335,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // new code too. Wait if someone's typing or a modal is open, then reload on the next idle tick.
   if(d.boot!=null){if(window._bootId==null)window._bootId=d.boot;else if(d.boot!==window._bootId)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){location.reload();return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
