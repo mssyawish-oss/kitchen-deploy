@@ -186,13 +186,22 @@ body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,m
 body.style-v2.view-wall #page-probes.active{gap:10px;}                 /* rot strip -> probes/batches block */
 body.style-v2.view-wall #page-probes{padding-bottom:10px;}            /* batches -> nav */
 body.style-v2.view-wall #page-probes .pb-split{flex:1 1 auto;min-height:0;gap:10px;}   /* probes -> batches */
-body.style-v2.view-wall #page-probes .pb-split .sec-head{margin:0 2px 5px;}
+body.style-v2.view-wall #page-probes .sec-head{display:none;}         /* drop "Probes"/"Batches" labels; cards fill the space */
 body.style-v2.view-wall #page-probes .pb-sec{flex:1 1 0;min-height:0;}
 body.style-v2.view-wall #page-probes .pb-sec .probes-grid,
 body.style-v2.view-wall #page-probes .pb-sec .timers-grid{flex:1 1 0;min-height:0;grid-auto-rows:minmax(0,1fr);align-items:stretch;}
 /* cards fill their cell; content spans top→bottom so there is no dead air pooled under it */
 body.style-v2.view-wall #page-probes .probe-card,
 body.style-v2.view-wall #page-probes .timer-card{min-height:0;height:auto;justify-content:space-between;}
+/* bigger, easier-to-read probe number badge (v2); no small "PROBE n" kicker any more */
+body.style-v2 #page-probes .p2-head .probe-badge{width:44px;height:44px;font-size:21px;border-radius:12px;}
+body.style-v2.view-wall #page-probes .p2-head .probe-badge{width:52px;height:52px;font-size:26px;}
+body.style-v2 #page-probes .p2-name{font-size:16px;}
+body.style-v2 #page-probes .p2-name::placeholder{color:var(--muted);opacity:.5;font-weight:500;}
+/* temperature-over-time sparkline on each probe card */
+.p2-spark{width:100%;}
+.p2-spark-svg{width:100%;height:34px;display:block;}
+body.style-v2.view-wall #page-probes .p2-spark-svg{height:clamp(44px,11vh,96px);}
 /* summary strip — three roomy cards in a row */
 body.style-v2 #rot-live{gap:14px;}
 body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead container — bordered in v2 it showed as a blank card. The cam/orders cards have content when live, so they still appear */
@@ -3115,6 +3124,38 @@ function syncTimers(serverTimers){
   if(structural)renderTimers();else timers.forEach(t=>updateT(t.id));
 }
 let probeData={1:{temp:null,name:'Probe 1'},2:{temp:null,name:'Probe 2'},3:{temp:null,name:'Probe 3'},4:{temp:null,name:'Probe 4'}};
+// Temperature-over-time history for each probe — sampled client-side (the server keeps no time-series),
+// persisted to localStorage so it survives the auto-reload, drawn as a sparkline on each probe card.
+let _tempHist={}, _tempHistAt=0;
+try{_tempHist=JSON.parse(localStorage.getItem('probeTempHist')||'{}')||{};}catch(e){_tempHist={};}
+function _saveTempHist(){try{localStorage.setItem('probeTempHist',JSON.stringify(_tempHist));}catch(e){}}
+function _recordTempHist(){
+  const now=Date.now();
+  if(now-_tempHistAt<15000) return;          // one sample every 15s is plenty for a cook graph
+  _tempHistAt=now;
+  [1,2,3,4].forEach(pid=>{
+    const v=(probeData[pid]||{}).temp;
+    if(typeof v!=='number'||!isFinite(v)) return;   // probe unplugged → leave a gap, don't record
+    (_tempHist[pid]=_tempHist[pid]||[]).push({t:now,v:Math.round(v*10)/10});
+    if(_tempHist[pid].length>240) _tempHist[pid]=_tempHist[pid].slice(-240);   // ~60 min window
+  });
+  _saveTempHist();
+}
+function _probeSpark(pid){
+  const h=(_tempHist[pid]||[]).filter(p=>p&&typeof p.v==='number'&&isFinite(p.v));
+  if(h.length<2) return '';                  // nothing meaningful to draw yet
+  const vs=h.map(p=>p.v); let mn=Math.min(...vs), mx=Math.max(...vs);
+  if(mx-mn<1) mx=mn+1;                        // flat line → give it a small band
+  const W=100,H=32,pad=2,n=h.length;
+  const X=i=>pad+(i/(n-1))*(W-2*pad);
+  const Y=v=>pad+(1-(v-mn)/(mx-mn))*(H-2*pad);
+  const pts=h.map((p,i)=>X(i).toFixed(1)+','+Y(p.v).toFixed(1)).join(' ');
+  const area='M'+X(0).toFixed(1)+','+(H-pad)+' L'+h.map((p,i)=>X(i).toFixed(1)+','+Y(p.v).toFixed(1)).join(' L')+' L'+X(n-1).toFixed(1)+','+(H-pad)+' Z';
+  return '<svg class="p2-spark-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'
+    +'<path d="'+area+'" fill="var(--accv,var(--acc))" opacity="0.12"/>'
+    +'<polyline points="'+pts+'" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
+    +'</svg>';
+}
 let probeStates={1:{status:'idle',alerted:false},2:{status:'idle',alerted:false},3:{status:'idle',alerted:false},4:{status:'idle',alerted:false}};
 const prevStatuses={};
 let _probePopDismissed={};   // pid -> the status it was dismissed at (re-shows on status change)
@@ -3279,17 +3320,19 @@ function renderProbes(){
     if(window.DASH_V2){
       const _od=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.overdone_temp)||91;
       const _pct=(t===null)?0:Math.max(3,Math.min(100,t/_od*100));
-      const _nm=String(p.name||('Probe '+pidN)).replace(/"/g,'&quot;');
+      const _rawNm=String(p.name||('Probe '+pidN));
+      const _isDef=_rawNm===('Probe '+pidN);      // hide the redundant default "Probe n" \u2014 big number badge is the ID
+      const _nm=_rawNm.replace(/"/g,'&quot;');
       return `<div class="probe-card p2 ac${(pidN-1)%4} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
-        <div class="p2-names"><div class="p2-kicker">PROBE ${pidN}</div>
-        <input class="p2-name" value="${_nm}" onchange="updateProbeName(${pidN},this.value)"></div></div>
+        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="name" onchange="updateProbeName(${pidN},this.value)"></div></div>
       ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       <div class="p2-mid${p._lost?' lost':''}">
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
+      <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow"><span class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</span></div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
@@ -3346,7 +3389,7 @@ function dismissProbeAlert(pid){
   renderProbeAlerts();
 }
 function ackProbe(pid){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence(_k);}
-function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
+function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';_tempHist[pid]=[];_saveTempHist();fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
 function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,name})});}
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
 function fmt(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;if(h>0)return h+':'+String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');return String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');}
@@ -3522,7 +3565,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
