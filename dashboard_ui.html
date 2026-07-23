@@ -987,6 +987,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-run{flex:1;min-width:120px;padding:11px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;text-align:center;}
 .orun-run.on{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
 .orun-run small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;}
+.orun-section{font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);padding:12px 4px 6px;border-bottom:1px solid var(--border2);margin-bottom:6px;position:sticky;top:34px;background:var(--bg);z-index:1;}
 .orun-head{display:flex;align-items:center;gap:12px;padding:4px 13px 8px;position:sticky;top:0;background:var(--bg);z-index:2;}
 .orun-h-item{flex:1;min-width:0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
 .orun-h-have{width:112px;flex-shrink:0;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
@@ -2098,6 +2099,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="modal-header"><div class="modal-title" id="pe-title">EDIT PRODUCT</div><button class="modal-close" onclick="closeModal('prod-edit-modal')">Cancel</button></div>
     <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Order as (from supplier)</div><input class="input" id="pe-unit" oninput="syncUnitLabels()" list="pe-unit-list" placeholder="case / box / each" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="each"></option><option value="case"></option><option value="carton"></option><option value="box"></option><option value="bag"></option><option value="tub"></option><option value="pack"></option><option value="bottle"></option><option value="kg"></option></datalist></div></div>
     <div class="form-row mt-8"><div class="label">Supplier</div><select class="input" id="pe-supplier" style="background:var(--surface2);"></select></div>
+    <div class="form-row mt-8"><div class="label">Section <span style="color:var(--muted);font-weight:400;">(groups items on the order screen — Frozen, Dairy, Dry…)</span></div><input class="input" id="pe-section" list="pe-section-list" placeholder="e.g. Dairy"><datalist id="pe-section-list"><option value="Dairy"></option><option value="Frozen"></option><option value="Dry"></option><option value="Sauces"></option><option value="Bread"></option><option value="Produce"></option><option value="Meat"></option><option value="Packaging"></option><option value="Spices"></option><option value="Drinks"></option></datalist></div>
     <div class="label mt-8">Bigger pack <span style="color:var(--muted);font-weight:400;">(optional — so staff can count this in cartons/boxes too)</span></div>
     <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;font-size:16px;margin-top:4px;">
       <span style="color:var(--muted);">1</span>
@@ -3649,6 +3651,22 @@ function _orunRenderBatches(){
   el.innerHTML='<span class="orun-batch-lbl">Prepping a batch?</span>'+batches.map(b=>
     '<button class="orun-batch '+(_orunBatchOn[b.id]?'on':'')+'" onclick="_orunToggleBatch(\''+b.id+'\')">'+_mEsc(b.name)+'</button>').join('');
 }
+function _orunRowHtml(p){
+  const c=_orunCalc(p);
+  const _pn=p.par_note?(' · '+p.par_note):'';
+  const sub=c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set';
+  const needCount=(c.state==='uncounted');
+  const have=_orunHave[p.id];
+  const cu=_orunCountUnit(p);
+  const toggle=_orunHasAlt(p)
+    ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(_orunAltName(p)):_mEsc(c.unit))+' &#8646;</button>'
+    : '';
+  return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
+    +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
+    +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
+    +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
+    +'</div>';
+}
 function _orunRebuildBatch(){
   _orunBatch={};
   (appData.batches||[]).forEach(b=>{ if(_orunBatchOn[b.id]) (b.items||[]).forEach(it=>{ _orunBatch[it.pid]=(_orunBatch[it.pid]||0)+parseFloat(it.qty||0); }); });
@@ -3688,21 +3706,17 @@ function renderOrderRun(){
   const list=document.getElementById('orun-list');
   if(!items.length){list.innerHTML='<div style="color:var(--muted);padding:16px;text-align:center;">No items for this supplier.</div>';return;}
   const head='<div class="orun-head"><div class="orun-h-item">Item</div><div class="orun-h-have">Stock on hand</div><div class="orun-h-order">To order</div></div>';
-  list.innerHTML=head+items.map(p=>{
-    const c=_orunCalc(p);
-    const _pn=p.par_note?(' · '+p.par_note):'';const sub=c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set';
-    const needCount=(c.state==='uncounted');
-    const have=_orunHave[p.id];
-    const cu=_orunCountUnit(p);
-    const toggle=_orunHasAlt(p)
-      ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(_orunAltName(p)):_mEsc(c.unit))+' &#8646;</button>'
-      : '';
-    return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
-      +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-      +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
-      +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
-      +'</div>';
-  }).join('');
+  // group by Section (Frozen / Dairy / Dry …); un-sectioned items fall under "Other"
+  const bySec={}, secOrder=[];
+  items.forEach(p=>{const s=(p.section||'').trim()||'Other'; if(!bySec[s]){bySec[s]=[];secOrder.push(s);} bySec[s].push(p);});
+  secOrder.sort((a,b)=>(a==='Other')-(b==='Other')||a.localeCompare(b));
+  const showHeads=secOrder.length>1 || (secOrder.length===1 && secOrder[0]!=='Other');
+  let body='';
+  secOrder.forEach(s=>{
+    if(showHeads) body+='<div class="orun-section">'+_mEsc(s)+'</div>';
+    body+=bySec[s].map(_orunRowHtml).join('');
+  });
+  list.innerHTML=head+body;
 }
 function _orunHasAlt(p){const ps=parseFloat(p.pack_size);const pu=p.pack_unit||p.count_unit;return ps>1 && pu && pu!==(p.unit||'');}
 function _orunAltName(p){return p.pack_unit||p.count_unit||'pack';}   // the bigger pack (e.g. carton)
@@ -3903,9 +3917,9 @@ function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier')
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
 let _peTargetUnit='count';
 function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
-function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
-  document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';
+  document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';document.getElementById('pe-section').value=p.section||'';
   _fillProdSupplier(p.supplier_id||'');
   const pk=_pkg(p);
   document.getElementById('pe-packsize').value=pk.ps>1?pk.ps:'';
@@ -3925,7 +3939,7 @@ function saveProductEdit(){
   const name=document.getElementById('pe-name').value.trim(),supplier_id=document.getElementById('pe-supplier').value,unit=document.getElementById('pe-unit').value.trim();
   if(!name||!supplier_id){_toast&&_toast('Enter a product name and pick a supplier.');return;}
   const ps=parseFloat(document.getElementById('pe-packsize').value)||1;const pack_size=ps>1?ps:1;
-  const pack_unit=(document.getElementById('pe-packunit').value||'').trim();
+  const pack_unit=(document.getElementById('pe-packunit').value||'').trim();const section=(document.getElementById('pe-section').value||'').trim();
   const target_in=(document.getElementById('pe-target-unit').value==='order'&&ps>1)?'order':'count';
   const mult=(target_in==='order'?ps:1);
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
@@ -3933,7 +3947,7 @@ function saveProductEdit(){
   let reorder_at,finalTargets;
   if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
   else{if(Object.keys(targets).length===0){_toast&&_toast('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
-  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,target_in:target_in,measure:null,size:null};
+  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
