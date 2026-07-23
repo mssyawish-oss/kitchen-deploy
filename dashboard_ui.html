@@ -3326,7 +3326,7 @@ function renderProbes(){
       return `<div class="probe-card p2 ac${(pidN-1)%4} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
-        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="name" onchange="updateProbeName(${pidN},this.value)"></div></div>
+        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div></div>
       ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       <div class="p2-mid${p._lost?' lost':''}">
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
