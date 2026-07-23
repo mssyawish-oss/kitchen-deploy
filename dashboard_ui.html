@@ -2127,10 +2127,27 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 <div class="modal-overlay" id="stock-admin-modal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-header"><div class="modal-title">STOCK SETUP</div><button class="modal-close" onclick="closeModal('stock-admin-modal');renderStockPage()">Close</button></div>
-    <div class="day-pills" style="display:flex;gap:6px;margin-bottom:14px;"><div class="set-tab on" id="setup-tab-products" onclick="setupTab('products')">Products</div><div class="set-tab" id="setup-tab-suppliers" onclick="setupTab('suppliers')">Suppliers</div></div>
+    <div class="day-pills" style="display:flex;gap:6px;margin-bottom:14px;"><div class="set-tab on" id="setup-tab-products" onclick="setupTab('products')">Products</div><div class="set-tab" id="setup-tab-suppliers" onclick="setupTab('suppliers')">Suppliers</div><div class="set-tab" id="setup-tab-batches" onclick="setupTab('batches')">Batches</div></div>
     <div id="setup-products">
       <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="newProduct()">+ New Product</button>
       <div id="product-list-admin" style="max-height:50vh;overflow-y:auto;"></div>
+    </div>
+    <div id="setup-batches" style="display:none;">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">A batch (e.g. house sauce, lemon oil) is a set of items + quantities. When you place an order you can pick a batch and it adds those items automatically.</div>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="newBatch()">+ New Batch</button>
+      <div id="batch-list-admin" style="max-height:38vh;overflow-y:auto;"></div>
+      <div id="batch-editor" style="display:none;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:14px;margin-top:10px;">
+        <input type="hidden" id="be-id">
+        <div class="label">Batch name</div><input class="input" id="be-name" placeholder="e.g. House sauce">
+        <div class="label mt-8">Items in this batch</div>
+        <div id="be-items"></div>
+        <div class="row mt-8" style="gap:6px;align-items:center;">
+          <select class="input" id="be-pick" style="flex:1;background:var(--surface2);"></select>
+          <input class="input" id="be-qty" type="number" step="0.25" min="0" placeholder="qty" style="width:74px;text-align:center;">
+          <button class="btn" onclick="addBatchItem()">Add</button>
+        </div>
+        <div class="modal-foot"><div class="row" style="gap:8px;"><button class="btn btn-primary" style="flex:1.4;" onclick="saveBatch()">Save batch</button><button class="btn" onclick="cancelBatch()">Cancel</button></div></div>
+      </div>
     </div>
     <div id="setup-suppliers" style="display:none;">
       <div id="supplier-list-admin" style="max-height:34vh;overflow-y:auto;"></div>
@@ -3730,8 +3747,64 @@ function sendSupplierOrder(sid){
     else{_toast&&_toast('Order error: '+(d.error||'unknown'));if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}}
   }).catch(()=>{_toast&&_toast('Could not send — is the server running?');if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}});
 }
+// ===== Batches: named sets of items + quantities, added to an order when the batch is chosen =====
+let _beItems=[];   // items being edited: [{pid,qty}]
+function renderBatchAdmin(){
+  const el=document.getElementById('batch-list-admin'); if(!el)return;
+  const batches=appData.batches||[];
+  el.innerHTML=batches.length?batches.map((b,i)=>{
+    const n=(b.items||[]).length;
+    return '<div class="prod-row"><div><div class="pr-name">'+_mEsc(b.name||'(unnamed)')+'</div><div class="pr-sub">'+n+' item'+(n===1?'':'s')+'</div></div>'
+      +'<div class="row" style="gap:6px;"><button class="btn" onclick="editBatch('+i+')">Edit</button><button class="btn btn-danger" data-delb="'+b.id+'" onclick="deleteBatch(\''+b.id+'\')">Delete</button></div></div>';
+  }).join(''):'<div style="color:var(--muted);font-size:13px;padding:10px 2px;">No batches yet. Tap “New Batch”.</div>';
+}
+function _beFillPicker(){
+  const sel=document.getElementById('be-pick'); if(!sel)return;
+  const prods=(appData.products||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  sel.innerHTML='<option value="">Pick an item…</option>'+prods.map(p=>'<option value="'+p.id+'">'+_mEsc(p.name||'')+'</option>').join('');
+}
+function _beRenderItems(){
+  const el=document.getElementById('be-items'); if(!el)return;
+  if(!_beItems.length){el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:4px 0;">No items yet — add some below.</div>';return;}
+  el.innerHTML=_beItems.map((it,i)=>{
+    const p=(appData.products||[]).find(x=>x.id===it.pid);
+    return '<div class="row" style="gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">'
+      +'<div style="flex:1;font-size:14px;">'+_mEsc(p?p.name:it.pid)+'</div>'
+      +'<div style="font-family:var(--font-mono);font-size:14px;color:var(--amber);">'+it.qty+' '+_mEsc(p?(p.unit||'unit'):'')+'</div>'
+      +'<button class="btn" style="padding:3px 9px;" onclick="removeBatchItem('+i+')">&times;</button></div>';
+  }).join('');
+}
+function newBatch(){ _beItems=[]; document.getElementById('be-id').value=''; document.getElementById('be-name').value='';
+  _beFillPicker(); _beRenderItems(); document.getElementById('batch-editor').style.display=''; document.getElementById('be-name').focus(); }
+function editBatch(i){ const b=(appData.batches||[])[i]; if(!b)return; _beItems=(b.items||[]).map(x=>({pid:x.pid,qty:x.qty}));
+  document.getElementById('be-id').value=b.id; document.getElementById('be-name').value=b.name||'';
+  _beFillPicker(); _beRenderItems(); document.getElementById('batch-editor').style.display=''; }
+function addBatchItem(){ const pid=document.getElementById('be-pick').value; const qty=parseFloat(document.getElementById('be-qty').value);
+  if(!pid){_toast&&_toast('Pick an item first.');return;} if(!(qty>0)){_toast&&_toast('Enter a quantity.');return;}
+  const ex=_beItems.find(x=>x.pid===pid); if(ex)ex.qty=qty; else _beItems.push({pid,qty});
+  document.getElementById('be-pick').value=''; document.getElementById('be-qty').value=''; _beRenderItems(); }
+function removeBatchItem(i){ _beItems.splice(i,1); _beRenderItems(); }
+function saveBatch(){ const name=document.getElementById('be-name').value.trim();
+  if(!name){_toast&&_toast('Name the batch.');return;} if(!_beItems.length){_toast&&_toast('Add at least one item.');return;}
+  appData.batches=appData.batches||[]; const id=document.getElementById('be-id').value||('batch_'+Date.now().toString(36));
+  const rec={id,name,items:_beItems.slice()}; const ex=appData.batches.find(b=>b.id===id);
+  if(ex)Object.assign(ex,rec); else appData.batches.push(rec);
+  saveKeys(['batches']); document.getElementById('batch-editor').style.display='none'; renderBatchAdmin(); _toast&&_toast('Batch saved: '+name); }
+function cancelBatch(){ document.getElementById('batch-editor').style.display='none'; }
+let _delBatchArm=null;
+function deleteBatch(id){ const btn=document.querySelector('[data-delb="'+id+'"]');
+  if(_delBatchArm!==id){_delBatchArm=id; if(btn){btn.textContent='Tap to confirm';btn.style.color='var(--red)';} setTimeout(()=>{_delBatchArm=null;if(btn){btn.textContent='Delete';btn.style.color='';}},4000); return;}
+  _delBatchArm=null; appData.batches=(appData.batches||[]).filter(b=>b.id!==id); saveKeys(['batches']); renderBatchAdmin(); }
 function openStockAdmin(){editingSupplier=null;editingProduct=null;setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);renderSupplierAdmin();renderProductAdmin();setupTab('products');openModal('stock-admin-modal');}
-function setupTab(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
+function setupTab(t){
+  ['products','suppliers','batches'].forEach(x=>{
+    const sec=document.getElementById('setup-'+x); if(sec)sec.style.display=(x===t)?'':'none';
+    const tab=document.getElementById('setup-tab-'+x); if(tab)tab.classList.toggle('on',x===t);
+  });
+  if(t==='batches')renderBatchAdmin();
+  return;
+}
+function _setupTabOld(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
 function toggleSupplierForm(force){const w=document.getElementById('supplier-form-wrap');if(!w)return;const show=force===undefined?(w.style.display==='none'):force;w.style.display=show?'block':'none';const t=document.getElementById('supplier-form-toggle');if(t)t.style.display=show?'none':'block';}
 function renderSupplierAdmin(){document.getElementById('supplier-list-admin').innerHTML=(appData.suppliers||[]).map((s,i)=>{const days=(s.remind_days||[]).map(d=>DNAMES[d]).join(', ')||'Every day';return `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div class="row-between"><span style="font-size:13px;font-weight:600;">${s.name} <span class="tag tag-amber" style="margin-left:4px;">${s.category||'Uncategorised'}</span></span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editSupplier(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeSupplier(${i})">&#10005;</button></span></div><div style="font-size:11px;color:var(--muted);">${s.email}</div>${s.remind_time?`<div style="font-size:11px;color:var(--cyan);"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${s.remind_time} | ${days}</div>`:''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">No suppliers yet.</div>';const sel=document.getElementById('new-prod-supplier');if(sel)sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');}
 function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' · '+pk.ps+' '+cu+'/'+pk.orderUnit):'';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder below '+p.reorder_at+' '+cu+pack;const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+cu+'/day'+pack;}
