@@ -3008,6 +3008,7 @@ function _probeOrdered(){
 // went on) it asks whether to credit the row the outage missed. Tunables below.
 const _PROBE_LOST_MS=30000;      // frozen/blank this long = connection lost
 const _PROBE_DROP_C=20;          // returns this many C lower (or more) = likely a pull happened
+const _PROBE_INUSE_C=40;         // below this = on the dock / not in a chicken; a cold probe is NOT 'lost'
 window._probeConn=window._probeConn||{};
 function _probeConnCheck(d){
   const now=Date.now();
@@ -3029,13 +3030,15 @@ function _probeConnCheck(d){
         if(t>=cooked) c.prompted=false;   // a new bird is cooking → re-arm the question for next time
       } else {
         // identical value: frozen feed. A live probe wiggles; an exact hold this long = dropped.
-        if(!c.lost&&(now-c.changed)>_PROBE_LOST_MS){ c.lost=true; c.from=c.live; }
+        // BUT only if it was in a chicken (warm) — a cold steady probe is just docked/charging.
+        if(!c.lost&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>_PROBE_LOST_MS){ c.lost=true; c.from=c.live; }
       }
-      if(bleDown&&!c.lost&&c.live!=null){ c.lost=true; c.from=c.live; }
+      if(bleDown&&!c.lost&&c.live!=null&&c.live>=_PROBE_INUSE_C){ c.lost=true; c.from=c.live; }
     } else {
-      // blank reading — if it was live and it's been a while, treat as lost and hold the last temp
-      if(c.live!=null&&(now-c.changed)>_PROBE_LOST_MS&&!c.lost){ c.lost=true; c.from=c.live; }
+      // blank reading — lost only if it was in a chicken (warm); a cold/absent probe = docked, not lost
+      if(c.live!=null&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>_PROBE_LOST_MS&&!c.lost){ c.lost=true; c.from=c.live; }
     }
+    if(c.lost&&(c.live==null||c.live<_PROBE_INUSE_C)) c.lost=false;   // cooled to dock temp → it's docked, clear the flag
     // when lost, keep the last known temp on screen instead of blanking, and flag it for the badge
     if(c.lost&&c.live!=null){ probeData[pid]=probeData[pid]||{}; probeData[pid].temp=c.live; }
     probeData[pid]&&(probeData[pid]._lost=!!c.lost);
@@ -3054,6 +3057,19 @@ function _mpAnswer(yes){
   const m=document.getElementById('mp-modal');
   closeModal('mp-modal');
   if(yes){ putOnRow(); _toast('\u2713 Added the missed row to stock'); }
+}
+// iPad fit: the iPad (view-pad) is smaller than the Mac (view-wall), so the same v2 layout scrolls a
+// little. This shrinks the Temp content UNIFORMLY to fit — same look as the Mac, just smaller — and does
+// NOTHING on the Mac (wall) or phone, because it is gated to view-pad. Runs after each probe render.
+function _fitPad(){
+  try{
+    const pg=document.getElementById('page-probes'); if(!pg)return;
+    if(!document.body.classList.contains('view-pad')){ pg.style.zoom=''; return; }  // Mac/phone: untouched
+    pg.style.zoom='1';                                   // reset, then measure the natural height
+    const avail=pg.clientHeight, content=pg.scrollHeight;
+    if(content>avail+2){ pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3); }  // shrink to fit
+    else pg.style.zoom='1';                              // already fits → leave exactly as-is
+  }catch(e){}
 }
 function renderProbes(){
   document.getElementById('probes-grid').innerHTML=_probeOrdered().map(([pid,p])=>{
@@ -3105,6 +3121,7 @@ function renderProbes(){
     </div>`;
   }).join('');
   renderProbeAlerts();
+  _fitPad();
 }
 function renderProbeAlerts(){
   const ov=document.getElementById('probe-alert');if(!ov)return;
@@ -5313,6 +5330,7 @@ async function init(){
   _ktLoad();renderKTimers();setInterval(ktTick,1000);
   _migrateProbeAlarms();   // split the old single probe alarm into almost/ready/overdone   // kitchen timers: run in the background, survive refresh
   setInterval(pollTemps,1000);pollTemps();
+  window.addEventListener('resize',()=>{clearTimeout(window._fitPadT);window._fitPadT=setTimeout(_fitPad,150);});
   setInterval(checkSquareActivity,10000);checkSquareActivity();
   setInterval(checkAllReminders,20000);checkAllReminders();
   setInterval(checkStockPrompt,30000);
