@@ -942,25 +942,32 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 /* ── Stock rebuild ── */
 .stk-search{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:15px;padding:11px 14px;border-radius:11px;outline:none;margin-bottom:10px;}
 .stk-search:focus{border-color:var(--amber);}
-.stk-summary{display:none;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-radius:11px;margin:2px 0 12px;font-size:14px;font-weight:600;}
+.stk-summary{display:none;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-radius:14px;margin:2px 0 14px;font-size:16px;font-weight:600;}
+.stk-summary b{font-size:22px;}
+.stk-status-tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
+.stk-stab{flex:1;min-width:96px;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;}
+.stk-stab .n{font-size:16px;}
+.stk-stab.on{color:var(--text);border-color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
+.stk-stab.on.order{border-color:var(--amber);color:var(--amber);}
+.stk-stab.on.count{border-color:var(--cyan,#38bdf8);color:var(--cyan,#38bdf8);background:color-mix(in srgb,var(--cyan,#38bdf8) 12%,transparent);}
 .stk-summary.ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);}
 .stk-summary.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.38);color:var(--amber);}
 .stk-summary .btn{padding:7px 14px;}
 .stk-sup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 8px;font-weight:700;font-size:15px;color:var(--text);}
 .stk-sup-need{font-size:11px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.15);padding:3px 9px;border-radius:20px;}
-.stk-card{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-left:4px solid var(--border2);border-radius:12px;padding:10px 12px;margin-bottom:8px;}
+.stk-card{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border2);border-left:5px solid var(--border2);border-radius:13px;padding:13px 15px;margin-bottom:9px;}
 .stk-card.ok{border-left-color:var(--green);}
 .stk-card.low{border-left-color:var(--amber);}
 .stk-info{flex:1;min-width:0;}
-.stk-name{font-size:15px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.stk-sub{font-size:11px;color:var(--muted);margin-top:2px;}
-.stk-pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;background:var(--surface);color:var(--muted);flex-shrink:0;}
+.stk-name{font-size:16.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.stk-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.stk-pill{font-size:12.5px;font-weight:700;padding:5px 12px;border-radius:20px;white-space:nowrap;background:var(--surface);color:var(--muted);flex-shrink:0;}
 .stk-pill.ok{background:rgba(34,197,94,.15);color:var(--green);}
 .stk-pill.low{background:rgba(245,158,11,.18);color:var(--amber);}
 .stk-stepper{display:flex;align-items:center;background:var(--surface);border:1px solid var(--border2);border-radius:10px;overflow:hidden;flex-shrink:0;}
-.stk-stepper button{width:40px;height:42px;background:transparent;border:none;color:var(--text);font-size:23px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+.stk-stepper button{width:52px;height:52px;background:transparent;border:none;color:var(--text);font-size:26px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .stk-stepper button:active{background:var(--surface2);}
-.stk-stepper input{width:50px;height:42px;background:transparent;border:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);color:var(--text);font-size:16px;font-family:var(--font-mono);text-align:center;outline:none;}
+.stk-stepper input{width:58px;height:52px;font-size:19px !important;background:transparent;border:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);color:var(--text);font-size:16px;font-family:var(--font-mono);text-align:center;outline:none;}
 .ord-sup{background:var(--surface2);border:1px solid var(--border2);border-radius:11px;padding:12px;margin-bottom:10px;}
 .ord-sup-head{font-size:13px;font-weight:700;color:var(--amber);margin-bottom:8px;}
 .ord-line{display:flex;align-items:center;gap:10px;padding:5px 0;}
@@ -1342,6 +1349,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="page" id="page-stock">
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="resetStockCounts()">Reset counts</button><button class="btn" onclick="openStockAdmin()">Setup</button><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button></div></div>
       <input class="stk-search" id="stock-search" placeholder="Search items…" oninput="setStockSearch(this.value)">
+      <div class="stk-status-tabs" id="stock-status-tabs"></div>
       <div class="stock-filter-chips" id="stock-filter-chips"></div>
       <div class="stk-summary" id="stock-summary"></div>
       <div id="stock-list"></div><div id="stock-empty" class="empty-state"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
@@ -3407,6 +3415,21 @@ function orderQty(p,sel,onHand){
   return q;
 }
 let stockFilter='All',stockSearch='';
+let stockStatus='all';   // 'all' | 'order' | 'count'
+function setStockStatus(s){stockStatus=s;renderStockPage();}
+function _stockCounts(){
+  const products=appData.products||[],soh=appData.stock_on_hand||{},today=_todayIdx();
+  let order=0,count=0;
+  products.forEach(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';if(!c)count++;
+    const oh=c?parseFloat(soh[p.id]):0;if(orderQty(p,[today],oh)>0)order++;});
+  return {order,count,all:products.length};
+}
+function renderStockStatusTabs(){
+  const el=document.getElementById('stock-status-tabs');if(!el)return;
+  const c=_stockCounts();
+  const tab=(k,cls,label,n)=>`<div class="stk-stab ${cls} ${stockStatus===k?'on':''}" onclick="setStockStatus('${k}')">${label} <span class="n">${n}</span></div>`;
+  el.innerHTML=tab('order','order','&#9888; To order',c.order)+tab('count','count','&#9711; To count',c.count)+tab('all','','All',c.all);
+}
 function setStockFilter(c){stockFilter=c;renderStockPage();}
 function setStockSearch(v){stockSearch=v;renderStockPage();}
 function _todayIdx(){return (new Date().getDay()+6)%7;}
@@ -3432,7 +3455,21 @@ function stockRowHtml(p){
   </div>`;
 }
 function setOnHand(id,val){appData.stock_on_hand=appData.stock_on_hand||{};if(val===''){delete appData.stock_on_hand[id];}else{appData.stock_on_hand[id]=parseFloat(val)||0;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
-function resetStockCounts(){const n=(appData.products||[]).length;if(!n){if(typeof _toast==='function')_toast('No products to reset.');return;}if(!confirm('Reset on-hand stock to 0 for ALL '+n+' items?\n\nThis wipes every current count so you can re-enter what’s actually available. It cannot be undone.'))return;const soh={};(appData.products||[]).forEach(p=>{soh[p.id]=0;});appData.stock_on_hand=soh;saveKeys(['stock_on_hand']);renderStockPage();if(typeof _toast==='function')_toast('All stock counts reset to 0.');}
+function resetStockCounts(){
+  const n=(appData.products||[]).length;
+  if(!n){_toast&&_toast('No products to reset.');return;}
+  // confirm() hangs on the tablet's kiosk webview — use a two-tap header button instead
+  const btn=document.querySelector('#page-stock .page-header button[onclick="resetStockCounts()"]');
+  if(window._stkResetArm!==true){
+    window._stkResetArm=true;
+    if(btn){btn.dataset.o=btn.textContent;btn.textContent='Tap again to wipe all counts';btn.style.color='var(--red)';}
+    clearTimeout(window._stkResetT);window._stkResetT=setTimeout(()=>{window._stkResetArm=false;if(btn){btn.textContent=btn.dataset.o||'Reset counts';btn.style.color='';}},4000);
+    return;
+  }
+  window._stkResetArm=false;clearTimeout(window._stkResetT);
+  if(btn){btn.textContent=btn.dataset.o||'Reset counts';btn.style.color='';}
+  appData.stock_on_hand={};saveKeys(['stock_on_hand']);renderStockPage();_toast&&_toast('Stock counts reset.');
+}
 function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;let v=cur+delta;if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
 function updateStockSummary(){const el=document.getElementById('stock-summary');if(!el)return;const products=appData.products||[];const soh=appData.stock_on_hand||{};const today=_todayIdx();let need=0,uncounted=0;products.forEach(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';if(!c)uncounted++;const oh=c?parseFloat(soh[p.id]):0;if(orderQty(p,[today],oh)>0)need++;});if(products.length===0){el.style.display='none';return;}el.style.display='flex';if(need>0){el.className='stk-summary warn';el.innerHTML=`<span><b>${need}</b> item${need>1?'s':''} to order${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button>`;}else{el.className='stk-summary ok';el.innerHTML=`<span>All items stocked for today${uncounted?` · ${uncounted} not counted yet`:''}</span><button class="btn" onclick="openOrderModal()">Place Order</button>`;}}
@@ -3445,10 +3482,18 @@ function renderStockPage(){
   if(chipBox){if(cats.length>0){if(stockFilter!=='All'&&!cats.includes(stockFilter))stockFilter='All';chipBox.style.display='flex';chipBox.innerHTML=['All',...cats].map(c=>`<div class="filter-chip ${stockFilter===c?'on':''}" onclick="setStockFilter(&quot;${c.replace(/"/g,'')}&quot;)">${c}</div>`).join('');}else{chipBox.style.display='none';chipBox.innerHTML='';}}
   if(products.length===0){list.innerHTML='';empty.style.display='block';updateStockSummary();return;}
   empty.style.display='none';
+  renderStockStatusTabs();
   const q=stockSearch.trim().toLowerCase();const today=_todayIdx();const soh=appData.stock_on_hand||{};
+  const _passStatus=(p)=>{
+    if(stockStatus==='all')return true;
+    const counted=soh[p.id]!==undefined&&soh[p.id]!=='';
+    if(stockStatus==='count')return !counted;                                   // not counted yet
+    if(stockStatus==='order')return orderQty(p,[today],counted?parseFloat(soh[p.id]):0)>0;  // needs ordering
+    return true;
+  };
   let html='';
   const renderGroup=(name,cat,items)=>{
-    const matched=items.filter(p=>!q||(p.name||'').toLowerCase().includes(q));
+    const matched=items.filter(p=>(!q||(p.name||'').toLowerCase().includes(q))&&_passStatus(p));
     if(matched.length===0)return;
     const need=matched.filter(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';return orderQty(p,[today],c?parseFloat(soh[p.id]):0)>0;}).length;
     html+=`<div class="stk-sup-head"><span>${name}</span>`+(need>0?`<span class="stk-sup-need">${need} to order</span>`:`<span class="tag tag-amber">${cat}</span>`)+`</div>`;
@@ -3459,7 +3504,13 @@ function renderStockPage(){
     renderGroup(sup.name,sup.category||'Uncategorised',items);
   });
   if(stockFilter==='All'){const orphan=products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id));if(orphan.length)renderGroup('Other','',orphan);}
-  list.innerHTML=html||'<div class="empty-state">No items match.</div>';
+  if(!html){
+    const msg=stockStatus==='order'?'&#10003; Nothing needs ordering right now.'
+      :stockStatus==='count'?'&#10003; Everything has been counted.'
+      :'No items match.';
+    html='<div class="empty-state" style="padding:34px 16px;font-size:15px;">'+msg+'</div>';
+  }
+  list.innerHTML=html;
   updateStockSummary();
 }
 let _orderAdj={};
@@ -3477,17 +3528,17 @@ function updateOrderPreview(){
 }
 function sendSupplierOrder(sid){
   const sel=[];document.querySelectorAll('#order-day-pills .day-pill.on').forEach(p=>sel.push(parseInt(p.dataset.d)));
-  if(sel.length===0){alert('Select at least one day.');return;}
+  if(sel.length===0){_toast&&_toast('Select at least one day.');return;}
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const sup=suppliers.find(s=>s.id===sid),supName=sup?sup.name:'supplier';
   const soh=appData.stock_on_hand||{};const items=products.filter(p=>p.supplier_id===sid).map(p=>{const onHand=soh[p.id]!==undefined?parseFloat(soh[p.id]):0;const qty=_orderAdj[p.id]!==undefined?_orderAdj[p.id]:orderQty(p,sel,onHand);return{name:p.name,qty,unit:p.unit||'unit'};}).filter(i=>i.qty>0);
-  if(items.length===0){alert('Nothing to order for '+supName+'.');return;}
+  if(items.length===0){_toast&&_toast('Nothing to order for '+supName+'.');return;}
   const daysStr=sel.map(d=>DNAMES[d]).join(', ');
   const btn=document.getElementById('sendbtn-'+sid);if(btn){btn.disabled=true;btn.textContent='Sending…';}
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orders:{[sid]:items},suppliers,days:daysStr})}).then(r=>r.json()).then(d=>{
     if(d.ok){if(btn){btn.textContent='✓ Sent to '+supName;btn.style.background='var(--green)';btn.style.borderColor='var(--green)';btn.disabled=true;}}
-    else{alert('Error: '+(d.error||'unknown'));if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}}
-  }).catch(()=>{alert('Could not send — is the server running?');if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}});
+    else{_toast&&_toast('Order error: '+(d.error||'unknown'));if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}}
+  }).catch(()=>{_toast&&_toast('Could not send — is the server running?');if(btn){btn.disabled=false;btn.textContent='Send to '+supName;}});
 }
 function openStockAdmin(){editingSupplier=null;editingProduct=null;setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);renderSupplierAdmin();renderProductAdmin();setupTab('products');openModal('stock-admin-modal');}
 function setupTab(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
@@ -3512,7 +3563,7 @@ function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier')
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
 let _peTargetUnit='count';
 function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
-function newProduct(){if((appData.suppliers||[]).length===0){alert('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-countunit').value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-countunit').value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';
   _fillProdSupplier(p.supplier_id||'');
@@ -3539,7 +3590,7 @@ function syncUnitLabels(){const u=((document.getElementById('pe-unit').value||''
 }
 function saveProductEdit(){
   const name=document.getElementById('pe-name').value.trim(),supplier_id=document.getElementById('pe-supplier').value,unit=document.getElementById('pe-unit').value.trim();
-  if(!name||!supplier_id){alert('Enter a product name and pick a supplier.');return;}
+  if(!name||!supplier_id){_toast&&_toast('Enter a product name and pick a supplier.');return;}
   const ps=parseFloat(document.getElementById('pe-packsize').value)||1;const pack_size=ps>1?ps:1;
   const count_unit=(document.getElementById('pe-countunit').value||'').trim();
   const target_in=(document.getElementById('pe-target-unit').value==='order'&&ps>1)?'order':'count';
@@ -3547,8 +3598,8 @@ function saveProductEdit(){
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
   const pv=document.getElementById('pe-pack').value.trim(),rv=document.getElementById('pe-reorder').value.trim();
   let reorder_at,finalTargets;
-  if(_prodMode==='reorder'){if(rv===''){alert('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
-  else{if(Object.keys(targets).length===0){alert('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
+  if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
+  else{if(Object.keys(targets).length===0){_toast&&_toast('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
   const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:pack_size,count_unit:count_unit||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
