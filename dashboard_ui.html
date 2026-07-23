@@ -3654,7 +3654,10 @@ function _orunRenderBatches(){
 function _orunRowHtml(p){
   const c=_orunCalc(p);
   const _pn=p.par_note?(' · '+p.par_note):'';
-  const sub=c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set';
+  const cUnit=(p.count_unit||p.unit||'unit');
+  const sub=(p.order_mode==='reorder')
+    ? (c.parN!==null?('order below '+_fmtQ(c.parN)+' '+cUnit+_pn):'no level set')
+    : (c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set');
   const needCount=(c.state==='uncounted');
   const have=_orunHave[p.id];
   const cu=_orunCountUnit(p);
@@ -3700,7 +3703,8 @@ function renderOrderRun(){
   const runsEl=document.getElementById('orun-runs');
   if(!days.length){runsEl.innerHTML='<div style="color:var(--amber);font-size:13px;padding:8px;">No order days set for this supplier yet — add them in Setup → Suppliers.</div>';document.getElementById('orun-list').innerHTML='';return;}
   runsEl.innerHTML=days.map(d=>{const to=_orunNextOrderDay(days,d);
-    return '<div class="orun-run '+(_orunDay===d?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>lasts to '+_WD[to]+'</small></div>';}).join('');
+    const toLbl=(to===d)?'covers the week':('lasts to '+_WD[to]);
+    return '<div class="orun-run '+(_orunDay===d?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>'+toLbl+'</small></div>';}).join('');
   _orunRenderBatches();
   const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const list=document.getElementById('orun-list');
@@ -3730,8 +3734,14 @@ function _orunCalc(p){
   let haveN=typed;
   if(typed!==null&&_orunCountUnit(p)==='alt') haveN=typed*parseFloat(p.pack_size);   // 1 pack = pack_size base units
   let order=null, state;
-  if(parN===null||parN<=0) state='nolevel';   // no level (or 0) for this run → nothing to order, no count needed
-  else if(typed===null) state='uncounted';
+  const mode=p.order_mode||'topup';
+  if(mode==='reorder'){
+    const qty=parseFloat((p.run_qty||{})[_orunDay]);
+    if(parN===null||isNaN(qty)) state='nolevel';
+    else if(typed===null) state='uncounted';
+    else { order=(haveN<parN)?qty:0; state=(order>0)?'order':'ok'; }
+  } else if(parN===null||parN<=0){ state='nolevel'; }
+  else if(typed===null){ state='uncounted'; }
   else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
   // batch add-on: a chosen batch contributes this item's quantity
   const badd=_orunBatch[p.id];
