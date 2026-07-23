@@ -877,6 +877,8 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .probe-no-data{font-family:var(--font-mono);font-size:clamp(34px,4vw,46px);color:#5a6372;letter-spacing:2px;}
 .probe-status-badge{font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 14px;border-radius:20px;display:inline-block;}
 .badge-idle{background:var(--surface2);color:var(--muted);}
+.badge-standby{background:rgba(120,145,180,.18);color:#9fb4d4;}
+.badge-cooking{background:rgba(251,155,36,.14);color:#fbbf6b;}
 .badge-almost{background:var(--amber-bg);color:var(--amber);}
 .badge-ready{background:var(--green-bg);color:var(--green);}
 .badge-overdone{background:var(--red-bg);color:var(--red);}
@@ -1924,6 +1926,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div><div class="label">Almost ready (&#176;C)</div><input class="input" id="ps-almost" type="number" value="85"></div>
       <div><div class="label">Cooked (&#176;C)</div><input class="input" id="ps-cooked" type="number" value="88"></div>
       <div><div class="label">Overdone (&#176;C)</div><input class="input" id="ps-overdone" type="number" value="91"></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin:12px 0 7px;"><b>Steady-reading standby</b> — when a probe sits at the same temperature it's shown as <b>standby</b> (still visible), not blanked.</div>
+    <div class="grid-3">
+      <div><div class="label">Standby mode</div><select class="input" id="ps-standby"><option value="1">On &mdash; keep the temp showing</option><option value="0">Off &mdash; always live</option></select></div>
+      <div><div class="label">Standby after (seconds)</div><input class="input" id="ps-standby-secs" type="number" min="10" value="60"><div style="font-size:10.5px;color:var(--muted);margin-top:3px;">How long the reading must hold steady first.</div></div>
     </div>
     <div style="font-size:11.5px;color:var(--muted);margin:12px 0 7px;"><b>Counting chickens by probe</b> — only used when Rotisserie counting is set to Probes.</div>
     <div class="grid-3">
@@ -3301,19 +3308,28 @@ function _fitPad(){
 function renderProbes(){
   document.getElementById('probes-grid').innerHTML=_probeOrdered().map(([pid,p])=>{
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
-    const status=st.status,acked=st.alerted,cardCls=status==='idle'?'':acked?status+' acked':status;
+    const status=st.status,acked=st.alerted,cardCls=(status==='idle'||status==='standby')?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
       if(status==='almost'){stopProbeAlarm(pidN);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
       if(status==='ready'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
       if(status==='overdone'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
-      if(status==='idle')stopProbeAlarm(pidN);
+      if(status==='idle'||status==='standby')stopProbeAlarm(pidN);
       delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
       if(status==='ready'||status==='overdone')_paint();   // force the Silence button to appear without needing a tap
       prevStatuses[pidN]=status;
     }
     const t=p.temp,tempHtml=t===null?'<div class="probe-no-data">&#8212;&#8212;</div>':`<div class="probe-temp">${t.toFixed(1)}</div>`;
-    const badges={idle:'badge-idle',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone'};
-    const labels={idle:'idle',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
+    // friendlier badge than a blanket "idle": fill the gap so a warm probe reads "cooking", a steady one
+    // reads "standby" (server flag), a dead reading reads "no probe", and only genuinely-low+unsteady is "idle".
+    let dstatus=status;
+    if(status!=='almost'&&status!=='ready'&&status!=='overdone'){
+      if(t===null||t===undefined) dstatus='none';
+      else if(status==='standby') dstatus='standby';
+      else if(t>=40) dstatus='cooking';
+      else dstatus='idle';
+    }
+    const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone'};
+    const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
@@ -3334,7 +3350,7 @@ function renderProbes(){
       </div>
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</span></div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span></div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
@@ -3344,7 +3360,7 @@ function renderProbes(){
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
       ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}${tempHtml}<div class="probe-unit">&#176;C</div>
-      <div class="probe-status-badge ${badges[status]||'badge-idle'}">${labels[status]||'idle'}</div>
+      <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
@@ -3432,8 +3448,8 @@ function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining
 function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
 function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}const _rg=document.getElementById('tr'+id);if(_rg){_rg.style.strokeDashoffset=(402.12*(1-pct/100)).toFixed(1);_rg.style.stroke=t.expired?'var(--red)':'';}}
-function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_count_temp:'ps-count',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});}
-function saveProbeSettingsFromModal(){const s={probe_count_temp:parseFloat(document.getElementById('ps-count').value),almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
+function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_count_temp:'ps-count',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',standby_after_secs:'ps-standby-secs',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});const sb=document.getElementById('ps-standby');if(sb&&s.standby_steady!==undefined)sb.value=s.standby_steady?'1':'0';}
+function saveProbeSettingsFromModal(){const s={probe_count_temp:parseFloat(document.getElementById('ps-count').value),almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),standby_steady:document.getElementById('ps-standby').value==='1',standby_after_secs:parseInt(document.getElementById('ps-standby-secs').value)||60,printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
 function fillCameraSettings(){const c=appData.camera_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('cam-ip',c.ip);set('cam-port',c.port);set('cam-channel',c.channel);set('cam-url',c.url_override);document.getElementById('cam-user').value='';document.getElementById('cam-pass').value='';const en=document.getElementById('cam-enabled');if(en)en.checked=!!c.enabled;const ph=appData.camera_public&&appData.camera_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('cam-user').placeholder=ph||'admin';document.getElementById('cam-pass').placeholder=ph||'camera password';document.getElementById('cam-status').textContent='';document.getElementById('cam-preview').innerHTML='';
   const c2=appData.camera_cl_public||{};set('cam2-ip',c2.ip);set('cam2-port',c2.port);set('cam2-channel',c2.channel);set('cam2-url',c2.url_override);const ph2=c2.ip?'(unchanged — leave blank to keep)':'';const u2=document.getElementById('cam2-user');if(u2){u2.value='';u2.placeholder=ph2||'admin';}const p2=document.getElementById('cam2-pass');if(p2){p2.value='';p2.placeholder=ph2||'camera password';}const e2=document.getElementById('cam2-enabled');if(e2)e2.checked=!!c2.enabled;const s2=document.getElementById('cam2-status');if(s2)s2.textContent='';const pv2=document.getElementById('cam2-preview');if(pv2)pv2.innerHTML='';
   renderPhotoLog();}

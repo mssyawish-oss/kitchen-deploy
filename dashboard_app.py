@@ -44,7 +44,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"standby_steady":True,"standby_after_secs":60}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -4004,8 +4004,11 @@ def temps():
         for k,v in probe_state.items():
             item={kk:vv for kk,vv in v.items() if kk!="removal_timer"}
             _lca=v.get("last_change_at") or 0
-            if _lca and (_now-_lca)>60:                 # reading unchanged >1 min → probe parked on the dock / not in use → blank it
-                t[k]=None; item["status"]="idle"
+            _sb_secs=settings.get("standby_after_secs",60) or 60
+            if settings.get("standby_steady",True) and t.get(k) is not None and _lca and (_now-_lca)>_sb_secs:
+                # reading held steady this long → standby (docked / holding / not an active cook).
+                # KEEP the temp visible (old code blanked it, which hid working probes) and just flag it.
+                item["status"]="standby"
             s[k]=item
     return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver()}),mimetype="application/json")
 
@@ -4024,10 +4027,11 @@ def set_settings():
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
-    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces","probe_confirm_secs"]:
+    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces","probe_confirm_secs","standby_after_secs"]:
         if k in d:
             try: settings[k]=int(d[k])
             except (TypeError,ValueError): pass
+    if "standby_steady" in d: settings["standby_steady"]=bool(d["standby_steady"])
     if "printer_ip" in d: settings["printer_ip"]=str(d["printer_ip"])
     with data_lock: db["probe_settings"]=dict(settings);save_data(db)   # survive restarts
     return Response('{"ok":true}',mimetype="application/json")
