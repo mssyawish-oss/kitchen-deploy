@@ -749,7 +749,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* Pop-ups use (nearly) the whole screen — we can't use the background anyway, so this means far less scrolling. Tiny confirm dialogs stay compact. */
 .modal-overlay>.modal{width:97vw!important;max-width:1500px!important;max-height:95vh!important;}
 #pin-confirm-modal>.modal{width:100%!important;max-width:340px!important;max-height:92vh!important;}
-#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal,#preplbl-modal>.modal,#mp-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
+#adjust-modal>.modal,#stockcheck-modal>.modal,#music-modal>.modal,#preplbl-modal>.modal,#mp-modal>.modal,#batchask-modal>.modal{width:100%!important;max-width:440px!important;max-height:92vh!important;}
 #prodoff-modal>.modal{width:100%!important;max-width:520px!important;max-height:88vh!important;}
 /* Live AI trace: live video + decision cards side-by-side on a wide screen */
 .trace-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;}
@@ -979,6 +979,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .stk-stepper button{width:52px;height:52px;background:transparent;border:none;color:var(--text);font-size:26px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .stk-stepper button:active{background:var(--surface2);}
 .stk-stepper input{width:58px;height:52px;font-size:19px !important;background:transparent;border:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);color:var(--text);font-size:16px;font-family:var(--font-mono);text-align:center;outline:none;}
+.orun-batches{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px;}
+.orun-batch-lbl{font-size:12px;font-weight:700;color:var(--muted);margin-right:2px;}
+.orun-batch{background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:13px;font-weight:700;border-radius:20px;padding:7px 14px;cursor:pointer;}
+.orun-batch.on{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent);}
 .orun-runs{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
 .orun-run{flex:1;min-width:120px;padding:11px;border-radius:11px;background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;text-align:center;}
 .orun-run.on{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
@@ -2166,6 +2170,18 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <!-- Order modal -->
+<!-- Batch overlap: keep existing or replace with batch amounts -->
+<div class="modal-overlay" id="batchask-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header"><div class="modal-title">Already in your order</div><button class="modal-close" onclick="closeModal('batchask-modal')">&times;</button></div>
+    <div id="ba-text" style="font-size:14px;line-height:1.5;margin-bottom:16px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" style="flex:1;height:46px;" onclick="_baChoose(false)">Keep &amp; add on top</button>
+      <button class="btn btn-primary" style="flex:1;height:46px;" onclick="_baChoose(true)">Replace with batch</button>
+    </div>
+  </div>
+</div>
+
 <!-- Order run: top-up-to-par count screen (per supplier, per order day) -->
 <div class="modal-overlay" id="orderrun-modal">
   <div class="modal">
@@ -3594,13 +3610,14 @@ let _orderAdj={};
 // (par - have) to whole units. "SAME" is stored by copying the number, so every run has an explicit par.
 const _WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let _orunSup=null,_orunDay=null,_orunHave={};
-let _orunUnit={};   // pid -> 'base'|'alt' : which unit the stock-on-hand box is counted in
+let _orunUnit={};   // pid -> 'base'|'alt'
+let _orunBatchOn={}, _orunBatch={}, _orunBatchRepl={};   // selected batches; per-item batch qty; per-item replace-flag
 function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
   const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
 }
 function openOrderRun(supId){
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
-  _orunSup=sup; _orunHave={}; _orunUnit={};
+  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
@@ -3608,6 +3625,42 @@ function openOrderRun(supId){
   openModal('orderrun-modal');
   renderOrderRun();
 }
+function _orunRenderBatches(){
+  let el=document.getElementById('orun-batches');
+  const runsEl=document.getElementById('orun-runs');
+  if(!el){ el=document.createElement('div'); el.id='orun-batches'; el.className='orun-batches'; runsEl.parentNode.insertBefore(el, runsEl.nextSibling); }
+  const batches=appData.batches||[];
+  if(!batches.length){ el.style.display='none'; return; }
+  el.style.display='';
+  el.innerHTML='<span class="orun-batch-lbl">Prepping a batch?</span>'+batches.map(b=>
+    '<button class="orun-batch '+(_orunBatchOn[b.id]?'on':'')+'" onclick="_orunToggleBatch(\''+b.id+'\')">'+_mEsc(b.name)+'</button>').join('');
+}
+function _orunRebuildBatch(){
+  _orunBatch={};
+  (appData.batches||[]).forEach(b=>{ if(_orunBatchOn[b.id]) (b.items||[]).forEach(it=>{ _orunBatch[it.pid]=(_orunBatch[it.pid]||0)+parseFloat(it.qty||0); }); });
+}
+function _orunToggleBatch(bid){
+  const b=(appData.batches||[]).find(x=>x.id===bid); if(!b)return;
+  if(_orunBatchOn[bid]){ // turning OFF
+    delete _orunBatchOn[bid]; _orunRebuildBatch();
+    (b.items||[]).forEach(it=>{ if(_orunBatch[it.pid]==null) delete _orunBatchRepl[it.pid]; });
+    renderOrderRun(); return;
+  }
+  // turning ON — check overlaps: batch items that ALREADY have an order from counting
+  const overlaps=(b.items||[]).filter(it=>{ const p=(appData.products||[]).find(x=>x.id===it.pid); if(!p)return false; const c=_orunCalc(p); return c.state==='order' && c.order>0; });
+  const apply=(replace)=>{ _orunBatchOn[bid]=true; (b.items||[]).forEach(it=>{ if(replace) _orunBatchRepl[it.pid]=true; }); _orunRebuildBatch(); renderOrderRun(); };
+  if(overlaps.length){
+    const names=overlaps.map(it=>{const p=(appData.products||[]).find(x=>x.id===it.pid);return p?p.name:it.pid;});
+    _orunBatchPrompt(b.name,names,apply);
+  } else { apply(false); }
+}
+function _orunBatchPrompt(batchName,names,apply){
+  const m=document.getElementById('batchask-modal'); if(!m){ apply(false); return; }
+  document.getElementById('ba-text').innerHTML='You already have '+names.length+' of &ldquo;'+_mEsc(batchName)+'&rdquo; item'+(names.length>1?'s':'')+' in this order:<br><b>'+names.map(_mEsc).join(', ')+'</b><br><br>Add the batch <b>on top</b>, or <b>replace</b> those with the batch amounts?';
+  m.dataset.pending='1';
+  window._baApply=apply; openModal('batchask-modal');
+}
+function _baChoose(replace){ closeModal('batchask-modal'); if(window._baApply){ window._baApply(replace); window._baApply=null; } }
 function _orunSetDay(d){_orunDay=d;_orunHave={};renderOrderRun();}
 function renderOrderRun(){
   const sup=_orunSup; if(!sup)return;
@@ -3616,6 +3669,7 @@ function renderOrderRun(){
   if(!days.length){runsEl.innerHTML='<div style="color:var(--amber);font-size:13px;padding:8px;">No order days set for this supplier yet — add them in Setup → Suppliers.</div>';document.getElementById('orun-list').innerHTML='';return;}
   runsEl.innerHTML=days.map(d=>{const to=_orunNextOrderDay(days,d);
     return '<div class="orun-run '+(_orunDay===d?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>lasts to '+_WD[to]+'</small></div>';}).join('');
+  _orunRenderBatches();
   const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const list=document.getElementById('orun-list');
   if(!items.length){list.innerHTML='<div style="color:var(--muted);padding:16px;text-align:center;">No items for this supplier.</div>';return;}
@@ -3651,7 +3705,13 @@ function _orunCalc(p){
   if(parN===null||parN<=0) state='nolevel';   // no level (or 0) for this run → nothing to order, no count needed
   else if(typed===null) state='uncounted';
   else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
-  return {parN,haveN,order,state,unit:(p.unit||'unit')};
+  // batch add-on: a chosen batch contributes this item's quantity
+  const badd=_orunBatch[p.id];
+  if(badd!=null){
+    if(_orunBatchRepl[p.id] || parN===null || parN<=0){ order=badd; state=(badd>0)?'order':'ok'; }   // batch drives it (no count needed)
+    else if(state!=='uncounted'){ order=(order||0)+badd; state=(order>0)?'order':'ok'; }              // keep: add on top of the top-up
+  }
+  return {parN,haveN,order,state,unit:(p.unit||'unit'),batch:badd};
 }
 function _orunCellHtml(c){
   if(c.state==='nolevel') return '<span class="q">&mdash;</span>';
