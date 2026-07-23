@@ -183,12 +183,16 @@ body.style-v2 #page-probes .pb-sec .timers-grid{grid-template-columns:repeat(4,m
    leaving a gap under them. Every link in the chain carries min-height:0 or the grid rows
    collapse (that's what shrank cards to slivers in the earlier attempt). Scoped to view-wall
    (auto only at >=1500px wide) so the Mac / iPad ('pad' view) are left exactly as they are. */
-body.style-v2.view-wall #page-probes .pb-split{flex:1 1 auto;min-height:0;}
+body.style-v2.view-wall #page-probes.active{gap:10px;}                 /* rot strip -> probes/batches block */
+body.style-v2.view-wall #page-probes{padding-bottom:10px;}            /* batches -> nav */
+body.style-v2.view-wall #page-probes .pb-split{flex:1 1 auto;min-height:0;gap:10px;}   /* probes -> batches */
+body.style-v2.view-wall #page-probes .pb-split .sec-head{margin:0 2px 5px;}
 body.style-v2.view-wall #page-probes .pb-sec{flex:1 1 0;min-height:0;}
 body.style-v2.view-wall #page-probes .pb-sec .probes-grid,
 body.style-v2.view-wall #page-probes .pb-sec .timers-grid{flex:1 1 0;min-height:0;grid-auto-rows:minmax(0,1fr);align-items:stretch;}
+/* cards fill their cell; content spans top→bottom so there is no dead air pooled under it */
 body.style-v2.view-wall #page-probes .probe-card,
-body.style-v2.view-wall #page-probes .timer-card{min-height:0;height:auto;justify-content:space-evenly;}
+body.style-v2.view-wall #page-probes .timer-card{min-height:0;height:auto;justify-content:space-between;}
 /* summary strip — three roomy cards in a row */
 body.style-v2 #rot-live{gap:14px;}
 body.style-v2 #rot-live>div:empty{display:none;}   /* #rl-live is a dead container — bordered in v2 it showed as a blank card. The cam/orders cards have content when live, so they still appear */
