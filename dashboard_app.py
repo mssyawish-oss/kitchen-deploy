@@ -1508,6 +1508,26 @@ def api_comp_refresh():
         db["comp_log"]=log; save_data(db)
     return jsonify({"ok":True,"checked":checked,"vouchers":log[-200:]})
 
+def _is_admin_pin(pin):
+    for s in (db.get("staff") or []):
+        if str(s.get("pin",""))==str(pin) and str(s.get("role","")).lower()=="admin": return s.get("name") or "Admin"
+    return None
+
+@app.route("/api/comp_remove",methods=["POST"])
+def api_comp_remove():
+    d=request.get_json(silent=True) or {}
+    if not _comp_ok(d.get("code")): return jsonify({"ok":False,"error":"Comp locked"})
+    admin=_is_admin_pin(d.get("staff_pin"))
+    if not admin: return jsonify({"ok":False,"error":"Admin PIN required to remove a voucher"})
+    try: ts=int(d.get("ts") or 0)
+    except (TypeError,ValueError): ts=0
+    with data_lock:
+        log=db.get("comp_log") or []
+        gone=[x for x in log if x.get("ts")==ts]
+        db["comp_log"]=[x for x in log if x.get("ts")!=ts]; save_data(db)
+    # note: this removes it from the dashboard log only — the Square gift card itself is not voided here
+    return jsonify({"ok":True,"removed":len(gone),"by":admin})
+
 @app.route("/api/comp_log")
 def api_comp_log():
     log=(db.get("comp_log",[]) or [])[-200:]
