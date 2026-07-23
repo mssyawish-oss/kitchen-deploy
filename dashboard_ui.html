@@ -1017,6 +1017,10 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .orun-have{width:112px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .orun-have input{width:88px;height:46px;text-align:center;font-size:19px;font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);outline:none;}
 .orun-unit-tog{background:var(--surface);border:1px solid var(--border2);border-radius:7px;color:var(--amber);font-size:10.5px;font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;}
+.orun-unit-seg{display:inline-flex;border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--surface);}
+.orun-unit-seg button{border:none;background:transparent;color:var(--muted);font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;white-space:nowrap;line-height:1.4;}
+.orun-unit-seg button+button{border-left:1px solid var(--border2);}
+.orun-unit-seg button.on{background:var(--amber);color:#0a0a0c;}
 .orun-have input:focus{border-color:var(--amber);}
 .orun-order{width:104px;flex-shrink:0;text-align:center;font-weight:800;}
 .orun-order .q{font-size:21px;color:var(--amber);}
@@ -3679,12 +3683,16 @@ function _orunRowHtml(p){
   const needCount=(c.state==='uncounted');
   const have=_orunHave[p.id];
   const cu=_orunCountUnit(p);
+  const curUnitName=(cu==='alt')?_orunAltName(p):c.unit;
   const toggle=_orunHasAlt(p)
-    ? '<button class="orun-unit-tog" onclick="_orunToggleUnit(\''+p.id+'\')">in '+(cu==='alt'?_mEsc(_orunAltName(p)):_mEsc(c.unit))+' &#8646;</button>'
+    ? '<div class="orun-unit-seg" role="group">'
+       +'<button class="'+(cu==='base'?'on':'')+'" onclick="_orunSetUnit(\''+p.id+'\',\'base\')">'+_mEsc(c.unit)+'</button>'
+       +'<button class="'+(cu==='alt'?'on':'')+'" onclick="_orunSetUnit(\''+p.id+'\',\'alt\')">'+_mEsc(_orunAltName(p))+'</button>'
+       +'</div>'
     : '';
   return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
     +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-    +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
+    +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
     +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c)+'</div>'
     +'</div>';
 }
@@ -3782,6 +3790,7 @@ function _fmtQ(v){ // pretty fractions for the "need" line
   return (Math.round(v*100)/100).toString();
 }
 function _orunToggleUnit(pid){ _orunUnit[pid]=(_orunUnit[pid]==='alt')?'base':'alt'; renderOrderRun(); }
+function _orunSetUnit(pid,which){ if(_orunUnit[pid]===which)return; _orunUnit[pid]=which; renderOrderRun(); }
 function _orunRecalc(pid){
   const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
   const cell=document.querySelector('.orun-order[data-id="'+pid+'"]'); if(!cell)return;
