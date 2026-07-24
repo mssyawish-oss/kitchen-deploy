@@ -1591,9 +1591,9 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div class="comp-lab">ClickSend API key</div>
     <input class="input" id="cs-key" type="password" placeholder="Leave blank to keep the saved key">
     <div class="cs-hint" id="cs-key-hint"></div>
-    <div class="comp-lab">Sender name <span style="color:var(--muted);font-weight:400;">(optional)</span></div>
-    <input class="input" id="cs-sender" maxlength="11" placeholder="e.g. BRUNOS — blank sends from a shared number">
-    <div class="cs-hint">Letters and numbers only, max 11. Must be registered with ClickSend first. Customers can&rsquo;t reply to a named sender.</div>
+    <div class="comp-lab">Sender ID / Caller ID <span style="color:var(--muted);font-weight:400;">(optional)</span></div>
+    <input class="input" id="cs-sender" maxlength="16" placeholder="Your ClickSend Caller ID number, or a name like BRUNOS">
+    <div class="cs-hint">Two options, both must be registered in ClickSend first: your <b>Caller ID number</b> (e.g. 61412345678 — customers can reply) or a <b>name</b> (letters/numbers, max 11 — no replies). Blank = shared number.</div>
     <div class="comp-lab">Online ordering link</div>
     <input class="input" id="cs-url" placeholder="brunos-chicken-shop.square.site">
     <div class="comp-lab">Logo image URL <span style="color:var(--muted);font-weight:400;">(for picture messages)</span></div>
@@ -2862,7 +2862,10 @@ function compSetupSave(){
   const amounts=val('cs-amounts').split(',').map(x=>parseFloat(x)).filter(x=>!isNaN(x)&&x>0);
   const body={code:_compCode,
     user:val('cs-user'), key:val('cs-key'),
-    sender:val('cs-sender').replace(/[^A-Za-z0-9]/g,'').slice(0,11),
+    sender:(function(){const r=val('cs-sender').trim();const digits=r.replace(/[^\d]/g,'');
+      // a Caller-ID phone number (mostly digits) → keep the number; otherwise an alphanumeric sender name
+      if(digits.length>=6 && /^\+?[\d ()-]+$/.test(r)) return (r.startsWith('+')?'+':'')+digits;
+      return r.replace(/[^A-Za-z0-9]/g,'').slice(0,11);})(),
     online_url:val('cs-url'), media_url:val('cs-media'),
     mms_default:!!((document.getElementById('cs-mmsdef')||{}).checked),
     expiry_months:parseInt(val('cs-exp')||'12')||12};
