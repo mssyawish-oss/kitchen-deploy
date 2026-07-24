@@ -4278,8 +4278,8 @@ function renderRotLive(rot){
   // on the shelf is past its window. Uses the newest pull (most conservative → fewest false alarms).
   const _ub=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.use_by_minutes)||120;
   const _ageMin=_lastPull?((Date.now()-_lastPull)/60000):null;
-  const stale=(avail>=1 && _ageMin!=null && _ageMin>_ub);
-  const staleHtml=stale?`<div class="rl-stale">&#9888; Oldest stock ${_pullFmtMins(Math.round(_ageMin))} old — past ${_ub}min use-by, check freshness</div>`:'';
+  const stale=false;                 // owner: removed the "oldest stock … old" freshness note (mis-fired on old pull timestamps)
+  const staleHtml='';
   const sig=[avail,rot.sold_today,rot.square,alvl,nCook,rot.levels,rot.cam,rot.mode,showErr?cerr:'',_lastPull,stale,Math.round(_rate*10)].join('|');
   if(sig===_rotSig)return;_rotSig=sig;
   const modePill='';   // owner: dropped the "probe count" pill — counting mode lives in Settings
