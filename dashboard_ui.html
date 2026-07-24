@@ -254,6 +254,8 @@ body.style-v2 .timer-card.t2{align-items:stretch;text-align:left;padding:15px 17
 .t2-gauge{position:relative;width:clamp(118px,14vh,158px);aspect-ratio:1;margin:2px auto;}
 /* wall: a bigger ring so the digits sit well inside it (and it soaks up the space-between air) */
 body.style-v2.view-wall #page-probes .t2-gauge{width:clamp(150px,19vh,190px);}
+/* iPad (pad view): base ring is only ~96px inner vs ~98px digits → they overlap. Enlarge to fit. */
+body.style-v2.view-pad #page-probes .t2-gauge{width:clamp(135px,18vh,175px);}
 .t2-gauge svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
 .t2-track{fill:none;stroke:var(--surface2);stroke-width:11;}
 .t2-prog{fill:none;stroke:var(--accv,var(--acc));stroke-width:11;stroke-linecap:round;transition:stroke-dashoffset .9s linear;}
