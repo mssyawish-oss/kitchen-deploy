@@ -379,13 +379,44 @@ def check_probe_status(pid,temp):
             elif peak and peak>=count_temp and temp<pull:                    # first drop below pull after cooking → arm the window
                 ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
 
+def _probe_source():
+    try: return (db.get("thermoworks") or {}).get("source","ble")
+    except Exception: return "ble"
+
 def handle_data(sender,data):
+    if _probe_source()=="rfx": return   # RFX (cloud) is driving the probes → ignore the BLE dock
     if len(data)<6: return
     if data[1]==0x00:
         pid=data[2];raw=int.from_bytes(data[4:6],"little");temp_c=round((raw-1186)/15.5+23,1)
         if 1<=pid<=4 and 0<temp_c<400:
             with probe_lock: probe_temps[pid]=temp_c
             check_probe_status(pid,temp_c)
+
+# ── ThermoWorks RFX (cloud) probe source — opt-in alternative to the FM230 BLE dock ──
+try:
+    import rfx_bridge
+except Exception as _e:
+    rfx_bridge=None; print("rfx_bridge unavailable:",_e)
+_rfx_status={"ok":None,"last":0.0,"error":""}
+def rfx_poll_loop():
+    """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
+    check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
+    while True:
+        cfg=(db.get("thermoworks") or {})
+        try:
+            if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("email") and cfg.get("password") and cfg.get("map"):
+                temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
+                got=False
+                for pid,t in (temps or {}).items():
+                    try: pid=int(pid)
+                    except (TypeError,ValueError): continue
+                    if t is not None and 0<float(t)<400 and 1<=pid<=4:
+                        with probe_lock: probe_temps[pid]=float(t)
+                        check_probe_status(pid,float(t)); got=True
+                _rfx_status.update({"ok":got,"last":time.time(),"error":"" if got else "no readings"})
+        except Exception as e:
+            _rfx_status.update({"ok":False,"error":str(e)}); print("rfx_poll_loop:",e)
+        time.sleep(max(8,int((cfg.get("poll_secs") or 20) or 20)))
 
 async def ble_loop():
     from bleak import BleakScanner,BleakClient
@@ -1374,6 +1405,35 @@ def _comp_ok(code):
     for s in (db.get("staff") or []):
         if str(s.get("pin",""))==c and str(s.get("role","")).lower() in ("admin","manager"): return True
     return False
+
+@app.route("/api/rfx_config",methods=["GET","POST"])
+def api_rfx_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            tw=dict(db.get("thermoworks") or {})
+            if "email" in d: tw["email"]=str(d.get("email") or "").strip()
+            if str(d.get("password") or "").strip(): tw["password"]=str(d["password"]).strip()   # blank = keep saved
+            if "source" in d: tw["source"]="rfx" if d.get("source")=="rfx" else "ble"
+            if "poll_secs" in d:
+                try: tw["poll_secs"]=max(8,int(d.get("poll_secs") or 20))
+                except (TypeError,ValueError): pass
+            if isinstance(d.get("map"),dict): tw["map"]=d["map"]   # {"1":[serial,channel],...}
+            db["thermoworks"]=tw; save_data(db)
+        return jsonify({"ok":True})
+    tw=db.get("thermoworks") or {}
+    return jsonify({"email":tw.get("email",""),"source":tw.get("source","ble"),
+                    "poll_secs":tw.get("poll_secs",20),"map":tw.get("map") or {},
+                    "has_password":bool(tw.get("password")),"status":_rfx_status})
+
+@app.route("/api/rfx_test",methods=["POST"])
+def api_rfx_test():
+    if not rfx_bridge: return jsonify({"ok":False,"error":"RFX bridge not loaded on the server."})
+    d=request.get_json(silent=True) or {}
+    tw=db.get("thermoworks") or {}
+    email=(d.get("email") or tw.get("email") or "").strip()
+    password=(str(d.get("password") or "").strip() or tw.get("password") or "")   # typed wins, else saved
+    return jsonify(rfx_bridge.rfx_diagnose(email,password,log=print))
 
 @app.route("/api/comp_config",methods=["GET","POST"])
 def api_comp_config():
@@ -4102,7 +4162,9 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks")}
+    _tw=snap.get("thermoworks") or {}   # never ship the ThermoWorks password to the browser
+    safe["thermoworks_public"]={"email":_tw.get("email",""),"source":_tw.get("source","ble"),"poll_secs":_tw.get("poll_secs",20),"map":_tw.get("map") or {},"has_password":bool(_tw.get("password"))}
     safe["cameras_public"]=[]
     for c in (snap.get("cameras") or []):
         item={k:c.get(k) for k in ("id","name","ip","port","channel","enabled")}
@@ -5299,6 +5361,7 @@ if __name__=="__main__":
     if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
+    threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
