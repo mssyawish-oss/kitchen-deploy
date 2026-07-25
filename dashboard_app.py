@@ -4323,7 +4323,7 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     y+=s(4); dr.line([s(8),y,W-s(8),y],fill=0,width=max(1,s(2))); y+=s(9)
     fs=fnt(s(19),False); fsb=fnt(s(19),True)
     dr.text((s(8),y),"PREPPED",font=fsb,fill=0); dr.text((s(128),y),prepped_s,font=fs,fill=0); y+=s(26)
-    dr.text((s(8),y),"BY",font=fsb,fill=0); dr.text((s(128),y),(staff or "-"),font=fs,fill=0)
+    dr.text((s(8),y+s(2)),"BY",font=fsb,fill=0); dr.text((s(128),y),(staff or "-"),font=fnt(s(22),True),fill=0)   # preparer name a touch bigger + bold
     # USE BY — the discard deadline, most important line: bold + boxed, anchored to the bottom
     fu=fnt(s(27),True); box="USE BY  "+useby_s; bh=s(46); by0=H-s(8)-bh
     dr.rectangle([s(6),by0,W-s(6),by0+bh],outline=0,width=max(1,s(3)))
