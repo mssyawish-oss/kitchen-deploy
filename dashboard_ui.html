@@ -2979,6 +2979,7 @@ function _initStyle(){
   if(!s){
     try{ if(window.navigator.standalone===true || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)) s='v2'; }catch(e){}
   }
+  if(!s) s='v2';   // v2 is now the DEFAULT everywhere. A device can still opt out with ?style=classic (stored per device).
   if(s==='v2')document.body.classList.add('style-v2');
   window.DASH_V2=(s==='v2');
 }
