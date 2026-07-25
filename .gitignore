@@ -6,3 +6,6 @@ bbq_history.json
 backup/
 BACKEND-UPDATE-PENDING.txt
 deploy-status.json
+backups/
+kitchen_data.json
+*.bak

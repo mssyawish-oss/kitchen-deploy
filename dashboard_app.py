@@ -242,20 +242,57 @@ def _send_reminder_once(to,msg,subject="Kitchen Reminder"):
         with _reminder_lock: _reminder_sent.pop(key,None)   # send failed → allow a retry on the next tick
         print(f"reminder send:{e}");return False
 
+def _send_sms_reminder_once(sms,msg):
+    """SMS reminder — deduped per day like the email one. Goes through _clicksend_sms, so it sends
+    with the 'Brunos' sender ID (clicksend.sender) automatically, same as vouchers."""
+    sms=(sms or "").strip()
+    if not sms: return False
+    today=datetime.now().strftime("%Y-%m-%d");key="sms:"+sms+"|"+msg
+    with _reminder_lock:
+        if _reminder_sent.get(key)==today: return False
+        _reminder_sent[key]=today
+    try:
+        ok,err=_clicksend_sms(sms,msg)
+        if not ok:
+            with _reminder_lock: _reminder_sent.pop(key,None)
+            print("sms reminder:",err)
+        return bool(ok)
+    except Exception as e:
+        with _reminder_lock: _reminder_sent.pop(key,None)
+        print("sms reminder:",e); return False
+
 def reminder_loop():
     while True:
         try:
+            now=datetime.now();hhmm=now.strftime("%H:%M");dow=now.weekday()   # Mon=0..Sun=6 (matches the UI)
             cfg=db.get("email_config",{}) or {}
-            if cfg.get("smtp_user"):
-                now=datetime.now();hhmm=now.strftime("%H:%M");dow=now.weekday()   # Mon=0..Sun=6 (matches the UI)
-                for sup in (db.get("suppliers",[]) or []):
-                    if (sup.get("remind_time") or "")!=hhmm: continue
-                    days=sup.get("remind_days") or []
-                    if days and dow not in days: continue
-                    msg="Order reminder: place stock order with "+(sup.get("name") or "supplier")+" now."
-                    _send_reminder_once(sup.get("remind_email"),msg,"Bruno's — Order Reminder")
+            for sup in (db.get("suppliers",[]) or []):
+                if (sup.get("remind_time") or "")!=hhmm: continue
+                days=sup.get("remind_days") or []
+                if days and dow not in days: continue
+                msg="Order reminder: place stock order with "+(sup.get("name") or "supplier")+" now."
+                if cfg.get("smtp_user"): _send_reminder_once(sup.get("remind_email"),msg,"Bruno's — Order Reminder")
+                _send_sms_reminder_once(sup.get("remind_sms"),msg)   # text reminder too — sends as "Brunos"
         except Exception as e: print(f"reminder_loop:{e}")
         time.sleep(20)
+
+def backup_loop():
+    """Once-a-day local backup of kitchen_data.json (all settings, stock, logs, credentials).
+    Keeps the last 14 days in BASE_DIR/backups. Protects against a bad save / accidental wipe.
+    (The self-updater never touches this folder — it isn't in the repo.)"""
+    bdir=os.path.join(BASE_DIR,"backups")
+    while True:
+        try:
+            os.makedirs(bdir,exist_ok=True)
+            dest=os.path.join(bdir,"kitchen_data_"+datetime.now().strftime("%Y%m%d")+".json")
+            if os.path.exists(DATA_FILE) and not os.path.exists(dest):
+                import shutil; shutil.copy2(DATA_FILE,dest); print("backup: saved",dest)
+                keep=sorted(f for f in os.listdir(bdir) if f.startswith("kitchen_data_") and f.endswith(".json"))
+                for old in keep[:-14]:
+                    try: os.remove(os.path.join(bdir,old))
+                    except Exception: pass
+        except Exception as e: print("backup_loop:",e)
+        time.sleep(3600)   # check hourly; writes at most once per day
 
 def print_ticket(probe_id,batch_name,temp,use_by_time):
     try:
@@ -5362,6 +5399,7 @@ if __name__=="__main__":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
+    threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
     threading.Thread(target=benchcam_stream_loop,daemon=True).start()
