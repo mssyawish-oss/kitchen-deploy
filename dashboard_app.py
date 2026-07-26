@@ -1186,8 +1186,10 @@ def _sq_offline_products():
                 data=json.loads(r.read().decode())
             for obj in data.get("objects",[]) or []:
                 if obj.get("type")!="ITEM": continue
-                name=((obj.get("item_data") or {}).get("name")) or "?"
-                for v in (obj.get("item_data") or {}).get("variations",[]) or []:
+                idata=obj.get("item_data") or {}
+                if idata.get("is_archived") or obj.get("is_deleted"): continue   # archived/deleted items are hidden in Square → don't flag them as "product off"
+                name=idata.get("name") or "?"
+                for v in idata.get("variations",[]) or []:
                     vd=v.get("item_variation_data") or {}
                     for ov in vd.get("location_overrides") or []:
                         if ov.get("location_id")==loc and ov.get("sold_out"):
