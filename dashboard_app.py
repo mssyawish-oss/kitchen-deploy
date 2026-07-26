@@ -243,23 +243,28 @@ def _send_reminder_once(to,msg,subject="Kitchen Reminder"):
         print(f"reminder send:{e}");return False
 
 def _send_sms_reminder_once(sms,msg):
-    """SMS reminder — deduped per day like the email one. Goes through _clicksend_sms, so it sends
-    with the 'Brunos' sender ID (clicksend.sender) automatically, same as vouchers."""
-    sms=(sms or "").strip()
-    if not sms: return False
-    today=datetime.now().strftime("%Y-%m-%d");key="sms:"+sms+"|"+msg
-    with _reminder_lock:
-        if _reminder_sent.get(key)==today: return False
-        _reminder_sent[key]=today
-    try:
-        ok,err=_clicksend_sms(sms,msg)
-        if not ok:
+    """SMS reminder — deduped per day like the email one. The field may hold MORE THAN ONE number
+    (separate them with a comma, semicolon or new line) so one reminder can text two+ people; each
+    number is sent and deduped on its own. Goes through _clicksend_sms, so it sends with the
+    'Brunos' sender ID (clicksend.sender) automatically, same as vouchers."""
+    numbers=[n.strip() for n in re.split(r"[,;\n]+",sms or "") if n.strip()]
+    if not numbers: return False
+    today=datetime.now().strftime("%Y-%m-%d");sent_any=False
+    for num in numbers:
+        key="sms:"+num+"|"+msg
+        with _reminder_lock:
+            if _reminder_sent.get(key)==today: continue
+            _reminder_sent[key]=today
+        try:
+            ok,err=_clicksend_sms(num,msg)
+            if ok: sent_any=True
+            else:
+                with _reminder_lock: _reminder_sent.pop(key,None)
+                print("sms reminder:",err)
+        except Exception as e:
             with _reminder_lock: _reminder_sent.pop(key,None)
-            print("sms reminder:",err)
-        return bool(ok)
-    except Exception as e:
-        with _reminder_lock: _reminder_sent.pop(key,None)
-        print("sms reminder:",e); return False
+            print("sms reminder:",e)
+    return sent_any
 
 def reminder_loop():
     while True:
