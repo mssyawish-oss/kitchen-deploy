@@ -242,6 +242,23 @@ def _send_reminder_once(to,msg,subject="Kitchen Reminder"):
         with _reminder_lock: _reminder_sent.pop(key,None)   # send failed → allow a retry on the next tick
         print(f"reminder send:{e}");return False
 
+def _norm_hhmm(s):
+    """Reminder times were entered as free text — '3:00pm', '12:00pm', '9am', '15:00', '09:00'.
+    Normalise any of them to 24-hour 'HH:MM' so they compare against the clock. '' if unparseable.
+    (Without this a supplier saved as '12:00pm' never equals strftime('%H:%M')='12:00', so the
+    reminder silently never fired.)"""
+    s=(s or "").strip().lower().replace(" ","")
+    if not s: return ""
+    m=re.match(r"^(\d{1,2})(?::(\d{2}))?(am|pm)?$",s)
+    if not m: return ""
+    h=int(m.group(1)); mn=int(m.group(2) or 0); ap=m.group(3)
+    if ap=="am":
+        if h==12: h=0
+    elif ap=="pm":
+        if h!=12: h+=12
+    if h>23 or mn>59: return ""
+    return "%02d:%02d"%(h,mn)
+
 def _send_sms_reminder_once(sms,msg):
     """SMS reminder — deduped per day like the email one. The field may hold MORE THAN ONE number
     (separate them with a comma, semicolon or new line) so one reminder can text two+ people; each
@@ -272,7 +289,7 @@ def reminder_loop():
             now=datetime.now();hhmm=now.strftime("%H:%M");dow=now.weekday()   # Mon=0..Sun=6 (matches the UI)
             cfg=db.get("email_config",{}) or {}
             for sup in (db.get("suppliers",[]) or []):
-                if (sup.get("remind_time") or "")!=hhmm: continue
+                if _norm_hhmm(sup.get("remind_time"))!=hhmm: continue
                 days=sup.get("remind_days") or []
                 if days and dow not in days: continue
                 msg="Order reminder: place stock order with "+(sup.get("name") or "supplier")+" now."
@@ -4216,7 +4233,9 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks","clicksend")}
+    _cs=snap.get("clicksend") or {}   # never ship the ClickSend API key to the browser (SMS settings load via /api/comp_settings instead)
+    safe["clicksend_public"]={"sms_ready":bool(_cs.get("user") and _cs.get("key")),"sender":_cs.get("sender",""),"has_media":bool(_cs.get("media_url"))}
     _tw=snap.get("thermoworks") or {}   # never ship the ThermoWorks password to the browser
     safe["thermoworks_public"]={"email":_tw.get("email",""),"source":_tw.get("source","ble"),"poll_secs":_tw.get("poll_secs",20),"map":_tw.get("map") or {},"has_password":bool(_tw.get("password"))}
     safe["cameras_public"]=[]
