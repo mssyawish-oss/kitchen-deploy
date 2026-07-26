@@ -100,18 +100,20 @@ async def _diagnose(email, password):
         devices = await client.get_devices(acct) if acct else []
         rows = []
         for d in devices:
+            chans = await _read_channels(client, d.serial)
+            vals = [c.get("value_c") for c in chans if c.get("value_c") is not None]
+            core = round(min(vals), 1) if vals else None
+            label = d.label or d.device_name or d.serial
+            # a mappable PROBE = has real sensor readings and isn't the gateway (gateway ch reads NO PROBE)
+            is_probe = bool(vals) and "GATEWAY" not in (label or "").upper()
             rows.append({
-                "serial": d.serial,
-                "label": d.label or d.device_name or d.serial,
-                "type": d.type,
-                "battery": d.battery,
-                "wifi_strength": d.wifi_strength,
-                "gateway_rssi": d.gateway_rssi,
-                "transmit_secs": d.transmit_interval_in_seconds,
-                "last_seen": str(d.last_seen),
-                "channels": await _read_channels(client, d.serial),
+                "serial": d.serial, "label": label, "type": d.type,
+                "battery": d.battery, "wifi_strength": d.wifi_strength, "gateway_rssi": d.gateway_rssi,
+                "transmit_secs": d.transmit_interval_in_seconds, "last_seen": str(d.last_seen),
+                "channels": chans, "core": core, "sensor_count": len(chans), "is_probe": is_probe,
             })
-        return {"ok": True, "account_id": acct, "device_count": len(rows), "devices": rows}
+        return {"ok": True, "account_id": acct, "device_count": len(rows),
+                "probe_count": sum(1 for r in rows if r["is_probe"]), "devices": rows}
     finally:
         await session.close()
 
@@ -134,16 +136,34 @@ def rfx_diagnose(email, password, log=lambda m: None):
         return {"ok": False, "error": msg}
 
 
+async def _device_core_temp(client, serial):
+    """One RFX MEAT probe has 4 internal sensors (channels). The meat's true centre is the COLDEST
+    of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C."""
+    vals = []
+    for ch in await _read_channels(client, serial):
+        c = ch.get("value_c")
+        if c is not None:
+            vals.append(c)
+    return round(min(vals), 1) if vals else None
+
+
+def _serial_of(m):
+    """A mapping value is a serial string (new) or [serial, channel] (old) — normalise to the serial."""
+    if isinstance(m, (list, tuple)):
+        return m[0] if m else None
+    return m
+
+
 async def _read_mapped(email, password, mapping):
-    """mapping: {"1": [serial, channel], "2": [...], ...} -> returns {1: temp_c, ...}."""
+    """mapping: {"1": serial, "2": serial, ...} — each dashboard probe -> one RFX probe (device).
+    Returns {1: core_temp_c, ...} using the coldest sensor of each probe."""
     session, client = await _connect(email, password)
     try:
         temps = {}
-        for pid, sc in (mapping or {}).items():
+        for pid, m in (mapping or {}).items():
+            serial = _serial_of(m)
             try:
-                serial, channel = sc[0], str(sc[1])
-                ch = await client.get_device_channel(serial, channel)
-                temps[int(pid)] = _c(ch.value, ch.units) if ch else None
+                temps[int(pid)] = await _device_core_temp(client, serial) if serial else None
             except Exception:
                 temps[int(pid)] = None
         return temps
