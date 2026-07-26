@@ -359,11 +359,11 @@ body.style-v2 .btn,body.style-v2 .btn-primary,body.style-v2 .btn-danger{border-r
 .ra-toggle{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;cursor:pointer;letter-spacing:.03em;}
 .ra-toggle:hover{background:rgba(255,255,255,.24);}
 /* Today's Prep */
-.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:9px;align-content:start;}
-.prep-grid .prep-card .pc-row{padding:8px 9px;gap:8px;}
-.prep-grid .prep-card .pc-img,.prep-grid .prep-card .pc-noimg{width:38px;height:38px;}
-.prep-grid .prep-card .pc-name{white-space:normal;font-size:13px;line-height:1.2;}
-.prep-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;}
+.prep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px;align-content:start;}
+.prep-grid .prep-card .pc-row{padding:10px 12px;gap:11px;}
+.prep-grid .prep-card .pc-img,.prep-grid .prep-card .pc-noimg{width:54px;height:54px;border-radius:9px;flex-shrink:0;}   /* image-first, matches the prep list */
+.prep-grid .prep-card .pc-name{white-space:normal;font-size:15px;font-weight:600;line-height:1.22;}
+.prep-cols{display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px;align-items:start;}   /* Do Today (middle) is double width so it fills the wide 21" screen */
 .prep-col{background:var(--surface2);border:1px solid var(--border);border-radius:13px;padding:8px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden;}
 .prep-col-accent{position:absolute;top:0;left:0;right:0;height:3px;}
 .prep-col-head{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 8px;border-bottom:2px solid;margin-top:2px;}
@@ -452,15 +452,34 @@ body.style-v2 .btn,body.style-v2 .btn-primary,body.style-v2 .btn-danger{border-r
 .prep-card.missed{opacity:.9;}
 .prep-card.missed .pc-check{border-color:#ef4444;color:#ef4444;}
 .prep-readonly .prep-card{cursor:default;}
-/* 2 cards per row in each priority column (5 per side ≈ 10 per level) — a bit bigger than the old 12-up so they're easy to read */
-.prep-col-body{display:grid!important;grid-template-columns:1fr 1fr;gap:8px;align-content:start;}
-.prep-col-body .prep-card .pc-row{padding:9px 11px;gap:9px;}
-.prep-col-body .prep-card .pc-img,.prep-col-body .prep-card .pc-noimg{width:40px;height:40px;border-radius:8px;}
-.prep-col-body .prep-card .pc-name{font-size:13.5px;line-height:1.2;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}  /* up to 2 lines so long names still show fully */
-.prep-col-body .prep-card .pc-check{width:28px;height:28px;font-size:16px;}
+/* Cards are IMAGE-FIRST and bigger (staff recognise the photo before reading). Narrow columns
+   (Do First / Daily Tasks) run a single column; the wide Do Today runs two so it fills the screen. */
+.prep-col-body{display:grid!important;grid-template-columns:1fr;gap:8px;align-content:start;}
+.prep-col--wide .prep-col-body{grid-template-columns:1fr 1fr;}          /* Do Today → 2-up (holds ~16) */
+.prep-col--narrow .prep-col-body{grid-template-columns:1fr;}            /* Do First / Daily Tasks → 1-up (holds ~8) */
+.prep-col-body .prep-card .pc-row{padding:10px 12px;gap:12px;}
+.prep-col-body .prep-card .pc-img,.prep-col-body .prep-card .pc-noimg{width:58px;height:58px;border-radius:9px;flex-shrink:0;}
+.prep-col-body .prep-card .pc-name{font-size:16px;font-weight:600;line-height:1.22;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.prep-col-body .prep-card .pc-check{width:32px;height:32px;font-size:18px;}
+/* the 21" wall: go bigger still */
+body.view-wall .prep-col-body .prep-card .pc-img,body.view-wall .prep-col-body .prep-card .pc-noimg{width:66px;height:66px;}
+body.view-wall .prep-col-body .prep-card .pc-name{font-size:17px;}
+body.view-wall .prep-col-body .prep-card .pc-check{width:34px;height:34px;}
 .prep-col-body .prep-col-empty{grid-column:1/-1;}
-@media(max-width:560px){.prep-col-body{grid-template-columns:1fr;}}
-.prep-readonly .prep-col-body{grid-template-columns:1fr!important;}  /* Yesterday is a review view → full-width rows so name + arrow + cross all fit */
+@media(max-width:560px){.prep-col--wide .prep-col-body{grid-template-columns:1fr;}}
+.prep-readonly .prep-col-body{grid-template-columns:1fr!important;}  /* History/review view → full-width rows */
+/* Prep History tab: date picker + search + recent-day chips */
+.prep-hist-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.prep-hist-lab{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+.prep-hist-bar input[type=date]{background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);padding:7px 10px;font-size:14px;}
+.prep-hist-search{flex:1;min-width:200px;background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);padding:9px 12px;font-size:14px;outline:none;}
+.prep-hist-search:focus{border-color:var(--amber);}
+.prep-hist-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.prep-hist-chip{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text);white-space:nowrap;}
+.prep-hist-chip.on{background:var(--amber);border-color:var(--amber);color:#1a1205;}
+.prep-hist-results{display:flex;flex-direction:column;gap:6px;}
+.prep-hist-row{display:flex;gap:12px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:11px 13px;font-size:14px;cursor:pointer;}
+.prep-hist-row:hover{border-color:var(--amber);}
 .prep-readonly .prep-card .pc-name{-webkit-line-clamp:2;}
 .pp-pri{display:flex;gap:5px;padding:7px 9px 9px;border-top:1px solid var(--border);}
 .pp-pri-btn{flex:1;font-size:11px;font-weight:800;padding:5px 0;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;}
@@ -5081,13 +5100,13 @@ function _prepColsHTML(items,done,priMap,readonly){
     const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
     return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
   };
-  const COLS=[['high','Do First','#ef4444'],['med','Do Today','#f59e0b'],['recur','Daily Tasks','#a78bfa']];
+  const COLS=[['high','Do First','#ef4444','narrow'],['med','Do Today','#f59e0b','wide'],['recur','Daily Tasks','#a78bfa','narrow']];
   return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
     const key=c[0],label=c[1],col=c[2];const arr=groups[key];
     const dC=arr.filter(p=>done[p.id]).length;
     const head='<div class="prep-col-head" style="color:'+col+';border-color:'+col+';"><span>'+label+'</span><span class="pcq">'+dC+'/'+arr.length+'</span></div>';
     const body=arr.length?arr.map(card).join(''):'<div class="prep-col-empty">None</div>';
-    return '<div class="prep-col"><div class="prep-col-accent" style="background:'+col+';"></div>'+head+'<div class="prep-col-body">'+body+'</div></div>';
+    return '<div class="prep-col prep-col--'+c[3]+'"><div class="prep-col-accent" style="background:'+col+';"></div>'+head+'<div class="prep-col-body">'+body+'</div></div>';
   }).join('')+'</div>';
 }
 // recurring presets (daily / weekly / fortnightly / set dates) appear on today's list on their
@@ -5131,23 +5150,15 @@ function renderPrepPage(){
   _mergeRecurringPrep();            // then drop today's recurring items onto the list
   renderPrepUpcoming();
   const today=_prepToday();const presets=appData.prep_presets||[];
-  // ── Yesterday tab data ──
-  const yest=appData.prep_yesterday||null;
-  const yItems=yest?((yest.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean)):[];
-  const yDone=yest?(yest.done||{}):{};
-  const yMissed=yItems.filter(p=>!yDone[p.id]).length;
-  let tabs='<button class="prep-tab'+(_prepView!=='yesterday'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>';
-  const _yAcked=(yest&&_prepYestAck===yest.date);   // already reviewed this day's misses → don't strobe
-  if(yest&&yItems.length){tabs+='<button class="prep-tab'+(_prepView==='yesterday'?' active':'')+((_prepView!=='yesterday'&&yMissed&&!_yAcked)?' warn':'')+'" onclick="setPrepView(\'yesterday\')">Yesterday'+(yMissed?(' <span class="ptab-badge">'+yMissed+'</span>'):' ✓')+'</button>';}
-  // ── Yesterday view ──
-  if(_prepView==='yesterday'&&yest&&yItems.length){
-    if(_prepYestAck!==yest.date){_prepYestAck=yest.date;try{localStorage.setItem('bruno_prep_yest_ack',_prepYestAck);}catch(e){}}   // viewing it = acknowledged → stop the strobe
-    const dN=yItems.filter(p=>yDone[p.id]).length;
-    const sub='Yesterday’s Prep · <span class="pdate">'+_prepFullDate(yest.date)+'</span> · <b>'+dN+' of '+yItems.length+'</b> completed'+(yMissed?(' · <span style="color:#ef4444;font-weight:700;">⚠ '+yMissed+' not done</span>'):' · all done ✓');
-    _setPrepHeader(tabs,sub);
-    box.innerHTML=_prepColsHTML(yItems,yDone,yest.pri||{},true);
-    return;
-  }
+  // ── History tab (replaces the old Yesterday tab) ──
+  const hist=appData.prep_history||{};
+  const histDates=Object.keys(hist).filter(d=>(hist[d].items||[]).length).sort().reverse();
+  const recent=histDates[0]?hist[histDates[0]]:null;
+  const recentMissed=recent?((recent.items||[]).filter(id=>!((recent.done||{})[id])).length):0;   // most recent day's misses → badge/flash
+  const _hAcked=(histDates[0]&&_prepYestAck===histDates[0]);
+  let tabs='<button class="prep-tab'+(_prepView!=='history'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>';
+  tabs+='<button class="prep-tab'+(_prepView==='history'?' active':'')+((_prepView!=='history'&&recentMissed&&!_hAcked)?' warn':'')+'" onclick="setPrepView(\'history\')">History'+(recentMissed?(' <span class="ptab-badge">'+recentMissed+'</span>'):'')+'</button>';
+  if(_prepView==='history'){ renderPrepHistory(box,tabs); return; }
   // ── Today view ──
   const pt=appData.prep_today||{};
   const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));
@@ -5168,8 +5179,37 @@ function renderPrepPage(){
 function _setPrepHeader(tabsHTML,subHTML){
   const ts=document.getElementById('prep-tabs-slot');if(ts)ts.innerHTML=tabsHTML;
   const ss=document.getElementById('prep-sub-slot');if(ss)ss.innerHTML=subHTML||'';
-  // "Clear list" wipes TODAY's list — hide it while reviewing Yesterday so it can't be pressed by mistake
-  const cb=document.getElementById('prep-clear-btn');if(cb)cb.style.display=(_prepView==='yesterday')?'none':'';
+  // "Clear list" wipes TODAY's list — hide it while reviewing History so it can't be pressed by mistake
+  const cb=document.getElementById('prep-clear-btn');if(cb)cb.style.display=(_prepView==='history')?'none':'';
+}
+let _prepHistDate='',_prepHistSearch='';
+function _prepHistPick(d){_prepHistDate=d;_prepHistSearch='';renderPrepPage();}
+function _prepHistSearchInput(v){_prepHistSearch=v;renderPrepPage();}
+function renderPrepHistory(box,tabs){
+  const hist=appData.prep_history||{}, presets=appData.prep_presets||[];
+  const dates=Object.keys(hist).filter(d=>(hist[d].items||[]).length).sort().reverse();
+  if(dates[0]&&_prepYestAck!==dates[0]){_prepYestAck=dates[0];try{localStorage.setItem('bruno_prep_yest_ack',_prepYestAck);}catch(e){}}   // viewing = acknowledged → stop the flash
+  if(!dates.length){_setPrepHeader(tabs,'Prep History');box.innerHTML='<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:15px;color:var(--text);font-weight:600;">No history yet</div><div style="font-size:13px;color:var(--muted);margin-top:5px;">Completed prep days will appear here from tomorrow.</div></div>';return;}
+  if(!_prepHistDate||!hist[_prepHistDate])_prepHistDate=dates[0];
+  const q=(_prepHistSearch||'').trim().toLowerCase();
+  const minD=dates[dates.length-1],maxD=dates[0];
+  const controls='<div class="prep-hist-bar"><label class="prep-hist-lab">Day <input type="date" id="prep-hist-date" min="'+minD+'" max="'+maxD+'" value="'+_prepHistDate+'" onchange="_prepHistPick(this.value)"></label>'
+    +'<input class="prep-hist-search" type="text" placeholder="Search an item across all days…" value="'+_mEsc(_prepHistSearch||'')+'" oninput="_prepHistSearchInput(this.value)"></div>';
+  const chips='<div class="prep-hist-chips">'+dates.slice(0,12).map(function(d){const h=hist[d];const miss=(h.items||[]).filter(id=>!((h.done||{})[id])).length;return '<span class="prep-hist-chip'+(d===_prepHistDate&&!q?' on':'')+'" onclick="_prepHistPick(\''+d+'\')">'+_prepDateLabel(d)+(miss?(' <b style="color:#ef4444;">'+miss+'✗</b>'):' <b style="color:var(--green);">✓</b>')+'</span>';}).join('')+'</div>';
+  if(q){
+    const rows=[];
+    dates.forEach(function(d){const h=hist[d];(h.items||[]).forEach(function(id){const p=presets.find(x=>x.id===id);if(p&&(p.name||'').toLowerCase().includes(q)){const dn=!!((h.done||{})[id]);rows.push('<div class="prep-hist-row" onclick="_prepHistPick(\''+d+'\')"><span style="flex:1;font-weight:600;">'+_mEsc(p.name)+'</span><span style="color:var(--muted);">'+_prepDateLabel(d)+'</span><span style="color:'+(dn?'var(--green)':'#ef4444')+';font-weight:700;min-width:66px;text-align:right;">'+(dn?'✓ done':'✗ missed')+'</span></div>');}});});
+    _setPrepHeader(tabs,'Prep History · search “'+_mEsc(q)+'” · '+rows.length+' found');
+    box.innerHTML=controls+chips+(rows.length?('<div class="prep-hist-results">'+rows.join('')+'</div>'):'<div class="empty-state" style="padding:24px;">Nothing matching “'+_mEsc(q)+'” in history.</div>');
+    return;
+  }
+  const h=hist[_prepHistDate];
+  const items=(h.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean);
+  const done=h.done||{};
+  const dN=items.filter(p=>done[p.id]).length,miss=items.length-dN;
+  const sub='Prep History · <span class="pdate">'+_prepFullDate(_prepHistDate)+'</span> · <b>'+dN+' of '+items.length+'</b> done'+(miss?(' · <span style="color:#ef4444;font-weight:700;">✗ '+miss+' missed</span>'):' · all done ✓');
+  _setPrepHeader(tabs,sub);
+  box.innerHTML=controls+chips+_prepColsHTML(items,done,h.pri||{},true);
 }
 function completePrep(id){
   const today=_prepToday();appData.prep_today=appData.prep_today||{};
@@ -5215,16 +5255,21 @@ function openPrepBuild(dateStr){_prepBuildDate=dateStr||_prepToday();document.ge
 // today, otherwise carrying the same items forward.
 function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled=appData.prep_scheduled||{};const sch=appData.prep_scheduled;const pt=appData.prep_today||{};let changed=false;
   if(pt.date && pt.date!==today){
-    appData.prep_yesterday={date:pt.date,items:(pt.items||[]).slice(),pri:Object.assign({},pt.pri||{}),done:Object.assign({},pt.done||{})};
+    // archive the day that just ended into history (browse it in the History tab)
+    appData.prep_history=appData.prep_history||{};
+    if((pt.items||[]).length){appData.prep_history[pt.date]={items:(pt.items||[]).slice(),pri:Object.assign({},pt.pri||{}),done:Object.assign({},pt.done||{})};}
+    const _hk=Object.keys(appData.prep_history).sort();if(_hk.length>120)_hk.slice(0,_hk.length-120).forEach(k=>delete appData.prep_history[k]);   // keep ~4 months
+    appData.prep_yesterday={date:pt.date,items:(pt.items||[]).slice(),pri:Object.assign({},pt.pri||{}),done:Object.assign({},pt.done||{})};   // kept for the "not done" badge
     const s=sch[today];
-    appData.prep_today={date:today,items:((s?s.items:pt.items)||[]).slice(),pri:Object.assign({},(s?s.pri:pt.pri)||{}),done:{}};
+    // NEW DAY: load a list only if one was scheduled for today; otherwise start BLANK (recurring daily tasks re-appear on their own)
+    appData.prep_today={date:today,items:((s?s.items:[])||[]).slice(),pri:Object.assign({},(s?s.pri:{})||{}),done:{}};
     if(s)delete sch[today];
     changed=true;
   }else if(!pt.date && sch[today]){
     const s=sch[today];appData.prep_today={date:today,items:(s.items||[]).slice(),pri:Object.assign({},s.pri||{}),done:{}};delete sch[today];changed=true;
   }
   Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});
-  if(changed)saveKeys(['prep_today','prep_scheduled','prep_yesterday']);}
+  if(changed)saveKeys(['prep_today','prep_scheduled','prep_yesterday','prep_history']);}
 function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');if(!el)return;const sch=appData.prep_scheduled||{};const today=_prepToday();
   const dates=Object.keys(sch).filter(d=>d>today&&(sch[d].items||[]).length).sort();
   if(!dates.length){el.style.display='none';el.innerHTML='';return;}
