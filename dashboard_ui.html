@@ -223,6 +223,17 @@ body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-
 /* flex:0 0 auto is the fix: in a COLUMN the inherited flex:1 was shrinking the buttons to ~16px */
 body.style-v2 #rot-live .rl-actions button{flex:0 0 auto;height:50px;min-width:158px;width:100%;padding:0 18px;border-radius:12px;font-size:15px;font-weight:700;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
+/* PHONE: the row/wrap layout crammed the big number, the "Square live" line and the 4 buttons
+   together (the foot's border-top even read as a stray line beside the number). Stack the card:
+   number centred on top, status under it, actions as a 2x2 grid. */
+@media (max-width:600px){
+  body.style-v2 #rl-bbq .rl-card,body.style-v2 #rl-fry .rl-card{flex-direction:column;align-items:stretch;gap:12px;}
+  body.style-v2 #rot-live .rl-hero{align-items:center;width:100%;}
+  body.style-v2 #rot-live .rl-heroRow{justify-content:center;}
+  body.style-v2 #rot-live .rl-foot{flex-direction:row;align-items:center;justify-content:center;gap:16px;border-top:1px solid var(--border2);padding-top:10px;width:100%;}
+  body.style-v2 #rot-live .rl-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;}
+  body.style-v2 #rot-live .rl-actions button{min-width:0;width:100%;height:46px;}
+}
 .probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
 body.style-v2 .probe-lost{align-self:center;}
 .p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
