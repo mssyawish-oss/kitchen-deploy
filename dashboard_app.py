@@ -4968,6 +4968,25 @@ def send_reminder():
     sent=_send_reminder_once(to,msg) if to else False   # per-day dedup: many open dashboards → still one email
     return jsonify({"ok":True,"sent":sent})
 
+@app.route("/api/supplier_sms_test",methods=["POST"])
+def supplier_sms_test():
+    """Fire a one-off test text to the number(s) in a supplier's reminder field — so the owner can
+    prove SMS works without waiting for the scheduled slot. Same multi-number split as the reminder."""
+    d=request.get_json(silent=True) or {}
+    numbers=[n.strip() for n in re.split(r"[,;\n]+",str(d.get("phone","") or "")) if n.strip()]
+    if not numbers: return jsonify({"ok":False,"error":"Enter a mobile number first."})
+    cs=db.get("clicksend") or {}
+    if not (cs.get("user") and cs.get("key")):
+        return jsonify({"ok":False,"error":"ClickSend isn't set up yet — add it under Comp/SMS settings."})
+    msg="Bruno's test ✅ Order reminders are working. You'll get a text like this at your set time."
+    okc=0;errs=[]
+    for num in numbers:
+        try: ok,err=_clicksend_sms(num,msg)
+        except Exception as e: ok,err=False,str(e)[:140]
+        if ok: okc+=1
+        else: errs.append((num+": "+(err or "failed")))
+    return jsonify({"ok":okc>0,"sent":okc,"error":("" if okc else "; ".join(errs) or "send failed")})
+
 @app.route("/api/test_email",methods=["POST"])
 def test_email_route():
     data=request.get_json(silent=True) or {}
