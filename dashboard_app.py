@@ -4933,6 +4933,9 @@ def send_orders():
     for sup_id,items in orders.items():
         sup=next((s for s in suppliers if s["id"]==sup_id),None)
         if not sup: continue
+        if not (sup.get("email") or "").strip():   # email is optional now — no address = nothing to send to
+            errors.append(f"{sup.get('name','This supplier')} has no order email — add one in Setup, or just read/print the order.")
+            continue
         lines="\n".join(f"  - {i['name']}: {i['qty']} x {i['unit']}" for i in items)
         covering=f"\nCovering: {days_str}\n" if days_str else ""
         body=f"Hi {sup['name']},\n\nPlease process the following order:\n\n{lines}\n{covering}\nOrder placed: {now}\n\nThank you."
