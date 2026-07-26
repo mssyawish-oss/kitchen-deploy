@@ -1384,12 +1384,27 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .lbl-chip{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
 .lbl-chip.on{background:var(--acc);border-color:var(--acc);color:#0b0c10;}
 .prep-card.lbl-pick.sel{outline:2px solid var(--acc);outline-offset:1px;}
+/* label screen = full-screen, item cards are the main area, controls+preview tucked to one side */
+#label-modal>.modal.lbl-modal-full{max-width:none!important;width:97vw!important;height:95vh!important;max-height:95vh!important;display:flex;flex-direction:column;}
+.lbl-layout{display:flex;gap:16px;flex:1;min-height:0;margin-top:6px;}
+.lbl-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+.lbl-main #lbl-item-grid{flex:1;min-height:0;overflow-y:auto;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));}
+.lbl-side{flex:0 0 300px;display:flex;flex-direction:column;gap:16px;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:16px;overflow-y:auto;}
+@media(max-width:820px){.lbl-layout{flex-direction:column;}.lbl-side{flex:0 0 auto;flex-direction:row;flex-wrap:wrap;align-items:flex-start;}}
 #lbl-preview-wrap{display:flex;justify-content:flex-start;}
 .lbl-preview{width:200px;min-height:104px;background:#fff;color:#000;border:1px solid #cbd3dd;border-radius:6px;padding:9px 10px;font-family:'Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;flex-direction:column;}
 .lbl-preview .lp-item{font-size:16px;font-weight:800;line-height:1.05;letter-spacing:-.01em;word-break:break-word;}
 .lbl-preview .lp-row{font-size:11px;margin-top:4px;color:#111;}
 .lbl-preview .lp-useby{margin-top:6px;font-size:12.5px;font-weight:800;border:2px solid #000;border-radius:5px;padding:2px 6px;text-align:center;}
 .lbl-preview .lp-empty{color:#888;font-size:12px;text-align:center;margin:auto;}
+/* Staff setup list — tight, aligned columns (was flung across the full width) */
+#staff-list-admin{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:4px 22px;}
+.staff-row{display:flex;align-items:center;gap:12px;padding:7px 10px;border-bottom:1px solid var(--border);border-radius:8px;}
+.staff-row:hover{background:var(--surface2);}
+.staff-name{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.staff-role{flex:0 0 auto;text-transform:capitalize;}
+.staff-pin{flex:0 0 74px;font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:right;}
+.staff-row .staff-edit,.staff-row .staff-del{flex:0 0 auto;padding:4px 10px;font-size:12px;}
 </style>
 </head>
 <body>
@@ -1726,25 +1741,32 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 </div>
 
 <div class="modal-overlay" id="label-modal">
-  <div class="modal" style="max-width:640px;">
+  <div class="modal lbl-modal-full">
     <div class="modal-header"><div class="modal-title">PRINT PREP LABELS</div><button class="modal-close" onclick="closeModal('label-modal')">Close</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Pick what you prepped, who you are, and how many labels — it prints stickers with the use-by worked out for you.</div>
-    <div class="lbl-step"><div class="lbl-step-h">1 · What did you prep?</div><input class="input" id="lbl-search" placeholder="Search items…" oninput="renderLabelItems()" style="margin-bottom:8px;"><div id="lbl-item-grid" class="prep-grid"></div></div>
-    <div class="lbl-step"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="flex:1;min-width:230px;">
-        <div class="lbl-step-h">2 · How many labels?</div>
-        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;">
-          <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(-1)">&minus;</button>
-          <span id="lbl-qty" style="font-family:var(--font-mono);font-size:28px;font-weight:700;min-width:42px;text-align:center;">1</span>
-          <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(1)">+</button>
-          <span style="font-size:12px;color:var(--muted);margin-left:6px;">Use-by:</span>
-          <input class="input" id="lbl-shelf" type="number" step="0.5" min="0" style="width:70px;text-align:center;" oninput="renderLabelPreview()" title="shelf-life in days"><span style="font-size:12px;color:var(--muted);">days</span>
-        </div>
+    <div class="lbl-layout">
+      <div class="lbl-main">
+        <div class="lbl-step-h">1 · What did you prep?</div>
+        <input class="input" id="lbl-search" placeholder="Search items…" oninput="renderLabelItems()" style="margin-bottom:10px;">
+        <div id="lbl-item-grid" class="prep-grid"></div>
       </div>
-      <div style="flex:0 0 auto;"><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
-    </div></div>
-    <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:17px;padding:13px;margin-top:6px;" onclick="openStaffPick()">Print labels</button>
-    <div id="lbl-status" style="font-size:12.5px;margin-top:8px;min-height:16px;color:var(--muted);text-align:center;"></div>
+      <div class="lbl-side">
+        <div>
+          <div class="lbl-step-h">2 · How many labels?</div>
+          <div class="row" style="gap:10px;align-items:center;">
+            <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(-1)">&minus;</button>
+            <span id="lbl-qty" style="font-family:var(--font-mono);font-size:28px;font-weight:700;min-width:42px;text-align:center;">1</span>
+            <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(1)">+</button>
+          </div>
+          <div class="row" style="gap:8px;align-items:center;margin-top:10px;">
+            <span style="font-size:12px;color:var(--muted);">Use-by:</span>
+            <input class="input" id="lbl-shelf" type="number" step="0.5" min="0" style="width:70px;text-align:center;" oninput="renderLabelPreview()" title="shelf-life in days"><span style="font-size:12px;color:var(--muted);">days</span>
+          </div>
+        </div>
+        <div><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
+        <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:17px;padding:13px;" onclick="openStaffPick()">Print labels</button>
+        <div id="lbl-status" style="font-size:12.5px;min-height:16px;color:var(--muted);text-align:center;"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1949,7 +1971,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="staff-list-admin"></div>
     <div style="display:grid;grid-template-columns:1fr 80px 110px;gap:6px;margin-top:8px;align-items:end;">
       <div><div class="label">Name</div><input class="input" id="new-staff-name" placeholder="Sarah"></div>
-      <div><div class="label">PIN (4–8 digits)</div><input class="input" id="new-staff-pin" type="number" placeholder="1234"></div>
+      <div><div class="label">PIN <span style="color:var(--muted);font-weight:400;">(4–8 digits, or leave blank)</span></div><input class="input" id="new-staff-pin" type="text" inputmode="numeric" maxlength="8" placeholder="optional"></div>
       <div><div class="label">Role</div><select class="input" id="new-staff-role" style="background:var(--surface2);"><option value="cashier">Cashier</option><option value="kitchen">Kitchen</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
     </div>
     <button class="btn btn-primary mt-8" id="btn-add-staff" style="width:100%;" onclick="addStaff()">+ Add Staff</button>
@@ -5379,6 +5401,7 @@ function renderLabelPreview(){
     '<div class="lp-useby">USE BY  '+useby+'</div>';
 }
 // On "Print labels" → pop up the staff picker showing only who's CLOCKED ON (Square open timecard), then print.
+function _kitchenStaff(){return (appData.staff||[]).filter(s=>s.name&&(s.role||'').toLowerCase()==='kitchen').map(s=>s.name);}   // prep/labels are a kitchen job → don't list cashiers/admin
 function openStaffPick(){
   const st=document.getElementById('lbl-status');
   if(!_lblItem){if(st){st.textContent='Pick an item first.';st.style.color='var(--red)';}return;}
@@ -5389,7 +5412,7 @@ function openStaffPick(){
   if(g('lbl-sm-status'))g('lbl-sm-status').textContent='';
   const pick=g('lbl-staff-pick'); if(pick)pick.innerHTML='<div style="color:var(--muted);font-size:13px;">Loading who’s on…</div>';
   openModal('lbl-staff-modal');
-  const _drawAll=()=>{ const names=(appData.staff||[]).map(s=>s.name).filter(Boolean); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>'; };
+  const _drawAll=()=>{ const names=_kitchenStaff(); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No kitchen staff yet — add them in Settings → Staff.</div>'; };
   fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
     let names=((d&&d.names)||[]).filter(Boolean);
     if(!pick)return;
@@ -5431,7 +5454,7 @@ function _pl2Open(id){
     el.innerHTML='<span style="color:var(--muted);font-size:12.5px;">Loading who&rsquo;s on&hellip;</span>';
     const draw=names=>{el.innerHTML=names.length?names.map(n=>'<div class="lbl-chip'+(_pl2Staff===n?' on':'')+'" onclick="_pl2Pick('+_jsq(n)+')">'+_mEsc(n)+'</div>').join('')
       :'<span style="color:var(--muted);font-size:12.5px;">No staff yet &mdash; add them in Settings &rarr; Staff.</span>';};
-    const all=()=>draw((appData.staff||[]).map(s=>s.name).filter(Boolean));
+    const all=()=>draw(_kitchenStaff());
     fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
       const n=((d&&d.names)||[]).filter(Boolean);
       if(n.length===1){_pl2Staff=n[0];_pl2Prev();}   // only one person on — preselect them
@@ -5666,10 +5689,30 @@ function saveGoogleConfig(){const body={};const cid=document.getElementById('g-c
 function testGoogle(){const s=document.getElementById('google-status');s.textContent='Testing Gmail + Drive…';s.style.color='var(--muted)';fetch('/api/google_test').then(r=>r.json()).then(d=>{if(d.ok){s.innerHTML='✓ '+(d.detail||'Connected');s.style.color='var(--green)';}else{s.textContent='✗ '+(d.error||'failed');s.style.color='var(--red)';}}).catch(()=>{s.textContent='Could not reach server.';s.style.color='var(--red)';});}
 async function saveEmailConfig(){const email=document.getElementById('cfg-email').value.trim();const pass=document.getElementById('cfg-apppass').value.trim();const status=document.getElementById('email-status');if(!email||!pass){status.textContent='Enter email and password.';status.style.color='var(--red)';return;}appData.email_config={smtp_host:'smtp.gmail.com',smtp_port:587,smtp_user:email,smtp_pass:pass.replace(/\s/g,''),from_addr:email};await saveAppData();status.textContent='Saved!';status.style.color='var(--green)';}
 async function testEmail(){const status=document.getElementById('email-status');status.textContent='Sending...';status.style.color='var(--muted)';try{const r=await fetch('/api/test_email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:(appData.email_config||{}).smtp_user||''})});const d=await r.json();status.textContent=d.ok?'Test sent!':'Error: '+d.error;status.style.color=d.ok?'var(--green)':'var(--red)';}catch(e){status.textContent='Error';status.style.color='var(--red)';}}
-function renderStaffAdmin(){document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">${s.name}</span><span class="tag tag-amber">${s.role}</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">PIN: ${s.pin}</span><span><button class="btn" style="padding:3px 8px;font-size:11px;margin-right:4px;" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="removeStaff(${i})">&#10005;</button></span></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
-function addStaff(){const name=document.getElementById('new-staff-name').value.trim();const pin=String(document.getElementById('new-staff-pin').value).trim();const role=document.getElementById('new-staff-role').value;if(!name||pin.length<4||pin.length>8||isNaN(pin)){alert('Enter a name and a PIN of 4 to 8 digits.');return;}if((appData.staff||[]).find(s=>s.pin===pin&&s.id!==editingStaff)){alert('PIN already in use.');return;}appData.staff=appData.staff||[];if(editingStaff){const ex=appData.staff.find(s=>s.id===editingStaff);if(ex)Object.assign(ex,{name,pin,role});editingStaff=null;setBtn('btn-add-staff','+ Add Staff');}else{appData.staff.push({id:'staff_'+Date.now(),name,pin,role});}saveAppData();renderStaffAdmin();document.getElementById('new-staff-name').value='';document.getElementById('new-staff-pin').value='';}
-function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;editingStaff=s.id;document.getElementById('new-staff-name').value=s.name||'';document.getElementById('new-staff-pin').value=s.pin||'';document.getElementById('new-staff-role').value=s.role||'cashier';setBtn('btn-add-staff','Save Changes');document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
-function removeStaff(i){if(!confirm('Remove?'))return;appData.staff.splice(i,1);saveAppData();renderStaffAdmin();}
+function renderStaffAdmin(){document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="staff-row"><span class="staff-name">${_mEsc(s.name||'')}</span><span class="tag tag-amber staff-role">${_mEsc(s.role||'')}</span><span class="staff-pin">PIN ${_mEsc(s.pin||'')}</span><button class="btn staff-edit" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger staff-del" onclick="removeStaff(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
+function _staffFormClear(){editingStaff=null;setBtn('btn-add-staff','+ Add Staff');const g=id=>document.getElementById(id);if(g('new-staff-name'))g('new-staff-name').value='';if(g('new-staff-pin'))g('new-staff-pin').value='';if(g('new-staff-role'))g('new-staff-role').value='cashier';}
+function addStaff(){
+  const name=document.getElementById('new-staff-name').value.trim();
+  const pin=String(document.getElementById('new-staff-pin').value||'').replace(/\s/g,'');
+  const role=document.getElementById('new-staff-role').value;
+  if(!name){alert('Enter a name.');return;}
+  if(pin && !/^\d{4,8}$/.test(pin)){alert('PIN must be 4 to 8 digits — or leave it blank.');return;}   // PIN is now OPTIONAL
+  appData.staff=appData.staff||[];
+  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==editingStaff)){alert('That PIN is already used by another staff member.');return;}
+  if(editingStaff!==null&&editingStaff!==undefined&&appData.staff[editingStaff]){   // EDIT (tracked by index → works even without an id)
+    const ex=appData.staff[editingStaff];ex.name=name;ex.pin=pin;ex.role=role;if(!ex.id)ex.id='staff_'+Date.now();
+  }else{
+    appData.staff.push({id:'staff_'+Date.now(),name,pin,role});
+  }
+  saveAppData();renderStaffAdmin();_staffFormClear();
+}
+function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;editingStaff=i;   // track by INDEX
+  document.getElementById('new-staff-name').value=s.name||'';
+  document.getElementById('new-staff-pin').value=s.pin||'';
+  document.getElementById('new-staff-role').value=s.role||'cashier';
+  setBtn('btn-add-staff','Save Changes');
+  document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
+function removeStaff(i){if(!confirm('Remove this staff member?'))return;appData.staff.splice(i,1);if(editingStaff===i)_staffFormClear();else if(typeof editingStaff==='number'&&editingStaff>i)editingStaff--;saveAppData();renderStaffAdmin();}
 
 // ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they
 //    keep running across pages and survive a refresh; a finished timer rings the "Batch timer" alarm. ──
