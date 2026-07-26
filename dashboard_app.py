@@ -4507,6 +4507,29 @@ def api_print_labels():
 @app.route("/api/orders")
 def api_orders():
     return jsonify(ORDERS_LIVE)
+@app.route("/api/orders_debug")
+def api_orders_debug():
+    # TEMP diagnostic: why do in-store orders not show on the board? Dumps recent orders' state/source/fulfillment.
+    cfg=db.get("square_config",{}) or {}
+    token=(cfg.get("access_token") or "").strip(); loc=(cfg.get("location_id") or "").strip()
+    if not token or not loc: return jsonify({"ok":False,"error":"no square config"})
+    begin=(datetime.now(timezone.utc)-timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":begin}},"state_filter":{"states":["OPEN","COMPLETED"]}},"sort":{"sort_field":"CREATED_AT","sort_order":"DESC"}},"limit":200}
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(q).encode(),headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:200]})
+    rows=[]
+    for o in (data.get("orders") or [])[:90]:
+        ff=[{"type":("PICKUP" if fu.get("pickup_details") else "DELIVERY" if fu.get("delivery_details") else (fu.get("type") or "?")),"state":fu.get("state")} for fu in (o.get("fulfillments") or [])]
+        rows.append({"id":(o.get("id") or "")[-6:],"state":o.get("state"),"src":(o.get("source") or {}).get("name") or "","ff":ff,"nff":len(ff),"items":len(o.get("line_items") or [])})
+    from collections import Counter
+    return jsonify({"ok":True,"count":len(rows),
+        "by_state":dict(Counter(r["state"] for r in rows)),
+        "by_source":dict(Counter((r["src"] or "(none)") for r in rows)),
+        "with_NO_fulfillment":sum(1 for r in rows if not r["ff"]),
+        "orders":rows})
 @app.route("/api/order_ack",methods=["POST"])
 def api_order_ack():
     oid=str((request.get_json(silent=True) or {}).get("id","") or "")
