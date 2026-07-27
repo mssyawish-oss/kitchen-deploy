@@ -1566,7 +1566,8 @@ def api_dialpad_config():
         d=request.get_json(silent=True) or {}
         with data_lock:
             cfg=dict(db.get("dialpad") or {})
-            if str(d.get("api_key") or "").strip(): cfg["api_key"]=str(d["api_key"]).strip()   # blank = keep saved key
+            _k=str(d.get("key") or d.get("api_key") or "").strip()   # browser sends "key"; accept "api_key" too. blank = keep saved
+            if _k: cfg["api_key"]=_k
             if "target_id" in d: cfg["target_id"]=str(d.get("target_id") or "").strip()
             if "target_type" in d: cfg["target_type"]=(str(d.get("target_type") or "").strip() or "department")
             if "sms_text" in d: cfg["sms_text"]=str(d.get("sms_text") or "")[:300]
@@ -1599,7 +1600,8 @@ def api_dialpad_departments():
     out=[]
     for o in offices:
         oid=o.get("id")
-        res,e2=_dialpad_get("/departments",{"office_id":oid,"limit":100})
+        if not oid: continue
+        res,e2=_dialpad_get("/offices/%s/departments"%oid,{"limit":100})   # Dialpad: GET /offices/{id}/departments
         if e2: continue
         for x in ((res.get("items") if isinstance(res,dict) else res) or []):
             if x.get("id"): out.append({"id":str(x.get("id")),"name":(x.get("name") or ("Dept "+str(x.get("id"))))})
