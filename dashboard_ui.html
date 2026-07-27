@@ -1963,20 +1963,16 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
     <div id="square-status" style="font-size:12px;min-height:16px;margin:8px 0;"></div>
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="saveSquareConfig()">Save</button><button class="btn" onclick="testSquare()">Test</button></div>
     <div class="divider"></div>
-    <div class="section-title">Phone Orders — text-back (press 1)</div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;color:#93c5fd;line-height:1.6;">When a caller presses <b>1</b> on your Dialpad phone menu, they automatically get a text with your online ordering link — nobody has to answer. <b>Set-up:</b> (1) in Dialpad, route menu option <b>1</b> to a department called <b>“Online Orders”</b>; (2) get a Dialpad <b>API key</b> (dialpad.com &#8594; Admin &#8594; Company Settings &#8594; Authentication &#8594; API Keys); (3) paste the key, load your list, pick that department, and switch it on. Texts go out through your existing ClickSend account — same as vouchers.</div>
-    <div class="form-row"><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="dp-enabled" style="width:18px;height:18px;"> <span>Text callers who press 1 the ordering link</span></label></div>
+    <div class="section-title">Phone Orders — text-back</div>
+    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;color:#93c5fd;line-height:1.6;">When a caller presses a menu option on your Dialpad phone, they automatically get a text with the right link — no one has to answer. Each <b>rule</b> below = one Dialpad <b>department</b> (the “bucket” a menu option forwards into) + the <b>link</b> to text back. Add as many as you like — e.g. an <b>Orders</b> rule and a <b>Catering</b> rule. <b>Set-up:</b> paste your Dialpad <b>API key</b> (dialpad.com &#8594; My Company &#8594; Authentication &#8594; API Keys), tap <b>Load my departments</b>, then for each rule pick its department + link and switch it on. Texts use your existing ClickSend account — same as vouchers.</div>
+    <div class="form-row"><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="dp-enabled" style="width:18px;height:18px;"> <span>Turn on phone-order text-backs</span></label></div>
     <div id="dp-sms-warn" style="display:none;font-size:11.5px;color:var(--amber);margin-bottom:6px;">⚠ ClickSend isn’t set up yet — set it up under Comp Vouchers first; phone-order texts use the same account.</div>
     <div class="form-row"><div class="label">Dialpad API key</div><input class="input" id="dp-key" type="password" autocomplete="new-password" placeholder="paste your Dialpad API key"></div>
-    <div class="row"><button class="btn" onclick="dialpadCheck()">Check key</button><span id="dp-key-status" style="font-size:12px;align-self:center;"></span></div>
-    <div class="form-row mt-8"><div class="label">“Press 1” goes to this Dialpad department</div>
-      <div class="row"><select class="input" id="dp-target" style="flex:1;background:var(--surface2);"><option value="">— load your list —</option></select><button class="btn" onclick="dialpadLoadDepts()">Load list</button></div></div>
-    <div class="form-row"><div class="label">…or paste the department ID by hand</div><input class="input" id="dp-target-manual" placeholder="e.g. 5123456789012345"></div>
-    <div class="form-row"><div class="label">Online ordering link (texted to callers)</div><input class="input" id="dp-url" placeholder="https://brunos-chicken-shop.square.site/" oninput="dialpadPreview()"></div>
-    <div class="form-row"><div class="label">Text message <span style="color:var(--muted);font-weight:400;">({link} = your link)</span></div><textarea class="input" id="dp-msg" rows="2" placeholder="Thanks for calling Bruno's! 🍗 Order online here: {link} — see you soon." oninput="dialpadPreview()"></textarea></div>
-    <div id="dp-preview" style="font-size:11.5px;color:var(--muted);margin-bottom:8px;"></div>
+    <div class="row"><button class="btn" onclick="dialpadCheck()">Check key</button><button class="btn" onclick="dialpadLoadDepts()">Load my departments</button><span id="dp-key-status" style="font-size:12px;align-self:center;"></span></div>
+    <div id="dp-rules" style="margin-top:12px;"></div>
+    <div class="row mt-8"><button class="btn" onclick="dialpadAddRule()">+ Add another link rule</button></div>
     <div id="dp-status" style="font-size:12px;min-height:16px;margin:8px 0;"></div>
-    <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="dialpadSave()">Save</button><input class="input" id="dp-test-phone" placeholder="04xx xxx xxx" style="max-width:150px;"><button class="btn" onclick="dialpadTest()">Send me a test</button></div>
+    <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="dialpadSave()">Save all</button><input class="input" id="dp-test-phone" placeholder="04xx xxx xxx (test #)" style="max-width:180px;"></div>
     <div class="divider"></div>
     <div class="section-title">Google (Gmail + Drive) — for Weekly Books <span id="google-conn-pill" style="font-size:11px;font-weight:700;margin-left:8px;"></span></div>
     <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;color:#93c5fd;line-height:1.6;">Lets the server read your <b>Uber/DoorDash payout emails</b> + <b>supplier invoices</b> 24/7 (read-only). You get these 3 values once from a Google Cloud OAuth client + the OAuth Playground — ask in chat for the step-by-step.</div>
@@ -3586,54 +3582,73 @@ function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.to
 function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}const _rg=document.getElementById('tr'+id);if(_rg){_rg.style.strokeDashoffset=(402.12*(1-pct/100)).toFixed(1);_rg.style.stroke=t.expired?'var(--red)':'';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_count_temp:'ps-count',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',standby_after_secs:'ps-standby-secs',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});const sb=document.getElementById('ps-standby');if(sb&&s.standby_steady!==undefined)sb.value=s.standby_steady?'1':'0';}
 function saveProbeSettingsFromModal(){const s={probe_count_temp:parseFloat(document.getElementById('ps-count').value),almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),standby_steady:document.getElementById('ps-standby').value==='1',standby_after_secs:parseInt(document.getElementById('ps-standby-secs').value)||60,printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
-// ── Dialpad phone-order text-back ──
-function _dpBody(){return {enabled:document.getElementById('dp-enabled').checked,
-  key:document.getElementById('dp-key').value.trim(),
-  target_id:(document.getElementById('dp-target').value||document.getElementById('dp-target-manual').value||'').trim(),
-  target_type:'department',
-  online_url:document.getElementById('dp-url').value.trim(),
-  sms_text:document.getElementById('dp-msg').value};}
-function _dpPost(cb){fetch('/api/dialpad_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_dpBody())})
-  .then(r=>r.json()).then(d=>{document.getElementById('dp-key').value='';if(cb)cb(d);}).catch(()=>{if(cb)cb({ok:false});});}
-function dialpadPreview(){const link=(document.getElementById('dp-url').value||'').trim()||'(your link)';
-  let t=(document.getElementById('dp-msg').value||'').trim()||"Thanks for calling Bruno's! 🍗 Order online here: {link} — see you soon.";
-  document.getElementById('dp-preview').textContent='Preview: '+t.replace('{link}',link);}
+// ── Dialpad phone-order text-back (multi-rule) ──
+let _dpRules=[], _dpDepts=[], _dpOnlineUrl='';
+const _DP_DEFMSG="Thanks for calling Bruno's! 🍗 Here's your link: {link} — see you soon.";
 function _dpStatus(st){const el=document.getElementById('dp-status');if(!el||!st)return;
   if(st.last_error)el.innerHTML='<span style="color:var(--red)">Last issue: '+_mEsc(st.last_error)+'</span>';
   else if(st.last_number)el.innerHTML='<span style="color:var(--green)">Working — last text sent to '+_mEsc(st.last_number)+'</span>';
-  else el.innerHTML='<span style="color:var(--muted)">Ready — waiting for the first “press 1” caller.</span>';}
+  else el.innerHTML='<span style="color:var(--muted)">Ready — waiting for the first caller.</span>';}
+function _dpDeptOptions(cur){cur=cur||'';let found=false;
+  let o='<option value="">— choose department —</option>';
+  _dpDepts.forEach(function(d){o+='<option value="'+_mEsc(d.id)+'"'+(d.id===cur?' selected':'')+'>'+_mEsc(d.name)+'</option>';if(d.id===cur)found=true;});
+  if(cur&&!found)o+='<option value="'+_mEsc(cur)+'" selected>Saved ('+_mEsc(cur)+')</option>';
+  return o;}
+function _dpSet(i,f,v){if(!_dpRules[i])return;_dpRules[i][f]=v;
+  if(f==='link'||f==='sms_text'){const el=document.getElementById('dp-prev-'+i);if(el){const link=(_dpRules[i].link||'').trim()||'(your link)';const msg=(_dpRules[i].sms_text||'').trim()||_DP_DEFMSG;el.textContent='Preview: '+msg.replace('{link}',link);}}}
+function dialpadRenderRules(){const host=document.getElementById('dp-rules');if(!host)return;
+  if(!_dpRules.length){host.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No rules yet — tap “+ Add another link rule” to make one (e.g. Orders, Catering).</div>';return;}
+  host.innerHTML=_dpRules.map(function(r,i){
+    const link=(r.link||'').trim()||'(your link)';
+    const msg=(r.sms_text||'').trim()||_DP_DEFMSG;
+    return '<div style="border:1px solid var(--border2);border-radius:10px;padding:12px;margin-bottom:10px;">'
+      +'<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;"><input class="input" style="max-width:220px;font-weight:700;" placeholder="Rule name (e.g. Orders)" value="'+_mEsc(r.label||'')+'" oninput="_dpSet('+i+',&#39;label&#39;,this.value)"><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="dialpadRemoveRule('+i+')">Remove</button></div>'
+      +'<div class="form-row"><div class="label">Which Dialpad department (the menu option that forwards here)</div><select class="input" style="background:var(--surface2);" onchange="_dpSet('+i+',&#39;target_id&#39;,this.value)">'+_dpDeptOptions(r.target_id||'')+'</select></div>'
+      +'<div class="form-row"><div class="label">…or paste the department ID by hand</div><input class="input" placeholder="e.g. 5123456789012345" value="'+_mEsc(r.target_id||'')+'" oninput="_dpSet('+i+',&#39;target_id&#39;,this.value)"></div>'
+      +'<div class="form-row"><div class="label">Link to text</div><input class="input" placeholder="https://…" value="'+_mEsc(r.link||'')+'" oninput="_dpSet('+i+',&#39;link&#39;,this.value)"></div>'
+      +'<div class="form-row"><div class="label">Text message <span style="color:var(--muted);font-weight:400;">({link} = the link above)</span></div><textarea class="input" rows="2" placeholder="'+_mEsc(_DP_DEFMSG)+'" oninput="_dpSet('+i+',&#39;sms_text&#39;,this.value)">'+_mEsc(r.sms_text||'')+'</textarea></div>'
+      +'<div id="dp-prev-'+i+'" style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Preview: '+_mEsc(msg.replace('{link}',link))+'</div>'
+      +'<button class="btn" style="font-size:12px;padding:5px 10px;" onclick="dialpadTest('+i+')">Send me a test of this rule</button>'
+      +'</div>';
+  }).join('');}
+function dialpadAddRule(){_dpRules.push({id:'r'+Date.now(),label:'',target_id:'',target_type:'department',link:'',sms_text:''});dialpadRenderRules();}
+function dialpadRemoveRule(i){_dpRules.splice(i,1);dialpadRenderRules();}
 function dialpadLoad(){fetch('/api/dialpad_config').then(r=>r.json()).then(c=>{
   document.getElementById('dp-enabled').checked=!!c.enabled;
   document.getElementById('dp-key').value='';
   document.getElementById('dp-key').placeholder=c.has_key?'saved — leave blank to keep':'paste your Dialpad API key';
-  document.getElementById('dp-url').value=c.online_url||'';
-  document.getElementById('dp-msg').value=c.sms_text||'';
-  document.getElementById('dp-target-manual').value=c.target_id||'';
   const w=document.getElementById('dp-sms-warn');if(w)w.style.display=c.sms_ready?'none':'';
-  const sel=document.getElementById('dp-target');
-  if(c.target_id&&sel&&!sel.querySelector('option[value="'+c.target_id+'"]')){const o=document.createElement('option');o.value=c.target_id;o.textContent='Saved department ('+c.target_id+')';o.selected=true;sel.appendChild(o);}
-  dialpadPreview();_dpStatus(c.status);
+  _dpOnlineUrl=c.online_url||'';
+  _dpRules=(Array.isArray(c.routes)?c.routes:[]).map(function(r){return {id:r.id||('r'+Math.round(1e9*Math.random())),label:r.label||'',target_id:r.target_id||'',target_type:r.target_type||'department',link:r.link||'',sms_text:r.sms_text||''};});
+  if(!_dpRules.length)_dpRules=[{id:'orders',label:'Orders',target_id:'',target_type:'department',link:_dpOnlineUrl||'https://brunos-chicken-shop.square.site/',sms_text:''}];
+  dialpadRenderRules();_dpStatus(c.status);
 }).catch(()=>{});}
+function _dpSaveKey(cb){const key=document.getElementById('dp-key').value.trim();
+  if(!key){if(cb)cb();return;}
+  fetch('/api/dialpad_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})})
+    .then(()=>{document.getElementById('dp-key').value='';document.getElementById('dp-key').placeholder='saved — leave blank to keep';if(cb)cb();}).catch(()=>{if(cb)cb();});}
 function dialpadSave(){const s=document.getElementById('dp-status');s.textContent='Saving…';s.style.color='var(--muted)';
-  _dpPost(d=>{s.innerHTML=d.ok?'<span style="color:var(--green)">Saved.</span>':'<span style="color:var(--red)">Save failed</span>';dialpadLoad();});}
+  const body={enabled:document.getElementById('dp-enabled').checked,key:document.getElementById('dp-key').value.trim(),routes:_dpRules};
+  fetch('/api/dialpad_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{document.getElementById('dp-key').value='';s.innerHTML=d.ok?'<span style="color:var(--green)">Saved.</span>':'<span style="color:var(--red)">Save failed</span>';dialpadLoad();})
+    .catch(()=>{s.innerHTML='<span style="color:var(--red)">Save failed</span>';});}
 function dialpadCheck(){const st=document.getElementById('dp-key-status');st.textContent='Checking…';st.style.color='var(--muted)';
-  _dpPost(()=>fetch('/api/dialpad_check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json())
+  _dpSaveKey(function(){fetch('/api/dialpad_check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json())
     .then(d=>{st.textContent=d.ok?'✓ Key works':'✗ '+(d.error||'failed');st.style.color=d.ok?'var(--green)':'var(--red)';})
-    .catch(()=>{st.textContent='✗ failed';st.style.color='var(--red)';}));}
-function dialpadLoadDepts(){const sel=document.getElementById('dp-target');const st=document.getElementById('dp-key-status');
-  st.textContent='Loading…';st.style.color='var(--muted)';
-  _dpPost(()=>fetch('/api/dialpad_departments').then(r=>r.json()).then(d=>{
+    .catch(()=>{st.textContent='✗ failed';st.style.color='var(--red)';});});}
+function dialpadLoadDepts(){const st=document.getElementById('dp-key-status');st.textContent='Loading departments…';st.style.color='var(--muted)';
+  _dpSaveKey(function(){fetch('/api/dialpad_departments').then(r=>r.json()).then(d=>{
     if(!d.ok){st.textContent='✗ '+(d.error||'could not load');st.style.color='var(--red)';return;}
-    const cur=(document.getElementById('dp-target-manual').value||'').trim();
-    sel.innerHTML='<option value="">— choose —</option>'+(d.departments||[]).map(x=>'<option value="'+x.id+'"'+(x.id===cur?' selected':'')+'>'+_mEsc(x.name)+'</option>').join('');
-    st.textContent=(d.departments||[]).length?'✓ Pick your Orders menu':'None found — type the ID below';st.style.color=(d.departments||[]).length?'var(--green)':'var(--amber)';
-  }).catch(()=>{st.textContent='✗ could not load';st.style.color='var(--red)';}));}
-function dialpadTest(){const phone=(document.getElementById('dp-test-phone').value||'').trim();const s=document.getElementById('dp-status');
-  if(phone.replace(/\D/g,'').length<8){s.innerHTML='<span style="color:var(--red)">Enter a mobile to test with</span>';return;}
-  s.textContent='Saving & sending…';s.style.color='var(--muted)';
-  _dpPost(()=>fetch('/api/dialpad_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone})})
-    .then(r=>r.json()).then(d=>{s.innerHTML=d.ok?'<span style="color:var(--green)">Sent! Check your phone.</span>':'<span style="color:var(--red)">'+_mEsc(d.error||'failed')+'</span>';})
-    .catch(()=>{s.innerHTML='<span style="color:var(--red)">failed</span>';}));}
+    _dpDepts=d.departments||[];
+    st.textContent=_dpDepts.length?('✓ Loaded '+_dpDepts.length+' departments — pick them below'):'None found — type the ID by hand';
+    st.style.color=_dpDepts.length?'var(--green)':'var(--amber)';dialpadRenderRules();
+  }).catch(()=>{st.textContent='✗ could not load';st.style.color='var(--red)';});});}
+function dialpadTest(i){const phone=(document.getElementById('dp-test-phone').value||'').trim();const s=document.getElementById('dp-status');
+  if(phone.replace(/\D/g,'').length<8){s.innerHTML='<span style="color:var(--red)">Enter a mobile in the test box first</span>';return;}
+  const r=_dpRules[i]||{};s.textContent='Sending test…';s.style.color='var(--muted)';
+  fetch('/api/dialpad_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone,link:r.link||'',sms_text:r.sms_text||''})})
+    .then(x=>x.json()).then(d=>{s.innerHTML=d.ok?'<span style="color:var(--green)">Sent! Check your phone.</span>':'<span style="color:var(--red)">'+_mEsc(d.error||'failed')+'</span>';})
+    .catch(()=>{s.innerHTML='<span style="color:var(--red)">failed</span>';});}
 // ── ThermoWorks RFX (cloud) probe source ──
 let _rfxProbes=[], _rfxMap={};
 function rfxLoad(){fetch('/api/rfx_config').then(r=>r.json()).then(c=>{

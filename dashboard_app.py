@@ -1507,49 +1507,64 @@ def _dialpad_get(path,params=None):
             except Exception: pass
         return None,str(e)[:180]
 
-def _dialpad_order_msg():
-    """The text a phone-order caller receives. {link} is filled with the online ordering URL."""
-    tpl=((db.get("dialpad") or {}).get("sms_text") or "").strip()
-    link=(db.get("online_url") or "").strip()
-    if not tpl: tpl="Thanks for calling Bruno's! \U0001F357 Order online here: {link} — see you soon."
+def _dialpad_routes():
+    """The list of text-back rules. Each = {id,label,target_id,target_type,link,sms_text}.
+    Migrates the OLD single-target config into one 'Orders' rule so nothing breaks on upgrade."""
+    cfg=db.get("dialpad") or {}
+    routes=cfg.get("routes")
+    if isinstance(routes,list) and routes: return routes
+    if cfg.get("target_id"):                                    # legacy single-target → one Orders rule
+        return [{"id":"orders","label":"Orders","target_id":cfg.get("target_id"),
+                 "target_type":cfg.get("target_type") or "department",
+                 "link":(db.get("online_url") or "").strip(),"sms_text":cfg.get("sms_text") or ""}]
+    return []
+
+def _dialpad_route_msg(route):
+    """The text a caller receives for one rule. {link} is filled with that rule's link."""
+    tpl=(str(route.get("sms_text") or "")).strip()
+    link=(str(route.get("link") or "") or (db.get("online_url") or "")).strip()
+    if not tpl: tpl="Thanks for calling Bruno's! \U0001F357 Here's your link: {link} — see you soon."
     return tpl.replace("{link}",link).strip()
 
 def dialpad_poll_loop():
-    """Every 10s, find callers who pressed 1 (reached the Online Orders dept) and text them the link once."""
+    """Every 10s: for EACH rule, find callers who reached that rule's department and text them its link once."""
     while True:
         try:
             cfg=db.get("dialpad") or {}
-            if cfg.get("enabled") and ((cfg.get("api_key") or "").strip()) and cfg.get("target_id"):
+            routes=[r for r in _dialpad_routes() if r.get("target_id")]
+            if cfg.get("enabled") and ((cfg.get("api_key") or "").strip()) and routes:
                 now_ms=int(time.time()*1000)
                 baseline=int(cfg.get("since_ms") or 0)                 # only calls from when it was switched on
                 started_after=max(baseline,now_ms-15*60*1000)          # bounded 15-min look-back each poll
                 texted=list(cfg.get("texted") or [])
                 seen=set(str(x) for x in texted)
-                params={"target_id":cfg.get("target_id"),"target_type":cfg.get("target_type") or "department",
-                        "started_after":started_after}
-                new_sent=0; cursor=None
-                for _page in range(3):                                  # low volume; cap pages defensively
-                    if cursor: params["cursor"]=cursor
-                    res,err=_dialpad_get("/call",params)
-                    if err: _dialpad_status["last_error"]=err; break
-                    _dialpad_status["last_error"]=""
-                    calls=(res.get("items") if isinstance(res,dict) else res) or []
-                    for c in calls:
-                        cid=str(c.get("call_id") or c.get("id") or "")
-                        num=(c.get("external_number") or "").strip()
-                        started=int(c.get("date_started") or 0)
-                        direction=(c.get("direction") or "").lower()
-                        if not cid or not num or cid in seen: continue
-                        if started and started<baseline: continue       # older than switch-on
-                        if direction and direction!="inbound": continue
-                        ok,serr=_clicksend_sms(num,_dialpad_order_msg())
-                        seen.add(cid); texted.append(cid)
-                        if ok:
-                            new_sent+=1; _dialpad_status["last_number"]=num; _dialpad_status["last_ok"]=now_ms
-                        else:
-                            _dialpad_status["last_error"]="SMS: "+str(serr or "")[:120]
-                    cursor=(res.get("cursor") if isinstance(res,dict) else None)
-                    if not cursor: break
+                new_sent=0
+                for route in routes:                                   # one Dialpad query per rule (Orders, Catering, …)
+                    cursor=None
+                    for _page in range(3):                             # low volume; cap pages defensively
+                        params={"target_id":route.get("target_id"),"target_type":route.get("target_type") or "department",
+                                "started_after":started_after}
+                        if cursor: params["cursor"]=cursor
+                        res,err=_dialpad_get("/call",params)
+                        if err: _dialpad_status["last_error"]=err; break
+                        _dialpad_status["last_error"]=""
+                        calls=(res.get("items") if isinstance(res,dict) else res) or []
+                        for c in calls:
+                            cid=str(c.get("call_id") or c.get("id") or "")
+                            num=(c.get("external_number") or "").strip()
+                            started=int(c.get("date_started") or 0)
+                            direction=(c.get("direction") or "").lower()
+                            if not cid or not num or cid in seen: continue
+                            if started and started<baseline: continue   # older than switch-on
+                            if direction and direction!="inbound": continue
+                            ok,serr=_clicksend_sms(num,_dialpad_route_msg(route))
+                            seen.add(cid); texted.append(cid)
+                            if ok:
+                                new_sent+=1; _dialpad_status["last_number"]=num; _dialpad_status["last_ok"]=now_ms
+                            else:
+                                _dialpad_status["last_error"]="SMS: "+str(serr or "")[:120]
+                        cursor=(res.get("cursor") if isinstance(res,dict) else None)
+                        if not cursor: break
                 if new_sent or len(texted)>1200:
                     with data_lock:
                         d2=dict(db.get("dialpad") or {}); d2["texted"]=texted[-1000:]   # cap dedupe list
@@ -1568,9 +1583,18 @@ def api_dialpad_config():
             cfg=dict(db.get("dialpad") or {})
             _k=str(d.get("key") or d.get("api_key") or "").strip()   # browser sends "key"; accept "api_key" too. blank = keep saved
             if _k: cfg["api_key"]=_k
-            if "target_id" in d: cfg["target_id"]=str(d.get("target_id") or "").strip()
-            if "target_type" in d: cfg["target_type"]=(str(d.get("target_type") or "").strip() or "department")
-            if "sms_text" in d: cfg["sms_text"]=str(d.get("sms_text") or "")[:300]
+            if "routes" in d and isinstance(d["routes"],list):
+                clean=[]
+                for r in d["routes"][:10]:
+                    if not isinstance(r,dict): continue
+                    clean.append({"id":(str(r.get("id") or "").strip()[:40] or ("r"+str(len(clean)))),
+                                  "label":str(r.get("label") or "").strip()[:40],
+                                  "target_id":str(r.get("target_id") or "").strip(),
+                                  "target_type":(str(r.get("target_type") or "").strip() or "department"),
+                                  "link":str(r.get("link") or "").strip()[:200],
+                                  "sms_text":str(r.get("sms_text") or "")[:300]})
+                cfg["routes"]=clean
+                cfg.pop("target_id",None); cfg.pop("sms_text",None)   # retire the legacy single-target fields
             if "enabled" in d:
                 was=bool(cfg.get("enabled")); cfg["enabled"]=bool(d.get("enabled"))
                 if cfg["enabled"] and not was: cfg["since_ms"]=int(time.time()*1000)   # baseline: ignore old calls
@@ -1579,10 +1603,9 @@ def api_dialpad_config():
         return jsonify({"ok":True})
     cfg=db.get("dialpad") or {}
     return jsonify({"enabled":bool(cfg.get("enabled")),"has_key":bool((cfg.get("api_key") or "").strip()),
-                    "target_id":cfg.get("target_id",""),"target_type":cfg.get("target_type","department"),
-                    "sms_text":cfg.get("sms_text",""),"online_url":db.get("online_url",""),
+                    "routes":_dialpad_routes(),"online_url":db.get("online_url",""),
                     "sms_ready":bool((db.get("clicksend") or {}).get("user") and (db.get("clicksend") or {}).get("key")),
-                    "default_msg":_dialpad_order_msg(),"status":_dialpad_status})
+                    "status":_dialpad_status})
 
 @app.route("/api/dialpad_check",methods=["POST"])
 def api_dialpad_check():
@@ -1609,12 +1632,13 @@ def api_dialpad_departments():
 
 @app.route("/api/dialpad_test",methods=["POST"])
 def api_dialpad_test():
-    # Send the real order text to a number you choose, so you can see exactly what a caller gets.
+    # Send ONE rule's text to a number you choose, so you can see exactly what a caller gets.
     d=request.get_json(silent=True) or {}
     to=str(d.get("phone") or "").strip()
     if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
-    ok,err=_clicksend_sms(to,_dialpad_order_msg())
-    return jsonify({"ok":bool(ok),"error":err or "","sent":_dialpad_order_msg()})
+    msg=_dialpad_route_msg({"link":d.get("link"),"sms_text":d.get("sms_text")})
+    ok,err=_clicksend_sms(to,msg)
+    return jsonify({"ok":bool(ok),"error":err or "","sent":msg})
 
 @app.route("/api/rfx_config",methods=["GET","POST"])
 def api_rfx_config():
