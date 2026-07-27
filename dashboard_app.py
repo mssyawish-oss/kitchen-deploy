@@ -1515,7 +1515,7 @@ def _dialpad_order_msg():
     return tpl.replace("{link}",link).strip()
 
 def dialpad_poll_loop():
-    """Every 30s, find callers who pressed 1 (reached the Online Orders dept) and text them the link once."""
+    """Every 10s, find callers who pressed 1 (reached the Online Orders dept) and text them the link once."""
     while True:
         try:
             cfg=db.get("dialpad") or {}
@@ -1558,7 +1558,7 @@ def dialpad_poll_loop():
                 _dialpad_status["last_poll"]=now_ms
         except Exception as e:
             _dialpad_status["last_error"]=str(e)[:160]
-        time.sleep(30)
+        time.sleep(10)
 
 @app.route("/api/dialpad_config",methods=["GET","POST"])
 def api_dialpad_config():
