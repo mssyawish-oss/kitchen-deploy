@@ -1477,6 +1477,143 @@ def _comp_ok(code):
         if str(s.get("pin",""))==c and str(s.get("role","")).lower() in ("admin","manager"): return True
     return False
 
+# ── DIALPAD phone-order text-back ────────────────────────────────────────────
+# Goal: when a caller presses "1 — place an order" on the Dialpad phone menu, we
+# text them the online ordering link automatically. In Dialpad, menu option 1 is
+# routed to a dedicated department ("Online Orders"). We POLL Dialpad's call log
+# (same style as square_poll_loop) for calls that reached that department and text
+# each caller via ClickSend — the very same sender used for vouchers. Polling means
+# the dashboard only makes OUTBOUND calls, so it needs no public webhook and works
+# behind Tailscale/NAT. Docs: GET https://dialpad.com/api/v2/call (Bearer key).
+DIALPAD_API="https://dialpad.com/api/v2"
+_dialpad_status={"last_poll":0,"last_ok":0,"texted_total":0,"last_error":"","last_number":""}
+
+def _dialpad_get(path,params=None):
+    """GET a Dialpad API endpoint with the saved admin API key. Returns (json, error)."""
+    key=((db.get("dialpad") or {}).get("api_key") or "").strip()
+    if not key: return None,"Dialpad API key not set"
+    url=DIALPAD_API+path
+    if params:
+        clean={k:v for k,v in params.items() if v not in (None,"")}
+        if clean: url+="?"+urllib.parse.urlencode(clean)
+    try:
+        req=urllib.request.Request(url,headers={"Authorization":"Bearer "+key,"Accept":"application/json"})
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r:
+            return json.loads(r.read().decode()),None
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: return None,"Dialpad: "+e.read().decode()[:180]
+            except Exception: pass
+        return None,str(e)[:180]
+
+def _dialpad_order_msg():
+    """The text a phone-order caller receives. {link} is filled with the online ordering URL."""
+    tpl=((db.get("dialpad") or {}).get("sms_text") or "").strip()
+    link=(db.get("online_url") or "").strip()
+    if not tpl: tpl="Thanks for calling Bruno's! \U0001F357 Order online here: {link} — see you soon."
+    return tpl.replace("{link}",link).strip()
+
+def dialpad_poll_loop():
+    """Every 30s, find callers who pressed 1 (reached the Online Orders dept) and text them the link once."""
+    while True:
+        try:
+            cfg=db.get("dialpad") or {}
+            if cfg.get("enabled") and ((cfg.get("api_key") or "").strip()) and cfg.get("target_id"):
+                now_ms=int(time.time()*1000)
+                baseline=int(cfg.get("since_ms") or 0)                 # only calls from when it was switched on
+                started_after=max(baseline,now_ms-15*60*1000)          # bounded 15-min look-back each poll
+                texted=list(cfg.get("texted") or [])
+                seen=set(str(x) for x in texted)
+                params={"target_id":cfg.get("target_id"),"target_type":cfg.get("target_type") or "department",
+                        "started_after":started_after}
+                new_sent=0; cursor=None
+                for _page in range(3):                                  # low volume; cap pages defensively
+                    if cursor: params["cursor"]=cursor
+                    res,err=_dialpad_get("/call",params)
+                    if err: _dialpad_status["last_error"]=err; break
+                    _dialpad_status["last_error"]=""
+                    calls=(res.get("items") if isinstance(res,dict) else res) or []
+                    for c in calls:
+                        cid=str(c.get("call_id") or c.get("id") or "")
+                        num=(c.get("external_number") or "").strip()
+                        started=int(c.get("date_started") or 0)
+                        direction=(c.get("direction") or "").lower()
+                        if not cid or not num or cid in seen: continue
+                        if started and started<baseline: continue       # older than switch-on
+                        if direction and direction!="inbound": continue
+                        ok,serr=_clicksend_sms(num,_dialpad_order_msg())
+                        seen.add(cid); texted.append(cid)
+                        if ok:
+                            new_sent+=1; _dialpad_status["last_number"]=num; _dialpad_status["last_ok"]=now_ms
+                        else:
+                            _dialpad_status["last_error"]="SMS: "+str(serr or "")[:120]
+                    cursor=(res.get("cursor") if isinstance(res,dict) else None)
+                    if not cursor: break
+                if new_sent or len(texted)>1200:
+                    with data_lock:
+                        d2=dict(db.get("dialpad") or {}); d2["texted"]=texted[-1000:]   # cap dedupe list
+                        db["dialpad"]=d2; save_data(db)
+                    _dialpad_status["texted_total"]=_dialpad_status.get("texted_total",0)+new_sent
+                _dialpad_status["last_poll"]=now_ms
+        except Exception as e:
+            _dialpad_status["last_error"]=str(e)[:160]
+        time.sleep(30)
+
+@app.route("/api/dialpad_config",methods=["GET","POST"])
+def api_dialpad_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            cfg=dict(db.get("dialpad") or {})
+            if str(d.get("api_key") or "").strip(): cfg["api_key"]=str(d["api_key"]).strip()   # blank = keep saved key
+            if "target_id" in d: cfg["target_id"]=str(d.get("target_id") or "").strip()
+            if "target_type" in d: cfg["target_type"]=(str(d.get("target_type") or "").strip() or "department")
+            if "sms_text" in d: cfg["sms_text"]=str(d.get("sms_text") or "")[:300]
+            if "enabled" in d:
+                was=bool(cfg.get("enabled")); cfg["enabled"]=bool(d.get("enabled"))
+                if cfg["enabled"] and not was: cfg["since_ms"]=int(time.time()*1000)   # baseline: ignore old calls
+            if "online_url" in d: db["online_url"]=str(d.get("online_url") or "").strip()[:200]
+            db["dialpad"]=cfg; save_data(db)
+        return jsonify({"ok":True})
+    cfg=db.get("dialpad") or {}
+    return jsonify({"enabled":bool(cfg.get("enabled")),"has_key":bool((cfg.get("api_key") or "").strip()),
+                    "target_id":cfg.get("target_id",""),"target_type":cfg.get("target_type","department"),
+                    "sms_text":cfg.get("sms_text",""),"online_url":db.get("online_url",""),
+                    "sms_ready":bool((db.get("clicksend") or {}).get("user") and (db.get("clicksend") or {}).get("key")),
+                    "default_msg":_dialpad_order_msg(),"status":_dialpad_status})
+
+@app.route("/api/dialpad_check",methods=["POST"])
+def api_dialpad_check():
+    # Prove the API key works by listing offices (lightweight, admin-scoped) — no SMS burned.
+    res,err=_dialpad_get("/offices",{"limit":1})
+    if err: return jsonify({"ok":False,"error":err})
+    return jsonify({"ok":True})
+
+@app.route("/api/dialpad_departments")
+def api_dialpad_departments():
+    # Populate the "Online Orders" dropdown. Departments live under offices, so gather across offices.
+    offs,err=_dialpad_get("/offices",{"limit":100})
+    if err: return jsonify({"ok":False,"error":err})
+    offices=(offs.get("items") if isinstance(offs,dict) else offs) or []
+    out=[]
+    for o in offices:
+        oid=o.get("id")
+        res,e2=_dialpad_get("/departments",{"office_id":oid,"limit":100})
+        if e2: continue
+        for x in ((res.get("items") if isinstance(res,dict) else res) or []):
+            if x.get("id"): out.append({"id":str(x.get("id")),"name":(x.get("name") or ("Dept "+str(x.get("id"))))})
+    return jsonify({"ok":True,"departments":out})
+
+@app.route("/api/dialpad_test",methods=["POST"])
+def api_dialpad_test():
+    # Send the real order text to a number you choose, so you can see exactly what a caller gets.
+    d=request.get_json(silent=True) or {}
+    to=str(d.get("phone") or "").strip()
+    if len(re.sub(r"\D","",to))<8: return jsonify({"ok":False,"error":"Enter a mobile number to test with"})
+    ok,err=_clicksend_sms(to,_dialpad_order_msg())
+    return jsonify({"ok":bool(ok),"error":err or "","sent":_dialpad_order_msg()})
+
 @app.route("/api/rfx_config",methods=["GET","POST"])
 def api_rfx_config():
     if request.method=="POST":
@@ -5457,6 +5594,7 @@ if __name__=="__main__":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
+    threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
     threading.Thread(target=rotcam_loop,daemon=True).start()
     threading.Thread(target=rotcam_stream_loop,daemon=True).start()
