@@ -167,6 +167,14 @@ body.style-v2 .ac0{--acc:#fb9b24;--accv:#fb9b24;}
 body.style-v2 .ac1{--acc:#60a5fa;--accv:#60a5fa;}
 body.style-v2 .ac2{--acc:#a78bfa;--accv:#a78bfa;}
 body.style-v2 .ac3{--acc:#34d399;--accv:#34d399;}
+/* Probe cards colour-coded to the PHYSICAL RFX probes so staff know which is which at a glance:
+   probe 1 = blue, 2 = green, 3 = red, 4 = yellow. Own classes (not the shared ac0-3) so the batch
+   timers keep their colours. Applies in both v2 and classic. */
+.probe-card.pc1{--acc:#3b82f6;--accv:#3b82f6;}
+.probe-card.pc2{--acc:#22c55e;--accv:#22c55e;}
+.probe-card.pc3{--acc:#ef4444;--accv:#ef4444;}
+.probe-card.pc4{--acc:#eab308;--accv:#eab308;}
+.probe-card.pc4 .probe-badge{color:#241a00;}   /* dark number on the yellow badge for readability */
 body.style-v2 .probe-card.p2::before{display:none;}   /* mock cards have no top colour band */
 body.style-v2 .sec-head span{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--text);padding-left:10px;border-left:3px solid var(--amber);}
 /* layout — the mock's structure */
@@ -3471,7 +3479,7 @@ function renderProbes(){
       const _rawNm=String(p.name||('Probe '+pidN));
       const _isDef=_rawNm===('Probe '+pidN);      // hide the redundant default "Probe n" \u2014 big number badge is the ID
       const _nm=_rawNm.replace(/"/g,'&quot;');
-      return `<div class="probe-card p2 ac${(pidN-1)%4} ${cardCls}">
+      return `<div class="probe-card p2 pc${pidN} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
         <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div></div>
@@ -3487,7 +3495,7 @@ function renderProbes(){
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
     }
-    return `<div class="probe-card ac${(pidN-1)%4} ${cardCls}">
+    return `<div class="probe-card pc${pidN} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
