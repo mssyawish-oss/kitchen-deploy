@@ -1346,14 +1346,21 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 .ac-mutecount{display:inline-block;margin-left:6px;color:var(--amber);font-weight:700;}
 /* walk-in watch, TEST MODE: a quiet red light in the corner — no sound, no popup. Tap it to clear.
    Deliberately small and out of the way so it can run all day while we judge its accuracy. */
-#walkin-dot{position:fixed;top:10px;right:12px;z-index:520;width:16px;height:16px;border-radius:50%;cursor:pointer;}
-#walkin-dot::after{content:'';position:absolute;inset:-14px;}   /* generous tap target around a small dot */
-#walkin-dot.wd-armed{width:9px;height:9px;top:14px;right:15px;background:#3f4650;box-shadow:none;opacity:.75;}
-#walkin-dot.wd-on{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.25),0 0 14px 2px rgba(239,68,68,.75);
-  animation:wdPulse 1.6s ease-in-out infinite;}
-#walkin-dot.wd-alarm{width:20px;height:20px;animation-duration:.7s;}
-@keyframes wdPulse{0%,100%{opacity:.55;}50%{opacity:1;}}
-body.view-wall #walkin-dot.wd-on{width:24px;height:24px;top:14px;right:16px;}
+/* bottom-right, clear of the top bar's clock and sitting just above the nav */
+#walkin-dot{position:fixed;bottom:calc(88px + env(safe-area-inset-bottom,0px));right:14px;z-index:520;cursor:pointer;display:flex;align-items:center;gap:7px;
+  padding:5px 11px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  user-select:none;}
+#walkin-dot i{width:9px;height:9px;border-radius:50%;background:currentColor;flex-shrink:0;
+  box-shadow:0 0 8px 1px currentColor;}
+#walkin-dot.wd-armed{color:#22d3ee;background:color-mix(in srgb,#22d3ee 12%,transparent);
+  border:1px solid color-mix(in srgb,#22d3ee 35%,transparent);}
+#walkin-dot.wd-on{color:#fff;background:#ef4444;border:1px solid #ef4444;
+  box-shadow:0 0 0 4px rgba(239,68,68,.22),0 0 18px 3px rgba(239,68,68,.6);
+  animation:wdPulse 1.2s ease-in-out infinite;}
+#walkin-dot.wd-alarm{animation-duration:.6s;}
+@keyframes wdPulse{0%,100%{opacity:.72;}50%{opacity:1;}}
+body.view-wall #walkin-dot{font-size:13px;padding:7px 14px;right:18px;}
+body.view-wall #walkin-dot i{width:11px;height:11px;}
 .ac-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
 .ac-btns .btn{padding:6px 11px;font-size:12px;}
 .ac-sound{font-size:12px;color:var(--text);margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -2661,9 +2668,12 @@ function _walkinLight(enabled,alert,alarmed){
     el.onclick=function(){ackWalkin();};
     document.body.appendChild(el);
   }
+  // Labelled, not a bare dot: a dim grey dot on a black screen is invisible, and staff shouldn't have to
+  // be told what a mystery light means. Calm cyan "watching" while armed, loud red when someone's waiting.
   el.className=alert?(alarmed?'wd-on wd-alarm':'wd-on'):'wd-armed';
-  el.title=alert?'Customer waiting — nobody in the service area (tap to clear)'
-                :'Walk-in watch is on — nothing to report';
+  el.innerHTML=alert?'<i></i>CUSTOMER WAITING':'<i></i>watching';
+  el.title=alert?'A customer is waiting and nobody is in the service area — tap to clear'
+                :'Walk-in watch is on and armed — nothing to report';
 }
 function handleWalkin(w){
   const enabled=!!(w&&w.on), on=!!(w&&w.alert), snd=!!(w&&w.alarm);
