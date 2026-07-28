@@ -177,12 +177,32 @@ def _serial_of(m):
     return m
 
 
+_BATT = {"at": 0.0, "map": {}}   # {serial: percent}, refreshed at most every _BATT_TTL seconds
+_BATT_TTL = 300
+
+async def _battery_map(client):
+    """{serial: battery%} for every device on the account. Cached — battery moves slowly and the
+    device list is an extra two API calls, which we don't want on every 8s poll."""
+    import time as _t
+    if _t.time() - _BATT["at"] < _BATT_TTL and _BATT["map"]:
+        return _BATT["map"]
+    try:
+        acct = await _account_id(client)
+        devices = await client.get_devices(acct) if acct else []
+        _BATT["map"] = {d.serial: d.battery for d in devices if d.battery is not None}
+        _BATT["at"] = _t.time()
+    except Exception:
+        pass          # keep whatever we had; battery is advisory, never break the temp read for it
+    return _BATT["map"]
+
+
 async def _read_mapped(email, password, mapping):
     """mapping: {"1": serial, "2": serial, ...} — each dashboard probe -> one RFX probe (device).
-    Returns {1: {"core": c, "sensors": [c,c,c,c]}, ...} — core = coldest sensor (true meat centre),
-    sensors = every fresh internal reading so the dashboard can show them all."""
+    Returns {1: {"core": c, "sensors": [c,c,c,c], "battery": pct}, ...} — core = coldest sensor
+    (true meat centre), sensors = every fresh internal reading so the dashboard can show them all."""
     session, client = await _connect(email, password)
     try:
+        batt = await _battery_map(client)
         temps = {}
         for pid, m in (mapping or {}).items():
             serial = _serial_of(m)
@@ -190,7 +210,8 @@ async def _read_mapped(email, password, mapping):
                 vals = await _device_sensors(client, serial) if serial else []
             except Exception:
                 vals = []
-            temps[int(pid)] = {"core": (round(min(vals), 1) if vals else None), "sensors": vals}
+            temps[int(pid)] = {"core": (round(min(vals), 1) if vals else None), "sensors": vals,
+                               "battery": batt.get(serial)}
         return temps
     finally:
         await session.close()

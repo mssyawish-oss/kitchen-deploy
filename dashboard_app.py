@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil
 from datetime import datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -23,21 +23,36 @@ def load_data():
     return {"suppliers":[],"products":[],"recipes":[],"packdown_tasks":[],"packdown_log":[],"service_alerts":[],"quiet_jobs":[],"email_config":{},"staff":[]}
 
 _save_lock=threading.RLock()
+# A failed save used to print to a console nobody reads and carry on — settings/stock would silently
+# revert with no warning. Now every failure is recorded here, shipped on /temps, and shown on screen.
+SAVE_STATE={"error":"","since":0.0,"fails":0,"last_ok":0.0}
+_BAK_EVERY=600   # keep a rolling .bak of the last good file, at most this often
 def save_data(data):
     # compact (no indent → much smaller/faster write) + atomic replace so a crash mid-write can't corrupt the file.
     # Serialized: parallel auto-trace reads can call this concurrently, so one dump/replace at a time.
     with _save_lock:
+        def _fail(msg):
+            SAVE_STATE["fails"]+=1; SAVE_STATE["error"]=str(msg)[:200]
+            if not SAVE_STATE["since"]: SAVE_STATE["since"]=time.time()
+            print(f"Save error:{msg}")
         s=None
         for _try in range(5):
             try: s=json.dumps(data,separators=(",",":")); break
             except RuntimeError: time.sleep(0.02)   # another thread mutated a dict mid-dump → retry
-            except Exception as e: print(f"Save error:{e}"); return
-        if s is None: return                          # couldn't get a clean snapshot this round; next save catches up
+            except Exception as e: _fail(e); return
+        if s is None:                                 # couldn't get a clean snapshot this round
+            _fail("could not serialise (5 retries)"); return
         try:
             tmp=DATA_FILE+".tmp"
             with open(tmp,"w",encoding="utf-8") as f: f.write(s)
+            now=time.time()
+            try:    # roll a backup of the CURRENT good file before replacing it
+                if os.path.exists(DATA_FILE) and now-getattr(save_data,"_bak_at",0)>_BAK_EVERY:
+                    shutil.copy2(DATA_FILE,DATA_FILE+".bak"); save_data._bak_at=now
+            except Exception: pass
             os.replace(tmp,DATA_FILE)
-        except Exception as e: print(f"Save error:{e}")
+            SAVE_STATE.update({"error":"","since":0.0,"fails":0,"last_ok":now})
+        except Exception as e: _fail(e)
 
 db = load_data()
 probe_temps={1:None,2:None,3:None,4:None}
@@ -458,6 +473,7 @@ except Exception as _e:
     rfx_bridge=None; print("rfx_bridge unavailable:",_e)
 _rfx_status={"ok":None,"last":0.0,"error":""}
 RFX_SENSORS={}   # {pid:[°C,°C,°C,°C]} — each RFX probe's 4 internal sensors, shown small under the main temp
+RFX_BATTERY={}   # {pid:percent} — wireless probes: a flat battery = silent probe, so it's surfaced + alarmed
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
     check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
@@ -473,6 +489,7 @@ def rfx_poll_loop():
                     if not 1<=pid<=4: continue
                     t=info.get("core") if isinstance(info,dict) else info   # tolerate the old plain-float shape
                     RFX_SENSORS[pid]=(info.get("sensors") or []) if isinstance(info,dict) else []
+                    if isinstance(info,dict) and info.get("battery") is not None: RFX_BATTERY[pid]=info["battery"]
                     if t is not None and 0<float(t)<400:
                         with probe_lock: probe_temps[pid]=float(t)
                         check_probe_status(pid,float(t)); got=True
@@ -4310,7 +4327,9 @@ def temps():
                 # KEEP the temp visible (old code blanked it, which hid working probes) and just flag it.
                 item["status"]="standby"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {})}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
+"rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
+"save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else "")}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():

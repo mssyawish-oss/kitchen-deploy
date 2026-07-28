@@ -244,6 +244,12 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
 }
 .probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
 .p2-statusrow .probe-lost{margin:0 0 0 8px;}   /* sits quietly beside the status badge, not mid-card */
+/* wireless-probe battery: only appears under 30%, red at/below _BATT_LOW so a dying probe is obvious
+   BEFORE it goes silent mid-cook */
+.probe-batt{margin-left:8px;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:6px;
+  color:var(--muted);background:color-mix(in srgb,var(--muted) 15%,transparent);display:inline-block;}
+.probe-batt::before{content:'\1F50B ';}
+.probe-batt.crit{color:var(--red);background:color-mix(in srgb,var(--red) 16%,transparent);}
 body.style-v2 .probe-lost{align-self:center;}
 .p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
 /* probe card v2 */
@@ -3325,6 +3331,47 @@ function _paint(){try{const b=document.body;b.style.transform='translateZ(0)';re
 let _probeOrder=[1,2,3,4];
 const _PROBE_SWAP_C=2;
 let _probeOrderAt=0;
+// A finger anywhere on the probe grid FREEZES both the re-rank and the DOM rebuild for a moment.
+// The grid used to re-render every second while also re-sorting by temperature: if a card moved or was
+// destroyed between touchstart and touchend, the tap landed on a DIFFERENT probe — resetting the wrong
+// cook (wiping its log and re-arming its stock credit). pointerup also refreshes the hold so the click
+// event, which fires after it, still lands on the card the finger actually went down on.
+const _BATT_LOW=20;        // at or below this the probe pill goes red and a notice is raised
+// Deliberately NOT wired into the alarm bar: that's a sounding-siren system with silence buttons, and a
+// siren for a 19% battery would be noise during service. One toast per probe per day + the red pill on
+// the card is enough warning to swap it before it dies mid-cook.
+function _battCheck(){
+  const b=window._rfxBattery||{};let seen={};
+  try{seen=JSON.parse(localStorage.getItem('battWarned')||'{}');}catch(e){}
+  const today=(typeof todayDateStr==='function')?todayDateStr():new Date().toDateString();
+  Object.keys(b).forEach(pid=>{
+    const v=b[pid];
+    if(typeof v!=='number'||!isFinite(v)||v>_BATT_LOW)return;
+    if(seen[pid]===today)return;
+    seen[pid]=today;
+    const nm=((probeData[pid]||{}).name||'').trim()||('Probe '+pid);
+    if(typeof _toast==='function')_toast('🔋 '+nm+' battery '+Math.round(v)+'% — swap or charge it');
+  });
+  try{localStorage.setItem('battWarned',JSON.stringify(seen));}catch(e){}
+}
+// The server couldn't write its data file — settings/stock changes are being LOST. Silent before; now a
+// persistent red bar, because the only other symptom is edits mysteriously reverting later.
+function _saveErrCheck(err){
+  let el=document.getElementById('save-err');
+  if(!err){if(el)el.remove();return;}
+  if(!el){
+    el=document.createElement('div');el.id='save-err';
+    el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:600;background:#7f1d1d;color:#fff;'+
+      'font-size:13px;font-weight:700;padding:10px 14px;text-align:center;box-shadow:0 -4px 18px rgba(0,0,0,.5);';
+    document.body.appendChild(el);
+  }
+  el.textContent='⚠ The server can\'t save changes — anything you set now may be lost. ('+err+')';
+}
+let _probeTouchAt=0;
+function _probeHold(){return Date.now()-_probeTouchAt<1500;}
+try{['pointerdown','pointerup'].forEach(ev=>document.addEventListener(ev,e=>{
+  if(e.target&&e.target.closest&&e.target.closest('#probes-grid'))_probeTouchAt=Date.now();
+},true));}catch(e){}
 function _probeOrdered(){
   const t=pid=>{const v=(probeData[pid]||{}).temp;return (typeof v==='number'&&isFinite(v))?v:null;};
   Object.keys(probeData).map(Number).forEach(p=>{if(_probeOrder.indexOf(p)<0)_probeOrder.push(p);});
@@ -3337,7 +3384,7 @@ function _probeOrdered(){
   // 2-degree swap margin also blocked it, but that meant probes a degree or two apart NEVER sorted and
   // the grid could sit in coldest-first order. Now it's a straight hottest-first sort, throttled.
   const now=Date.now();
-  if(now-_probeOrderAt>=20000||_probeOrderAt===0){
+  if((now-_probeOrderAt>=20000||_probeOrderAt===0)&&!_probeHold()){
     const live=_probeOrder.filter(p=>t(p)!==null).sort((a,b)=>t(b)-t(a));   // hottest first
     const blank=_probeOrder.filter(p=>t(p)===null);                         // no reading -> bottom
     const next=live.concat(blank);
@@ -3459,8 +3506,9 @@ function _fitPad(){
     // so there is no slack to absorb here. Leave it be.
   }catch(e){}
 }
+let _probeHtmlLast=null;
 function renderProbes(){
-  document.getElementById('probes-grid').innerHTML=_probeOrdered().map(([pid,p])=>{
+  const _html=_probeOrdered().map(([pid,p])=>{
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
     const status=st.status,acked=st.alerted,cardCls=(status==='idle'||status==='standby')?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
@@ -3487,6 +3535,11 @@ function renderProbes(){
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
+    // Wireless probes: a flat battery just goes silent, so warn BEFORE it does. Pill shows from 30%,
+    // turns red (and raises the alarm-bar warning) at or below _BATT_LOW.
+    const _bat=(window._rfxBattery||{})[pidN];
+    const _batN=(typeof _bat==='number'&&isFinite(_bat))?_bat:null;
+    const batHtml=(_batN!==null&&_batN<=30)?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':''}" title="probe battery">${Math.round(_batN)}%</span>`:'';
     // RFX: each probe has 4 internal sensors — show them all, small, under the main (coldest) temp.
     const _sv=((window._rfxSensors||{})[pidN]||[]).filter(v=>typeof v==='number'&&isFinite(v));
     const _svMin=_sv.length?Math.min.apply(null,_sv):null;
@@ -3508,7 +3561,7 @@ function renderProbes(){
       ${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
@@ -3520,11 +3573,18 @@ function renderProbes(){
       ${tempHtml}<div class="probe-unit">&#176;C</div>
       ${sensHtml}
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
-      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
+      ${batHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
   }).join('');
+  // The string is built EVERY poll (the map drives the alarm/status-transition side effects), but the
+  // DOM is only rewritten when it actually changed — and never while a finger is on the grid. Rebuilding
+  // at 1Hz destroyed the buttons mid-tap, so taps were swallowed or landed on the wrong probe.
+  if(_html!==_probeHtmlLast&&!_probeHold()){
+    document.getElementById('probes-grid').innerHTML=_html;
+    _probeHtmlLast=_html;
+  }
   renderProbeAlerts();
   _fitPad();
   _dbgReadout();
@@ -3838,7 +3898,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};_battCheck();_saveErrCheck(d.save_error||'');_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
