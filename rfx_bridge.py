@@ -151,15 +151,22 @@ def _is_stale(last_seen_s):
     except Exception:
         return False
 
-async def _device_core_temp(client, serial):
-    """One RFX MEAT probe has 4 internal sensors (channels). The meat's true centre is the COLDEST
-    of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C,
-    or None if the probe has gone quiet (docked/charging) — a frozen old temp must not look live."""
+async def _device_sensors(client, serial):
+    """All FRESH sensor readings (°C) for one probe, in channel order. Stale channels (docked/charging
+    probe — the cloud keeps old values) are dropped so a silent probe returns []."""
     vals = []
     for ch in await _read_channels(client, serial):
         c = ch.get("value_c")
         if c is not None and not _is_stale(ch.get("last_seen")):
             vals.append(c)
+    return vals
+
+
+async def _device_core_temp(client, serial):
+    """One RFX MEAT probe has 4 internal sensors (channels). The meat's true centre is the COLDEST
+    of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C,
+    or None if the probe has gone quiet (docked/charging) — a frozen old temp must not look live."""
+    vals = await _device_sensors(client, serial)
     return round(min(vals), 1) if vals else None
 
 
@@ -172,16 +179,18 @@ def _serial_of(m):
 
 async def _read_mapped(email, password, mapping):
     """mapping: {"1": serial, "2": serial, ...} — each dashboard probe -> one RFX probe (device).
-    Returns {1: core_temp_c, ...} using the coldest sensor of each probe."""
+    Returns {1: {"core": c, "sensors": [c,c,c,c]}, ...} — core = coldest sensor (true meat centre),
+    sensors = every fresh internal reading so the dashboard can show them all."""
     session, client = await _connect(email, password)
     try:
         temps = {}
         for pid, m in (mapping or {}).items():
             serial = _serial_of(m)
             try:
-                temps[int(pid)] = await _device_core_temp(client, serial) if serial else None
+                vals = await _device_sensors(client, serial) if serial else []
             except Exception:
-                temps[int(pid)] = None
+                vals = []
+            temps[int(pid)] = {"core": (round(min(vals), 1) if vals else None), "sensors": vals}
         return temps
     finally:
         await session.close()

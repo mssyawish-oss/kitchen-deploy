@@ -260,6 +260,11 @@ body.style-v2 .probe-card.p2::before{height:4px;}
 .p2-temp{margin:0;font-family:var(--font-mono);font-weight:800;font-size:clamp(40px,7vh,72px);color:var(--text);display:flex;align-items:baseline;gap:7px;line-height:1;}
 body.view-wall .p2-temp{font-size:clamp(50px,9.5vh,100px);}   /* readable from across the kitchen */
 .p2-dash{color:var(--muted);font-size:22px;letter-spacing:2px;}
+/* the RFX probe's 4 internal sensors, side by side under the main temp; the coldest (= the displayed
+   meat-centre reading) is highlighted so it's obvious where the big number comes from */
+.p2-sensors{display:flex;justify-content:center;gap:13px;font-family:var(--font-mono);font-size:12.5px;font-weight:600;color:var(--muted);margin-top:-3px;}
+.p2-sensors span.cold{color:var(--text);font-weight:800;}
+body.view-wall .p2-sensors{font-size:15px;gap:18px;}
 .p2-unit{font-size:13px;font-weight:600;color:var(--muted);}
 .p2-bar{position:relative;height:7px;border-radius:4px;background:var(--surface2);}
 .p2-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accv,var(--acc));}
@@ -3482,6 +3487,10 @@ function renderProbes(){
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
+    // RFX: each probe has 4 internal sensors — show them all, small, under the main (coldest) temp.
+    const _sv=((window._rfxSensors||{})[pidN]||[]).filter(v=>typeof v==='number'&&isFinite(v));
+    const _svMin=_sv.length?Math.min.apply(null,_sv):null;
+    const sensHtml=(_sv.length>1&&t!==null)?('<div class="p2-sensors">'+_sv.map(v=>'<span'+(v===_svMin?' class="cold"':'')+'>'+v.toFixed(1)+'&#176;</span>').join('')+'</div>'):'';
     if(window.DASH_V2){
       const _od=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.overdone_temp)||91;
       const _pct=(t===null)?0:Math.max(3,Math.min(100,t/_od*100));
@@ -3496,6 +3505,7 @@ function renderProbes(){
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
+      ${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
@@ -3508,6 +3518,7 @@ function renderProbes(){
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
       ${tempHtml}<div class="probe-unit">&#176;C</div>
+      ${sensHtml}
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
       ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
@@ -3827,7 +3838,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;

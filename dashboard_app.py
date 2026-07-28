@@ -457,6 +457,7 @@ try:
 except Exception as _e:
     rfx_bridge=None; print("rfx_bridge unavailable:",_e)
 _rfx_status={"ok":None,"last":0.0,"error":""}
+RFX_SENSORS={}   # {pid:[°C,°C,°C,°C]} — each RFX probe's 4 internal sensors, shown small under the main temp
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
     check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
@@ -466,12 +467,17 @@ def rfx_poll_loop():
             if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("email") and cfg.get("password") and cfg.get("map"):
                 temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
                 got=False
-                for pid,t in (temps or {}).items():
+                for pid,info in (temps or {}).items():
                     try: pid=int(pid)
                     except (TypeError,ValueError): continue
-                    if t is not None and 0<float(t)<400 and 1<=pid<=4:
+                    if not 1<=pid<=4: continue
+                    t=info.get("core") if isinstance(info,dict) else info   # tolerate the old plain-float shape
+                    RFX_SENSORS[pid]=(info.get("sensors") or []) if isinstance(info,dict) else []
+                    if t is not None and 0<float(t)<400:
                         with probe_lock: probe_temps[pid]=float(t)
                         check_probe_status(pid,float(t)); got=True
+                    else:   # probe silent (docked/charging) → blank it, don't freeze the last reading
+                        with probe_lock: probe_temps[pid]=None
                 _rfx_status.update({"ok":got,"last":time.time(),"error":"" if got else "no readings"})
         except Exception as e:
             _rfx_status.update({"ok":False,"error":str(e)}); print("rfx_poll_loop:",e)
@@ -4304,7 +4310,7 @@ def temps():
                 # KEEP the temp visible (old code blanked it, which hid working probes) and just flag it.
                 item["status"]="standby"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver()}),mimetype="application/json")
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {})}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
