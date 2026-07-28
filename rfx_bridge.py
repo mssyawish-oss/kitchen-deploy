@@ -136,13 +136,29 @@ def rfx_diagnose(email, password, log=lambda m: None):
         return {"ok": False, "error": msg}
 
 
+_STALE_SECS = 300   # a probe silent this long (docked/charging/off) = not in use → show blank, not a frozen temp
+
+def _is_stale(last_seen_s):
+    """True if a channel's last_seen timestamp is older than _STALE_SECS. A docked/charging RFX probe
+    stops transmitting but the cloud keeps its LAST reading — without this check the dashboard would
+    show that stale number as if it were live. Unparseable timestamps count as fresh (fail open)."""
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(str(last_seen_s))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() > _STALE_SECS
+    except Exception:
+        return False
+
 async def _device_core_temp(client, serial):
     """One RFX MEAT probe has 4 internal sensors (channels). The meat's true centre is the COLDEST
-    of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C."""
+    of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C,
+    or None if the probe has gone quiet (docked/charging) — a frozen old temp must not look live."""
     vals = []
     for ch in await _read_channels(client, serial):
         c = ch.get("value_c")
-        if c is not None:
+        if c is not None and not _is_stale(ch.get("last_seen")):
             vals.append(c)
     return round(min(vals), 1) if vals else None
 
