@@ -243,6 +243,7 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
   body.style-v2 #rot-live .rl-actions button{min-width:0;width:100%;height:46px;}
 }
 .probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
+.p2-statusrow .probe-lost{margin:0 0 0 8px;}   /* sits quietly beside the status badge, not mid-card */
 body.style-v2 .probe-lost{align-self:center;}
 .p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
 /* probe card v2 */
@@ -253,9 +254,11 @@ body.style-v2 .probe-card.p2::before{height:4px;}
 .p2-names{min-width:0;flex:1;}
 .p2-kicker{font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:700;}
 .p2-name{width:100%;background:transparent;border:none;color:var(--text);font-size:17px;font-weight:700;outline:none;padding:0;}
-.p2-mid{display:flex;align-items:center;gap:14px;flex:0 0 auto;}
+.p2-mid{display:flex;align-items:center;gap:14px;flex:0 0 auto;justify-content:center;position:relative;}
+.p2-mid .p2-ic{position:absolute;left:0;}   /* icon stays left; the temperature owns the centre of the card */
 .p2-ic{width:54px;height:54px;border-radius:50%;flex-shrink:0;background:color-mix(in srgb,var(--accv,var(--acc)) 16%,transparent);display:flex;align-items:center;justify-content:center;}
-.p2-temp{margin-left:auto;font-family:var(--font-mono);font-weight:800;font-size:clamp(28px,4.4vh,46px);display:flex;align-items:baseline;gap:7px;line-height:1;}
+.p2-temp{margin:0;font-family:var(--font-mono);font-weight:800;font-size:clamp(40px,7vh,72px);color:var(--text);display:flex;align-items:baseline;gap:7px;line-height:1;}
+body.view-wall .p2-temp{font-size:clamp(50px,9.5vh,100px);}   /* readable from across the kitchen */
 .p2-dash{color:var(--muted);font-size:22px;letter-spacing:2px;}
 .p2-unit{font-size:13px;font-weight:600;color:var(--muted);}
 .p2-bar{position:relative;height:7px;border-radius:4px;background:var(--surface2);}
@@ -3351,7 +3354,13 @@ function _probeConnCheck(d){
   const now=Date.now();
   const cooked=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.cooked_temp)||88;
   const probes=(d&&d.probes)||{};
-  const bleDown=(d&&d.connected===false);
+  // RFX probes only transmit on a temp CHANGE (1° setting) with a ~60s idle heartbeat, so a steady
+  // reading holding identical for 30s is NORMAL — not a dropped link like it was on the instant BLE
+  // dock. Use a much longer freeze threshold on RFX (the backend already blanks truly-silent probes
+  // after 5 min), and ignore the FM230 dock's connected flag entirely (it's not the source).
+  const rfxSrc=((appData&&appData.thermoworks_public)||{}).source==='rfx';
+  const lostMs=rfxSrc?390000:_PROBE_LOST_MS;
+  const bleDown=(d&&d.connected===false)&&!rfxSrc;
   [1,2,3,4].forEach(pid=>{
     const c=(_probeConn[pid]&&_probeConn[pid].init)?_probeConn[pid]:(_probeConn[pid]={init:true,live:null,changed:now,lost:false,from:null,prompted:false});
     const raw=probes[pid];
@@ -3368,12 +3377,12 @@ function _probeConnCheck(d){
       } else {
         // identical value: frozen feed. A live probe wiggles; an exact hold this long = dropped.
         // BUT only if it was in a chicken (warm) — a cold steady probe is just docked/charging.
-        if(!c.lost&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>_PROBE_LOST_MS){ c.lost=true; c.from=c.live; }
+        if(!c.lost&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>lostMs){ c.lost=true; c.from=c.live; }
       }
       if(bleDown&&!c.lost&&c.live!=null&&c.live>=_PROBE_INUSE_C){ c.lost=true; c.from=c.live; }
     } else {
       // blank reading — lost only if it was in a chicken (warm); a cold/absent probe = docked, not lost
-      if(c.live!=null&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>_PROBE_LOST_MS&&!c.lost){ c.lost=true; c.from=c.live; }
+      if(c.live!=null&&c.live>=_PROBE_INUSE_C&&(now-c.changed)>_PROBE_LOST_MS&&!c.lost){ c.lost=true; c.from=c.live; }   // blank+was-warm: on RFX the backend only blanks after 5 min silent, so 30s past that is already generous
     }
     if(c.lost&&(c.live==null||c.live<_PROBE_INUSE_C)) c.lost=false;   // cooled to dock temp → it's docked, clear the flag
     // when lost, keep the last known temp on screen instead of blanking, and flag it for the badge
@@ -3483,14 +3492,13 @@ function renderProbes(){
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
         <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div></div>
-      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       <div class="p2-mid${p._lost?' lost':''}">
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span></div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
@@ -3499,8 +3507,9 @@ function renderProbes(){
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
-      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}${tempHtml}<div class="probe-unit">&#176;C</div>
+      ${tempHtml}<div class="probe-unit">&#176;C</div>
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
+      ${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
