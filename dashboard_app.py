@@ -4486,9 +4486,7 @@ def _lbl_date(dt,withtime=False):
     return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
 def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     from PIL import Image,ImageDraw,ImageFont
-    W,H=NIIM_W,354          # 50 x 30 mm at 300 dpi (NIIMBOT B1 Pro printhead = 567 dots)
-    S=W/384.0               # layout was designed at 384 wide — scale every number off that
-    def s(v): return int(round(v*S))
+    W,H=NIIM_W,591          # 50 x 50 mm at ~300 dpi (NIIMBOT B1 Pro printhead = 567 dots wide)
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     def fnt(sz,bold=True):
         names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
@@ -4497,7 +4495,7 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
                 try: return ImageFont.truetype(p,sz)
                 except Exception: pass
         return ImageFont.load_default()
-    def wrap(text,font,maxw,maxlines=3):
+    def wrap(text,font,maxw,maxlines):
         lines=[];cur=""
         for w in text.split():
             t=(cur+" "+w).strip()
@@ -4507,26 +4505,40 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
                 cur=w
         if cur: lines.append(cur)
         return lines[:maxlines]
-    # ── professional "day dot" prep label: day-of-week header, product, prepped/by, USE BY box ──
+    # ── "day dot" prep label, redesigned for the 50x50mm stock: big day band, large centred product name
+    #    (auto-sized to fill the space, wraps up to 4 lines so nothing is cut off), prepped/by, USE BY box ──
     DOWFULL={'Mon':'MONDAY','Tue':'TUESDAY','Wed':'WEDNESDAY','Thu':'THURSDAY','Fri':'FRIDAY','Sat':'SATURDAY','Sun':'SUNDAY'}
     day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
-    # top black band = the "day dot" (prep day, drives FIFO rotation); batch number sits on the right
-    dr.rectangle([0,0,W,s(36)],fill=0); fh=fnt(s(23),True)
-    dr.text((s(10),s(5)),dayname,font=fh,fill=255)
+    M=16
+    # 1) top black day band (drives FIFO rotation) + batch badge on the right
+    band_h=72; dr.rectangle([0,0,W,band_h],fill=0)
+    fh=fnt(42,True); dr.text((M,band_h//2-27),dayname,font=fh,fill=255)
     if total>1 and seq>0:
-        badge="%d/%d"%(seq,total); fb=fnt(s(23),True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-s(10)-bw,s(5)),badge,font=fb,fill=255)
-    # product name — the biggest thing on the label
-    y=s(44); fi=fnt(s(34),True)
-    for ln in wrap((item or "").upper(),fi,W-s(16),maxlines=2): dr.text((s(8),y),ln,font=fi,fill=0); y+=s(36)
-    y+=s(4); dr.line([s(8),y,W-s(8),y],fill=0,width=max(1,s(2))); y+=s(9)
-    fs=fnt(s(19),False); fsb=fnt(s(19),True)
-    dr.text((s(8),y),"PREPPED",font=fsb,fill=0); dr.text((s(128),y),prepped_s,font=fs,fill=0); y+=s(26)
-    dr.text((s(8),y+s(2)),"BY",font=fsb,fill=0); dr.text((s(128),y),(staff or "-"),font=fnt(s(22),True),fill=0)   # preparer name a touch bigger + bold
-    # USE BY — the discard deadline, most important line: bold + boxed, anchored to the bottom
-    fu=fnt(s(27),True); box="USE BY  "+useby_s; bh=s(46); by0=H-s(8)-bh
-    dr.rectangle([s(6),by0,W-s(6),by0+bh],outline=0,width=max(1,s(3)))
-    dr.text(((W-dr.textlength(box,font=fu))/2,by0+s(9)),box,font=fu,fill=0)
+        badge="%d/%d"%(seq,total); fb=fnt(42,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-M-bw,band_h//2-27),badge,font=fb,fill=255)
+    # 2) USE BY box — the discard deadline, most important line: bold + boxed, anchored to the bottom
+    box_h=94; box_y0=H-12-box_h
+    dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
+    box="USE BY  "+useby_s; fu=fnt(48,True)
+    while dr.textlength(box,font=fu)>W-46 and fu.size>26: fu=fnt(fu.size-2,True)
+    dr.text(((W-dr.textlength(box,font=fu))//2, box_y0+(box_h-fu.size)//2-6), box, font=fu, fill=0)
+    # 3) PREPPED date + BY name, stacked just above the box (name big + bold)
+    fsb=fnt(27,True); fs=fnt(27,False); fname=fnt(40,True)
+    by_y=box_y0-18-44; pr_y=by_y-42
+    dr.text((M,pr_y),"PREPPED",font=fsb,fill=0); dr.text((M+168,pr_y),prepped_s,font=fs,fill=0)
+    dr.text((M,by_y+8),"BY",font=fsb,fill=0); dr.text((M+168,by_y),(staff or "-"),font=fname,fill=0)
+    # 4) divider above the prepped block
+    div_y=pr_y-16; dr.line([M,div_y,W-M,div_y],fill=0,width=3)
+    # 5) product name — fills the zone between band and divider, biggest font that fits ALL words in <=4 lines
+    top=band_h+18; bottom=div_y-14; zone=bottom-top
+    up=(item or "").upper(); nwords=len(up.split())
+    f=fnt(66,True); lines=wrap(up,f,W-2*M,4); lh=int(66*1.12)
+    for sz in (66,60,54,48,42,38,34,30,27):
+        f=fnt(sz,True); lines=wrap(up,f,W-2*M,4); lh=int(sz*1.12)
+        if len(lines)*lh<=zone and sum(len(l.split()) for l in lines)>=nwords: break
+    y=top+max(0,(zone-len(lines)*lh)//2)
+    for ln in lines:
+        dr.text(((W-dr.textlength(ln,font=f))//2, y), ln, font=f, fill=0); y+=lh
     return img
 _NIIM_CHR="bef8d6c9-9c21-4c9e-b632-bd58c1009f9f"   # NOTIFY + WRITE_NO_RESPONSE
 NIIM_W=567                                         # B1 Pro printhead width in dots (300 dpi)

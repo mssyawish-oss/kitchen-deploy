@@ -5814,7 +5814,28 @@ function saveGoogleConfig(){const body={};const cid=document.getElementById('g-c
 function testGoogle(){const s=document.getElementById('google-status');s.textContent='Testing Gmail + Drive…';s.style.color='var(--muted)';fetch('/api/google_test').then(r=>r.json()).then(d=>{if(d.ok){s.innerHTML='✓ '+(d.detail||'Connected');s.style.color='var(--green)';}else{s.textContent='✗ '+(d.error||'failed');s.style.color='var(--red)';}}).catch(()=>{s.textContent='Could not reach server.';s.style.color='var(--red)';});}
 async function saveEmailConfig(){const email=document.getElementById('cfg-email').value.trim();const pass=document.getElementById('cfg-apppass').value.trim();const status=document.getElementById('email-status');if(!email||!pass){status.textContent='Enter email and password.';status.style.color='var(--red)';return;}appData.email_config={smtp_host:'smtp.gmail.com',smtp_port:587,smtp_user:email,smtp_pass:pass.replace(/\s/g,''),from_addr:email};await saveAppData();status.textContent='Saved!';status.style.color='var(--green)';}
 async function testEmail(){const status=document.getElementById('email-status');status.textContent='Sending...';status.style.color='var(--muted)';try{const r=await fetch('/api/test_email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:(appData.email_config||{}).smtp_user||''})});const d=await r.json();status.textContent=d.ok?'Test sent!':'Error: '+d.error;status.style.color=d.ok?'var(--green)':'var(--red)';}catch(e){status.textContent='Error';status.style.color='var(--red)';}}
-function renderStaffAdmin(){document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="staff-row"><span class="staff-name">${_mEsc(s.name||'')}</span><span class="tag tag-amber staff-role">${_mEsc(s.role||'')}</span><span class="staff-pin">PIN ${_mEsc(s.pin||'')}</span><button class="btn staff-edit" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger staff-del" onclick="removeStaff(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
+// Self-healing: collapse duplicate staff (same name). Keeps ONE row per person, preferring the most
+// recent non-blank PIN — which cleans up the legacy double-ups the old edit bug left behind (it pushed a
+// new row with the changed PIN instead of updating the old one → two rows, same name, different PINs).
+// Every kept row is guaranteed an id. Returns true if it changed anything.
+function _dedupeStaff(){
+  const arr=appData.staff||[];if(arr.length<2)return false;
+  const seen={},out=[];
+  arr.forEach(s=>{
+    if(!s)return;
+    if(!s.id)s.id='staff_'+Date.now()+'_'+out.length;
+    const k=(s.name||'').trim().toLowerCase();
+    if(!k){out.push(s);return;}
+    if(seen[k]===undefined){seen[k]=out.length;out.push(s);}
+    else{const keep=out[seen[k]];
+      if(String(s.pin||''))keep.pin=s.pin;               // latest non-blank PIN wins = the edit you meant
+      keep.role=keep.role||s.role;keep.square_id=keep.square_id||s.square_id;
+      keep.hourly_rate=keep.hourly_rate||s.hourly_rate;keep.email=keep.email||s.email;}
+  });
+  if(out.length===arr.length)return false;
+  appData.staff=out;return true;
+}
+function renderStaffAdmin(){if(_dedupeStaff())saveKeys(['staff']);document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="staff-row"><span class="staff-name">${_mEsc(s.name||'')}</span><span class="tag tag-amber staff-role">${_mEsc(s.role||'')}</span><span class="staff-pin">PIN ${_mEsc(s.pin||'')}</span><button class="btn staff-edit" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger staff-del" onclick="removeStaff(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px;padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
 function _staffFormClear(){editingStaff=null;setBtn('btn-add-staff','+ Add Staff');const g=id=>document.getElementById(id);if(g('new-staff-name'))g('new-staff-name').value='';if(g('new-staff-pin'))g('new-staff-pin').value='';if(g('new-staff-role'))g('new-staff-role').value='cashier';}
 function addStaff(){
   const name=document.getElementById('new-staff-name').value.trim();
@@ -5823,21 +5844,24 @@ function addStaff(){
   if(!name){alert('Enter a name.');return;}
   if(pin && !/^\d{4,8}$/.test(pin)){alert('PIN must be 4 to 8 digits — or leave it blank.');return;}   // PIN is now OPTIONAL
   appData.staff=appData.staff||[];
-  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==editingStaff)){alert('That PIN is already used by another staff member.');return;}
-  if(editingStaff!==null&&editingStaff!==undefined&&appData.staff[editingStaff]){   // EDIT (tracked by index → works even without an id)
-    const ex=appData.staff[editingStaff];ex.name=name;ex.pin=pin;ex.role=role;if(!ex.id)ex.id='staff_'+Date.now();
+  // editingStaff holds a STABLE id (not a list position), so a reorder/reload mid-edit can't make the save
+  // miss the row and push a duplicate — the exact failure that created the double-ups before.
+  const ei=(editingStaff!=null)?appData.staff.findIndex(s=>s.id===editingStaff):-1;
+  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==ei)){alert('That PIN is already used by another staff member.');return;}
+  if(ei>=0){
+    const ex=appData.staff[ei];ex.name=name;ex.pin=pin;ex.role=role;if(!ex.id)ex.id='staff_'+Date.now();
   }else{
     appData.staff.push({id:'staff_'+Date.now(),name,pin,role});
   }
   saveAppData();renderStaffAdmin();_staffFormClear();
 }
-function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;editingStaff=i;   // track by INDEX
+function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;if(!s.id)s.id='staff_'+Date.now();editingStaff=s.id;   // track by STABLE id
   document.getElementById('new-staff-name').value=s.name||'';
   document.getElementById('new-staff-pin').value=s.pin||'';
   document.getElementById('new-staff-role').value=s.role||'cashier';
   setBtn('btn-add-staff','Save Changes');
   document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
-function removeStaff(i){if(!confirm('Remove this staff member?'))return;appData.staff.splice(i,1);if(editingStaff===i)_staffFormClear();else if(typeof editingStaff==='number'&&editingStaff>i)editingStaff--;saveAppData();renderStaffAdmin();}
+function removeStaff(i){if(!confirm('Remove this staff member?'))return;const rem=(appData.staff||[])[i];appData.staff.splice(i,1);if(rem&&editingStaff===rem.id)_staffFormClear();saveAppData();renderStaffAdmin();}
 
 // ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they
 //    keep running across pages and survive a refresh; a finished timer rings the "Batch timer" alarm. ──
@@ -6013,6 +6037,7 @@ function _labour(){
   appData.labour=L;return L;
 }
 function renderTeamPage(){
+  if(_dedupeStaff())saveKeys(['staff']);
   const L=_labour(),staff=(appData.staff||[]);
   const chips=document.getElementById('team-onshift');if(!chips)return;
   chips.innerHTML=staff.length?staff.map(function(s,i){const on=L.on.indexOf(s.name)>=0;return '<div class="team-chip'+(on?' on':'')+'" onclick="toggleOnShift('+i+')"><span class="tc-dot"></span><span>'+esc(s.name||'?')+'</span>'+(s.role?'<span class="tc-role">'+esc(s.role)+'</span>':'')+'</div>';}).join(''):'<div style="color:var(--muted);font-size:13px;">No staff yet — add them in Settings → Staff.</div>';
@@ -6044,7 +6069,7 @@ function importSquareTeam(){
       if(s){if(!s.id)s.id='staff_'+Date.now()+'_'+mi;s.square_id=m.square_id;if(m.hourly_rate)s.hourly_rate=m.hourly_rate;if(m.email)s.email=m.email;if(m.title&&!s.role)s.role=_roleFromTitle(m.title);updated++;}
       else{appData.staff.push({id:'staff_'+Date.now()+'_'+mi,name:m.name,pin:'',role:_roleFromTitle(m.title),hourly_rate:m.hourly_rate||0,square_id:m.square_id,email:m.email||''});added++;}
     });
-    saveKeys(['staff']);renderTeamPage();
+    _dedupeStaff();saveKeys(['staff']);renderTeamPage();
     const need=(appData.staff||[]).filter(s=>!s.pin).length;
     if(st){st.innerHTML='Imported '+added+' new, updated '+updated+' &middot; '+(d.count||0)+' from Square. '+(need?('<b style="color:var(--amber);">'+need+' still need a PIN</b> — Square doesn\'t share its passcodes, so tap “set PIN”.'):'All have PINs ✓');st.style.color='var(--green)';}
   }).catch(()=>{if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
@@ -6224,7 +6249,22 @@ async function init(){
   // Idle auto-close: an open menu or Settings shuts itself after 30s untouched, and the unlock lapses
   // with it — walking away from an open admin surface must not leave it open for the next person.
   window._uiIdleLast=Date.now();
-  ['pointerdown','keydown','touchstart','wheel'].forEach(ev=>document.addEventListener(ev,()=>{window._uiIdleLast=Date.now();},true));
+  // Count ANY interaction as activity — incl. finger-scrolling (touchmove), mouse movement, scrolling and
+  // typing in a field — so Settings only closes after 30s of GENUINELY doing nothing, not while you're
+  // reading/scrolling it. (Previously only touchstart counted, so scrolling a long page let it time out.)
+  ['pointerdown','keydown','touchstart','touchmove','mousemove','wheel','scroll','input','change'].forEach(ev=>document.addEventListener(ev,()=>{window._uiIdleLast=Date.now();},true));
+  // Type the PIN on a keyboard (not just the on-screen pad): digits enter, Backspace deletes, Enter submits,
+  // Esc cancels. Works for the Settings/confirm prompt AND the lock screen; the confirm prompt takes priority.
+  document.addEventListener('keydown',function(e){
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    const cm=document.getElementById('pin-confirm-modal'),confirmOpen=!!(cm&&cm.classList.contains('open'));
+    const ls=document.getElementById('lock-screen'),lockOpen=!confirmOpen&&!!(ls&&!ls.classList.contains('hidden'));
+    if(!confirmOpen&&!lockOpen)return;
+    if(e.key>='0'&&e.key<='9'){e.preventDefault();confirmOpen?cPinPress(e.key):pinPress(e.key);}
+    else if(e.key==='Backspace'){e.preventDefault();confirmOpen?cPinBack():pinBack();}
+    else if(e.key==='Enter'){e.preventDefault();confirmOpen?checkCPin():checkPin();}
+    else if(e.key==='Escape'&&confirmOpen){e.preventDefault();closeModal('pin-confirm-modal');}
+  });
   setInterval(()=>{
     if(Date.now()-window._uiIdleLast<30000)return;
     const s=document.getElementById('app-shell');if(!s)return;
