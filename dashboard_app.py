@@ -3374,6 +3374,26 @@ WALKIN={"person":False,"staff":False,"since":0.0,"alert":False,"last":0.0,"err":
 _WALKIN_PROMPT=("Is there at least one PERSON visible in this photo? "
                 "Answer with one word only: YES or NO.")
 def _walkin_cfg(): return db.get("walkin",{}) or {}
+# Local motion gate. Asking the AI every 2s would cost ~20k calls/day; but a shop where NOTHING has
+# changed since the last frame can't have changed answer either. So we grab frames fast and cheaply,
+# and only spend an AI call when the picture actually moved (or the cached answer has gone stale).
+_WALKIN_SIG={"cust":None,"staff":None}
+_WALKIN_CACHE={"person":None,"staff":None,"at":0.0}
+_WALKIN_RECHECK=30      # force a fresh AI look at least this often, even in a dead-still frame
+_MOTION_THRESHOLD=6.0   # mean per-pixel difference on a 48x27 grey thumbnail
+def _frame_sig(jpeg):
+    try:
+        from PIL import Image
+        import io as _io
+        im=Image.open(_io.BytesIO(jpeg)).convert("L").resize((48,27))
+        return im.tobytes()          # not getdata(): deprecated in Pillow 14
+    except Exception:
+        return None
+def _frame_moved(prev,cur):
+    """True if the picture changed enough to be worth an AI call (or if we can't tell — fail toward asking)."""
+    if prev is None or cur is None or len(prev)!=len(cur): return True
+    diff=sum(abs(a-b) for a,b in zip(prev,cur))/float(len(cur))
+    return diff>=_MOTION_THRESHOLD
 def _walkin_ask(jpeg):
     """True/False if a person is visible, or None if we couldn't tell (never guesses)."""
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
@@ -3438,26 +3458,40 @@ def _walkin_open_now(cfg):
     except Exception: return True
 def walkin_loop():
     while True:
-        cfg=_walkin_cfg(); iv=max(8,int(cfg.get("interval",20) or 20))
+        cfg=_walkin_cfg(); iv=max(2,int(cfg.get("interval",5) or 5))
         try:
             if not (cfg.get("enabled") and cfg.get("customer_cam") and cfg.get("staff_cam")
                     and (_rotcam_cfg().get("gemini_key") or "").strip() and _walkin_open_now(cfg)):
                 WALKIN.update({"alert":False,"since":0.0}); time.sleep(iv); continue
             ccam=_cam_by_id(cfg["customer_cam"]); scam=_cam_by_id(cfg["staff_cam"])
             cj,_=_snap_from(ccam) if ccam else (None,"no cam")
-            person=_walkin_ask(cj)
             WALKIN["checks"]=WALKIN.get("checks",0)+1
+            now=time.time()
+            sig=_frame_sig(cj)
+            stale=(now-_WALKIN_CACHE["at"])>_WALKIN_RECHECK
+            if _frame_moved(_WALKIN_SIG["cust"],sig) or stale or _WALKIN_CACHE["person"] is None:
+                person=_walkin_ask(cj)
+                _WALKIN_CACHE.update({"person":person,"at":now})
+            else:
+                person=_WALKIN_CACHE["person"]        # picture identical to last look → answer can't have changed
+            _WALKIN_SIG["cust"]=sig
             if person is not True:                    # nobody waiting (or unreadable) → clear, and never
                 WALKIN.update({"person":False,"alert":False,"since":0.0})   # spend a call on the staff cam
                 time.sleep(iv); continue
             sj,_=_snap_from(scam) if scam else (None,"no cam")
-            staff=_walkin_ask(sj)
+            ssig=_frame_sig(sj)
+            if _frame_moved(_WALKIN_SIG["staff"],ssig) or stale or _WALKIN_CACHE["staff"] is None:
+                staff=_walkin_ask(sj)
+                _WALKIN_CACHE["staff"]=staff
+            else:
+                staff=_WALKIN_CACHE["staff"]
+            _WALKIN_SIG["staff"]=ssig
             WALKIN.update({"person":True,"staff":bool(staff),"err":""})
             if staff is not False:                    # staff present (or unsure) → not a walk-in
                 WALKIN.update({"alert":False,"since":0.0}); time.sleep(iv); continue
             now=time.time()
             if not WALKIN["since"]: WALKIN["since"]=now
-            delay=max(5,int(cfg.get("delay_secs",25) or 25))
+            delay=max(0,int(cfg.get("delay_secs",10) if cfg.get("delay_secs") is not None else 10))
             if (now-WALKIN["since"])>=delay and not WALKIN["alert"]:
                 WALKIN.update({"alert":True,"last":now})
                 try: _walkin_log_add(cj,sj,now-WALKIN["since"])   # keep the evidence for tuning
@@ -5350,7 +5384,7 @@ def api_walkin_config():
                 if k in d: w[k]=str(d.get(k) or "")
             if "enabled" in d: w["enabled"]=bool(d.get("enabled"))
             if "alarm_on" in d: w["alarm_on"]=bool(d.get("alarm_on"))   # off = quiet corner light only (test mode)
-            for k,lo,hi in (("delay_secs",5,300),("interval",8,300),("start_hour",0,23),("end_hour",1,24)):
+            for k,lo,hi in (("delay_secs",0,300),("interval",2,300),("start_hour",0,23),("end_hour",1,24)):
                 if k in d:
                     try: w[k]=max(lo,min(hi,int(d.get(k))))
                     except (TypeError,ValueError): pass

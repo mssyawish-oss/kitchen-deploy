@@ -2226,8 +2226,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div><div class="label">Staff camera <span style="color:var(--muted);font-weight:400;">(service area)</span></div><select class="input" id="wi-scam" style="background:var(--surface2);"></select></div>
     </div>
     <div class="grid-2 mt-8">
-      <div><div class="label">Alert after <span style="color:var(--muted);font-weight:400;">(seconds unattended)</span></div><input class="input" id="wi-delay" type="number" min="5" max="300" step="5" placeholder="25"></div>
-      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="wi-interval" type="number" min="8" max="300" step="5" placeholder="20"></div>
+      <div><div class="label">Alert after <span style="color:var(--muted);font-weight:400;">(seconds unattended — 0 = instant)</span></div><input class="input" id="wi-delay" type="number" min="0" max="300" step="1" placeholder="10"></div>
+      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds — 2 is fine; AI is only used when the picture changes)</span></div><input class="input" id="wi-interval" type="number" min="2" max="300" step="1" placeholder="5"></div>
     </div>
     <div class="grid-2 mt-8">
       <div><div class="label">Only between</div><input class="input" id="wi-start" type="number" min="0" max="23" placeholder="10"></div>
@@ -2695,7 +2695,7 @@ function walkinLoad(){
     const g=id=>document.getElementById(id); if(!g('wi-enabled'))return;
     g('wi-enabled').checked=!!d.enabled; g('wi-alarm').checked=!!d.alarm_on;
     _wiCamOpts(g('wi-ccam'),d.customer_cam); _wiCamOpts(g('wi-scam'),d.staff_cam);
-    g('wi-delay').value=d.delay_secs||25; g('wi-interval').value=d.interval||20;
+    g('wi-delay').value=(d.delay_secs!==undefined?d.delay_secs:10); g('wi-interval').value=d.interval||5;
     g('wi-start').value=(d.start_hour!==undefined?d.start_hour:10); g('wi-end').value=(d.end_hour!==undefined?d.end_hour:21);
     const st=g('wi-status');
     if(st&&!d.has_key){st.textContent='No AI key yet — set the Gemini key under Rotisserie Auto-Count first.';st.style.color='var(--amber)';}
@@ -2705,7 +2705,7 @@ function walkinLoad(){
 function walkinSave(){
   const g=id=>document.getElementById(id),st=g('wi-status');
   const body={enabled:g('wi-enabled').checked,alarm_on:g('wi-alarm').checked,customer_cam:g('wi-ccam').value,staff_cam:g('wi-scam').value,
-    delay_secs:parseInt(g('wi-delay').value)||25,interval:parseInt(g('wi-interval').value)||20,
+    delay_secs:(isNaN(parseInt(g('wi-delay').value))?10:parseInt(g('wi-delay').value)),interval:parseInt(g('wi-interval').value)||5,
     start_hour:parseInt(g('wi-start').value),end_hour:parseInt(g('wi-end').value)};
   if(body.enabled&&(!body.customer_cam||!body.staff_cam)){st.textContent='Pick both cameras first.';st.style.color='var(--amber)';return;}
   st.textContent='Saving…';st.style.color='var(--muted)';
