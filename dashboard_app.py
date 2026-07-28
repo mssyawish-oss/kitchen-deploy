@@ -3365,6 +3365,78 @@ def _rotcam_bench_count(jpeg):
         return max(0,min(3,int(m.group())))
     except Exception:
         return None
+# ===== WALK-IN WATCH — "a customer is waiting and nobody is serving" =========================
+# Two cameras ARE the two zones (no zone-drawing needed): the CUSTOMER camera (dining/counter side)
+# and the STAFF camera (behind the servery). Alert only when a person is seen on the customer cam AND
+# nobody is on the staff cam, held for `delay_secs` — the delay is what stops it crying wolf as staff
+# step in and out of frame during a rush. Reuses the rotisserie's Gemini key and call meter.
+WALKIN={"person":False,"staff":False,"since":0.0,"alert":False,"last":0.0,"err":"","checks":0}
+_WALKIN_PROMPT=("Is there at least one PERSON visible in this photo? "
+                "Answer with one word only: YES or NO.")
+def _walkin_cfg(): return db.get("walkin",{}) or {}
+def _walkin_ask(jpeg):
+    """True/False if a person is visible, or None if we couldn't tell (never guesses)."""
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None
+    try:
+        from PIL import Image
+        import io as _io
+        im=Image.open(_io.BytesIO(jpeg)).convert("RGB")
+        if im.width>720: im=im.resize((720,max(1,int(im.height*720/im.width))))
+        buf=_io.BytesIO(); im.save(buf,"JPEG",quality=72); jpeg=buf.getvalue()
+    except Exception: pass
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":8}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_WALKIN_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(jpeg).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict)).strip().upper()
+        if txt.startswith("Y"): return True
+        if txt.startswith("N"): return False
+        return None
+    except Exception as e:
+        WALKIN["err"]=str(e)[:120]; return None
+def _walkin_open_now(cfg):
+    try:
+        h=datetime.now().hour
+        s=int(cfg.get("start_hour",10)); e=int(cfg.get("end_hour",21))
+        return s<=h<e
+    except Exception: return True
+def walkin_loop():
+    while True:
+        cfg=_walkin_cfg(); iv=max(8,int(cfg.get("interval",20) or 20))
+        try:
+            if not (cfg.get("enabled") and cfg.get("customer_cam") and cfg.get("staff_cam")
+                    and (_rotcam_cfg().get("gemini_key") or "").strip() and _walkin_open_now(cfg)):
+                WALKIN.update({"alert":False,"since":0.0}); time.sleep(iv); continue
+            ccam=_cam_by_id(cfg["customer_cam"]); scam=_cam_by_id(cfg["staff_cam"])
+            cj,_=_snap_from(ccam) if ccam else (None,"no cam")
+            person=_walkin_ask(cj)
+            WALKIN["checks"]=WALKIN.get("checks",0)+1
+            if person is not True:                    # nobody waiting (or unreadable) → clear, and never
+                WALKIN.update({"person":False,"alert":False,"since":0.0})   # spend a call on the staff cam
+                time.sleep(iv); continue
+            sj,_=_snap_from(scam) if scam else (None,"no cam")
+            staff=_walkin_ask(sj)
+            WALKIN.update({"person":True,"staff":bool(staff),"err":""})
+            if staff is not False:                    # staff present (or unsure) → not a walk-in
+                WALKIN.update({"alert":False,"since":0.0}); time.sleep(iv); continue
+            now=time.time()
+            if not WALKIN["since"]: WALKIN["since"]=now
+            delay=max(5,int(cfg.get("delay_secs",25) or 25))
+            if (now-WALKIN["since"])>=delay and not WALKIN["alert"]:
+                WALKIN.update({"alert":True,"last":now})
+        except Exception as e:
+            WALKIN["err"]=str(e)[:120]
+        time.sleep(iv)
+
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
     if _rot_mode()=="probe": return               # probes are counting stock this session → ignore camera credits
@@ -4329,7 +4401,9 @@ def temps():
             s[k]=item
     return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
-"save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else "")}),mimetype="application/json")
+"save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
+"walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
+          "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))}}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -5237,6 +5311,53 @@ def send_reminder():
     sent=_send_reminder_once(to,msg) if to else False   # per-day dedup: many open dashboards → still one email
     return jsonify({"ok":True,"sent":sent})
 
+@app.route("/api/walkin_config",methods=["GET","POST"])
+def api_walkin_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            w=dict(db.get("walkin") or {})
+            for k in ("customer_cam","staff_cam"):
+                if k in d: w[k]=str(d.get(k) or "")
+            if "enabled" in d: w["enabled"]=bool(d.get("enabled"))
+            if "alarm_on" in d: w["alarm_on"]=bool(d.get("alarm_on"))   # off = quiet corner light only (test mode)
+            for k,lo,hi in (("delay_secs",5,300),("interval",8,300),("start_hour",0,23),("end_hour",1,24)):
+                if k in d:
+                    try: w[k]=max(lo,min(hi,int(d.get(k))))
+                    except (TypeError,ValueError): pass
+            db["walkin"]=w; save_data(db)
+        if not w.get("enabled"): WALKIN.update({"alert":False,"since":0.0})
+    w=_walkin_cfg()
+    return jsonify({"ok":True,"enabled":bool(w.get("enabled")),"alarm_on":bool(w.get("alarm_on")),
+                    "customer_cam":w.get("customer_cam",""),
+                    "staff_cam":w.get("staff_cam",""),"delay_secs":w.get("delay_secs",25),
+                    "interval":w.get("interval",20),"start_hour":w.get("start_hour",10),
+                    "end_hour":w.get("end_hour",21),
+                    "has_key":bool((_rotcam_cfg().get("gemini_key") or "").strip()),
+                    "state":{k:WALKIN.get(k) for k in ("person","staff","alert","err","checks")}})
+
+@app.route("/api/walkin_ack",methods=["POST"])
+def api_walkin_ack():
+    WALKIN.update({"alert":False,"since":0.0})   # staff dealt with it; re-arms on the next fresh detection
+    return jsonify({"ok":True})
+
+@app.route("/api/walkin_test",methods=["POST"])
+def api_walkin_test():
+    """Run ONE check right now and report what each camera saw — so the owner can prove it works
+    (and see the cost) without waiting for a real walk-in."""
+    cfg=_walkin_cfg()
+    if not (_rotcam_cfg().get("gemini_key") or "").strip():
+        return jsonify({"ok":False,"error":"No AI key yet — set the Gemini key in the rotisserie camera settings first."})
+    ccam=_cam_by_id(cfg.get("customer_cam") or ""); scam=_cam_by_id(cfg.get("staff_cam") or "")
+    if not ccam or not scam: return jsonify({"ok":False,"error":"Pick both cameras first."})
+    cj,ce=_snap_from(ccam); sj,se=_snap_from(scam)
+    if ce or sj is None: pass
+    person=_walkin_ask(cj); staff=_walkin_ask(sj)
+    def _w(v): return "yes" if v is True else ("no" if v is False else "couldn't tell")
+    return jsonify({"ok":True,"customer_seen":_w(person),"staff_seen":_w(staff),
+                    "would_alert":bool(person is True and staff is False),
+                    "cam_error":(ce or se or "")})
+
 @app.route("/api/supplier_sms_test",methods=["POST"])
 def supplier_sms_test():
     """Fire a one-off test text to the number(s) in a supplier's reminder field — so the owner can
@@ -5726,6 +5847,7 @@ if __name__=="__main__":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
+    threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
     threading.Thread(target=rotcam_loop,daemon=True).start()
