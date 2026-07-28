@@ -9,3 +9,6 @@ deploy-status.json
 backups/
 kitchen_data.json
 *.bak
+# camera stills of customers/staff — NEVER commit to this PUBLIC repo
+walkin_log/
+task_photos/

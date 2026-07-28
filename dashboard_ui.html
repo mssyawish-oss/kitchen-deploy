@@ -1356,6 +1356,14 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 #walkin-dot.wd-on::after{content:'';position:absolute;inset:-14px;}   /* easy tap target */
 @keyframes wdPulse{0%,100%{opacity:.35;}50%{opacity:1;}}
 body.view-wall #walkin-dot{width:15px;height:15px;}
+/* detection log: each red light with the two frames that caused it, so a false alarm is obvious */
+.wi-log-row{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;}
+.wi-log-when{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:7px;}
+.wi-log-when span{font-size:11px;font-weight:600;color:var(--muted);}
+.wi-log-imgs{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.wi-log-imgs figure{margin:0;}
+.wi-log-imgs img{width:100%;border-radius:7px;border:1px solid var(--border2);display:block;cursor:zoom-in;}
+.wi-log-imgs figcaption{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px;text-align:center;}
 .ac-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
 .ac-btns .btn{padding:6px 11px;font-size:12px;}
 .ac-sound{font-size:12px;color:var(--text);margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -2227,6 +2235,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     </div>
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="walkinSave()">Save walk-in watch</button><button class="btn" onclick="walkinTest()">Test now</button></div>
     <div id="wi-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
+    <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Detection log <span style="color:var(--muted);font-weight:400;">(every red light, with the two frames that caused it)</span></div><span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="walkinLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="walkinLogClear()">Clear</button></span></div>
+    <div id="wi-log" style="margin-top:8px;"></div>
     <div class="divider"></div>
     <div class="section-title">Rotisserie Auto-Count (camera + AI)</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Watches the rotisserie camera and counts rows of chickens with AI. When a cooked row comes off, it auto-adds to available stock. Uses Google Gemini's free tier. Needs <b>ffmpeg</b> installed on this machine.</div>
@@ -2689,6 +2699,7 @@ function walkinLoad(){
     g('wi-start').value=(d.start_hour!==undefined?d.start_hour:10); g('wi-end').value=(d.end_hour!==undefined?d.end_hour:21);
     const st=g('wi-status');
     if(st&&!d.has_key){st.textContent='No AI key yet — set the Gemini key under Rotisserie Auto-Count first.';st.style.color='var(--amber)';}
+    walkinLogLoad();
   }).catch(()=>{});
 }
 function walkinSave(){
@@ -2701,6 +2712,24 @@ function walkinSave(){
   fetch('/api/walkin_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved ✓':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';})
     .catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function walkinLogLoad(){
+  const box=document.getElementById('wi-log');if(!box)return;
+  fetch('/api/walkin_log').then(r=>r.json()).then(d=>{
+    const es=d.entries||[];
+    if(!es.length){box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px 0;">No detections logged yet.</div>';return;}
+    box.innerHTML='<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">'+d.count+' detection'+(d.count>1?'s':'')+' logged (newest first). Check each pair: was there really a customer, and really no staff?</div>'
+      +es.map(e=>'<div class="wi-log-row">'
+        +'<div class="wi-log-when">'+_mEsc(e.at||'')+'<span>waited '+(e.waited||0)+'s</span></div>'
+        +'<div class="wi-log-imgs">'
+        +(e.cust_img?'<figure><img src="/walkin_img/'+encodeURIComponent(e.cust_img)+'" onclick="window.open(this.src)"><figcaption>customer cam</figcaption></figure>':'')
+        +(e.staff_img?'<figure><img src="/walkin_img/'+encodeURIComponent(e.staff_img)+'" onclick="window.open(this.src)"><figcaption>staff cam</figcaption></figure>':'')
+        +'</div></div>').join('');
+  }).catch(()=>{box.innerHTML='<div style="color:var(--red);font-size:12px;">Could not load the log.</div>';});
+}
+function walkinLogClear(){
+  if(!confirm('Clear the detection log and its saved images?'))return;
+  fetch('/api/walkin_log',{method:'DELETE'}).then(()=>walkinLogLoad()).catch(()=>{});
 }
 function walkinTest(){
   const st=document.getElementById('wi-status');st.textContent='Looking at both cameras…';st.style.color='var(--muted)';

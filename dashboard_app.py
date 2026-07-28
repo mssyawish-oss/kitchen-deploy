@@ -3403,6 +3403,33 @@ def _walkin_ask(jpeg):
         return None
     except Exception as e:
         WALKIN["err"]=str(e)[:120]; return None
+WALKIN_DIR=os.path.join(BASE_DIR,"walkin_log")
+try: os.makedirs(WALKIN_DIR,exist_ok=True)
+except Exception: pass
+_WALKIN_KEEP=200   # entries (and their image pairs) to keep; oldest pruned
+def _walkin_log_add(cust_jpeg,staff_jpeg,waited):
+    """Record a detection WITH the two frames that caused it — the only way to judge, after the fact,
+    whether a red light was a real walk-in or a false alarm."""
+    ts=int(time.time()*1000)
+    stamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+    ent={"ts":ts,"at":datetime.now().strftime("%a %d %b %H:%M:%S"),"waited":round(waited,1),
+         "cust_img":"","staff_img":""}
+    for tag,jp in (("cust",cust_jpeg),("staff",staff_jpeg)):
+        if not jp: continue
+        fn="wi_%s_%s.jpg"%(stamp,tag)
+        try:
+            with open(os.path.join(WALKIN_DIR,fn),"wb") as f: f.write(jp)
+            ent[tag+"_img"]=fn
+        except Exception: pass
+    with data_lock:
+        log=list(db.get("walkin_log") or []); log.append(ent)
+        drop=log[:-_WALKIN_KEEP]; log=log[-_WALKIN_KEEP:]
+        db["walkin_log"]=log; save_data(db)
+    for old in drop:            # delete the pruned entries' images so the folder can't grow forever
+        for k in ("cust_img","staff_img"):
+            try:
+                if old.get(k): os.remove(os.path.join(WALKIN_DIR,old[k]))
+            except Exception: pass
 def _walkin_open_now(cfg):
     try:
         h=datetime.now().hour
@@ -3433,6 +3460,8 @@ def walkin_loop():
             delay=max(5,int(cfg.get("delay_secs",25) or 25))
             if (now-WALKIN["since"])>=delay and not WALKIN["alert"]:
                 WALKIN.update({"alert":True,"last":now})
+                try: _walkin_log_add(cj,sj,now-WALKIN["since"])   # keep the evidence for tuning
+                except Exception as le: print("walkin log:",le)
         except Exception as e:
             WALKIN["err"]=str(e)[:120]
         time.sleep(iv)
@@ -5340,6 +5369,29 @@ def api_walkin_config():
 def api_walkin_ack():
     WALKIN.update({"alert":False,"since":0.0})   # staff dealt with it; re-arms on the next fresh detection
     return jsonify({"ok":True})
+
+@app.route("/api/walkin_log")
+def api_walkin_log():
+    log=list(db.get("walkin_log") or [])
+    return jsonify({"ok":True,"count":len(log),"entries":list(reversed(log))[:60]})   # newest first
+
+@app.route("/api/walkin_log",methods=["DELETE"])
+def api_walkin_log_clear():
+    with data_lock:
+        for e in (db.get("walkin_log") or []):
+            for k in ("cust_img","staff_img"):
+                try:
+                    if e.get(k): os.remove(os.path.join(WALKIN_DIR,e[k]))
+                except Exception: pass
+        db["walkin_log"]=[]; save_data(db)
+    return jsonify({"ok":True})
+
+@app.route("/walkin_img/<name>")
+def serve_walkin_img(name):
+    if not re.match(r'^[A-Za-z0-9_.-]+$',name or ""): return Response("bad name",status=400)
+    p=os.path.join(WALKIN_DIR,name)
+    if not os.path.exists(p): return Response("not found",status=404)
+    return send_file(p,mimetype="image/jpeg")
 
 @app.route("/api/walkin_test",methods=["POST"])
 def api_walkin_test():
