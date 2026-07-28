@@ -316,9 +316,10 @@ body.style-v2 .divider{background:var(--border2);opacity:.7;}
 body.style-v2 .empty-state{border:1px dashed var(--border2);border-radius:16px;padding:34px 20px;margin:8px 2px;background:var(--card);}
 /* primary/danger buttons: 12px radius to match cards */
 body.style-v2 .btn,body.style-v2 .btn-primary,body.style-v2 .btn-danger{border-radius:12px;}
-.t2-actions{display:flex;gap:9px;}
-.t2-start{flex:1.4;height:42px;border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:14px;font-weight:800;cursor:pointer;}
-.t2-end{flex:1;height:42px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;}
+.t2-actions{display:flex;gap:9px;flex-shrink:0;}
+.t2-start{flex:1.4;height:50px;border:none;border-radius:10px;background:var(--accv,var(--acc));color:#0a0a0c;font-size:15px;font-weight:800;cursor:pointer;}
+.t2-end{flex:1;height:50px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;}
+body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:16px;}
 .probes-grid{flex:0.7 1 0;}
 .rl-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow);height:100%;}
 .rl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:6px;}
@@ -972,8 +973,10 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 
 /* ── TIMERS — large display ── */
 .timers-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
-.adj-row{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
-.adj-btn{min-width:0;padding:6px 1px;font-size:11px;white-space:nowrap;}
+.adj-row{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
+/* kitchen buttons get pressed with full/wet hands — these were 11px text in 6px padding */
+.adj-btn{min-width:0;min-height:40px;padding:9px 2px;font-size:13px;white-space:nowrap;}
+body.view-wall .adj-btn{min-height:46px;font-size:15px;}
 .timer-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:8px;justify-content:flex-start;box-shadow:var(--shadow);}
 .timer-card.alarm{animation:flash-alarm .6s infinite;}
 @keyframes flash-alarm{0%,100%{background:var(--surface);}50%{background:#2d0404;border-color:#ff3333;}}
@@ -1025,7 +1028,12 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .btn-start{background:linear-gradient(180deg,#16a34a,#15803d);color:#eafff1;}.btn-pause{background:linear-gradient(180deg,#b45309,#92400e);color:#fde68a;}
 .timer-card .btn-start{background:var(--acc);color:#0a0a0c;font-weight:700;}
 .btn-end{background:var(--surface2);color:var(--muted);border:1px solid var(--border2);}
-.confirm-btn{width:100%;padding:5px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;animation:pulse-btn .7s infinite;}
+/* The alarm-stop button was 10px text in 5px padding — the hardest button in the shop to hit, and the
+   one you're reaching for with full hands while it screams. Now a proper full-width target. */
+.confirm-btn{width:100%;min-height:52px;padding:13px 10px;margin-top:8px;background:var(--red);color:#fff;
+  border:none;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:.02em;cursor:pointer;
+  flex-shrink:0;animation:pulse-btn .7s infinite;}
+body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 @keyframes pulse-btn{0%,100%{opacity:1;}50%{opacity:.65;}}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
 
@@ -1338,12 +1346,14 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .ac-mutecount{display:inline-block;margin-left:6px;color:var(--amber);font-weight:700;}
 /* walk-in watch, TEST MODE: a quiet red light in the corner — no sound, no popup. Tap it to clear.
    Deliberately small and out of the way so it can run all day while we judge its accuracy. */
-#walkin-dot{position:fixed;top:10px;right:12px;z-index:520;width:16px;height:16px;border-radius:50%;
-  background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.25),0 0 14px 2px rgba(239,68,68,.75);
-  cursor:pointer;animation:wdPulse 1.6s ease-in-out infinite;}
+#walkin-dot{position:fixed;top:10px;right:12px;z-index:520;width:16px;height:16px;border-radius:50%;cursor:pointer;}
+#walkin-dot::after{content:'';position:absolute;inset:-14px;}   /* generous tap target around a small dot */
+#walkin-dot.wd-armed{width:9px;height:9px;top:14px;right:15px;background:#3f4650;box-shadow:none;opacity:.75;}
+#walkin-dot.wd-on{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.25),0 0 14px 2px rgba(239,68,68,.75);
+  animation:wdPulse 1.6s ease-in-out infinite;}
 #walkin-dot.wd-alarm{width:20px;height:20px;animation-duration:.7s;}
 @keyframes wdPulse{0%,100%{opacity:.55;}50%{opacity:1;}}
-body.view-wall #walkin-dot{width:24px;height:24px;top:14px;right:16px;}
+body.view-wall #walkin-dot.wd-on{width:24px;height:24px;top:14px;right:16px;}
 .ac-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
 .ac-btns .btn{padding:6px 11px;font-size:12px;}
 .ac-sound{font-size:12px;color:var(--text);margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -2639,19 +2649,25 @@ function stopWalkinAlarm(){_walkinAlarm=false;_updateFlash();}
 // TEST MODE (default): a quiet red light in the corner, NO sound — so it can run all day while we see
 // whether it's accurate without anyone getting sick of it. Ticking "also sound the alarm" turns the
 // siren on later, once it's proven.
-function _walkinLight(on,alarmed){
+// Three states so you can always tell what the watch is doing:
+//   watch off      -> no dot at all
+//   armed, quiet   -> small DIM dot (proof it's running; "where is the light?" has an answer)
+//   customer waiting, nobody serving -> bright pulsing RED (tap to clear)
+function _walkinLight(enabled,alert,alarmed){
   let el=document.getElementById('walkin-dot');
-  if(!on){if(el)el.remove();return;}
+  if(!enabled){if(el)el.remove();return;}
   if(!el){
-    el=document.createElement('div');el.id='walkin-dot';el.title='Customer waiting — nobody in the service area';
-    el.onclick=function(){ackWalkin();_walkinLight(false);};
+    el=document.createElement('div');el.id='walkin-dot';
+    el.onclick=function(){ackWalkin();};
     document.body.appendChild(el);
   }
-  el.className=alarmed?'wd-alarm':'';
+  el.className=alert?(alarmed?'wd-on wd-alarm':'wd-on'):'wd-armed';
+  el.title=alert?'Customer waiting — nobody in the service area (tap to clear)'
+                :'Walk-in watch is on — nothing to report';
 }
 function handleWalkin(w){
-  const on=!!(w&&w.alert), snd=!!(w&&w.alarm);
-  _walkinLight(on,snd);
+  const enabled=!!(w&&w.on), on=!!(w&&w.alert), snd=!!(w&&w.alarm);
+  _walkinLight(enabled,on,snd);
   if(on&&snd&&!_walkinAlarm){startWalkinAlarm();showLockBanner('Customer waiting','Nobody is in the service area');}
   else if((!on||!snd)&&_walkinAlarm)stopWalkinAlarm();
 }
@@ -3609,7 +3625,9 @@ function _fitPad(){
     if(content>avail+8){
       // TALLER than the screen (e.g. probes cooking add Silence buttons) → shrink to fit.
       // Zoom is a v2-only affordance; classic is left exactly as it always was.
-      if(window.DASH_V2) pg.style.zoom=Math.max(0.6,(avail/content)).toFixed(3);
+      // Floor at 0.78, not 0.6: below that the buttons you need MOST (a timer's CONFIRM — STOP ALARM
+      // only exists while it's screaming) shrink to something you can't hit with full hands.
+      if(window.DASH_V2) pg.style.zoom=Math.max(0.78,(avail/content)).toFixed(3);
     }
     // else: the flex-fill CSS (view-wall / view-pad) grows the cards to fill the height,
     // so there is no slack to absorb here. Leave it be.
