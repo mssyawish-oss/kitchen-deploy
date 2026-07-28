@@ -1331,6 +1331,11 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
 .ac-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);}
 .ac-row select,.ac-row input[type=range]{flex:1;min-width:0;}
 .ac-row input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--border2);border-radius:6px;background:none;cursor:pointer;}
+/* per-device mute: visually separated from the shared settings so it's clear it only affects this screen */
+.ac-devrow{grid-column:1/-1;flex-wrap:wrap;gap:4px 10px;border-top:1px dashed var(--border2);padding-top:7px;margin-top:2px;}
+.ac-devnote{font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);
+  border-radius:9px;padding:9px 11px;margin-bottom:11px;line-height:1.5;}
+.ac-mutecount{display:inline-block;margin-left:6px;color:var(--amber);font-weight:700;}
 .ac-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
 .ac-btns .btn{padding:6px 11px;font-size:12px;}
 .ac-sound{font-size:12px;color:var(--text);margin-top:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -2546,11 +2551,22 @@ function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})
 function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';return 'timer';}
 window._customAudio=window._customAudio||{};
 function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key];if(!a||a._id!==id){a=new Audio('/api/alarm_sound/'+key+'?v='+v);a._id=id;window._customAudio[key]=a;}return a;}   // reuse ONE Audio element per alarm (was leaking a new one every interval)
+// PER-DEVICE MUTING. Every other alarm setting is shop-wide (change it once, it applies everywhere) —
+// but WHERE a noise is appropriate is per-device: the wall screen should shout, the office iPad often
+// shouldn't. Muting is stored on the device only (localStorage), and silences the SOUND only: the flash,
+// the alarm bar and the on-screen cue still show, so a muted device still tells you what's happening.
+function _devMutes(){try{return JSON.parse(localStorage.getItem('alarmMutes')||'{}')||{};}catch(e){return {};}}
+function _devMuted(key){return _devMutes()[key]===true;}
+function _devMuteSet(key,on){const m=_devMutes();if(on)m[key]=true;else delete m[key];
+  try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}
+  if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _alarmHit(key){const c=_acfg(key);const v=c.volume;
-  if(c.has_custom){try{const a=_customAudioFor(key,c.sound_v);a.volume=Math.max(0,Math.min(1,v));try{a.currentTime=0;}catch(e){}a.play().catch(()=>{});}catch(e){}}
-  else if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(v);}catch(e){}}
-  else _alarmSynth(key,v);
-  if(c.vibrate&&navigator.vibrate){try{navigator.vibrate(200);}catch(e){}}}
+  if(!_devMuted(key)){                       // muted here = no sound on THIS screen; visuals still run
+    if(c.has_custom){try{const a=_customAudioFor(key,c.sound_v);a.volume=Math.max(0,Math.min(1,v));try{a.currentTime=0;}catch(e){}a.play().catch(()=>{});}catch(e){}}
+    else if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(v);}catch(e){}}
+    else _alarmSynth(key,v);
+    if(c.vibrate&&navigator.vibrate){try{navigator.vibrate(200);}catch(e){}}
+  }}
 function _alarmSynth(key,v){
   if(key==='prodoff')return playProdChime(v);
   if(key==='stock')return playChime(v);
@@ -5878,6 +5894,8 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row"><span style="min-width:48px;">Flash</span><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.flash?'checked':'')+' onchange="alarmSet(\''+key+'\',\'flash\',this.checked)" style="width:16px;height:16px;"> screen</label><input type="color" value="'+c.color+'" onchange="alarmSet(\''+key+'\',\'color\',this.value)" title="flash colour"></div>'
       +'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>'
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked)" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
+      +'<span style="font-size:11px;color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
       +'</div>'
       +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Default</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">▶</button></div>'
       +'<div class="ac-sound"><span>Or own file:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file (overrides tone)':'none')+'</span>'
@@ -5887,6 +5905,13 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-btns"><button class="btn btn-primary" onclick="alarmTest(\''+key+'\')">▶ Test</button><button class="btn" onclick="silenceOneAlarm(\''+key+'\')">Silence now</button></div>'
       +'</div>';
   }).join('');
+  // banner: make it obvious which settings are shared and which belong to the screen you're on
+  const _mc=Object.keys(_devMutes()).length;
+  const _dev=(window.DASH_VIEW==='wall')?'the kitchen wall screen':(window.DASH_VIEW==='pad'?'this iPad':'this phone');
+  host.insertAdjacentHTML('afterbegin',
+    '<div class="ac-devnote">Every setting here is <b>shared by all screens</b> &mdash; except '
+    +'&ldquo;Silent on this screen only&rdquo;, which applies to <b>'+_dev+'</b>.'
+    +(_mc?' <span class="ac-mutecount">'+_mc+' alarm'+(_mc>1?'s':'')+' silenced here</span>':'')+'</div>');
 }
 function alarmSet(key,field,value){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key][field]=value;const ob={};ob[field]=value;fetch('/api/alarm_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alarm_cfg:{[key]:ob}})}).then(r=>r.json()).then(d=>{if(d.ok&&d.alarm_cfg)appData.alarm_cfg=d.alarm_cfg;}).catch(()=>{});}
 function alarmTest(key){_alarmHit(key);const c=_acfg(key);const el=document.getElementById('alarm-flash');if(el&&c.flash){el.style.setProperty('--af-col',c.color);el.classList.add('on');setTimeout(()=>{if(!_activeAlarmKeys().size)el.classList.remove('on');},1700);}}
