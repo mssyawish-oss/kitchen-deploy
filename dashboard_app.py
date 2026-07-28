@@ -4997,6 +4997,75 @@ def api_labour_cost():
     for p in out["people"]: p["cost"]=round(p["cost"],2); p["hours"]=round(p["hours"],1)
     return jsonify(out)
 
+@app.route("/api/timesheets_csv")
+def api_timesheets_csv():
+    """Payroll-ready timesheet export from Square timecards. ?week=0 = this week (Mon-Sun), -1 = last
+    week, etc. One row per shift (employee, date, start, end, unpaid break, hours) + per-person totals —
+    made for entering into Xero payroll (Xero AU has no native timesheet file import), or for UpSheets."""
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr: return Response("Square not configured",status=400)
+    try: wk=int(request.args.get("week","0") or 0)
+    except ValueError: wk=0
+    now=datetime.now().astimezone(); mid=now.replace(hour=0,minute=0,second=0,microsecond=0)
+    week_start=mid-timedelta(days=now.weekday())+timedelta(weeks=wk)
+    week_end=week_start+timedelta(days=7)
+    smap={}
+    for s in (db.get("staff") or []):
+        if s.get("square_id"): smap[s["square_id"]]={"name":s.get("name") or "?","rate":float(s.get("hourly_rate") or 0)}
+    cards=[]
+    try:
+        body={"query":{"filter":{"start":{"start_at":week_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                          "end_at":week_end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}},"limit":200}
+        if loc: body["query"]["filter"]["location_ids"]=[loc]
+        cursor=None
+        for _ in range(12):
+            if cursor: body["cursor"]=cursor
+            req=urllib.request.Request(SQUARE_BASE+"/v2/labor/timecards/search",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            cards+=data.get("timecards") or []
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        return Response("Couldn't read Square timecards: %s"%e,status=502)
+    wages=_sq_team_wage_map(hdr)
+    rows=[];totals={}
+    for tc in cards:
+        tid=tc.get("team_member_id") or ""; s=_parse_dt(tc.get("start_at"))
+        if not s: continue
+        s=s.astimezone(); e=_parse_dt(tc.get("end_at")); e=e.astimezone() if e else None
+        open_=(e is None); end=e or now
+        brk_min=0.0
+        for br in (tc.get("breaks") or []):
+            bs=_parse_dt(br.get("start_at")); be=_parse_dt(br.get("end_at"))
+            if bs and be and br.get("is_paid") is False: brk_min+=max(0.0,(be-bs).total_seconds()/60.0)
+        hrs=max(0.0,(end-s).total_seconds()/3600.0-brk_min/60.0)
+        rate=float((((tc.get("wage") or {}).get("hourly_rate")) or {}).get("amount") or 0)/100.0
+        if rate<=0: rate=wages.get(tid) or smap.get(tid,{}).get("rate") or 0
+        nm=smap.get(tid,{}).get("name") or ("Unknown …"+tid[-4:] if tid else "?")
+        rows.append([nm,s.strftime("%Y-%m-%d"),s.strftime("%a"),s.strftime("%H:%M"),
+                     (e.strftime("%H:%M") if e else "STILL CLOCKED ON"),int(round(brk_min)),round(hrs,2)])
+        t=totals.setdefault(nm,{"hours":0.0,"rate":rate,"open":False})
+        t["hours"]+=hrs; t["open"]=t["open"] or open_
+        if rate>0: t["rate"]=rate
+    rows.sort(key=lambda r:(r[0],r[1],r[3]))
+    import io,csv as _csv
+    buf=io.StringIO(); w=_csv.writer(buf)
+    w.writerow(["Timesheets %s to %s"%(week_start.strftime("%d %b %Y"),(week_end-timedelta(days=1)).strftime("%d %b %Y"))])
+    w.writerow([])
+    w.writerow(["Employee","Date","Day","Start","End","Unpaid break (min)","Hours"])
+    for r in rows: w.writerow(r)
+    w.writerow([])
+    w.writerow(["TOTALS"])
+    w.writerow(["Employee","Total hours","Rate (dashboard)","Est. gross","Note"])
+    for nm in sorted(totals):
+        t=totals[nm]
+        w.writerow([nm,round(t["hours"],2),(t["rate"] or ""),
+                    (round(t["hours"]*t["rate"],2) if t["rate"] else ""),
+                    ("has an OPEN shift — clock them out first" if t["open"] else "")])
+    fn="timesheets_%s_to_%s.csv"%(week_start.strftime("%Y-%m-%d"),(week_end-timedelta(days=1)).strftime("%Y-%m-%d"))
+    return Response(buf.getvalue(),mimetype="text/csv",
+                    headers={"Content-Disposition":"attachment; filename=%s"%fn})
+
 @app.route("/api/fry_put_on",methods=["POST"])
 def api_fry_put_on():
     d=request.get_json(silent=True) or {};fry_put_on(int(d.get("batches",1) or 1));return jsonify(fry_state())

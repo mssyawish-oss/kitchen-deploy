@@ -1571,7 +1571,7 @@ body.light{--gauge-track:rgba(20,30,50,.12);}
       <div id="team-onshift" class="team-chips"></div>
       <div class="sec-head" style="margin:16px 2px 8px;"><span>Stations</span><button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto;" onclick="addStation()">+ Station</button></div>
       <div id="team-stations" class="team-grid"></div>
-      <div class="sec-head" style="margin:18px 2px 8px;"><span>Staff &amp; pay</span><button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto;" onclick="importSquareTeam()">&#10515; Import from Square</button></div>
+      <div class="sec-head" style="margin:18px 2px 8px;"><span>Staff &amp; pay</span><span style="margin-left:auto;display:flex;gap:6px;"><button class="btn" style="font-size:11px;padding:3px 9px;" onclick="window.open('/api/timesheets_csv?week=-1','_blank')">&#8681; Timesheets (last wk)</button><button class="btn" style="font-size:11px;padding:3px 9px;" onclick="window.open('/api/timesheets_csv?week=0','_blank')">&#8681; This wk</button><button class="btn" style="font-size:11px;padding:3px 9px;" onclick="importSquareTeam()">&#10515; Import from Square</button></span></div>
       <div id="team-import-status" style="font-size:12px;margin:0 2px 8px;min-height:15px;color:var(--muted);"></div>
       <div id="team-roster"></div>
     </div>
