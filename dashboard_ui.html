@@ -244,6 +244,12 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
 }
 .probe-lost{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:6px;padding:2px 7px;display:inline-block;margin:0 auto 2px;text-align:center;}
 .p2-statusrow .probe-lost{margin:0 0 0 8px;}   /* sits quietly beside the status badge, not mid-card */
+/* age stamp on a stale reading — sits right under the big number so a faded 79.1 can never be
+   mistaken for the current temperature */
+.probe-stale{font-size:12px;font-weight:800;letter-spacing:.03em;color:var(--amber);text-align:center;
+  margin-top:-2px;text-transform:uppercase;}
+.probe-stale::before{content:'\26A0  ';}
+body.view-wall .probe-stale{font-size:15px;}
 /* wireless-probe battery: only appears under 30%, red at/below _BATT_LOW so a dying probe is obvious
    BEFORE it goes silent mid-cook */
 .probe-batt{margin-left:8px;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:6px;
@@ -3694,6 +3700,13 @@ function renderProbes(){
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
+    // A stale reading must never look live: a faded "79.1" alone reads as the current temperature.
+    // When the probe has gone quiet we stamp the number with how old it is, so nobody misjudges a cook.
+    const _ageS=(window._rfxAge||{})[pidN];
+    const _ageTxt=(typeof _ageS==='number'&&isFinite(_ageS))
+      ? (_ageS<90?(Math.round(_ageS)+'s ago'):(_ageS<5400?(Math.round(_ageS/60)+' min ago'):(Math.round(_ageS/3600)+'h ago')))
+      : '';
+    const staleHtml=(p._lost&&_ageTxt)?`<div class="probe-stale">last reading ${_ageTxt}</div>`:'';
     // Wireless probes: a flat battery just goes silent, so warn BEFORE it does. Pill shows from 30%,
     // turns red (and raises the alarm-bar warning) at or below _BATT_LOW.
     const _bat=(window._rfxBattery||{})[pidN];
@@ -3717,7 +3730,7 @@ function renderProbes(){
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
-      ${sensHtml}
+      ${staleHtml}${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
@@ -3730,7 +3743,7 @@ function renderProbes(){
       <div class="probe-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span></div>
       <div class="probe-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
       ${tempHtml}<div class="probe-unit">&#176;C</div>
-      ${sensHtml}
+      ${staleHtml}${sensHtml}
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
       ${batHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
@@ -4057,7 +4070,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
