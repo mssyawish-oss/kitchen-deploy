@@ -1673,7 +1673,7 @@ def api_rfx_config():
             if str(d.get("password") or "").strip(): tw["password"]=str(d["password"]).strip()   # blank = keep saved
             if "source" in d: tw["source"]="rfx" if d.get("source")=="rfx" else "ble"
             if "poll_secs" in d:
-                try: tw["poll_secs"]=max(8,int(d.get("poll_secs") or 20))
+                try: tw["poll_secs"]=max(2,int(d.get("poll_secs") or 5))   # reads are ~0.4s now, so 2s is safe
                 except (TypeError,ValueError): pass
             if isinstance(d.get("map"),dict): tw["map"]=d["map"]   # {"1":[serial,channel],...}
             db["thermoworks"]=tw; save_data(db)
