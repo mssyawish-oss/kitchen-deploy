@@ -514,6 +514,13 @@ async def ble_loop():
     from bleak import BleakScanner,BleakClient
     while True:
         try:
+            if _probe_source()=="rfx":
+                # RFX (cloud) is driving the probes, so the dock isn't needed — and with the FM230 gone
+                # this loop would scan 10s out of every 13s FOREVER. A permanent BLE discover hogs the
+                # Windows adapter and makes the NIIMBOT label printer's connection fail intermittently.
+                # Idle here instead; flipping the source back to 'ble' resumes scanning within 5s.
+                ble_status.update({"connected":False,"message":"RFX in use — dock idle"})
+                await asyncio.sleep(5); continue
             ble_status.update({"connected":False,"message":"Scanning for FM230..."})
             devices=await BleakScanner.discover(timeout=10)
             device=next((d for d in devices if d.name=="FM230"),None)
