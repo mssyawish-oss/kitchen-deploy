@@ -4871,6 +4871,30 @@ def api_niimbot_status():
                     "last_at":n.get("last_at"),"last_err":n.get("last_err",""),
                     "density":n.get("density",3)})
 
+@app.route("/api/niimbot_calib",methods=["POST"])
+def api_niimbot_calib():
+    """Print a RULER down the label. Two rounds of guessing where the printer stops didn't converge, so
+    measure it: numbered bands every 50 dots. Whatever the last fully-printed number is tells us the real
+    usable height exactly, and label_height can then be set once instead of estimated."""
+    from PIL import Image,ImageDraw,ImageFont
+    W,H=NIIM_W,591
+    img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
+    def fnt(sz):
+        for c in ("arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"):
+            for p in (c,os.path.join("C:\\Windows\\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    f=fnt(34); fs=fnt(20)
+    dr.text((10,6),"CUT TEST - read the LAST number you can see",font=fs,fill=0)
+    for y in range(50,H,50):
+        dr.line([0,y,W,y],fill=0,width=3)
+        dr.text((12,y+6),str(y),font=f,fill=0)
+        dr.rectangle([W-70,y+4,W-14,y+40],fill=0)          # solid block: obvious if only half prints
+    ok,err=_niimbot_print(img,1)
+    _niim_note(ok,err or "")
+    return jsonify({"ok":bool(ok),"error":err or "","height":H})
+
 @app.route("/api/niimbot_test",methods=["POST"])
 def api_niimbot_test():
     # On-demand connect check / reconnect. Connects, then disconnects straight away — no print.
