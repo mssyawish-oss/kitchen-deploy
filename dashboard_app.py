@@ -1093,9 +1093,53 @@ def app_icon():
     if os.path.exists(p): return send_file(p,mimetype="image/png")
     return Response(status=404)
 
+_SW_JS = r"""
+const SHELL='dash-shell-v2';
+self.addEventListener('install',e=>self.skipWaiting());
+self.addEventListener('activate',e=>e.waitUntil((async()=>{
+  const ks=await caches.keys();
+  await Promise.all(ks.filter(k=>k!==SHELL).map(k=>caches.delete(k)));   // keep the shell, clear the rest
+  await self.clients.claim();
+  const cs=await self.clients.matchAll();
+  cs.forEach(c=>c.navigate&&c.navigate(c.url));                          // apply a new build immediately
+})()));
+// Page loads are NETWORK-FIRST (so the screen is never stale) but fall back to the last good copy when
+// the server is down. Previously a navigation was network-ONLY: restarting the backend left every
+// kiosk on a blank white page with nothing to retry it.
+const RETRY=`<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
+<style>html,body{height:100%;margin:0;background:#0b0d12;color:#e6e9ef;
+font:600 16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;
+justify-content:center}div{text-align:center}i{display:block;width:34px;height:34px;margin:0 auto 14px;
+border:3px solid #2a3040;border-top-color:#fb9b24;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}small{display:block;color:#8b93a3;font-weight:500;margin-top:6px}
+</style><div><i></i>Reconnecting to the kitchen server…<small>This screen will come back on its own.</small></div>
+<script>setTimeout(()=>location.reload(),2000)</script>`;
+self.addEventListener('fetch',e=>{
+  const req=e.request;
+  if(req.mode==='navigate'){
+    e.respondWith((async()=>{
+      try{
+        const fresh=await fetch(req);
+        if(fresh&&fresh.ok){try{const c=await caches.open(SHELL);await c.put('shell',fresh.clone());}catch(_){}}
+        return fresh;
+      }catch(_){
+        try{
+          const c=await caches.open(SHELL);
+          const cached=await c.match('shell');
+          if(cached)return cached;            // last good screen; its own polling resumes when the server is back
+        }catch(__){}
+        return new Response(RETRY,{headers:{'Content-Type':'text/html'}});   // auto-retries every 2s
+      }
+    })());
+    return;
+  }
+  e.respondWith(fetch(req).catch(()=>caches.match(req)));
+});
+"""
 @app.route("/sw.js")
 def sw():
-    return Response("self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));await self.clients.claim();const cs=await self.clients.matchAll();cs.forEach(c=>c.navigate&&c.navigate(c.url));})()));self.addEventListener('fetch',e=>{if(e.request.mode==='navigate'){e.respondWith(fetch(e.request));return;}e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});",mimetype="application/javascript")
+    return Response(_SW_JS,mimetype="application/javascript",
+                    headers={"Cache-Control":"no-store, must-revalidate"})   # a fixed SW must actually reach the kiosks
 
 @app.route("/")
 def index():
