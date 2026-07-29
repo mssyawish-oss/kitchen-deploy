@@ -4741,8 +4741,14 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     if total>1 and seq>0:
         badge="%d/%d"%(seq,total); fb=fnt(42,True); bw=dr.textlength(badge,font=fb)
         dr.text((W-M-bw,band_h//2-27),badge,font=fb,fill=255)
-    # 2) USE BY box — the discard deadline, most important line: bold + boxed, anchored to the bottom
-    box_h=94; box_y0=H-12-box_h
+    # 2) USE BY box — the discard deadline, most important line: bold + boxed, anchored near the bottom.
+    # BOTTOM_SAFE keeps it clear of the physical edge: the B1's printable area is a little shorter than
+    # the 50mm label, so a box sitting at the very bottom came out half-cut. This is the one line that
+    # must never be unreadable, so it gets real clearance.
+    # The old box ran y=485..579 and came out roughly half printed, so the usable area ends near y~530.
+    # Keep everything above ~505 (85% of the label) — well clear of where it was actually cutting.
+    BOTTOM_SAFE=85
+    box_h=94; box_y0=H-BOTTOM_SAFE-box_h
     dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
     box="USE BY  "+useby_s; fu=fnt(48,True)
     while dr.textlength(box,font=fu)>W-46 and fu.size>26: fu=fnt(fu.size-2,True)
