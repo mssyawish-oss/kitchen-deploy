@@ -4745,9 +4745,9 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     # BOTTOM_SAFE keeps it clear of the physical edge: the B1's printable area is a little shorter than
     # the 50mm label, so a box sitting at the very bottom came out half-cut. This is the one line that
     # must never be unreadable, so it gets real clearance.
-    # The old box ran y=485..579 and came out roughly half printed, so the usable area ends near y~530.
-    # Keep everything above ~505 (85% of the label) — well clear of where it was actually cutting.
-    BOTTOM_SAFE=85
+    # MEASURED, not guessed: the calibration strip (/api/niimbot_calib) printed its 500 band in full on
+    # this printer, so ~500 of the 591 dots are usable. End the content at 490 for a small margin.
+    BOTTOM_SAFE=H-490
     box_h=94; box_y0=H-BOTTOM_SAFE-box_h
     dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
     box="USE BY  "+useby_s; fu=fnt(48,True)
@@ -4891,9 +4891,8 @@ def api_niimbot_calib():
         dr.line([0,y,W,y],fill=0,width=3)
         dr.text((12,y+6),str(y),font=f,fill=0)
         dr.rectangle([W-70,y+4,W-14,y+40],fill=0)          # solid block: obvious if only half prints
-    ok,err=_niimbot_print(img,1)
-    _niim_note(ok,err or "")
-    return jsonify({"ok":bool(ok),"error":err or "","height":H})
+    ok=_niimbot_print(img,1)          # returns a BOOL, not (ok,err) — unpacking it 500'd the request
+    return jsonify({"ok":bool(ok),"height":H})
 
 @app.route("/api/niimbot_test",methods=["POST"])
 def api_niimbot_test():
