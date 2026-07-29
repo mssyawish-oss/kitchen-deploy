@@ -255,7 +255,9 @@ async def _battery_map(client):
         m = {}
         for d in devices:
             st = str(getattr(d, "battery_state", "") or "").strip().lower()
-            m[d.serial] = {"pct": d.battery, "charging": ("charg" in st)}   # matches 'charging'/'charged'
+            # startswith, NOT `"charg" in st` — "disCHARGing" contains "charg", which flagged every
+            # probe as docked and blanked a live cook. Only 'charging'/'charged' may match.
+            m[d.serial] = {"pct": d.battery, "charging": st.startswith("charg")}
         _BATT["map"] = m
         _BATT["at"] = _t.time()
     except Exception:
