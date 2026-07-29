@@ -498,7 +498,7 @@ def rfx_poll_loop():
                 _rfx_status.update({"ok":got,"last":time.time(),"error":"" if got else "no readings"})
         except Exception as e:
             _rfx_status.update({"ok":False,"error":str(e)}); print("rfx_poll_loop:",e)
-        time.sleep(max(8,int((cfg.get("poll_secs") or 20) or 20)))
+        time.sleep(max(2,int((cfg.get("poll_secs") or 5) or 5)))   # reads are ~1-2s now (cached login + parallel), so poll fast
 
 async def ble_loop():
     from bleak import BleakScanner,BleakClient
