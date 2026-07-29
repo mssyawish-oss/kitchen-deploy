@@ -243,15 +243,20 @@ _BATT = {"at": 0.0, "map": {}}   # {serial: percent}, refreshed at most every _B
 _BATT_TTL = 300
 
 async def _battery_map(client):
-    """{serial: battery%} for every device on the account. Cached — battery moves slowly and the
-    device list is an extra two API calls, which we don't want on every 8s poll."""
+    """{serial: {"pct": n, "charging": bool}} for every device. The cloud exposes `battery_state`
+    ('charging' / 'discharging'), which is how we know a probe is sitting in its dock rather than
+    in a chicken. Cached — this costs two extra API calls we don't want on every poll."""
     import time as _t
     if _t.time() - _BATT["at"] < _BATT_TTL and _BATT["map"]:
         return _BATT["map"]
     try:
         acct = await _account_id(client)
         devices = await client.get_devices(acct) if acct else []
-        _BATT["map"] = {d.serial: d.battery for d in devices if d.battery is not None}
+        m = {}
+        for d in devices:
+            st = str(getattr(d, "battery_state", "") or "").strip().lower()
+            m[d.serial] = {"pct": d.battery, "charging": ("charg" in st)}   # matches 'charging'/'charged'
+        _BATT["map"] = m
         _BATT["at"] = _t.time()
     except Exception:
         pass          # keep whatever we had; battery is advisory, never break the temp read for it
@@ -273,9 +278,12 @@ async def _read_mapped(email, password, mapping):
         except Exception: return []
 
     got = await asyncio.gather(*[one(s) for _, s in items])
-    return {pid: {"core": (round(min(v), 1) if v else None), "sensors": v,
-                  "battery": batt.get(serial)}
-            for (pid, serial), v in zip(items, got)}
+    out = {}
+    for (pid, serial), v in zip(items, got):
+        b = batt.get(serial) or {}
+        out[pid] = {"core": (round(min(v), 1) if v else None), "sensors": v,
+                    "battery": b.get("pct"), "charging": bool(b.get("charging"))}
+    return out
 
 
 def rfx_read_temps(email, password, mapping, log=lambda m: None):

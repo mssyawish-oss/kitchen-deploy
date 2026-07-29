@@ -250,6 +250,8 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
   margin-top:-2px;text-transform:uppercase;}
 .probe-stale::before{content:'\26A0  ';}
 body.view-wall .probe-stale{font-size:15px;}
+/* docked in the charger — a calm state, NOT a fault */
+.badge-charging{background:color-mix(in srgb,#22d3ee 18%,transparent);color:#22d3ee;}
 /* wireless-probe battery: only appears under 30%, red at/below _BATT_LOW so a dying probe is obvious
    BEFORE it goes silent mid-cook */
 .probe-batt{margin-left:8px;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:6px;
@@ -3688,15 +3690,17 @@ function renderProbes(){
     const t=p.temp,tempHtml=t===null?'<div class="probe-no-data">&#8212;&#8212;</div>':`<div class="probe-temp">${t.toFixed(1)}</div>`;
     // friendlier badge than a blanket "idle": fill the gap so a warm probe reads "cooking", a steady one
     // reads "standby" (server flag), a dead reading reads "no probe", and only genuinely-low+unsteady is "idle".
+    const _charging=!!((window._rfxCharging||{})[pidN]);
     let dstatus=status;
     if(status!=='almost'&&status!=='ready'&&status!=='overdone'){
-      if(t===null||t===undefined) dstatus='none';
+      if(_charging) dstatus='charging';                      // in the dock — not a fault, not "no probe"
+      else if(t===null||t===undefined) dstatus='none';
       else if(status==='standby') dstatus='standby';
       else if(t>=40||_probeRising(pidN)) dstatus='cooking';   // hot OR warming up (in a chicken) = cooking
       else dstatus='idle';
     }
-    const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone'};
-    const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
+    const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone',charging:'badge-charging'};
+    const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',charging:'&#9889; charging',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
@@ -3706,7 +3710,10 @@ function renderProbes(){
     const _ageTxt=(typeof _ageS==='number'&&isFinite(_ageS))
       ? (_ageS<90?(Math.round(_ageS)+'s ago'):(_ageS<5400?(Math.round(_ageS/60)+' min ago'):(Math.round(_ageS/3600)+'h ago')))
       : '';
-    const staleHtml=(p._lost&&_ageTxt)?`<div class="probe-stale">last reading ${_ageTxt}</div>`:'';
+    // Docked in the charger: the cloud's battery_state tells us outright, so say CHARGING instead of
+    // leaving a blank card that looks like a fault. Suppresses the stale-age stamp — nothing is wrong.
+    const staleHtml=_charging?''
+                       :((p._lost&&_ageTxt)?`<div class="probe-stale">last reading ${_ageTxt}</div>`:'');
     // Wireless probes: a flat battery just goes silent, so warn BEFORE it does. Pill shows from 30%,
     // turns red (and raises the alarm-bar warning) at or below _BATT_LOW.
     const _bat=(window._rfxBattery||{})[pidN];
@@ -4070,7 +4077,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};window._rfxCharging=d.rfx_charging||{};
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}

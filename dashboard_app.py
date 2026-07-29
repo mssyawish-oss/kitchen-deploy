@@ -475,6 +475,7 @@ _rfx_status={"ok":None,"last":0.0,"error":""}
 RFX_SENSORS={}   # {pid:[°C,°C,°C,°C]} — each RFX probe's 4 internal sensors, shown small under the main temp
 RFX_BATTERY={}   # {pid:percent} — wireless probes: a flat battery = silent probe, so it's surfaced + alarmed
 RFX_SEEN={}      # {pid: unix ts of the last REAL reading} → the card can say "79.1° as of 8 min ago"
+RFX_CHARGING={}  # {pid: bool} — probe sitting in its dock (cloud's battery_state), so the card says CHARGING
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
     check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
@@ -491,7 +492,14 @@ def rfx_poll_loop():
                     t=info.get("core") if isinstance(info,dict) else info   # tolerate the old plain-float shape
                     RFX_SENSORS[pid]=(info.get("sensors") or []) if isinstance(info,dict) else []
                     if isinstance(info,dict) and info.get("battery") is not None: RFX_BATTERY[pid]=info["battery"]
-                    if t is not None and 0<float(t)<400:
+                    charging=bool(info.get("charging")) if isinstance(info,dict) else False
+                    RFX_CHARGING[pid]=charging
+                    if charging:
+                        # In the dock, not in a chicken. Whatever it reads is the charging cradle, not food —
+                        # showing it would look like a cook in progress, so blank it and say CHARGING.
+                        with probe_lock: probe_temps[pid]=None
+                        RFX_SENSORS[pid]=[]
+                    elif t is not None and 0<float(t)<400:
                         with probe_lock: probe_temps[pid]=float(t)
                         RFX_SEEN[pid]=time.time()
                         check_probe_status(pid,float(t)); got=True
@@ -4511,6 +4519,7 @@ def temps():
     return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
 "rfx_age":({p:int(_now-ts) for p,ts in RFX_SEEN.items()} if _probe_source()=="rfx" else {}),
+"rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))}}),mimetype="application/json")
