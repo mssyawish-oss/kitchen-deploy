@@ -252,6 +252,15 @@ body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;pad
 body.view-wall .probe-stale{font-size:15px;}
 /* docked in the charger — a calm state, NOT a fault */
 .badge-charging{background:color-mix(in srgb,#22d3ee 18%,transparent);color:#22d3ee;}
+/* in-app confirm (replaces window.confirm, which kiosk browsers/PWAs silently suppress) */
+#app-confirm{position:fixed;inset:0;z-index:800;background:rgba(5,7,10,.72);display:none;
+  align-items:center;justify-content:center;padding:24px;}
+.acf-card{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:22px;
+  max-width:420px;width:100%;box-shadow:0 22px 60px rgba(0,0,0,.6);}
+.acf-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px;}
+.acf-body{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:18px;}
+.acf-btns{display:flex;gap:10px;}
+.acf-btns .btn{flex:1;min-height:50px;font-size:15px;font-weight:700;}
 /* wireless-probe battery: only appears under 30%, red at/below _BATT_LOW so a dying probe is obvious
    BEFORE it goes silent mid-cook */
 .probe-batt{margin-left:8px;font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:6px;
@@ -5378,11 +5387,34 @@ async function checkUiVersion(){
     }
   }catch(e){}
 }
-function restartDashboard(){if(!confirm('Restart the dashboard now?\n\nThe screen will go offline for about 10–15 seconds and come back on its own.'))return;
-  const s=document.getElementById('restart-status');if(s){s.textContent='Restarting…';s.style.color='var(--muted)';}
-  _showRestartOverlay();
-  fetch('/api/restart',{method:'POST'}).catch(()=>{});
-  setTimeout(_pollBackUp,4500);}
+// In-app confirm. NOT window.confirm(): kiosk browsers and installed PWAs (the big Android wall screen)
+// suppress native dialogs and return false silently, so the action just never happened — while the same
+// button worked on the iPad. This renders in the page, so it behaves identically on every device.
+function _askConfirm(title,body,onYes,yesLabel){
+  let o=document.getElementById('app-confirm');
+  if(!o){o=document.createElement('div');o.id='app-confirm';document.body.appendChild(o);}
+  o.innerHTML='<div class="acf-card"><div class="acf-title"></div><div class="acf-body"></div>'
+    +'<div class="acf-btns"><button class="btn acf-no">Cancel</button>'
+    +'<button class="btn btn-primary acf-yes"></button></div></div>';
+  o.querySelector('.acf-title').textContent=title||'Are you sure?';
+  o.querySelector('.acf-body').textContent=body||'';
+  o.querySelector('.acf-yes').textContent=yesLabel||'Yes, do it';
+  o.style.display='flex';
+  const close=()=>{o.style.display='none';};
+  o.querySelector('.acf-no').onclick=close;
+  o.querySelector('.acf-yes').onclick=()=>{close();try{onYes&&onYes();}catch(e){}};
+  o.onclick=e=>{if(e.target===o)close();};
+}
+function restartDashboard(){
+  _askConfirm('Restart the dashboard?',
+    'The screen goes offline for about 10–15 seconds and comes back on its own.',
+    function(){
+      const s=document.getElementById('restart-status');if(s){s.textContent='Restarting…';s.style.color='var(--muted)';}
+      _showRestartOverlay();
+      fetch('/api/restart',{method:'POST'}).catch(()=>{});
+      setTimeout(_pollBackUp,4500);
+    },'Restart now');
+}
 function _showRestartOverlay(){let o=document.getElementById('restart-ov');if(!o){o=document.createElement('div');o.id='restart-ov';o.style.cssText='position:fixed;inset:0;z-index:700;background:rgba(5,7,10,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;text-align:center;padding:24px;';document.body.appendChild(o);}o.innerHTML='<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#f0a93a;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:17px;font-weight:700;">Restarting the dashboard…</div><div style="font-size:13px;color:#9aa3b2;">This page reloads automatically when it\'s back online.</div>';o.style.display='flex';}
 function _pollBackUp(){fetch('/api/data',{cache:'no-store'}).then(r=>{if(r.ok)location.reload();else throw 0;}).catch(()=>setTimeout(_pollBackUp,2000));}
 function enableProduct(id,el){if(el){el.disabled=true;el.textContent='Turning on…';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(el){if(d.ok){el.textContent='✓ On';const row=el.closest('.prodoff-row');if(row)row.style.opacity='.45';}else{el.disabled=false;el.textContent='Try again';if(el)el.title=d.error||'';if(d.error&&typeof _toast==='function')_toast('Square: '+d.error);}}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.disabled=false;el.textContent='Try again';}});}
