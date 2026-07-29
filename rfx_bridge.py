@@ -157,11 +157,21 @@ async def _diagnose(email, password):
         label = d.label or d.device_name or d.serial
         # a mappable PROBE = has real sensor readings and isn't the gateway (gateway ch reads NO PROBE)
         is_probe = bool(vals) and "GATEWAY" not in (label or "").upper()
+        raw = {}
+        try:      # every field the cloud actually exposes — used to find a real "charging/docked" flag
+            for k in dir(d):
+                if k.startswith("_"): continue
+                v = getattr(d, k, None)
+                if callable(v): continue
+                raw[k] = str(v)[:80]
+        except Exception:
+            pass
         rows.append({
             "serial": d.serial, "label": label, "type": d.type,
             "battery": d.battery, "wifi_strength": d.wifi_strength, "gateway_rssi": d.gateway_rssi,
             "transmit_secs": d.transmit_interval_in_seconds, "last_seen": str(d.last_seen),
             "channels": chans, "core": core, "sensor_count": len(chans), "is_probe": is_probe,
+            "raw": raw,
         })
     return {"ok": True, "account_id": acct, "device_count": len(rows),
             "probe_count": sum(1 for r in rows if r["is_probe"]), "devices": rows}
