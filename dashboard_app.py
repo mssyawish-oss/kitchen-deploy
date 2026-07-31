@@ -4871,6 +4871,45 @@ def api_niimbot_status():
                     "last_at":n.get("last_at"),"last_err":n.get("last_err",""),
                     "density":n.get("density",3)})
 
+@app.route("/api/niimbot_diag",methods=["POST"])
+def api_niimbot_diag():
+    """Ask the printer what's wrong. The normal print path writes fire-and-forget (response=False) with a
+    no-op notify handler, so 'last_ok' only means the bytes left the PC — it can't tell a real print from
+    a printer that received the job and refused to feed. This connects, CAPTURES the notifications, and
+    returns them, so 'no paper comes out' becomes an actual status instead of a guess."""
+    mac=((db.get("niimbot") or {}).get("mac") or "").strip()
+    if not mac: return jsonify({"ok":False,"error":"No printer saved yet."})
+    try:
+        import asyncio
+        from bleak import BleakClient
+    except Exception as e:
+        return jsonify({"ok":False,"error":"Bluetooth unavailable: %s"%e})
+    seen=[]
+    async def _run():
+        async with BleakClient(mac,timeout=25) as cl:
+            def on_note(_c,data):
+                try: seen.append(bytes(data).hex())
+                except Exception: pass
+            try: await cl.start_notify(_NIIM_CHR,on_note)
+            except Exception as e: seen.append("notify-failed:"+str(e)[:60])
+            async def send(raw,wait=0.25):
+                await cl.write_gatt_char(_NIIM_CHR,raw,response=False)
+                await asyncio.sleep(wait)
+            await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.4)
+            probes={}
+            for name,cmd in (("status",0xA3),("rfid_label",0x1A),("heartbeat",0xDC),("info",0x40)):
+                before=len(seen)
+                try: await send(_niim_pkt(cmd,[1]),0.6)
+                except Exception as e: seen.append("send-fail-%s:%s"%(name,str(e)[:40]))
+                probes[name]=seen[before:]
+            return probes
+    try:
+        probes=asyncio.run(_run())
+        return jsonify({"ok":True,"connected":True,"replies":probes,"all":seen,
+                        "note":"empty replies = printer accepted the connection but answered nothing"})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:200],"all":seen})
+
 @app.route("/api/niimbot_calib",methods=["POST"])
 def api_niimbot_calib():
     """Print a RULER down the label. Two rounds of guessing where the printer stops didn't converge, so
