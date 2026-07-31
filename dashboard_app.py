@@ -4902,6 +4902,29 @@ def api_niimbot_diag():
                 try: await send(_niim_pkt(cmd,[1]),0.6)
                 except Exception as e: seen.append("send-fail-%s:%s"%(name,str(e)[:40]))
                 probes[name]=seen[before:]
+            if request.args.get("print")=="1":
+                # Send a REAL (tiny) page and capture what the printer says at each step, so a refusal
+                # to feed shows up as an actual reply instead of silence.
+                from PIL import Image,ImageDraw
+                tiny=Image.new("L",(NIIM_W,120),255); ImageDraw.Draw(tiny).rectangle([20,20,NIIM_W-20,100],fill=0)
+                trows,tH=_niim_rows(tiny)
+                steps=[("density",_niim_pkt(0x21,[3]),0.2),("labeltype",_niim_pkt(0x23,[1]),0.2),
+                       ("printstart",_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.4),
+                       ("dims",_niim_pkt(0x13,[tH>>8,tH&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1,0,0,0,0,0,0,0]),0.4)]
+                for nm,pkt,w in steps:
+                    before=len(seen)
+                    try: await send(pkt,w)
+                    except Exception as e: seen.append("fail-%s:%s"%(nm,str(e)[:40]))
+                    probes["print_"+nm]=seen[before:]
+                y=0
+                while y<tH:
+                    row,total=trows[y]; run=1
+                    while y+run<tH and trows[y+run][0]==row and run<200: run+=1
+                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0.004)
+                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0.004)
+                    y+=run
+                before=len(seen); await send(_niim_pkt(0xE3,[1]),1.6); probes["print_endpage"]=seen[before:]
+                before=len(seen); await send(_niim_pkt(0xF3,[1]),0.6); probes["print_endprint"]=seen[before:]
             return probes
     try:
         probes=asyncio.run(_run())
