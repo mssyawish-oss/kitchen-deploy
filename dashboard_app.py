@@ -4791,6 +4791,56 @@ def _niim_rows(img):
                 row[x>>3]|=(0x80>>(x&7)); total+=1
         out.append((bytes(row),total))
     return out,H
+ESCPOS_W=576   # 80mm thermal printable width in dots (203 dpi) — must be a multiple of 8
+def _escpos_raster(img):
+    """The prep label as an ESC/POS raster (GS v 0). Same artwork as the Bluetooth label, just scaled
+    to the 80mm roll — so both printers produce a label staff recognise."""
+    from PIL import Image
+    im=img.convert("L")
+    if im.width!=ESCPOS_W:
+        h=max(1,int(round(im.height*ESCPOS_W/im.width)))
+        im=im.resize((ESCPOS_W,h),Image.LANCZOS)
+    im=im.convert("1")
+    W,H=im.size; stride=(W+7)//8; px=im.load()
+    data=bytearray()
+    for y in range(H):
+        row=bytearray(stride)
+        for x in range(W):
+            if not px[x,y]: row[x>>3]|=(0x80>>(x&7))    # 0 = black
+        data+=row
+    out=bytearray(b"\x1b@")                                          # init
+    out+=b"\x1dv0\x00"+bytes([stride&0xFF,(stride>>8)&0xFF,H&0xFF,(H>>8)&0xFF])+data
+    out+=b"\n\n\n"+b"\x1dVA\x05"                                     # feed + partial cut
+    return bytes(out)
+
+def _label_cfg(): return db.get("label_printer") or {}
+def _network_label_print(img,qty=1,ip=None,port=None):
+    """Print the label to the 80mm NETWORK thermal printer. No Bluetooth involved: no pairing, no radio
+    contention, no single-connection limit — none of the failure modes the NIIMBOT has."""
+    import socket
+    cfg=_label_cfg()
+    ip=(ip or cfg.get("ip") or "").strip()
+    port=int(port or cfg.get("port") or PRINTER_PORT)
+    if not ip: return False,"No network label printer IP set"
+    try: payload=_escpos_raster(img)
+    except Exception as e: return False,"render failed: %s"%e
+    try:
+        for _ in range(max(1,int(qty))):
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+                s.settimeout(8); s.connect((ip,port)); s.sendall(payload)
+        return True,""
+    except Exception as e:
+        return False,str(e)[:160]
+
+def _print_label(img,qty=1):
+    """Send a rendered label to whichever printer is selected. 'network' is the 80mm ESC/POS printer;
+    anything else keeps the original NIIMBOT Bluetooth path untouched."""
+    if (_label_cfg().get("mode") or "niimbot")=="network":
+        ok,err=_network_label_print(img,qty)
+        _niim_note(ok,err)          # same status light, so the dashboard reflects whichever is in use
+        return ok
+    return _niimbot_print(img,qty)
+
 def _niimbot_print(img,qty=1):
     # Send `img` to the NIIMBOT B1 Pro over the server's Bluetooth (same bleak stack as the FM230 probe).
     # Protocol v4 print task, 300 dpi. Returns True only if the whole sequence went out cleanly.
@@ -5001,6 +5051,35 @@ def api_label_preview():
     buf=_io.BytesIO(); img.save(buf,format="PNG")
     return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
 
+@app.route("/api/label_printer",methods=["GET","POST"])
+def api_label_printer():
+    """Which printer prep labels go to: the NIIMBOT over Bluetooth, or the 80mm network thermal printer."""
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            c=dict(db.get("label_printer") or {})
+            if "mode" in d: c["mode"]="network" if d.get("mode")=="network" else "niimbot"
+            if "ip" in d: c["ip"]=re.sub(r"[^0-9a-zA-Z.\-:]","",str(d.get("ip") or ""))[:60]
+            if "port" in d:
+                try: c["port"]=max(1,min(65535,int(d.get("port") or PRINTER_PORT)))
+                except (TypeError,ValueError): pass
+            db["label_printer"]=c; save_data(db)
+    c=_label_cfg()
+    return jsonify({"ok":True,"mode":c.get("mode") or "niimbot","ip":c.get("ip",""),
+                    "port":c.get("port") or PRINTER_PORT})
+
+@app.route("/api/label_printer_test",methods=["POST"])
+def api_label_printer_test():
+    """Print a real sample label to the NETWORK printer, so it can be proven without touching Bluetooth."""
+    d=request.get_json(silent=True) or {}
+    ip=(d.get("ip") or _label_cfg().get("ip") or "").strip()
+    if not ip: return jsonify({"ok":False,"error":"Enter the printer's IP first."})
+    now=datetime.now()
+    img=_render_label_png("Test Label","Dashboard",_lbl_date(now,withtime=True),
+                          _lbl_date(now+timedelta(days=2)))
+    ok,err=_network_label_print(img,1,ip=ip,port=d.get("port"))
+    return jsonify({"ok":bool(ok),"error":err,"ip":ip})
+
 @app.route("/api/print_labels",methods=["POST"])
 def api_print_labels():
     d=request.get_json(silent=True) or {}
@@ -5020,7 +5099,7 @@ def api_print_labels():
             img=_render_label_png(item,staff,prepped_s,useby_s,seq=i+1,total=qty)
             if first_img is None: first_img=img
             try:
-                if _niimbot_print(img,1): printed+=1
+                if _print_label(img,1): printed+=1      # routes to NIIMBOT or the 80mm network printer
             except Exception as e: note="printer error: %s"%e; break
     except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
     try:
