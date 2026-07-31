@@ -4833,7 +4833,7 @@ def _niimbot_print(img,qty=1):
                 # each (a 591-row label took 106s). Acking every Nth packet instead bounds how far the
                 # printer can fall behind — the queue drains at each sync point — at a fraction of the
                 # cost. Fire-and-forget everything with no sync at all is what lost the job originally.
-                SYNC_EVERY=12
+                SYNC_EVERY=32
                 y=0; n=0
                 while y<H:
                     row,total=rows[y]; run=1
