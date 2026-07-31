@@ -4813,8 +4813,29 @@ def _escpos_raster(img):
     out+=b"\n\n\n"+b"\x1dVA\x05"                                     # feed + partial cut
     return bytes(out)
 
+def _tspl_raster(img):
+    """The label as TSPL — the language most LAN LABEL printers speak (vs ESC/POS receipt printers).
+    Sending ESC/POS raster to a TSPL printer makes it spew the binary as text: exactly the 'long papers
+    of random characters' the owner saw. TSPL bitmaps are inverted (bit 1 = white)."""
+    from PIL import Image
+    im=img.convert("L")
+    if im.width!=ESCPOS_W:
+        h=max(1,int(round(im.height*ESCPOS_W/im.width)))
+        im=im.resize((ESCPOS_W,h),Image.LANCZOS)
+    im=im.convert("1"); W,H=im.size; stride=W//8; px=im.load()
+    data=bytearray()
+    for y in range(H):
+        row=bytearray([0xFF]*stride)               # start all white
+        for x in range(W):
+            if not px[x,y]: row[x>>3]&=~(0x80>>(x&7))   # clear bit = black
+        data+=bytes(row)
+    mm_h=max(20,int(H/8)+2)                        # 203 dpi ≈ 8 dots/mm
+    head=("SIZE 80 mm,%d mm\r\nGAP 0 mm,0 mm\r\nDENSITY 8\r\nDIRECTION 1\r\nCLS\r\n"%mm_h).encode()
+    head+=("BITMAP 0,0,%d,%d,0,"%(stride,H)).encode()
+    return head+bytes(data)+b"\r\nPRINT 1\r\n"
+
 def _label_cfg(): return db.get("label_printer") or {}
-def _network_label_print(img,qty=1,ip=None,port=None):
+def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     """Print the label to the 80mm NETWORK thermal printer. No Bluetooth involved: no pairing, no radio
     contention, no single-connection limit — none of the failure modes the NIIMBOT has."""
     import socket
@@ -4822,7 +4843,8 @@ def _network_label_print(img,qty=1,ip=None,port=None):
     ip=(ip or cfg.get("ip") or "").strip()
     port=int(port or cfg.get("port") or PRINTER_PORT)
     if not ip: return False,"No network label printer IP set"
-    try: payload=_escpos_raster(img)
+    fmt=(fmt or cfg.get("format") or "escpos").strip().lower()
+    try: payload=_tspl_raster(img) if fmt=="tspl" else _escpos_raster(img)
     except Exception as e: return False,"render failed: %s"%e
     try:
         for _ in range(max(1,int(qty))):
@@ -5100,10 +5122,11 @@ def api_label_printer():
             if "port" in d:
                 try: c["port"]=max(1,min(65535,int(d.get("port") or PRINTER_PORT)))
                 except (TypeError,ValueError): pass
+            if "format" in d: c["format"]="tspl" if d.get("format")=="tspl" else "escpos"
             db["label_printer"]=c; save_data(db)
     c=_label_cfg()
     return jsonify({"ok":True,"mode":c.get("mode") or "niimbot","ip":c.get("ip",""),
-                    "port":c.get("port") or PRINTER_PORT})
+                    "port":c.get("port") or PRINTER_PORT,"format":c.get("format") or "escpos"})
 
 @app.route("/api/label_printer_test",methods=["POST"])
 def api_label_printer_test():
@@ -5114,7 +5137,7 @@ def api_label_printer_test():
     now=datetime.now()
     img=_render_label_png("Test Label","Dashboard",_lbl_date(now,withtime=True),
                           _lbl_date(now+timedelta(days=2)))
-    ok,err=_network_label_print(img,1,ip=ip,port=d.get("port"))
+    ok,err=_network_label_print(img,1,ip=ip,port=d.get("port"),fmt=d.get("format"))
     return jsonify({"ok":bool(ok),"error":err,"ip":ip})
 
 @app.route("/api/print_labels",methods=["POST"])
