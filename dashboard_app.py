@@ -4805,13 +4805,18 @@ def _niimbot_print(img,qty=1):
     dens=int((db.get("niimbot") or {}).get("density",3) or 3)
     async def _run():
         async with BleakClient(mac,timeout=25) as cl:
-            # Listen to the printer instead of talking blindly. It ACKs every command and reports page
-            # progress (0xD3), so we can WAIT for the page to finish rather than guessing with a sleep.
-            done=asyncio.Event(); notes=[]
+            # Listen to the printer instead of talking blindly. It reports print progress in 0xD3
+            # (55 55 D3 03 <rowHi> <rowLo> <page> crc AA AA) — the page is only DONE when that row
+            # counter reaches the page height. The first version fired on 0xE4 too, but 0xE4 is just
+            # "I received your end-page command" and arrives while the printer is still FEEDING — so we
+            # sent END PRINT mid-feed and killed the label (a bit of paper fed, nothing printed on it).
+            done=asyncio.Event(); notes=[]; prog={"row":0}
             def on_note(_c,data):
                 b=bytes(data); notes.append(b)
-                if len(b)>3 and b[2] in (0xD3,0xE4):      # page progress / end-page ack
-                    done.set()
+                if len(b)>=7 and b[0]==0x55 and b[1]==0x55 and b[2]==0xD3:
+                    row=(b[4]<<8)|b[5]
+                    if row>prog["row"]: prog["row"]=row
+                    if row>=H-2: done.set()               # all rows on paper (tolerate off-by-one)
             try: await cl.start_notify(_NIIM_CHR,on_note)
             except Exception: pass
             async def send(raw,wait=0.05,ack=False):
@@ -4822,8 +4827,9 @@ def _niimbot_print(img,qty=1):
                 await cl.write_gatt_char(_NIIM_CHR,raw,response=ack)
                 if wait: await asyncio.sleep(wait)
             await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.25)   # wake/init
+            all_ok=True
             for _ in range(max(1,int(qty))):
-                done.clear(); notes.clear()
+                done.clear(); notes.clear(); prog["row"]=0
                 await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.09)                 # density
                 await send(_niim_pkt(0x23,[1]),0.09)                                  # label type
                 await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)            # print start, 1 page
@@ -4846,13 +4852,21 @@ def _niimbot_print(img,qty=1):
                     else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0,ack=sync)
                     y+=run
                 await send(_niim_pkt(0xE3,[1]),0.05)                                  # end page
-                try: await asyncio.wait_for(done.wait(),timeout=8)                    # wait for the ACTUAL
-                except asyncio.TimeoutError: pass                                     # finish, not a guess
-                await asyncio.sleep(0.25)                                             # let the feed settle
+                # Wait for the printer to report ALL rows on paper — NOT for the end-page ack (that comes
+                # while it's still feeding; ending the print there is what fed blank paper). 25s cap: the
+                # physical print of a full label takes several seconds after the data has gone over.
+                try: await asyncio.wait_for(done.wait(),timeout=25)
+                except asyncio.TimeoutError:
+                    all_ok=False
+                await asyncio.sleep(0.35)                                             # let the feed settle
             await send(_niim_pkt(0xF3,[1]),0.2)                                       # end print
-            return True
+            return (all_ok, "" if all_ok else "printer stopped at row %d of %d"%(prog["row"],H))
     try:
-        _r=bool(asyncio.run(_run())); _niim_note(_r); return _r
+        _r,_msg=asyncio.run(_run())
+        _niim_note(bool(_r),_msg)          # "Printed ✓" now means the printer CONFIRMED every row,
+        return bool(_r)                    # not just that we finished sending bytes
+    except ValueError:
+        _niim_note(False,"bad printer reply"); return False
     except Exception as e:
         try: app.logger.warning("niimbot print failed: %s",e)
         except Exception: pass
