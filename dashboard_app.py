@@ -4805,13 +4805,25 @@ def _niimbot_print(img,qty=1):
     dens=int((db.get("niimbot") or {}).get("density",3) or 3)
     async def _run():
         async with BleakClient(mac,timeout=25) as cl:
-            try: await cl.start_notify(_NIIM_CHR,lambda _c,_d:None)
+            # Listen to the printer instead of talking blindly. It ACKs every command and reports page
+            # progress (0xD3), so we can WAIT for the page to finish rather than guessing with a sleep.
+            done=asyncio.Event(); notes=[]
+            def on_note(_c,data):
+                b=bytes(data); notes.append(b)
+                if len(b)>3 and b[2] in (0xD3,0xE4):      # page progress / end-page ack
+                    done.set()
+            try: await cl.start_notify(_NIIM_CHR,on_note)
             except Exception: pass
-            async def send(raw,wait=0.05):
-                await cl.write_gatt_char(_NIIM_CHR,raw,response=False)
+            async def send(raw,wait=0.05,ack=False):
+                # ack=True → write WITH response: the BLE stack won't hand over the next packet until the
+                # printer has taken this one. That is the flow control the row stream was missing; blasting
+                # 591 rows response=False overran the buffer and the printer silently dropped the job
+                # (a 120-row page worked, a full label didn't).
+                await cl.write_gatt_char(_NIIM_CHR,raw,response=ack)
                 if wait: await asyncio.sleep(wait)
             await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.25)   # wake/init
             for _ in range(max(1,int(qty))):
+                done.clear(); notes.clear()
                 await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.09)                 # density
                 await send(_niim_pkt(0x23,[1]),0.09)                                  # label type
                 await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)            # print start, 1 page
@@ -4821,11 +4833,13 @@ def _niimbot_print(img,qty=1):
                 while y<H:
                     row,total=rows[y]; run=1
                     while y+run<H and rows[y+run][0]==row and run<200: run+=1
-                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0.004)
-                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0.004)
+                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0,ack=True)
+                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0,ack=True)
                     y+=run
-                await send(_niim_pkt(0xE3,[1]),0.35)                                  # end page
-                await asyncio.sleep(1.4)                                              # let it feed
+                await send(_niim_pkt(0xE3,[1]),0.05)                                  # end page
+                try: await asyncio.wait_for(done.wait(),timeout=8)                    # wait for the ACTUAL
+                except asyncio.TimeoutError: pass                                     # finish, not a guess
+                await asyncio.sleep(0.25)                                             # let the feed settle
             await send(_niim_pkt(0xF3,[1]),0.2)                                       # end print
             return True
     try:
