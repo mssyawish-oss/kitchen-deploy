@@ -4829,12 +4829,18 @@ def _niimbot_print(img,qty=1):
                 await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)            # print start, 1 page
                 await send(_niim_pkt(0xA3,[1]),0.05)                                  # status ping
                 await send(_niim_pkt(0x13,[H>>8,H&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1,0,0,0,0,0,0,0]),0.15)
-                y=0
+                # Speed vs safety: acking EVERY row packet is reliable but costs a full BLE round-trip
+                # each (a 591-row label took 106s). Acking every Nth packet instead bounds how far the
+                # printer can fall behind — the queue drains at each sync point — at a fraction of the
+                # cost. Fire-and-forget everything with no sync at all is what lost the job originally.
+                SYNC_EVERY=12
+                y=0; n=0
                 while y<H:
                     row,total=rows[y]; run=1
                     while y+run<H and rows[y+run][0]==row and run<200: run+=1
-                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0,ack=True)
-                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0,ack=True)
+                    n+=1; sync=(n%SYNC_EVERY==0)
+                    if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0,ack=sync)
+                    else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0,ack=sync)
                     y+=run
                 await send(_niim_pkt(0xE3,[1]),0.05)                                  # end page
                 try: await asyncio.wait_for(done.wait(),timeout=8)                    # wait for the ACTUAL
