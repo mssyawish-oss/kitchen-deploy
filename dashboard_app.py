@@ -4745,9 +4745,10 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     # BOTTOM_SAFE keeps it clear of the physical edge: the B1's printable area is a little shorter than
     # the 50mm label, so a box sitting at the very bottom came out half-cut. This is the one line that
     # must never be unreadable, so it gets real clearance.
-    # MEASURED, not guessed: the calibration strip (/api/niimbot_calib) printed its 500 band in full on
-    # this printer, so ~500 of the 591 dots are usable. End the content at 490 for a small margin.
-    BOTTOM_SAFE=H-490
+    # Full height restored (2026-08-01): the "content cut off at ~500 dots" measurements were taken on
+    # the label roll whose RFID chip was dying — the early feed-stop was the ROLL failing, not a real
+    # printable limit. On a healthy roll the full 591 dots print, so just a small bottom margin.
+    BOTTOM_SAFE=16
     box_h=94; box_y0=H-BOTTOM_SAFE-box_h
     dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
     box="USE BY  "+useby_s; fu=fnt(48,True)
