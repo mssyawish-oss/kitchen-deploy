@@ -4835,6 +4835,58 @@ def _tspl_raster(img):
     head+=("BITMAP 0,0,%d,%d,0,"%(stride,H)).encode()
     return head+bytes(data)+b"\r\nPRINT 1\r\n"
 
+def _render_label_thermal(item,staff,prepped_s,useby_s,seq=0,total=1):
+    """The prep label re-laid-out for the 80mm STAR sticky printer: landscape, 576 x 300 dots
+    (80 x ~37mm at 203 dpi) — a short wide sticker, not the NIIMBOT's 50x50 square. Same info,
+    same visual language (day band / big name / prepped-by / boxed USE BY), different shape."""
+    from PIL import Image,ImageDraw,ImageFont
+    W,H=576,300
+    img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
+    def fnt(sz,bold=True):
+        names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
+        for c in names:
+            for p in (c,os.path.join("C:\\Windows\\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    def wrap(text,font,maxw,maxlines):
+        lines=[];cur=""
+        for w in text.split():
+            t=(cur+" "+w).strip()
+            if dr.textlength(t,font=font)<=maxw: cur=t
+            else:
+                if cur: lines.append(cur)
+                cur=w
+        if cur: lines.append(cur)
+        return lines[:maxlines]
+    DOWFULL={'Mon':'MONDAY','Tue':'TUESDAY','Wed':'WEDNESDAY','Thu':'THURSDAY','Fri':'FRIDAY','Sat':'SATURDAY','Sun':'SUNDAY'}
+    day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
+    band=52; dr.rectangle([0,0,W,band],fill=0)
+    fh=fnt(34,True); dr.text((10,band//2-21),dayname,font=fh,fill=255)
+    if total>1 and seq>0:
+        badge="%d/%d"%(seq,total); bw=dr.textlength(badge,font=fh)
+        dr.text((W-10-bw,band//2-21),badge,font=fh,fill=255)
+    # bottom row: PREPPED/BY on the left, boxed USE BY on the right
+    box_w=252; box_h=66; box_y=H-8-box_h
+    dr.rectangle([W-8-box_w,box_y,W-8,box_y+box_h],outline=0,width=4)
+    ub="USE BY "+useby_s; fu=fnt(30,True)
+    while dr.textlength(ub,font=fu)>box_w-16 and fu.size>16: fu=fnt(fu.size-2,True)
+    dr.text((W-8-box_w+(box_w-dr.textlength(ub,font=fu))//2, box_y+(box_h-fu.size)//2-3), ub, font=fu, fill=0)
+    fsb=fnt(20,True); fs=fnt(20,False); fname=fnt(28,True)
+    dr.text((10,box_y+2),"PREPPED",font=fsb,fill=0); dr.text((116,box_y+2),prepped_s,font=fs,fill=0)
+    dr.text((10,box_y+34),"BY",font=fsb,fill=0); dr.text((116,box_y+30),(staff or "-"),font=fname,fill=0)
+    # product name fills the middle band, auto-sized, up to 2 lines
+    top=band+8; bottom=box_y-8; zone=bottom-top
+    up=(item or "").upper(); nwords=len(up.split())
+    f=fnt(60,True); lines=wrap(up,f,W-24,2); lh=int(60*1.1)
+    for sz in (60,52,46,40,34,30,26,22):
+        f=fnt(sz,True); lines=wrap(up,f,W-24,2); lh=int(sz*1.1)
+        if len(lines)*lh<=zone and sum(len(l.split()) for l in lines)>=nwords: break
+    y=top+max(0,(zone-len(lines)*lh)//2)
+    for ln in lines:
+        dr.text(((W-dr.textlength(ln,font=f))//2, y), ln, font=f, fill=0); y+=lh
+    return img
+
 def _star_raster(img):
     """The label in Star Graphic Mode raster — what the Star TSP100 family actually speaks (the LAN
     label printer is a Star TSP100 SK, linerless sticky). Star printers treat ESC/POS and TSPL as
@@ -4868,8 +4920,13 @@ def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     except Exception as e: return False,"render failed: %s"%e
     try:
         for _ in range(max(1,int(qty))):
-            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
-                s.settimeout(8); s.connect((ip,port)); s.sendall(payload)
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sk:
+                sk.settimeout(8); sk.connect((ip,port)); sk.sendall(payload)
+                try:                                   # let the printer finish taking the data before we
+                    sk.shutdown(socket.SHUT_WR)        # hang up — closing straight after sendall lost the
+                    sk.settimeout(4)                   # tail of the raster (only the top band printed)
+                    while sk.recv(4096): pass
+                except Exception: pass
         return True,""
     except Exception as e:
         return False,str(e)[:160]
@@ -5178,8 +5235,8 @@ def api_label_printer_test():
     ip=(d.get("ip") or _label_cfg().get("ip") or "").strip()
     if not ip: return jsonify({"ok":False,"error":"Enter the printer's IP first."})
     now=datetime.now()
-    img=_render_label_png("Test Label","Dashboard",_lbl_date(now,withtime=True),
-                          _lbl_date(now+timedelta(days=2)))
+    img=_render_label_thermal("Test Label","Dashboard",_lbl_date(now,withtime=True),
+                              _lbl_date(now+timedelta(days=2)))
     ok,err=_network_label_print(img,1,ip=ip,port=d.get("port"),fmt=d.get("format"))
     return jsonify({"ok":bool(ok),"error":err,"ip":ip})
 
@@ -5199,7 +5256,8 @@ def api_print_labels():
     try:
         for i in range(qty):
             # each copy in a batch gets its own "1/4", "2/4"… so staff can see none went missing
-            img=_render_label_png(item,staff,prepped_s,useby_s,seq=i+1,total=qty)
+            _render=(_render_label_thermal if (_label_cfg().get("mode") or "niimbot")=="network" else _render_label_png)
+            img=_render(item,staff,prepped_s,useby_s,seq=i+1,total=qty)
             if first_img is None: first_img=img
             try:
                 if _print_label(img,1): printed+=1      # routes to NIIMBOT or the 80mm network printer
