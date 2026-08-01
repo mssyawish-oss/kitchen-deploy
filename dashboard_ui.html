@@ -2397,6 +2397,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div class="set-tab" data-m="targets" onclick="setProdMode('targets')">Daily targets</div>
     </div>
     <div id="pe-mode-help" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+    <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"><option value="0.25">Quarters (&frac14;)</option><option value="0.5">Halves (&frac12;)</option><option value="1">Whole numbers</option></select></div>
     <div id="pe-reorder-row" class="grid-2 mt-8"><div><div class="label" id="pe-reorder-label">Reorder when below</div><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2"></div><div><div class="label" id="pe-pack-label">Order in lots of</div><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1"></div></div>
     <div id="pe-targets-row" style="display:none;">
       <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
@@ -4221,7 +4222,7 @@ function stockRowHtml(p){
   return `<div class="stk-card ${st.cls}" data-id="${p.id}">
     <div class="stk-info"><div class="stk-name">${p.name}</div><div class="stk-sub">${st.sub}</div></div>
     <div class="stk-pill ${st.cls}">${st.label}</div>
-    <div class="stk-stepper"><button onclick="stepStock('${p.id}',-1)">−</button><input type="number" min="0" inputmode="decimal" value="${onHand}" placeholder="0" onfocus="this.select()" oninput="setOnHand('${p.id}',this.value)"><button onclick="stepStock('${p.id}',1)">+</button></div>
+    <div class="stk-stepper"><button onclick="stepStock('${p.id}',-1)">−</button><input type="number" min="0" step="${parseFloat(p.count_step)||0.25}" inputmode="decimal" value="${onHand}" placeholder="0" onfocus="this.select()" oninput="setOnHand('${p.id}',this.value)"><button onclick="stepStock('${p.id}',1)">+</button></div>
   </div>`;
 }
 function setOnHand(id,val){appData.stock_on_hand=appData.stock_on_hand||{};if(val===''){delete appData.stock_on_hand[id];}else{appData.stock_on_hand[id]=parseFloat(val)||0;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
@@ -4240,7 +4241,7 @@ function resetStockCounts(){
   if(btn){btn.textContent=btn.dataset.o||'Reset counts';btn.style.color='';}
   appData.stock_on_hand={};saveKeys(['stock_on_hand']);renderStockPage();_toast&&_toast('Stock counts reset.');
 }
-function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;let v=cur+delta;if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
+function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;const _p=(appData.products||[]).find(x=>x.id===id);const _stp=(_p&&parseFloat(_p.count_step))||1;let v=+(cur+delta*_stp).toFixed(2);if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
 function updateStockSummary(){const el=document.getElementById('stock-summary');if(el)el.style.display='none';}   // retired: supplier order buttons replace this
 function renderStockPage(){
@@ -4335,7 +4336,7 @@ function _orunRowHtml(p){
     : '';
   return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
     +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
-    +'<div class="orun-have"><input type="number" min="0" step="0.25" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
+    +'<div class="orun-have"><input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
     +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c,p.id)+'</div>'
     +'</div>';
 }
@@ -4628,7 +4629,7 @@ function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier')
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
 let _peTargetUnit='count';
 function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
-function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';document.getElementById('pe-cstep').value='0.25';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';document.getElementById('pe-section').value=p.section||'';
   _fillProdSupplier(p.supplier_id||'');
@@ -4636,6 +4637,7 @@ function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingPr
   document.getElementById('pe-packsize').value=pk.ps>1?pk.ps:'';
   document.getElementById('pe-packunit').value=(p.pack_unit||p.count_unit||'').trim();var _bu=document.getElementById('pe-base-unit');if(_bu)_bu.textContent=(p.unit||'units');
   document.getElementById('pe-pack').value=p.pack!=null?p.pack:'';document.getElementById('pe-reorder').value=p.reorder_at!=null?p.reorder_at:'';
+  document.getElementById('pe-cstep').value=String(p.count_step||0.25);
   const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';setProdMode(hasRe?'reorder':'targets');
   _peTargetUnit=(p.target_in==='order'&&pk.split)?'order':'count';
   syncUnitLabels();
@@ -4658,7 +4660,8 @@ function saveProductEdit(){
   let reorder_at,finalTargets;
   if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
   else{if(Object.keys(targets).length===0){_toast&&_toast('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
-  const fields={name,supplier_id,unit,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
+  const count_step=parseFloat(document.getElementById('pe-cstep').value)||0.25;
+  const fields={name,supplier_id,unit,count_step,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
