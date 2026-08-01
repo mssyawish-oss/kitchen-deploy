@@ -2608,7 +2608,7 @@ const _ALARM_DEF={
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
- service:{label:'Routine / service reminder',color:'#7c5cff',interval:700,desc:'Scheduled routine & service prompts.'},
+ service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Switching it off silences the sound only — the popup still shows.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'}
 };
 const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin'];
@@ -2667,7 +2667,9 @@ function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateF
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub){
-  if(!_acfg('service').enabled)return;
+  // Disabling this alarm in the Alarm Center silences the SOUND only — the popup + lock banner still
+  // show. (It used to return before drawing anything, so with 'service' switched off every TASK DUE /
+  // PREP DUE / JOB / ORDER reminder vanished without a trace — the "alarms not sounding" bug.)
   activeAlarmId=Date.now();const id=activeAlarmId;
   document.getElementById('alarm-title').textContent=title;
   document.getElementById('alarm-sub').textContent=sub;
@@ -2675,7 +2677,11 @@ function triggerAlarm(title,sub){
   ov.style.setProperty('--alarm-accent',(_acfg('service').color)||'#ef4444');   // card accent = this alarm's colour setting
   ov.classList.add('active');
   showLockBanner(title,sub);_updateFlash();   // modal is up → _updateFlash suppresses the screen-edge flashing
-  function loop(){if(activeAlarmId!==id)return;_alarmHit('service');setTimeout(()=>{if(activeAlarmId===id)loop();},_acfg('service').interval);}
+  if(!_acfg('service').enabled)return;
+  const t0=Date.now();
+  function loop(){if(activeAlarmId!==id)return;const c=_acfg('service');
+    if(c.autostop&&(Date.now()-t0)>c.autostop*60000)return;   // auto-stop setting stops the noise; card stays up until dismissed
+    _alarmHit('service');setTimeout(()=>{if(activeAlarmId===id)loop();},c.interval);}
   loop();
 }
 function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence('service');}
@@ -6292,52 +6298,61 @@ function ktTick(){
 }
 
 // ── REMINDERS — keyed by DATE+time so they reset every 24 hours ──
+// Due-window check for one-shot reminders. The old code fired only when the stored time EQUALLED the
+// current minute — if no dashboard was awake at that exact minute (tablet asleep, page reloading, kiosk
+// restarting) the reminder was missed for good. Now anything that came due in the last `grace` minutes
+// still fires (once per day, via the date-keyed lastFired entries below).
+function _dueWithin(t,now,grace){const r=_hhmm(t);if(!r)return false;
+  const m=s=>(+s.slice(0,2))*60+(+s.slice(3));const d=m(now)-m(r);return d>=0&&d<=grace;}
+const _REMIND_GRACE=60;
 function checkAllReminders(){
   const now=nowHHMM(),todayDay=(new Date().getDay()+6)%7,dateKey=todayDateStr();
-  (appData.suppliers||[]).forEach(sup=>{
-    if(!sup.remind_time||_hhmm(sup.remind_time)!==now)return;
+  // each block wrapped in try/catch: one bad record or missing element must not kill the other checks
+  try{(appData.suppliers||[]).forEach(sup=>{
+    if(!sup.remind_time||!_dueWithin(sup.remind_time,now,_REMIND_GRACE))return;
     const days=sup.remind_days||[];if(days.length>0&&!days.includes(todayDay))return;
-    const key='sup-'+sup.id+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+    const key='sup-'+sup.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
     triggerAlarm('ORDER REMINDER','Time to place your order with '+sup.name+'!');
     document.getElementById('stock-badge').classList.add('show');
     document.querySelector('.nav-btn[data-page="stock"]')?.classList.add('alarming');
     // NOTE: the reminder EMAIL is sent by the server (once per supplier per day) — see reminder_loop in
     // dashboard_app.py. We deliberately don't email from the client anymore: every open dashboard used to
     // send its own copy, which spammed the inbox with dozens of duplicate reminders.
-  });
-  (appData.service_alerts||[]).forEach(a=>{
+  });}catch(e){}
+  try{(appData.service_alerts||[]).forEach(a=>{
     if(!_taskActiveToday(a))return;   // daily / weekly / fortnightly / specific dates
     if((appData.service_done||{})[a.id]&&appData.service_done[a.id].done){delete _routineNag[a.id];return;}
-    if(now<a.time)return;             // not due yet
+    if(now<(_hhmm(a.time)||a.time))return;             // not due yet
     const nowMs=Date.now(),last=_routineNag[a.id]||0;
     if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
     _routineNag[a.id]=nowMs;
     triggerAlarm(((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // skip SVG-markup icons (they'd print as raw code in the alarm title)
     document.getElementById('service-badge')?.classList.add('show');
     document.getElementById('nav-service-btn')?.classList.add('alarming');
-  });
-  (appData.packdown_tasks||[]).forEach(t=>{
-    if(!t.remind_at||t.remind_at!==now)return;
+  });}catch(e){}
+  try{(appData.packdown_tasks||[]).forEach(t=>{
+    if(!t.remind_at||!_dueWithin(t.remind_at,now,_REMIND_GRACE))return;
     if(!_taskActiveToday(t))return;   // weekly / fortnightly / set-date scheduling
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
-    const key='pack-'+t.id+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+    const key='pack-'+t.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
     packdownDueDismissed[t.id]=false;
-    if(t.alarm){triggerAlarm('TASK DUE',t.name);}else{playChime();showLockBanner('TASK DUE',t.name);}
-    document.getElementById('packdown-badge').classList.add('show');
-  });
-  (appData.quiet_jobs||[]).forEach(j=>{
-    if(!j.remind_time||j.remind_time!==now)return;
+    if(t.alarm){triggerAlarm('TASK DUE',t.name);}
+    else{if(!_devMuted('service'))playChime();showLockBanner('TASK DUE',t.name);}   // chime respects this device's mute like every other alarm sound
+    document.getElementById('packdown-badge')?.classList.add('show');
+  });}catch(e){}
+  try{(appData.quiet_jobs||[]).forEach(j=>{
+    if(!j.remind_time||!_dueWithin(j.remind_time,now,_REMIND_GRACE))return;
     const days=j.days||[];if(days.length>0&&!days.includes(todayDay))return;
     if((appData.jobs_done||{})[j.id])return;
-    const key='job-'+j.id+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+    const key='job-'+j.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
     triggerAlarm('JOB REMINDER',j.text+(j.area?' ('+j.area+')':''));
-    document.getElementById('jobs-badge').classList.add('show');
+    document.getElementById('jobs-badge')?.classList.add('show');
     document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
-  });
+  });}catch(e){}
   // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM).
   // Recurring items (the old Routines) keep the routine behaviour: alarm at the time,
   // then re-alarm every 15 min until ticked off. One-off items alarm once.
-  (function(){
+  try{(function(){
     if(typeof _migrateRoutinesToPrep==='function')_migrateRoutinesToPrep();
     if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();
     if(typeof _mergeRecurringPrep==='function')_mergeRecurringPrep();   // recurring items land on the list even if nobody opens the page
@@ -6346,19 +6361,19 @@ function checkAllReminders(){
     (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind)return;
       if(doneMap[iid]){delete _routineNag['prep_'+iid];return;}
       if(p.recur){                                   // routine-style nag
-        if(now<p.remind)return;
+        if(now<(_hhmm(p.remind)||p.remind))return;
         const nowMs=Date.now(),last=_routineNag['prep_'+iid]||0;
         if(nowMs-last<15*60*1000)return;
         _routineNag['prep_'+iid]=nowMs;
-      }else{                                          // one-off: fire once at the minute
-        if(p.remind!==now)return;
-        const key='prep-'+iid+'-'+dateKey+'-'+now;if(lastFired[key])return;lastFired[key]=true;
+      }else{                                          // one-off: fire once, catching up if the minute was missed
+        if(!_dueWithin(p.remind,now,_REMIND_GRACE))return;
+        const key='prep-'+iid+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
       }
       triggerAlarm('PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
-      document.getElementById('jobs-badge').classList.add('show');
+      document.getElementById('jobs-badge')?.classList.add('show');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
     });
-  })();
+  })();}catch(e){}
   if(document.getElementById('page-service').classList.contains('active'))renderServicePage();
   if(document.getElementById('page-packdown').classList.contains('active'))renderPackdownPage();
   updatePrepBadge();
