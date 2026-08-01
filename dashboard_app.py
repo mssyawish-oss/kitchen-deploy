@@ -4835,6 +4835,25 @@ def _tspl_raster(img):
     head+=("BITMAP 0,0,%d,%d,0,"%(stride,H)).encode()
     return head+bytes(data)+b"\r\nPRINT 1\r\n"
 
+def _star_raster(img):
+    """The label in Star Graphic Mode raster — what the Star TSP100 family actually speaks (the LAN
+    label printer is a Star TSP100 SK, linerless sticky). Star printers treat ESC/POS and TSPL as
+    literal text, which is why those formats printed pages of random characters. Byte sequence taken
+    from the StarTSPImage reference implementation: ESC*rA (enter raster), ESC*rP0 (continuous),
+    'b' + len + 72-byte line each row (bit 1 = black), ESC*rB (quit; printer feeds + cuts on EOT)."""
+    from PIL import Image, ImageOps
+    stride=72; W=stride*8                                  # 576 dots across the 80mm head
+    im=img.convert("L")
+    if im.width!=W:
+        im=im.resize((W,max(1,int(round(im.height*W/im.width)))),Image.LANCZOS)
+    im=ImageOps.invert(im).convert("1")                    # invert first → set bit = print black
+    data=im.tobytes()
+    out=bytearray(b"\x1b*rA"+b"\x1b*rP0\x00")
+    for y in range(im.height):
+        out+=b"b"+bytes([stride,0])+data[y*stride:(y+1)*stride]
+    out+=b"\x1b*rB"
+    return bytes(out)
+
 def _label_cfg(): return db.get("label_printer") or {}
 def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     """Print the label to the 80mm NETWORK thermal printer. No Bluetooth involved: no pairing, no radio
@@ -4845,7 +4864,7 @@ def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     port=int(port or cfg.get("port") or PRINTER_PORT)
     if not ip: return False,"No network label printer IP set"
     fmt=(fmt or cfg.get("format") or "escpos").strip().lower()
-    try: payload=_tspl_raster(img) if fmt=="tspl" else _escpos_raster(img)
+    try: payload=_star_raster(img) if fmt=="star" else (_tspl_raster(img) if fmt=="tspl" else _escpos_raster(img))
     except Exception as e: return False,"render failed: %s"%e
     try:
         for _ in range(max(1,int(qty))):
@@ -5146,7 +5165,7 @@ def api_label_printer():
             if "port" in d:
                 try: c["port"]=max(1,min(65535,int(d.get("port") or PRINTER_PORT)))
                 except (TypeError,ValueError): pass
-            if "format" in d: c["format"]="tspl" if d.get("format")=="tspl" else "escpos"
+            if "format" in d: c["format"]=d.get("format") if d.get("format") in ("tspl","star","escpos") else "escpos"
             db["label_printer"]=c; save_data(db)
     c=_label_cfg()
     return jsonify({"ok":True,"mode":c.get("mode") or "niimbot","ip":c.get("ip",""),
