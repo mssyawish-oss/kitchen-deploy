@@ -5899,9 +5899,22 @@ function _doPrintLabels(){
   if(st){st.textContent='Sending '+_lblQty+' label'+(_lblQty>1?'s':'')+' for '+_lblStaff+'…';st.style.color='var(--muted)';}
   fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item:_lblItemName,staff:_lblStaff,shelf_days:shelf,qty:_lblQty})}).then(r=>r.json()).then(d=>{
     if(btn)btn.disabled=false;
-    if(d.ok&&d.printed){if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'')+' — '+_lblStaff;st.style.color='var(--green)';}}
-    else if(d.ok){if(st){st.innerHTML='Label built ✓ — no printer connected yet.<br><span style="color:var(--muted);">'+_mEsc(d.note||'Pair the NIIMBOT B1 to start printing.')+'</span>';st.style.color='var(--amber)';}}
-    else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
+    if(d.ok&&d.printed){
+      if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'')+' — '+_lblStaff;st.style.color='var(--green)';}
+      // Reset in place after a beat, so the screen is immediately ready for the NEXT label — staff
+      // print several in a row, and the stale selection used to force a close-and-reopen each time.
+      setTimeout(function(){
+        const m=document.getElementById('label-modal');
+        if(!m||!m.classList.contains('open'))return;
+        _lblItem=null;_lblItemName='';_lblStaff='';_lblQty=1;
+        const q=document.getElementById('lbl-qty');if(q)q.textContent='1';
+        const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';
+        const se=document.getElementById('lbl-search');if(se)se.value='';
+        if(st){st.textContent='';}
+        renderLabelItems();renderLabelPreview();
+      },1400);
+    }
+    else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn\'t confirm the print. Check it and try again.');st.style.color='var(--red)';}}
   }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 // ===== Just-prepped label prompt =====
@@ -5975,8 +5988,7 @@ function _pl2Print(){
     body:JSON.stringify({item:_pl2Name,staff:_pl2Staff,shelf_days:sh,qty:_pl2Qty})}).then(r=>r.json()).then(d=>{
     if(btn)btn.disabled=false;
     if(d.ok&&d.printed){_toast('\u2713 '+_pl2Qty+' label'+(_pl2Qty>1?'s':'')+' printed');closeModal('preplbl-modal');}
-    else if(d.ok){if(st){st.textContent=d.note||'Label built \u2014 no printer connected.';st.style.color='var(--amber)';}}
-    else{if(st){st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}}
+    else{if(st){st.textContent='Print failed \u2014 '+(d.error||d.note||'the printer didn\'t confirm the print. Check it and try again.');st.style.color='var(--red)';}}
   }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}

@@ -4887,12 +4887,16 @@ def _niimbot_print(img,qty=1):
     SYNC_EVERY=12
     async def _run():
         async with BleakClient(mac,timeout=25) as cl:
-            state={"page":0,"printp":0,"feedp":0,"d3row":0}
+            state={"page":0,"printp":0,"feedp":0,"d3row":0,"done":False}
             def on_note(_c,data):
                 b=bytes(data)
                 if len(b)<7 or b[0]!=0x55 or b[1]!=0x55: return
                 if b[2]==0xB3 and b[3]>=4:                     # PrintStatus: page u16, print%, feed%
                     state["page"]=(b[4]<<8)|b[5]; state["printp"]=b[6]; state["feedp"]=b[7]
+                    if b[6]>=100: state["done"]=True           # LATCH on print% alone: this firmware
+                                                               # reported 'print 100%, feed 0%' on a
+                                                               # physically perfect label — requiring
+                                                               # feed% too marked real prints as failed
                 elif b[2]==0xD3 and b[3]>=2:                   # legacy progress (v4 firmwares)
                     r=(b[4]<<8)|b[5]
                     if r>state["d3row"]: state["d3row"]=r
@@ -4924,8 +4928,9 @@ def _niimbot_print(img,qty=1):
                     page_ok=False
                     for _ in range(100):                                             # poll ≤30s
                         await send(_niim_pkt(0xA3,[1]),0.3)
-                        if state["printp"]>=100 and state["feedp"]>=100: page_ok=True; break
+                        if state["done"]: page_ok=True; break
                     if not page_ok: ok=False
+                    state["done"]=False                                              # re-arm for next copy
                 await send(_niim_pkt(0xF3,[1]),0.2)                                  # PrintEnd
                 msg="" if ok else "printer stalled at page %d, print %d%%, feed %d%%"%(state["page"],state["printp"],state["feedp"])
                 return (ok,msg)
