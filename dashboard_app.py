@@ -5287,6 +5287,20 @@ def api_print_labels():
 @app.route("/api/orders")
 def api_orders():
     return jsonify(ORDERS_LIVE)
+@app.route("/api/orders_debug2")
+def api_orders_debug2():
+    """Board triage: every order Square returned, with its fulfillment verdict and whether the board
+    kept it — to diagnose 'the dash only shows online orders' against the physical KDS. (Re-added in
+    the right place this time — its first version sat above the app's creation and crashed startup.)"""
+    cfg=db.get("square_config",{}) or {}
+    try: board=_kds_fetch(cfg)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)[:200]})
+    rows=[{"src":b.get("src"),"name":b.get("name"),"icount":b.get("icount"),"created":b.get("created"),
+           "fulfilled":b.get("fulfilled"),"on_board":(not b.get("fulfilled")),"sched":b.get("sched")} for b in board]
+    kept=[r for r in rows if r["on_board"]]
+    return jsonify({"ok":True,"fetched":len(rows),"on_board":len(kept),
+                    "kept_by_source":{s:len([r for r in kept if r["src"]==s]) for s in set(r["src"] for r in kept)} if kept else {},
+                    "dropped_recent":[r for r in rows if not r["on_board"]][-25:],"kept":kept})
 @app.route("/api/order_ack",methods=["POST"])
 def api_order_ack():
     oid=str((request.get_json(silent=True) or {}).get("id","") or "")
