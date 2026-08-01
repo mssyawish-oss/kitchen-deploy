@@ -992,24 +992,6 @@ def _kds_fetch(cfg):
                     "total":round(total,2),"sched":sched,"due":(due.isoformat() if due else None),
                     "created":o.get("created_at"),"fulfilled":fulfilled})
     return out
-@app.route("/api/orders_debug2")
-def api_orders_debug2():
-    """Board triage: every order Square returned, with its fulfillment states and whether the board
-    kept it — so 'the dash only shows online orders' can be diagnosed against the KDS side-by-side."""
-    cfg=db.get("square_config",{}) or {}
-    try: board=_kds_fetch(cfg)
-    except Exception as e: return jsonify({"ok":False,"error":str(e)[:200]})
-    rows=[]
-    for b in board:
-        rows.append({"src":b.get("src"),"name":b.get("name"),"icount":b.get("icount"),
-                     "created":b.get("created"),"fulfilled":b.get("fulfilled"),
-                     "on_board":(not b.get("fulfilled")),"sched":b.get("sched")})
-    kept=[r for r in rows if r["on_board"]]
-    return jsonify({"ok":True,"fetched":len(rows),"on_board":len(kept),
-                    "kept_by_source":{s:len([r for r in kept if r["src"]==s]) for s in set(r["src"] for r in kept)} if kept else {},
-                    "dropped_recent":[r for r in rows if not r["on_board"]][-25:],
-                    "kept":kept})
-
 def _orders_refresh(cfg):
     global ORDERS_LIVE
     try:
