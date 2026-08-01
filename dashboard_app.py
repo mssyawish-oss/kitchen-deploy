@@ -1007,7 +1007,20 @@ def _orders_refresh(cfg):
     except (TypeError,ValueError): minI=15
     try: win=int((db.get("orders_board_window") or 15))
     except (TypeError,ValueError): win=15
-    open_tk=[b for b in board if not b["fulfilled"]]
+    # Paid counter sales: Square auto-COMPLETES their fulfillment the moment they're rung up, while
+    # they're still sitting unmade on the KDS — the API carries NO still-on-KDS signal for them (the
+    # KDS bump never reaches the Orders API). Confirmed live 2026-08-01 against the physical KDS: three
+    # numbered paid tickets on the KDS, none on the board; the open-account (unpaid) one showed fine.
+    # So paid POS orders are shown for a WINDOW after they're rung up instead — they clear by timer,
+    # not by bump, because no bump signal exists to obey. Window: db['orders_pos_show_min'] (default 12).
+    try: win_pos=int(db.get("orders_pos_show_min") or 12)
+    except (TypeError,ValueError): win_pos=12
+    def _pos_recent(b):
+        if b.get("fulfilled") and (b.get("src") or "")=="Point of Sale" and not b.get("sched"):
+            d=_parse_dt(b.get("created"))
+            return bool(d and (now-d).total_seconds()<win_pos*60)
+        return False
+    open_tk=[b for b in board if not b["fulfilled"] or _pos_recent(b)]
     live_ids=set(b["id"] for b in open_tk)
     # Board shows ALL open kitchen orders — INCLUDING scheduled catering/pre-orders (tagged with their due
     # time) so the owner sees + preps them ahead, not only within the KDS fire window. Soonest-relevant first.
