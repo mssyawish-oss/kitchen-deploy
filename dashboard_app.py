@@ -4864,9 +4864,17 @@ def _print_label(img,qty=1):
     return _niimbot_print(img,qty)
 
 def _niimbot_print(img,qty=1):
-    # Send `img` to the NIIMBOT B1 Pro over the server's Bluetooth (same bleak stack as the FM230 probe).
-    # Protocol v4 print task, 300 dpi. Returns True only if the whole sequence went out cleanly.
+    # Send `img` to the NIIMBOT B1 Pro over BLE. TWO protocol dialects:
+    #   'b1' (default) — the 2024+ firmware sequence per the community wiki (printers.niim.blue):
+    #        PrintStart[7B: totalPages u16 + zeros + pageColor], PageStart[1], SetPageSize[6B:
+    #        rows,cols,copies], rows, PageEnd[1], then POLL PrintStatus(0xA3→0xB3: page,print%,feed%)
+    #        until both hit 100. The app updated the printer's firmware and the old sequence — which
+    #        never sent PageStart at all — gets ACKed but silently never prints.
+    #   'v4' — the original sequence that ran for months pre-update (kept as a fallback switch).
+    # Row packets are acked every SYNC_EVERY writes (flow control: fire-and-forget drops rows on this
+    # Marvell adapter). Success = the printer's own progress reaching 100/100, not "bytes sent".
     mac=((db.get("niimbot") or {}).get("mac") or "").strip()
+    task=((db.get("niimbot") or {}).get("task") or "b1").strip()
     if not mac: return False
     try:
         import asyncio
@@ -4875,46 +4883,24 @@ def _niimbot_print(img,qty=1):
     try: rows,H=_niim_rows(img)
     except Exception: return False
     dens=int((db.get("niimbot") or {}).get("density",3) or 3)
+    SYNC_EVERY=12
     async def _run():
         async with BleakClient(mac,timeout=25) as cl:
-            # Listen to the printer instead of talking blindly. It reports print progress in 0xD3
-            # (55 55 D3 03 <rowHi> <rowLo> <page> crc AA AA) — the page is only DONE when that row
-            # counter reaches the page height. The first version fired on 0xE4 too, but 0xE4 is just
-            # "I received your end-page command" and arrives while the printer is still FEEDING — so we
-            # sent END PRINT mid-feed and killed the label (a bit of paper fed, nothing printed on it).
-            done=asyncio.Event(); notes=[]; prog={"row":0}
+            state={"page":0,"printp":0,"feedp":0,"d3row":0}
             def on_note(_c,data):
-                b=bytes(data); notes.append(b)
-                if len(b)>=7 and b[0]==0x55 and b[1]==0x55 and b[2]==0xD3:
-                    row=(b[4]<<8)|b[5]
-                    if row>prog["row"]: prog["row"]=row
-                    if row>=H-2: done.set()               # all rows on paper (tolerate off-by-one)
+                b=bytes(data)
+                if len(b)<7 or b[0]!=0x55 or b[1]!=0x55: return
+                if b[2]==0xB3 and b[3]>=4:                     # PrintStatus: page u16, print%, feed%
+                    state["page"]=(b[4]<<8)|b[5]; state["printp"]=b[6]; state["feedp"]=b[7]
+                elif b[2]==0xD3 and b[3]>=2:                   # legacy progress (v4 firmwares)
+                    r=(b[4]<<8)|b[5]
+                    if r>state["d3row"]: state["d3row"]=r
             try: await cl.start_notify(_NIIM_CHR,on_note)
             except Exception: pass
             async def send(raw,wait=0.05,ack=False):
-                # ack=True → write WITH response: the BLE stack won't hand over the next packet until the
-                # printer has taken this one. That is the flow control the row stream was missing; blasting
-                # 591 rows response=False overran the buffer and the printer silently dropped the job
-                # (a 120-row page worked, a full label didn't).
                 await cl.write_gatt_char(_NIIM_CHR,raw,response=ack)
                 if wait: await asyncio.sleep(wait)
-            await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.25)   # wake/init
-            all_ok=True
-            for _ in range(max(1,int(qty))):
-                done.clear(); notes.clear(); prog["row"]=0
-                await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.09)                 # density
-                await send(_niim_pkt(0x23,[1]),0.09)                                  # label type
-                await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)            # print start, 1 page
-                await send(_niim_pkt(0xA3,[1]),0.05)                                  # status ping
-                await send(_niim_pkt(0x13,[H>>8,H&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1,0,0,0,0,0,0,0]),0.15)
-                # Speed vs safety: acking EVERY row packet is reliable but costs a full BLE round-trip
-                # each (a 591-row label took 106s). Acking every Nth packet instead bounds how far the
-                # printer can fall behind — the queue drains at each sync point — at a fraction of the
-                # cost. Fire-and-forget everything with no sync at all is what lost the job originally.
-                # Kept at 12 (tighter flow control). Timing single prints proved too noisy to tune on:
-                # every-12 measured 50s and every-32 measured 84s on the same image, so the variance is
-                # bigger than the effect. Prefer the safer value until there's a reason not to.
-                SYNC_EVERY=12
+            async def send_rows():
                 y=0; n=0
                 while y<H:
                     row,total=rows[y]; run=1
@@ -4923,27 +4909,52 @@ def _niimbot_print(img,qty=1):
                     if total==0: await send(_niim_pkt(0x84,[y>>8,y&0xFF,run]),0,ack=sync)
                     else: await send(_niim_pkt(0x85,bytes([y>>8,y&0xFF,0,total&0xFF,(total>>8)&0xFF,run])+row),0,ack=sync)
                     y+=run
-                await send(_niim_pkt(0xE3,[1]),0.05)                                  # end page
-                # Wait for the printer to report ALL rows on paper — NOT for the end-page ack (that comes
-                # while it's still feeding; ending the print there is what fed blank paper). 25s cap: the
-                # physical print of a full label takes several seconds after the data has gone over.
-                try: await asyncio.wait_for(done.wait(),timeout=25)
-                except asyncio.TimeoutError:
-                    all_ok=False
-                await asyncio.sleep(0.35)                                             # let the feed settle
-            await send(_niim_pkt(0xF3,[1]),0.2)                                       # end print
-            return (all_ok, "" if all_ok else "printer stopped at row %d of %d"%(prog["row"],H))
+            await send(bytes([0x03,0x55,0x55,0xC1,0x01,0x01,0xC1,0xAA,0xAA]),0.25)   # wake/init
+            q=max(1,int(qty)); ok=True
+            if task=="b1":
+                await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.12)
+                await send(_niim_pkt(0x23,[1]),0.12)
+                await send(_niim_pkt(0x01,[(q>>8)&0xFF,q&0xFF,0,0,0,0,0]),0.25)      # PrintStart 7B
+                for _ in range(q):
+                    await send(_niim_pkt(0x03,[1]),0.2)                              # PageStart — the missing piece
+                    await send(_niim_pkt(0x13,[H>>8,H&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1]),0.2)  # rows,cols,copies=1
+                    await send_rows()
+                    await send(_niim_pkt(0xE3,[1]),0.2)                              # PageEnd
+                    page_ok=False
+                    for _ in range(100):                                             # poll ≤30s
+                        await send(_niim_pkt(0xA3,[1]),0.3)
+                        if state["printp"]>=100 and state["feedp"]>=100: page_ok=True; break
+                    if not page_ok: ok=False
+                await send(_niim_pkt(0xF3,[1]),0.2)                                  # PrintEnd
+                msg="" if ok else "printer stalled at page %d, print %d%%, feed %d%%"%(state["page"],state["printp"],state["feedp"])
+                return (ok,msg)
+            # ── legacy 'v4' dialect (pre-update firmware) ──
+            for _ in range(q):
+                state["d3row"]=0
+                await send(_niim_pkt(0x21,[max(1,min(5,dens))]),0.09)
+                await send(_niim_pkt(0x23,[1]),0.09)
+                await send(_niim_pkt(0x01,[0x00,0x01,0,0,0,0,0,3,0]),0.15)
+                await send(_niim_pkt(0xA3,[1]),0.05)
+                await send(_niim_pkt(0x13,[H>>8,H&0xFF,NIIM_W>>8,NIIM_W&0xFF,0,1,0,0,0,0,0,0,0]),0.15)
+                await send_rows()
+                await send(_niim_pkt(0xE3,[1]),0.05)
+                for _ in range(60):
+                    if state["d3row"]>=H-2: break
+                    await asyncio.sleep(0.3)
+                if state["d3row"]<H-2: ok=False
+                await asyncio.sleep(0.35)
+            await send(_niim_pkt(0xF3,[1]),0.2)
+            return (ok,"" if ok else "printer stopped at row %d of %d"%(state["d3row"],H))
     try:
         _r,_msg=asyncio.run(_run())
-        _niim_note(bool(_r),_msg)          # "Printed ✓" now means the printer CONFIRMED every row,
-        return bool(_r)                    # not just that we finished sending bytes
-    except ValueError:
-        _niim_note(False,"bad printer reply"); return False
+        _niim_note(bool(_r),_msg)
+        return bool(_r)
     except Exception as e:
         try: app.logger.warning("niimbot print failed: %s",e)
         except Exception: pass
         _niim_note(False,e)
         return False
+
 @app.route("/api/ble_scan")
 def api_ble_scan():
     # list Bluetooth LE devices the SERVER can see — used to find the NIIMBOT printer's address
@@ -5087,10 +5098,14 @@ def api_niimbot_test():
 
 @app.route("/api/niimbot_mac",methods=["POST"])
 def api_niimbot_mac():
-    mac=str((request.get_json(silent=True) or {}).get("mac","")).strip()
+    d=request.get_json(silent=True) or {}
+    mac=str(d.get("mac","")).strip()
     with data_lock:
-        n=dict(db.get("niimbot") or {}); n["mac"]=mac; db["niimbot"]=n; save_data(db)
-    return jsonify({"ok":True,"mac":mac})
+        n=dict(db.get("niimbot") or {})
+        if mac: n["mac"]=mac
+        if "task" in d: n["task"]="v4" if d.get("task")=="v4" else "b1"   # protocol dialect (b1 = 2024+ firmware)
+        db["niimbot"]=n; save_data(db)
+    return jsonify({"ok":True,"mac":n.get("mac",""),"task":n.get("task","b1")})
 
 @app.route("/api/label_preview")
 def api_label_preview():
