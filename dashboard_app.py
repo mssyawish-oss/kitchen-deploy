@@ -88,11 +88,24 @@ def timers_snapshot():
             if t.get("running") and t.get("end_at"):
                 rem=t["end_at"]-now
                 if rem<=0:
-                    t["running"]=False;t["expired"]=True;t["remaining"]=0;t["end_at"]=None;changed=True
+                    t["running"]=False;t["expired"]=True;t["remaining"]=0;t["end_at"]=None;t["expired_at"]=now;changed=True
                     out.append(dict(t))
                 else:
                     snap=dict(t);snap["remaining"]=int(round(rem));out.append(snap)
             else:
+                if t.get("expired"):
+                    # An unacknowledged expired timer used to flash FOREVER — even into the next day.
+                    # Owner's rule: after 9pm close it can stop shouting; and anything left over from a
+                    # previous day clears on sight. (expired_at is stamped at expiry; legacy expired
+                    # timers without one get stamped now, so they pick up the 9pm rule from here.)
+                    lt=time.localtime(now)
+                    today0=now-(lt.tm_hour*3600+lt.tm_min*60+lt.tm_sec)
+                    ea=t.get("expired_at")
+                    if not ea:
+                        t["expired_at"]=ea=now; changed=True
+                    if lt.tm_hour>=21 or ea<today0:
+                        t.update({"expired":False,"remaining":t.get("total",5400),"end_at":None,"expired_at":None})
+                        changed=True
                 out.append(dict(t))
         if changed: save_data(db)
     return out

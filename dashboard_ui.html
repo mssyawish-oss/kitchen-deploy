@@ -3872,7 +3872,6 @@ function renderTimers(){
       <div class="t2-head"><input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="BATCH ${t.id+1}"><span class="t2-state ${stCls}">${stTxt}</span></div>
       <div class="t2-gauge"><svg viewBox="0 0 160 160"><circle class="t2-track" cx="80" cy="80" r="64"/><circle class="t2-prog" id="tr${t.id}" cx="80" cy="80" r="64" style="stroke-dasharray:${C};stroke-dashoffset:${off};"/></svg>
         <div class="t2-timewrap"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="t2-rem">REMAINING</div><i id="tb${t.id}" style="display:none;"></i></div></div>
-      <div class="adj-row"><button class="adj-btn" onclick="adj(${t.id},-300)">-5m</button><button class="adj-btn" onclick="adj(${t.id},-600)">-10m</button><button class="adj-btn" onclick="adj(${t.id},300)">+5m</button><button class="adj-btn" onclick="adj(${t.id},600)">+10m</button></div>
       <div class="t2-actions">${t.running
         ?`<button class="t2-start" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`
         :`<button class="t2-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}
@@ -3884,7 +3883,6 @@ function renderTimers(){
       <input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label this timer…">
       <div class="timer-status ${t.expired?'st-exp':t.running?'st-run':t.remaining<t.total?'st-pause':'st-ready'}"><span class="s-dot ${sDot}"></span>${t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'&#10003; Ready'}</div>
       <div class="gauge" id="tg${t.id}"><div class="gauge-inner"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="gauge-sub">REMAINING</div></div><div class="tbar"><i id="tb${t.id}" style="width:${pct.toFixed(1)}%;background:${arc};"></i></div></div>
-      <div class="adj-row"><button class="adj-btn" onclick="adj(${t.id},-300)">-5m</button><button class="adj-btn" onclick="adj(${t.id},-600)">-10m</button><button class="adj-btn" onclick="adj(${t.id},300)">+5m</button><button class="adj-btn" onclick="adj(${t.id},600)">+10m</button></div>
       <div class="action-row">${t.running?`<button class="action-btn btn-pause" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`:`<button class="action-btn btn-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}<button class="action-btn btn-end" onclick="endT(${t.id})">&#9632; End</button></div>
       ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
     </div>`;
