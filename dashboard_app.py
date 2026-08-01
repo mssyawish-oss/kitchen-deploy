@@ -1436,6 +1436,24 @@ def _sq_enable_variation(vid):
             _orig=bool((( _get_obj() or {}).get("item_variation_data") or {}).get("track_inventory"))
             dbg["steps"].append({"tracking_global_on":_set_tracking(True,"global")})
             dbg["steps"].append({"tracking_global_restore":_set_tracking(_orig,"global")})
+    # VERIFY THE TRACKING RESTORE — the cause of the negative-stock bug. The flip-on/flip-off dance
+    # clears sold_out, but if the flip-OFF write fails (rate limit, hiccup) tracking stayed ON and this
+    # function still reported success — the item then sold into negative stock with no quantity set.
+    # Now: re-read, retry the restore up to 3 times, and if Square still won't release it, say so.
+    track_stuck=False
+    if not tracked:
+        for _try in range(3):
+            _o=_get_obj()
+            _ovX=_ov(_o) or {}
+            _d=(_o or {}).get("item_variation_data") or {}
+            if not _ovX.get("track_inventory") and not _d.get("track_inventory"): break
+            dbg["steps"].append({"restore_retry":_try+1})
+            _set_tracking(False)
+            if _d.get("track_inventory"): _set_tracking(False,"global")
+            time.sleep(0.6)
+        else:
+            track_stuck=True
+        dbg["track_restored"]=(not track_stuck)
     still=bool((_ov(_get_obj()) or {}).get("sold_out"))                     # verify — never claim a false success
     dbg["sold_out_after"]=still; _ENABLE_DBG=dbg
     _SQ_OBJ_CACHE.pop(vid,None)
@@ -1446,6 +1464,8 @@ def _sq_enable_variation(vid):
             # every API write while it holds — and will flip the product back on itself at the set time.
             return False,"SCHEDULED: on a Square timer — it switches back on by itself, or use the Square app"
         return False,"Square still shows it sold out — switch it on in the Square app"
+    if track_stuck:
+        return True,"WARNING: it's back ON, but Square left inventory tracking enabled on this item and refused to turn it off — open it in the Square app and switch Tracking off, or it will sell as negative stock"
     return True,None
 # ══════════════════════════════════════════════════════════════════════════════════════════════════
 # COMP VOUCHERS — a customer rings up because something was missed, staff issue them a Square gift
@@ -2117,12 +2137,64 @@ def api_products_offline():
         for k in [k for k in since if k not in cur]: del since[k]
         if since!=(db.get("prodoff_since") or {}): db["prodoff_since"]=since; save_data(db)
     return jsonify({"ok":True,"off":items,"count":len(items),"now":now})
+@app.route("/api/sq_tracking_audit",methods=["GET","POST"])
+def api_sq_tracking_audit():
+    """Find (GET) and heal (POST {fix:true}) items where inventory tracking got left ON — the residue of
+    the negative-stock bug. This shop tracks inventory on NOTHING, so any variation with tracking on
+    (variation-level or our location override) is damage. GET is read-only; POST rewrites each hit to
+    tracking-off and reports per-item results."""
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    fix=bool((request.get_json(silent=True) or {}).get("fix")) if request.method=="POST" else False
+    hits=[]; cursor=None
+    try:
+        for _pg in range(40):
+            u=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for it in data.get("objects") or []:
+                iname=((it.get("item_data") or {}).get("name") or "?")
+                for v in ((it.get("item_data") or {}).get("variations") or []):
+                    vd=v.get("item_variation_data") or {}
+                    ov=next((x for x in (vd.get("location_overrides") or []) if x.get("location_id")==loc),{})
+                    if vd.get("track_inventory") or ov.get("track_inventory"):
+                        vn=(vd.get("name") or "").strip()
+                        hits.append({"vid":v.get("id"),"name":iname+((" — "+vn) if vn and vn.lower()!="regular" else ""),
+                                     "variation_level":bool(vd.get("track_inventory")),"override_level":bool(ov.get("track_inventory"))})
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:200]})
+    if not fix:
+        return jsonify({"ok":True,"tracking_on":len(hits),"items":hits})
+    fixed=0; fails=[]
+    for h in hits:
+        try:
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(h["vid"])
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                o=(json.loads(r.read().decode()) or {}).get("object")
+            if not o: fails.append({"vid":h["vid"],"err":"read failed"}); continue
+            o2=copy.deepcopy(o); vd=o2.get("item_variation_data") or {}
+            vd["track_inventory"]=False
+            for x in (vd.get("location_overrides") or []):
+                if x.get("location_id")==loc: x["track_inventory"]=False
+            o2["item_variation_data"]=vd
+            body={"idempotency_key":_secrets.token_hex(16),"batches":[{"objects":[o2]}]}
+            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/batch-upsert",data=json.dumps(body).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+            if res.get("errors"): fails.append({"vid":h["vid"],"name":h["name"],"err":(res["errors"][0].get("detail") or "")[:140]})
+            else: fixed+=1; _SQ_OBJ_CACHE.pop(h["vid"],None)
+        except Exception as e:
+            fails.append({"vid":h["vid"],"name":h.get("name"),"err":str(e)[:140]})
+    return jsonify({"ok":True,"found":len(hits),"fixed":fixed,"failed":fails})
+
 @app.route("/api/product_enable",methods=["POST"])
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
     ok,err=_sq_enable_variation(vid)
-    out={"ok":ok,"error":err}
+    out={"ok":ok,"error":(None if ok else err)}
+    if ok and err: out["warn"]=err          # e.g. tracking stuck ON — item works but needs a look in Square
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
     return jsonify(out)
 
