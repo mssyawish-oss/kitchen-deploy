@@ -4736,11 +4736,11 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
     M=16
     # 1) top black day band (drives FIFO rotation) + batch badge on the right
-    band_h=72; dr.rectangle([0,0,W,band_h],fill=0)
-    fh=fnt(42,True); dr.text((M,band_h//2-27),dayname,font=fh,fill=255)
+    band_h=82; dr.rectangle([0,0,W,band_h],fill=0)
+    fh=fnt(50,True); dr.text((M,band_h//2-31),dayname,font=fh,fill=255)
     if total>1 and seq>0:
-        badge="%d/%d"%(seq,total); fb=fnt(42,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-M-bw,band_h//2-27),badge,font=fb,fill=255)
+        badge="%d/%d"%(seq,total); fb=fnt(50,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-M-bw,band_h//2-31),badge,font=fb,fill=255)
     # 2) USE BY box — the discard deadline, most important line: bold + boxed, anchored near the bottom.
     # BOTTOM_SAFE keeps it clear of the physical edge: the B1's printable area is a little shorter than
     # the 50mm label, so a box sitting at the very bottom came out half-cut. This is the one line that
@@ -4749,23 +4749,23 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     # the label roll whose RFID chip was dying — the early feed-stop was the ROLL failing, not a real
     # printable limit. On a healthy roll the full 591 dots print, so just a small bottom margin.
     BOTTOM_SAFE=16
-    box_h=94; box_y0=H-BOTTOM_SAFE-box_h
-    dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
-    box="USE BY  "+useby_s; fu=fnt(48,True)
+    box_h=106; box_y0=H-BOTTOM_SAFE-box_h
+    dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=6)
+    box="USE BY  "+useby_s; fu=fnt(56,True)
     while dr.textlength(box,font=fu)>W-46 and fu.size>26: fu=fnt(fu.size-2,True)
     dr.text(((W-dr.textlength(box,font=fu))//2, box_y0+(box_h-fu.size)//2-6), box, font=fu, fill=0)
     # 3) PREPPED date + BY name, stacked just above the box (name big + bold)
-    fsb=fnt(27,True); fs=fnt(27,False); fname=fnt(40,True)
-    by_y=box_y0-18-44; pr_y=by_y-42
-    dr.text((M,pr_y),"PREPPED",font=fsb,fill=0); dr.text((M+168,pr_y),prepped_s,font=fs,fill=0)
-    dr.text((M,by_y+8),"BY",font=fsb,fill=0); dr.text((M+168,by_y),(staff or "-"),font=fname,fill=0)
+    fsb=fnt(30,True); fs=fnt(30,False); fname=fnt(46,True)
+    by_y=box_y0-20-50; pr_y=by_y-46
+    dr.text((M,pr_y),"PREPPED",font=fsb,fill=0); dr.text((M+188,pr_y),prepped_s,font=fs,fill=0)
+    dr.text((M,by_y+10),"BY",font=fsb,fill=0); dr.text((M+188,by_y),(staff or "-"),font=fname,fill=0)
     # 4) divider above the prepped block
     div_y=pr_y-16; dr.line([M,div_y,W-M,div_y],fill=0,width=3)
     # 5) product name — fills the zone between band and divider, biggest font that fits ALL words in <=4 lines
     top=band_h+18; bottom=div_y-14; zone=bottom-top
     up=(item or "").upper(); nwords=len(up.split())
-    f=fnt(66,True); lines=wrap(up,f,W-2*M,4); lh=int(66*1.12)
-    for sz in (66,60,54,48,42,38,34,30,27):
+    f=fnt(78,True); lines=wrap(up,f,W-2*M,4); lh=int(78*1.12)
+    for sz in (78,72,66,60,54,48,42,38,34,30,27):
         f=fnt(sz,True); lines=wrap(up,f,W-2*M,4); lh=int(sz*1.12)
         if len(lines)*lh<=zone and sum(len(l.split()) for l in lines)>=nwords: break
     y=top+max(0,(zone-len(lines)*lh)//2)
