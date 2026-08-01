@@ -4887,16 +4887,19 @@ def _niimbot_print(img,qty=1):
     SYNC_EVERY=12
     async def _run():
         async with BleakClient(mac,timeout=25) as cl:
-            state={"page":0,"printp":0,"feedp":0,"d3row":0,"done":False}
+            state={"page":0,"printp":0,"feedp":0,"d3row":0,"done":False,"armed":False}
             def on_note(_c,data):
                 b=bytes(data)
                 if len(b)<7 or b[0]!=0x55 or b[1]!=0x55: return
                 if b[2]==0xB3 and b[3]>=4:                     # PrintStatus: page u16, print%, feed%
                     state["page"]=(b[4]<<8)|b[5]; state["printp"]=b[6]; state["feedp"]=b[7]
-                    if b[6]>=100: state["done"]=True           # LATCH on print% alone: this firmware
-                                                               # reported 'print 100%, feed 0%' on a
-                                                               # physically perfect label — requiring
-                                                               # feed% too marked real prints as failed
+                    # Completion = a TRANSITION to 100, not merely reading 100. The status register
+                    # keeps the LAST job's 100% — a job the printer silently ignores polls straight
+                    # back "100%" and got reported as printed while nothing came out. So: arm on any
+                    # sub-100 reading (proof THIS page is actually being printed), finish when it
+                    # then reaches 100. Feed% stays ignored (healthy prints report feed 0 here).
+                    if b[6]<100: state["armed"]=True
+                    elif state.get("armed"): state["done"]=True
                 elif b[2]==0xD3 and b[3]>=2:                   # legacy progress (v4 firmwares)
                     r=(b[4]<<8)|b[5]
                     if r>state["d3row"]: state["d3row"]=r
@@ -4930,9 +4933,9 @@ def _niimbot_print(img,qty=1):
                         await send(_niim_pkt(0xA3,[1]),0.3)
                         if state["done"]: page_ok=True; break
                     if not page_ok: ok=False
-                    state["done"]=False                                              # re-arm for next copy
+                    state["done"]=False; state["armed"]=False                        # re-arm for next copy
                 await send(_niim_pkt(0xF3,[1]),0.2)                                  # PrintEnd
-                msg="" if ok else "printer stalled at page %d, print %d%%, feed %d%%"%(state["page"],state["printp"],state["feedp"])
+                msg="" if ok else ("printer ignored the job (status stuck at previous print)" if (state["printp"]>=100 and not state.get("armed")) else "printer stalled at page %d, print %d%%, feed %d%%"%(state["page"],state["printp"],state["feedp"]))
                 return (ok,msg)
             # ── legacy 'v4' dialect (pre-update firmware) ──
             for _ in range(q):
