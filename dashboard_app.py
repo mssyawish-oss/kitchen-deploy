@@ -6022,8 +6022,7 @@ def _roster_fetch(which="next"):
             except Exception:
                 lines.append(st_[:16]+" - "+en[11:16])
         msg=("Hi "+(tm["first"] or "there")+", your Bruno's shifts"
-             +(" next week" if which=="next" else " this week")+":\n"+"\n".join(lines)
-             +"\nAny problems let Marcel know.")
+             +(" next week" if which=="next" else " this week")+":\n"+"\n".join(lines))
         out.append({"tmid":tmid,"name":tm["full"] or tmid,"phone":tm["phone"],"shifts":len(ss),
                     "msg":msg,"hash":hashlib.sha1("|".join(a+b for a,b in ss).encode()).hexdigest()[:12]})
     out.sort(key=lambda x:(x["name"] or "").lower())
