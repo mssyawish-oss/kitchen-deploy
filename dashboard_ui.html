@@ -2626,7 +2626,7 @@ const _ALARM_DEF={
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
- service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Switching it off silences the sound only — the popup still shows.'},
+ service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'}
 };
 const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin'];
@@ -2642,6 +2642,7 @@ function _migrateProbeAlarms(){
 function _legacyEnabled(key){if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
 function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})[key])||{};return {
   enabled:(c.enabled!==undefined)?(c.enabled!==false):_legacyEnabled(key),
+  popup:c.popup!==false,   // reminders group only: show the on-screen card/banner (independent of sound)
   flash:c.flash!==false, vibrate:c.vibrate===true,
   color:c.color||d.color||'#ef4444',
   volume:(typeof c.volume==='number')?c.volume:0.85,
@@ -2685,17 +2686,21 @@ function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateF
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub){
-  // Disabling this alarm in the Alarm Center silences the SOUND only — the popup + lock banner still
-  // show. (It used to return before drawing anything, so with 'service' switched off every TASK DUE /
-  // PREP DUE / JOB / ORDER reminder vanished without a trace — the "alarms not sounding" bug.)
-  activeAlarmId=Date.now();const id=activeAlarmId;
-  document.getElementById('alarm-title').textContent=title;
-  document.getElementById('alarm-sub').textContent=sub;
-  const ov=document.getElementById('alarm-overlay');
-  ov.style.setProperty('--alarm-accent',(_acfg('service').color)||'#ef4444');   // card accent = this alarm's colour setting
-  ov.classList.add('active');
-  showLockBanner(title,sub);_updateFlash();   // modal is up → _updateFlash suppresses the screen-edge flashing
-  if(!_acfg('service').enabled)return;
+  // Two INDEPENDENT Alarm Center switches for the reminders group: 'Popup' (the on-screen card +
+  // lock banner) and 'Sound'. Both off = fully silent — but that's an explicit choice now, not the
+  // old side effect where one toggle made every TASK/PREP/JOB/ORDER reminder vanish without a trace.
+  const cfg=_acfg('service');
+  if(cfg.popup){
+    activeAlarmId=Date.now();
+    document.getElementById('alarm-title').textContent=title;
+    document.getElementById('alarm-sub').textContent=sub;
+    const ov=document.getElementById('alarm-overlay');
+    ov.style.setProperty('--alarm-accent',cfg.color||'#ef4444');   // card accent = this alarm's colour setting
+    ov.classList.add('active');
+    showLockBanner(title,sub);_updateFlash();   // modal is up → _updateFlash suppresses the screen-edge flashing
+  }
+  if(!cfg.enabled)return;
+  const id=activeAlarmId=(cfg.popup?activeAlarmId:Date.now());
   const t0=Date.now();
   function loop(){if(activeAlarmId!==id)return;const c=_acfg('service');
     if(c.autostop&&(Date.now()-t0)>c.autostop*60000)return;   // auto-stop setting stops the noise; card stays up until dismissed
@@ -6166,7 +6171,9 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     const asSel=_AS_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===c.autostop?' selected':'')+'>'+o[0]+'</option>').join('');
     return '<div class="alarm-card'+(c.enabled?'':' off')+'" id="ac-card-'+key+'">'
       +'<div style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;min-width:0;"><h4>'+_mEsc(d.label)+'</h4><div class="ac-desc">'+_mEsc(d.desc)+'</div></div>'
-      +'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" '+(c.enabled?'checked':'')+' onchange="alarmSet(\''+key+'\',\'enabled\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> On</label></div>'
+      +'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" '+(c.enabled?'checked':'')+' onchange="alarmSet(\''+key+'\',\'enabled\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> '+(key==='service'?'Sound':'On')+'</label>'
+      +(key==='service'?'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:10px;"><input type="checkbox" '+(c.popup?'checked':'')+' onchange="alarmSet(\''+key+'\',\'popup\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> Popup</label>':'')
+      +'</div>'
       +'<div class="ac-grid">'
       +'<div class="ac-row"><span style="min-width:48px;">Volume</span><input type="range" min="0" max="100" value="'+Math.round(c.volume*100)+'" oninput="alarmSet(\''+key+'\',\'volume\',this.value/100)"></div>'
       +'<div class="ac-row"><span style="min-width:48px;">Repeat</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'interval\',parseInt(this.value))">'+ivSel+'</select></div>'
@@ -6399,7 +6406,9 @@ function checkAllReminders(){
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
     packdownDueDismissed[t.id]=false;
     if(t.alarm){triggerAlarm('TASK DUE',t.name);}
-    else{if(!_devMuted('service'))playChime();showLockBanner('TASK DUE',t.name);}   // chime respects this device's mute like every other alarm sound
+    else{const _sc=_acfg('service');
+      if(_sc.enabled&&!_devMuted('service'))playChime();          // chime obeys the Sound switch + this device's mute
+      if(_sc.popup)showLockBanner('TASK DUE',t.name);}            // banner obeys the Popup switch
     document.getElementById('packdown-badge')?.classList.add('show');
   });}catch(e){}
   try{(appData.quiet_jobs||[]).forEach(j=>{
