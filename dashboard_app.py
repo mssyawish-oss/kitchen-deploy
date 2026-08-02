@@ -3084,7 +3084,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probe","stock","prodoff","timer","rotstopped","orders","service"}
+_ALARM_KEYS={"probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -3097,7 +3097,7 @@ def api_alarm_settings():
         for k,v in (cfg or {}).items():
             if k not in _ALARM_KEYS or not isinstance(v,dict): continue
             cur=store.get(k,{}) or {}
-            for b in ("enabled","flash","vibrate"):
+            for b in ("enabled","flash","vibrate","popup"):
                 if b in v: cur[b]=bool(v[b])
             if isinstance(v.get("color"),str): cur["color"]=v["color"][:9]
             if "sound_preset" in v: cur["sound_preset"]=str(v.get("sound_preset") or "")[:32]
