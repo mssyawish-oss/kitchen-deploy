@@ -6254,7 +6254,11 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +'&ldquo;Silent on this screen only&rdquo;, which applies to <b>'+_dev+'</b>.'
     +(_mc?' <span class="ac-mutecount">'+_mc+' alarm'+(_mc>1?'s':'')+' silenced here</span>':'')+'</div>');
 }
-function alarmSet(key,field,value){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key][field]=value;const ob={};ob[field]=value;fetch('/api/alarm_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alarm_cfg:{[key]:ob}})}).then(r=>r.json()).then(d=>{if(d.ok&&d.alarm_cfg)appData.alarm_cfg=d.alarm_cfg;}).catch(()=>{});}
+function alarmSet(key,field,value){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key][field]=value;const ob={};ob[field]=value;
+  const post=()=>fetch('/api/alarm_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alarm_cfg:{[key]:ob}})}).then(r=>r.json());
+  post().then(d=>{if(d.ok&&d.alarm_cfg)appData.alarm_cfg=d.alarm_cfg;else throw 0;})
+    .catch(()=>setTimeout(()=>post().then(d=>{if(d.ok&&d.alarm_cfg)appData.alarm_cfg=d.alarm_cfg;else throw 0;})
+      .catch(()=>{_toast&&_toast('⚠️ Alarm setting did NOT save — server unreachable. Change it again in a minute.');}),1500));}
 let _acTest={key:null,t0:0,timer:null};
 function _acStopTest(){const k=_acTest.key;if(!k)return;_acTest.key=null;if(_acTest.timer)clearTimeout(_acTest.timer);
   const chip=document.getElementById('ac-test-chip');if(chip)chip.remove();_updateFlash();}
