@@ -60,6 +60,9 @@ _LOOP = {"loop": None}
 _CONN = {"session": None, "client": None, "email": None, "at": 0.0}
 _AUTH_TTL = 2400          # re-login every 40 min (tokens outlive this; cheap insurance)
 _CHANNELS = {}            # {serial: [channel numbers that actually exist]} — discovered once, then reused
+_CHANNELS_TS = {}         # {serial: when that discovery happened}
+_RESCAN_SECS = 600        # an RFX MEAT probe has 4 sensors — if discovery caught fewer (cloud hiccup
+                          # mid-restart locked in a 1-channel list for a whole day, 2 Aug), look again every 10 min
 
 
 def _run(coro, timeout=120):
@@ -128,11 +131,14 @@ async def _read_channels(client, serial, rescan=False):
     known ones are fetched — and always CONCURRENTLY. (Was 8 sequential requests per device every
     poll, half of them 404s for channels that never existed: the bulk of a 20-second read.)"""
     nums = None if rescan else _CHANNELS.get(serial)
+    if nums is not None and len(nums) < 4 and (time.time() - _CHANNELS_TS.get(serial, 0)) > _RESCAN_SECS:
+        nums = None                        # partial discovery (see _RESCAN_SECS note) → probe all 8 again
     probe = list(range(1, 9)) if nums is None else list(nums)
     results = await asyncio.gather(*[_one_channel(client, serial, n) for n in probe])
     out = [r for r in results if r is not None]
     if nums is None:                       # remember what this device actually has
         _CHANNELS[serial] = [p for p, r in zip(probe, results) if r is not None]
+        _CHANNELS_TS[serial] = time.time()
     elif not out:                          # cache went stale (device swapped?) → rediscover next time
         _CHANNELS.pop(serial, None)
     return out
