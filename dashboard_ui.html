@@ -3798,7 +3798,7 @@ function renderProbes(){
     // turns red (and raises the alarm-bar warning) at or below _BATT_LOW.
     const _bat=(window._rfxBattery||{})[pidN];
     const _batN=(typeof _bat==='number'&&isFinite(_bat))?_bat:null;
-    const batHtml=(_batN!==null&&_batN<=30)?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':''}" title="probe battery">${Math.round(_batN)}%</span>`:'';
+    const batHtml=(_batN!==null&&_batN<=30&&dstatus!=='none')?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':''}" title="probe battery">${Math.round(_batN)}%</span>`:'';   // a "no probe" card must not show a battery — that % is just the cloud's last cached value
     // RFX: each probe has 4 internal sensors — show them all, small, under the main (coldest) temp.
     const _sv=((window._rfxSensors||{})[pidN]||[]).filter(v=>typeof v==='number'&&isFinite(v));
     const _svMin=_sv.length?Math.min.apply(null,_sv):null;
