@@ -2638,6 +2638,9 @@ const _ALARM_DEF={
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'}
 };
+const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
+ stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
+ orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
 const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
@@ -6194,7 +6197,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
                                 :[['on','Sound on'],['off','Sound off']];
     const sel='<select class="input acr-style" onclick="event.stopPropagation();" onchange="_acStyleSet(\''+key+'\',this.value)">'
       +opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===style?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
-    const toneName=c.has_custom?'own sound file':(c.sound_preset&&_TONES[c.sound_preset]?_TONES[c.sound_preset].name:'default tone');
+    const toneName=c.has_custom?'own sound file':(c.sound_preset&&_TONES[c.sound_preset]?_TONES[c.sound_preset].name:(_DEF_TONE_NAME[key]||'built-in tone'));
     const summary=[(key==='probeAlmost'?'single ping':''),toneName,(_devMuted(key)?'muted on this screen':'')].filter(Boolean).join(' · ');
     let det='';
     if(open){
@@ -6213,7 +6216,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
       +'<span style="font-size:11px;color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
       +'</div>'
-      +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Default</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
+      +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Built-in: '+(_DEF_TONE_NAME[key]||'default')+'</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
       +'<div class="ac-sound"><span>Or own file:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file (overrides tone)':'none')+'</span>'
       +'<label class="btn" style="padding:5px 10px;font-size:12px;cursor:pointer;">Upload&hellip;<input type="file" accept="audio/*" style="display:none;" onchange="alarmUpload(\''+key+'\',this)"></label>'
       +(c.has_custom?'<button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmResetSound(\''+key+'\')">Remove file</button>':'')
