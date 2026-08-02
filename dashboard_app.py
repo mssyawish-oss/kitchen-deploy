@@ -386,7 +386,7 @@ def check_probe_status(pid,temp):
             # holding a steady plateau reports identical values too. Only treat it as parked when it is
             # ALSO cold (below the pull temp); otherwise a plateau mid-cook wiped peak/printed/removed,
             # double-logging the cook and re-arming the stock credit.
-            if _lca and (_now-_lca)>60 and temp<float(settings.get("probe_pull_temp",60)):
+            if _lca and (_now-_lca)>(900 if _rfx_saver() else 60) and temp<float(settings.get("probe_pull_temp",60)):
                 ps.update({"peak_temp":None,"printed":False,"cook_start":None,"cycle_start":None,"removed":False,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"alerted":False,"status":"idle"})
                 ps["hist"]=[]                       # drop the old trail too, or the ETA projects off a dead cook
                 if ps.get("removal_timer"):
@@ -428,7 +428,9 @@ def check_probe_status(pid,temp):
         # COUNT threshold: its OWN setting, independent of the almost/cooked/overdone alarm temps
         # (owner 2026-07-22 — those stay for "is it ready", this decides what counts into stock).
         # Falls back to almost_temp only if never configured, which is what it used to follow.
-        try: _ct=float(settings.get("probe_count_temp") or 0) or float(almost)
+        try:
+            _ct=float(settings.get("probe_count_temp") or 0) or float(almost)
+            if _rfx_saver(): _ct=max(0.0,_ct-1.0)   # a real 80.5 peak may only ever TRANSMIT ~79 on a 2-degree interval
         except (TypeError,ValueError): _ct=float(almost)
         count_temp=max(_ct,pull+1.0)      # kept just above pull so it can't misfire while heating
         rearm_below=pull-15
@@ -466,6 +468,12 @@ def check_probe_status(pid,temp):
             elif peak and peak>=count_temp and temp<pull:                    # first drop below pull after cooking → arm the window
                 ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
 
+def _rfx_saver():
+    # 'Battery saver' probe mode: owner sets the RFX probes to a 2-3 degree transmission interval in the
+    # ThermoWorks app (double+ battery life), and the dash relaxes its freshness expectations to match.
+    try: return (db.get("thermoworks") or {}).get("tx_mode")=="saver"
+    except Exception: return False
+
 def _probe_source():
     try: return (db.get("thermoworks") or {}).get("source","ble")
     except Exception: return "ble"
@@ -496,6 +504,7 @@ def rfx_poll_loop():
         cfg=(db.get("thermoworks") or {})
         try:
             if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("email") and cfg.get("password") and cfg.get("map"):
+                rfx_bridge._STALE_SECS=1200 if cfg.get("tx_mode")=="saver" else 300   # coarse drip = long quiet stretches are normal
                 temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
                 got=False
                 for pid,info in (temps or {}).items():
@@ -1779,6 +1788,8 @@ def api_rfx_config():
             if "email" in d: tw["email"]=str(d.get("email") or "").strip()
             if str(d.get("password") or "").strip(): tw["password"]=str(d["password"]).strip()   # blank = keep saved
             if "source" in d: tw["source"]="rfx" if d.get("source")=="rfx" else "ble"
+            if "tx_mode" in d: tw["tx_mode"]="saver" if d.get("tx_mode")=="saver" else "fast"
+
             if "poll_secs" in d:
                 try: tw["poll_secs"]=max(2,int(d.get("poll_secs") or 5))   # reads are ~0.4s now, so 2s is safe
                 except (TypeError,ValueError): pass
@@ -1786,7 +1797,7 @@ def api_rfx_config():
             db["thermoworks"]=tw; save_data(db)
         return jsonify({"ok":True})
     tw=db.get("thermoworks") or {}
-    return jsonify({"email":tw.get("email",""),"source":tw.get("source","ble"),
+    return jsonify({"email":tw.get("email",""),"source":tw.get("source","ble"),"tx_mode":tw.get("tx_mode","fast"),
                     "poll_secs":tw.get("poll_secs",20),"map":tw.get("map") or {},
                     "has_password":bool(tw.get("password")),"status":_rfx_status})
 

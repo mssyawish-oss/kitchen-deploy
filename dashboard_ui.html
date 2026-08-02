@@ -2151,6 +2151,9 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
         <select class="input" id="rfx-source"><option value="ble">FM230 Bluetooth dock (current)</option><option value="rfx">ThermoWorks RFX (cloud)</option></select></div>
       <div><div class="label">Check every (seconds)</div><input class="input" id="rfx-poll" type="number" min="8" value="20"></div>
     </div>
+    <div class="form-row mt-8"><div class="label">Probe transmission mode</div>
+      <select class="input" id="rfx-txmode"><option value="fast">Fast — probes on 1.0&deg; interval (tightest timing, ~1 day battery)</option><option value="saver">Battery saver — probes on 2.0&deg; interval (2+ days battery, timing still inside your cook bands)</option></select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">After switching this, ALSO set each probe&rsquo;s &ldquo;Temperature-Based Transmission Interval&rdquo; to match in the ThermoWorks RFX app (probe &rarr; Settings). The two must agree: this switch tells the dash how patient to be before calling a probe stale, and adjusts the auto-count threshold.</div></div>
     <div class="grid-2 mt-8">
       <div><div class="label">ThermoWorks email</div><input class="input" id="rfx-email" type="email" placeholder="you@example.com" autocomplete="off"></div>
       <div><div class="label">ThermoWorks password</div><input class="input" id="rfx-pass" type="password" placeholder="leave blank to keep saved" autocomplete="new-password"></div>
@@ -4018,11 +4021,12 @@ let _rfxProbes=[], _rfxMap={};
 function rfxLoad(){fetch('/api/rfx_config').then(r=>r.json()).then(c=>{
   document.getElementById('rfx-source').value=c.source||'ble';
   document.getElementById('rfx-poll').value=c.poll_secs||20;
+  const _tm=document.getElementById('rfx-txmode');if(_tm)_tm.value=c.tx_mode||'fast';
   document.getElementById('rfx-email').value=c.email||'';
   document.getElementById('rfx-pass').placeholder=c.has_password?'leave blank to keep saved':'ThermoWorks password';
   _rfxMap=c.map||{};
 }).catch(()=>{});}
-function rfxSave(){const body={source:document.getElementById('rfx-source').value,poll_secs:parseInt(document.getElementById('rfx-poll').value)||20,email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,map:_rfxMap};
+function rfxSave(){const body={source:document.getElementById('rfx-source').value,tx_mode:(document.getElementById('rfx-txmode')||{}).value||'fast',poll_secs:parseInt(document.getElementById('rfx-poll').value)||20,email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,map:_rfxMap};
   fetch('/api/rfx_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{document.getElementById('rfx-pass').value='';alert(d.ok?'RFX settings saved.':'Save failed');});}
 function rfxTest(){const el=document.getElementById('rfx-result');el.innerHTML='Testing connection…';el.style.color='var(--muted)';
   fetch('/api/rfx_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value})}).then(r=>r.json()).then(d=>{
