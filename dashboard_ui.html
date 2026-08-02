@@ -1350,6 +1350,14 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 @keyframes af-pulse{0%,100%{opacity:0;}50%{opacity:.5;}}
 #alarm-center{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:10px;align-items:start;}
 .ac-card{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 13px;min-width:0;}
+.acr-row{display:flex;align-items:center;gap:10px;cursor:pointer;min-width:0;}
+.acr-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.acr-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.acr-main b{font-size:13.5px;color:var(--text);}
+.acr-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.acr-style{width:auto;max-width:150px;padding:5px 7px;font-size:12px;background:var(--surface2);flex-shrink:0;}
+.acr-chev{color:var(--muted);font-size:12px;flex-shrink:0;}
+.acr-details{border-top:1px dashed var(--border2);margin-top:10px;padding-top:10px;}
 .ac-card.off{opacity:.6;}
 .ac-card h4{margin:0;font-size:14px;font-weight:800;color:var(--text);}
 .ac-card .ac-desc{font-size:11.5px;color:var(--muted);margin:1px 0 9px;}
@@ -2681,10 +2689,10 @@ function _alarmSynth(key,v){
 function playAlarm(id){if(alarms[id])return;const key=_keyForId(id);if(!_acfg(key).enabled)return;alarms[id]=true;_alarmStart[id]=Date.now();function b(){if(!alarms[id])return;const c=_acfg(key);if(c.autostop&&(Date.now()-_alarmStart[id])>c.autostop*60000){alarms[id]=false;_updateFlash();return;}_alarmHit(key);setTimeout(()=>{if(alarms[id])b();},c.interval);}b();}
 // soft, friendly recurring chime for the "products still off" warning (gentle bell, not a buzzer)
 function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeout(()=>playTone(988,'sine',.5,.16*v),230);setTimeout(()=>playTone(1319,'sine',.6,.13*v),470);}
-function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;function loop(){if(!alarms['prod-off'])return;_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},_acfg('prodoff').interval);}loop();}
+function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;const t0=Date.now();function loop(){if(!alarms['prod-off'])return;const c=_acfg('prodoff');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){alarms['prod-off']=false;_updateFlash();return;}_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},c.interval);}loop();}
 function stopAlarm(id){alarms[id]=false;_updateFlash();}
 function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateFlash();}
-function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);function loop(){if(probeToken[pid]!==tok)return;_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
+function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub){
   // Two INDEPENDENT Alarm Center switches for the reminders group: 'Popup' (the on-screen card +
@@ -2711,12 +2719,12 @@ function triggerAlarm(title,sub){
 function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence('service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
-function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;(function b(){if(!_waitAlarm)return;_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},_acfg('orders').interval);})();}
+function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;const t0=Date.now();(function b(){if(!_waitAlarm)return;const c=_acfg('orders');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_waitAlarm=false;_updateFlash();return;}_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},c.interval);})();}
 function stopWaitAlarm(){_waitAlarm=false;_updateFlash();}
 // ── walk-in watch: a customer is at the counter and nobody is in the service area ──
 let _walkinAlarm=false;
-function startWalkinAlarm(){if(!_acfg('walkin').enabled)return;if(_walkinAlarm)return;_walkinAlarm=true;
-  (function b(){if(!_walkinAlarm)return;_alarmHit('walkin');setTimeout(()=>{if(_walkinAlarm)b();},_acfg('walkin').interval);})();}
+function startWalkinAlarm(){if(!_acfg('walkin').enabled)return;if(_walkinAlarm)return;_walkinAlarm=true;const t0=Date.now();
+  (function b(){if(!_walkinAlarm)return;const c=_acfg('walkin');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_walkinAlarm=false;_updateFlash();return;}_alarmHit('walkin');setTimeout(()=>{if(_walkinAlarm)b();},c.interval);})();}
 function stopWalkinAlarm(){_walkinAlarm=false;_updateFlash();}
 // The server owns the detection; the screen just follows it. Acking tells the server a human dealt with
 // it, so it re-arms only on a genuinely NEW detection rather than nagging every poll.
@@ -6172,42 +6180,84 @@ function saveFeatures(){const body={stock_prompt_enabled:document.getElementById
 const _IV_OPTS=[['Fast',600],['Quick',1000],['Normal',2000],['Relaxed',3600],['Gentle',6000],['Slow',10000]];
 const _AS_OPTS=[['Never',0],['1 min',1],['2 min',2],['5 min',5],['10 min',10]];
 function _ivLabel(ms){let best=_IV_OPTS[2],bd=1e9;_IV_OPTS.forEach(o=>{const dd=Math.abs(o[1]-ms);if(dd<bd){bd=dd;best=o;}});return best[1];}
+let _acOpen={};
+function _acToggleRow(key){_acOpen[key]=!_acOpen[key];renderAlarmCenter();}
+function _acStyleOf(key,c){if(key==='service'){return c.enabled?(c.popup?'sp':'s'):(c.popup?'p':'off');}return c.enabled?'on':'off';}
+function _acStyleSet(key,v){
+  if(key==='service'){alarmSet(key,'enabled',v==='sp'||v==='s');alarmSet(key,'popup',v==='sp'||v==='p');}
+  else alarmSet(key,'enabled',v==='on');
+  renderAlarmCenter();}
 function renderAlarmCenter(){const host=document.getElementById('alarm-center');if(!host)return;
   host.innerHTML=_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
-    const ivSel=_IV_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===_ivLabel(c.interval)?' selected':'')+'>'+o[0]+'</option>').join('');
-    const asSel=_AS_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===c.autostop?' selected':'')+'>'+o[0]+'</option>').join('');
-    return '<div class="ac-card'+(c.enabled?'':' off')+'" id="ac-card-'+key+'">'
-      +'<div style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;min-width:0;"><h4>'+_mEsc(d.label)+'</h4><div class="ac-desc">'+_mEsc(d.desc)+'</div></div>'
-      +'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" '+(c.enabled?'checked':'')+' onchange="alarmSet(\''+key+'\',\'enabled\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> '+(key==='service'?'Sound':'On')+'</label>'
-      +(key==='service'?'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:10px;"><input type="checkbox" '+(c.popup?'checked':'')+' onchange="alarmSet(\''+key+'\',\'popup\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> Popup</label>':'')
-      +'</div>'
+    const open=!!_acOpen[key];const style=_acStyleOf(key,c);
+    const opts=(key==='service')?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
+                                :[['on','Sound on'],['off','Sound off']];
+    const sel='<select class="input acr-style" onclick="event.stopPropagation();" onchange="_acStyleSet(\''+key+'\',this.value)">'
+      +opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===style?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+    const toneName=c.has_custom?'own sound file':(c.sound_preset&&_TONES[c.sound_preset]?_TONES[c.sound_preset].name:'default tone');
+    const summary=[(key==='probeAlmost'?'single ping':''),toneName,(_devMuted(key)?'muted on this screen':'')].filter(Boolean).join(' · ');
+    let det='';
+    if(open){
+      const ivSel=_IV_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===_ivLabel(c.interval)?' selected':'')+'>'+o[0]+'</option>').join('');
+      const asSel=_AS_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===c.autostop?' selected':'')+'>'+o[0]+'</option>').join('');
+      const oneShot=(key==='probeAlmost');   // plays once per probe by design — Repeat / Stop-after would be lies
+      det='<div class="acr-details">'
+      +'<div class="ac-desc" style="margin:0 0 8px;">'+_mEsc(d.desc)+'</div>'
       +'<div class="ac-grid">'
-      +'<div class="ac-row"><span style="min-width:48px;">Volume</span><input type="range" min="0" max="100" value="'+Math.round(c.volume*100)+'" oninput="alarmSet(\''+key+'\',\'volume\',this.value/100)"></div>'
-      +'<div class="ac-row"><span style="min-width:48px;">Repeat</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'interval\',parseInt(this.value))">'+ivSel+'</select></div>'
+      +'<div class="ac-row"><span style="min-width:48px;">Volume</span><input type="range" min="0" max="100" value="'+Math.round(c.volume*100)+'" oninput="alarmSet(\''+key+'\',\'volume\',this.value/100)" onchange="alarmPreviewTone(\''+key+'\')"></div>'
+      +(oneShot?'<div class="ac-row" style="color:var(--muted);font-size:11.5px;">plays once when a probe gets close &mdash; no repeat</div>'
+               :'<div class="ac-row"><span style="min-width:48px;">Repeat</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'interval\',parseInt(this.value))">'+ivSel+'</select></div>')
       +'<div class="ac-row"><span style="min-width:48px;">Flash</span><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.flash?'checked':'')+' onchange="alarmSet(\''+key+'\',\'flash\',this.checked)" style="width:16px;height:16px;"> screen</label><input type="color" value="'+c.color+'" onchange="alarmSet(\''+key+'\',\'color\',this.value)" title="flash colour"></div>'
-      +'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>'
+      +(oneShot?'':'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>')
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
-      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked)" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
       +'<span style="font-size:11px;color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
       +'</div>'
-      +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Default</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">▶</button></div>'
+      +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Default</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
       +'<div class="ac-sound"><span>Or own file:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file (overrides tone)':'none')+'</span>'
-      +'<label class="btn" style="padding:5px 10px;font-size:12px;cursor:pointer;">Upload…<input type="file" accept="audio/*" style="display:none;" onchange="alarmUpload(\''+key+'\',this)"></label>'
+      +'<label class="btn" style="padding:5px 10px;font-size:12px;cursor:pointer;">Upload&hellip;<input type="file" accept="audio/*" style="display:none;" onchange="alarmUpload(\''+key+'\',this)"></label>'
       +(c.has_custom?'<button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmResetSound(\''+key+'\')">Remove file</button>':'')
       +'<span id="asnd-'+key+'" style="font-size:11px;color:var(--muted);"></span></div>'
-      +'<div class="ac-btns"><button class="btn btn-primary" onclick="alarmTest(\''+key+'\')">▶ Test</button><button class="btn" onclick="silenceOneAlarm(\''+key+'\')">Silence now</button></div>'
+      +'<div class="ac-btns"><button class="btn btn-primary" onclick="alarmTest(\''+key+'\')">&#9654; Test &mdash; full preview</button><button class="btn" onclick="silenceOneAlarm(\''+key+'\')">Silence now</button></div>'
       +'</div>';
+    }
+    return '<div class="ac-card'+(style==='off'?' off':'')+'" id="ac-card-'+key+'">'
+      +'<div class="acr-row" onclick="_acToggleRow(\''+key+'\')">'
+      +'<span class="acr-dot" style="background:'+c.color+';"></span>'
+      +'<span class="acr-main"><b>'+_mEsc(d.label)+'</b><span class="acr-sub">'+_mEsc(summary)+'</span></span>'
+      +sel+'<span class="acr-chev">'+(open?'&#9652;':'&#9662;')+'</span>'
+      +'</div>'+det+'</div>';
   }).join('');
   // banner: make it obvious which settings are shared and which belong to the screen you're on
   const _mc=Object.keys(_devMutes()).length;
   const _dev=(window.DASH_VIEW==='wall')?'the kitchen wall screen':(window.DASH_VIEW==='pad'?'this iPad':'this phone');
   host.insertAdjacentHTML('afterbegin',
-    '<div class="ac-devnote">Every setting here is <b>shared by all screens</b> &mdash; except '
+    '<div class="ac-devnote">Tap a row to open its settings &mdash; Test plays the alarm <b>exactly as configured</b>. Every setting is <b>shared by all screens</b> except '
     +'&ldquo;Silent on this screen only&rdquo;, which applies to <b>'+_dev+'</b>.'
     +(_mc?' <span class="ac-mutecount">'+_mc+' alarm'+(_mc>1?'s':'')+' silenced here</span>':'')+'</div>');
 }
 function alarmSet(key,field,value){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key][field]=value;const ob={};ob[field]=value;fetch('/api/alarm_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alarm_cfg:{[key]:ob}})}).then(r=>r.json()).then(d=>{if(d.ok&&d.alarm_cfg)appData.alarm_cfg=d.alarm_cfg;}).catch(()=>{});}
-function alarmTest(key){_alarmHit(key);const c=_acfg(key);const el=document.getElementById('alarm-flash');if(el&&c.flash){el.style.setProperty('--af-col',c.color);el.classList.add('on');setTimeout(()=>{if(!_activeAlarmKeys().size)el.classList.remove('on');},1700);}}
+let _acTest={key:null,t0:0,timer:null};
+function _acStopTest(){const k=_acTest.key;if(!k)return;_acTest.key=null;if(_acTest.timer)clearTimeout(_acTest.timer);
+  const chip=document.getElementById('ac-test-chip');if(chip)chip.remove();_updateFlash();}
+function alarmTest(key){
+  _acStopTest();
+  if(key==='service'){triggerAlarm('TEST — REMINDER','This is exactly how a task / prep / order reminder appears. Tap SILENCE to stop.');return;}
+  const c0=_acfg(key);
+  if(key==='probeAlmost'){_alarmHit(key);const el=document.getElementById('alarm-flash');if(el&&c0.flash){el.style.setProperty('--af-col',c0.color);el.classList.add('on');setTimeout(()=>{if(!_activeAlarmKeys().size&&!_acTest.key)el.classList.remove('on');},1500);}return;}   // single ping by design
+  const label=(_ALARM_DEF[key]&&_ALARM_DEF[key].label)||key;
+  _acTest.key=key;_acTest.t0=Date.now();
+  const chip=document.createElement('button');chip.id='ac-test-chip';
+  chip.innerHTML='&#128276; Testing &ldquo;'+_mEsc(label)+'&rdquo; &mdash; tap to stop';
+  chip.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:9999;background:var(--red,#ef4444);color:#fff;border:none;border-radius:12px;padding:13px 20px;font-size:14px;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);cursor:pointer;';
+  chip.onclick=_acStopTest;document.body.appendChild(chip);
+  (function loop(){if(_acTest.key!==key)return;const c=_acfg(key);
+    if(c.autostop&&(Date.now()-_acTest.t0)>c.autostop*60000){_acStopTest();return;}   // honours the Stop-after setting
+    if((Date.now()-_acTest.t0)>60000){_acStopTest();return;}                          // test never runs past 60s
+    _alarmHit(key);
+    const el=document.getElementById('alarm-flash');if(el&&c.flash){el.style.setProperty('--af-col',c.color);el.classList.add('on');}
+    _acTest.timer=setTimeout(loop,c.interval);})();
+}
 function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return;const st=document.getElementById('asnd-'+key);if(st)st.textContent='Uploading…';const fd=new FormData();fd.append('file',f);fetch('/api/alarm_sound/'+key,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=true;appData.alarm_cfg[key].sound_v=d.sound_v;if(st)st.textContent='Saved ✓';renderAlarmCenter();}else{if(st)st.textContent=(d.error||'failed');}}).catch(()=>{if(st)st.textContent='failed';});}
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
