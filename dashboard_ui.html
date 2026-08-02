@@ -2605,6 +2605,7 @@ function _bell(freq,t0,dur,v){[[1,1,1],[2.76,.55,.85],[5.4,.38,.6],[8.9,.22,.4]]
 function _buzz(freq,t0,dur,v,rate){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.value=freq;o.connect(g);g.connect(c.destination);if(rate){const lfo=c.createOscillator(),lg=c.createGain();lfo.type='square';lfo.frequency.value=rate;lg.gain.value=v*.16;lfo.connect(lg);lg.connect(g.gain);g.gain.value=v*.18;lfo.start(t);lfo.stop(t+dur);}else{g.gain.setValueAtTime(v*.3,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);}o.start(t);o.stop(t+dur+.02);}
 // warble — two tones swung back and forth (alarm clock / klaxon)
 function _warble(f1,f2,t0,dur,v,rate){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain(),lfo=c.createOscillator(),lg=c.createGain();o.type='square';o.frequency.value=(f1+f2)/2;lfo.type='square';lfo.frequency.value=rate;lg.gain.value=(f2-f1)/2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=v*.2;o.connect(g);g.connect(c.destination);o.start(t);lfo.start(t);o.stop(t+dur);lfo.stop(t+dur);}
+function _piezo(freq,t0,dur,v){const c=_actx();const t=c.currentTime+t0;const o=c.createOscillator(),g=c.createGain();o.type='square';o.frequency.value=freq;g.gain.setValueAtTime(v*.22,t);g.gain.setValueAtTime(.0001,t+dur);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+dur+.01);}   // flat piezo: constant level, hard cutoff — how commercial kitchen buzzers actually sound
 // ── built-in tone library (real-world device sounds) ──
 const _TONES={
  bell:{name:'Counter bell (ding)',fn:v=>_bell(1318,0,1.6,v)},
@@ -2612,6 +2613,12 @@ const _TONES={
  doorbell:{name:'Door chime (bing-bong)',fn:v=>{_bell(659,0,1.1,v);_bell(523,.42,1.6,v);}},
  microwave:{name:'Microwave done',fn:v=>[0,.28,.56].forEach(t=>_voice(2000,'sine',t,.18,v*.3))},
  fryer:{name:'Fryer / UHC timer',fn:v=>[0,.2,.4].forEach(t=>_buzz(1900,t,.13,v,0))},
+ hennyPenny:{name:'Fryer pulse (Henny Penny style)',fn:v=>[0,.45].forEach(t=>_piezo(2900,t,.32,v))},
+ fryStation:{name:'Fry station triple beep',fn:v=>[0,.19,.38].forEach(t=>_piezo(3100,t,.11,v))},
+ frymelody:{name:'Fryer double beep (Frymaster style)',fn:v=>[0,.3].forEach(t=>_piezo(2700,t,.2,v))},
+ pitcoPulse:{name:'Long-short beep (Pitco style)',fn:v=>{_piezo(2800,0,.5,v);_piezo(2800,.62,.14,v);}},
+ holdCab:{name:'Holding cabinet beep (Hatco style)',fn:v=>_piezo(2500,0,.7,v)},
+ shakeChirp:{name:'Chirp-chirp (Taylor style)',fn:v=>[0,.2].forEach(t=>_piezo(3400,t,.07,v))},
  ovenbuzz:{name:'Oven buzzer',fn:v=>_buzz(150,0,.85,v,15)},
  dryer:{name:'Dryer buzzer (long)',fn:v=>_buzz(210,0,1.15,v,9)},
  alarmclock:{name:'Alarm clock',fn:v=>_warble(820,1040,0,.95,v,9)},
@@ -2623,7 +2630,7 @@ const _TONES={
  urgent:{name:'Urgent alert',fn:v=>[0,.16,.32,.48].forEach(t=>_voice(2300,'square',t,.1,v*.28))},
  sonar:{name:'Sonar ping',fn:v=>_voice(1320,'sine',0,.7,v*.3)}
 };
-const _TONE_ORDER=['bell','ready','doorbell','microwave','fryer','ovenbuzz','dryer','alarmclock','klaxon','marimba','chime','pager','register','urgent','sonar'];
+const _TONE_ORDER=['bell','ready','doorbell','microwave','fryer','hennyPenny','fryStation','frymelody','pitcoPulse','holdCab','shakeChirp','ovenbuzz','dryer','alarmclock','klaxon','marimba','chime','pager','register','urgent','sonar'];
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};const _alarmStart={};
 // ── Alarm Center: per-alarm config (sound / volume / interval / flash colour / vibrate / auto-stop) ──
 const _ALARM_DEF={
