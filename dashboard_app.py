@@ -1362,6 +1362,53 @@ def _sq_offline_products():
             except Exception: pass
         return None,str(e)
 _ENABLE_DBG=None
+def _sq_swap_modifier(vid,obj,loc,hdr,dbg):
+    """Revive a sold-out modifier by twin-swap (see comment at the call site). Returns (ok,err)."""
+    import uuid as _uuid
+    md=(obj.get("modifier_data") or {})
+    new_md=copy.deepcopy(md)
+    new_md["location_overrides"]=[{k:v for k,v in ov.items() if k not in ("sold_out","sold_out_valid_until")}
+                                  for ov in (md.get("location_overrides") or [])]
+    new_md["location_overrides"]=[ov for ov in new_md["location_overrides"] if len(ov)>1]   # drop now-empty overrides
+    if not new_md["location_overrides"]: new_md.pop("location_overrides",None)
+    new_obj={"type":"MODIFIER","id":"#revive","present_at_all_locations":obj.get("present_at_all_locations",True),
+             "modifier_data":new_md}
+    for f in ("present_at_location_ids","absent_at_location_ids"):
+        if obj.get(f): new_obj[f]=obj[f]
+    def _post(path,body):
+        req=urllib.request.Request(SQUARE_BASE+path,data=json.dumps(body).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: return json.loads(r.read().decode())
+    try:
+        res=_post("/v2/catalog/object",{"idempotency_key":str(_uuid.uuid4()),"object":new_obj})
+    except Exception as e:
+        dbg["steps"].append({"twin_create_err":str(e)[:160]});return False,"couldn't create the replacement add-on: "+str(e)[:120]
+    if res.get("errors"):
+        dbg["steps"].append({"twin_create_errors":res["errors"]});return False,"Square rejected the replacement add-on"
+    newid=((res.get("id_mappings") or [{}])[0].get("object_id")) or (res.get("catalog_object") or {}).get("id")
+    if not newid: return False,"replacement created but Square returned no id"
+    dbg["steps"].append({"twin_id":newid})
+    # verify the twin before touching the original
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(newid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            tw=(json.loads(r.read().decode()) or {}).get("object") or {}
+    except Exception as e:
+        return False,"replacement made but couldn't verify it: "+str(e)[:120]
+    tmd=tw.get("modifier_data") or {}
+    so=next((ov.get("sold_out") for ov in (tmd.get("location_overrides") or []) if ov.get("location_id")==loc),None)
+    if tmd.get("name")!=md.get("name") or tmd.get("modifier_list_id")!=md.get("modifier_list_id") or so:
+        return False,"replacement didn't verify — left both copies in place, check this add-on in Square"
+    # twin is live and available → delete the stuck original
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr,method="DELETE")
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: json.loads(r.read().decode())
+    except Exception as e:
+        dbg["steps"].append({"old_delete_err":str(e)[:160]})
+        return True,"add-on revived, but the old sold-out copy couldn't be deleted — it may show twice until removed in Square"
+    _SQ_OBJ_CACHE.pop(vid,None);_SQ_OBJ_CACHE.pop(newid,None)
+    dbg["steps"].append({"swapped":True})
+    return True,None
+
 def _sq_enable_variation(vid):
     # Clear SOLD OUT for one item-variation OR modifier at this location (turn it back on).
     # Where the flag actually lives depends on the object:
@@ -1395,10 +1442,15 @@ def _sq_enable_variation(vid):
     if not ov0.get("sold_out"):
         _SQ_OBJ_CACHE.pop(vid,None); _ENABLE_DBG=dbg; return True,None      # already on
     if is_mod:
-        # Add-ons: Square ignores every write to a modifier's sold_out (verified — omitting the field and
-        # dropping the whole override both no-op). Nothing we can do from here.
+        # Square's API silently ignores every write that would clear a modifier's sold_out (direct
+        # upsert, parent-list upsert, even sold_out_valid_until — all verified no-ops, 3 Aug 2026).
+        # The ONE working path: create an identical twin (same name/price/ordinal/list — born
+        # available), verify it, then delete the stuck original. Create-first, so the option never
+        # leaves the menu even for a second. New catalog id each revive — POS layouts, reports and
+        # order history follow the list + name, so nothing downstream notices.
+        ok,err=_sq_swap_modifier(vid,obj,loc,hdr,dbg)
         _ENABLE_DBG=dbg
-        return False,"Square doesn't allow add-ons to be switched on from an app — switch this one on in the Square app"
+        return ok,err
     def _set_tracking(val,scope="override"):
         o=_get_obj()
         if not o: return "read failed"
