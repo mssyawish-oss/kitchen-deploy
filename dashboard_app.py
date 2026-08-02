@@ -2204,6 +2204,11 @@ def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
     ok,err=_sq_enable_variation(vid)
+    if not ok and err and "add-on" not in str(err):
+        # transient Square hiccup (e.g. concurrent edits to sibling sizes of the same item bump
+        # versions under us) — one fresh read-modify-write attempt fixes virtually all of them
+        time.sleep(0.8)
+        ok,err=_sq_enable_variation(vid)
     out={"ok":ok,"error":(None if ok else err)}
     if ok and err: out["warn"]=err          # e.g. tracking stuck ON — item works but needs a look in Square
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response

@@ -5405,9 +5405,13 @@ function prodOffTurnOnG(i){
   const g=_pdOffGroupCache[i];if(!g)return;
   _poStatus('Switching on '+_mEsc(g.name)+'…');
   let on=0,addon=0,fail=0;
-  Promise.all(g.ids.map(id=>fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
-    .then(r=>r.json()).then(d=>{if(d&&d.ok)on++;else if(d&&/add-on/i.test(d.error||''))addon++;else fail++;}).catch(()=>{fail++;})
-  )).then(()=>{
+  // one at a time — firing all sizes of the SAME item in parallel made Square reject one with a
+  // version conflict (the "3 of 4 sizes turned on" bug); sequential writes never collide
+  (async()=>{for(const id of g.ids){
+    try{const d=await fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json());
+      if(d&&d.ok)on++;else if(d&&/add-on/i.test(d.error||''))addon++;else fail++;}
+    catch(e){fail++;}
+  }})().then(()=>{
     const bits=[];
     if(on)bits.push(on+' switched on');
     if(addon)bits.push(addon+' add-on'+(addon>1?'s':'')+' need the Square app');
