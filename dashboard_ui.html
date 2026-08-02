@@ -1304,7 +1304,7 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 .prodoff-silence{flex-shrink:0;align-self:flex-start;background:transparent;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;}
 .prodoff-silence:hover{background:rgba(255,255,255,.1);}
 .prodoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;margin-top:7px;transition:opacity .3s;}
-.prodoff-name{font-size:14px;color:var(--text);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prodoff-name{font-size:14px;color:var(--text);font-weight:600;min-width:0;line-height:1.7;}
 .prodoff-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;color:#d8ccff;background:rgba(124,92,255,.2);border-radius:5px;padding:1px 6px;margin-left:7px;vertical-align:middle;}
 .prodoff-on{flex-shrink:0;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;min-width:78px;}
 .prodoff-on:hover{background:#15803d;}
@@ -1348,17 +1348,18 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 #alarm-flash.on{animation:af-pulse 1.1s ease-in-out infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 @keyframes af-pulse{0%,100%{opacity:0;}50%{opacity:.5;}}
-.ac-card{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 13px;margin-bottom:10px;}
-.alarm-card.off{opacity:.6;}
-.alarm-card h4{margin:0;font-size:14px;font-weight:800;color:var(--text);}
-.alarm-card .ac-desc{font-size:11.5px;color:var(--muted);margin:1px 0 9px;}
+#alarm-center{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:10px;align-items:start;}
+.ac-card{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 13px;min-width:0;}
+.ac-card.off{opacity:.6;}
+.ac-card h4{margin:0;font-size:14px;font-weight:800;color:var(--text);}
+.ac-card .ac-desc{font-size:11.5px;color:var(--muted);margin:1px 0 9px;}
 .ac-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;align-items:center;}
 .ac-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);}
 .ac-row select,.ac-row input[type=range]{flex:1;min-width:0;}
 .ac-row input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--border2);border-radius:6px;background:none;cursor:pointer;}
 /* per-device mute: visually separated from the shared settings so it's clear it only affects this screen */
 .ac-devrow{grid-column:1/-1;flex-wrap:wrap;gap:4px 10px;border-top:1px dashed var(--border2);padding-top:7px;margin-top:2px;}
-.ac-devnote{font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);
+.ac-devnote{grid-column:1/-1;font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border2);
   border-radius:9px;padding:9px 11px;margin-bottom:11px;line-height:1.5;}
 .ac-mutecount{display:inline-block;margin-left:6px;color:var(--amber);font-weight:700;}
 /* walk-in watch, TEST MODE: a quiet red light in the corner — no sound, no popup. Tap it to clear.
@@ -5331,7 +5332,7 @@ function checkProductsOff(){
     const numEl=fab.querySelector('.pf-num');if(numEl)numEl.textContent=_pdOffGroups().length;   // count PRODUCTS, not each size/add-on object
     const _nb=document.getElementById('nav-prodoff');if(_nb){_nb.style.display='';const _bg=document.getElementById('prodoff-nav-badge');if(_bg)_bg.textContent=_pdOffGroups().length;}
     const now=new Date(),mins=now.getHours()*60+now.getMinutes();   // LOCAL time
-    const afterOpen=mins>=(10*60+10);                                // opening alarm sounds from 10:10am
+    const afterOpen=mins>=(10*60+10)&&mins<=(21*60);                 // alarm only sounds during trade (10:10am-9pm) — overnight it's just the pill
     _pdOffPrune();                                                    // expired mutes (incl. the 10am day reset)
     const _t=Date.now();
     const alarmOn=afterOpen&&_prodOffList.some(p=>!_pdOffMuted(p.id)&&_t>=_pdOffEligibleAt(p.off_since));   // off, not silenced, AND past its auto-delay window
@@ -5398,12 +5399,17 @@ function _prodOffRenderModal(){
   const a=document.getElementById('po-auto');if(a)a.checked=(appData.prodoff_auto_on!==false);
   const tm=document.getElementById('po-time');if(tm)tm.value=(appData.prodoff_auto_time||'09:45');
   if(!_prodOffList.length){el.innerHTML='<div style="color:var(--green);text-align:center;padding:22px 0;font-weight:600;">All products are switched on &#10003;</div>';return;}
-  el.innerHTML=_pdOffGroups().map((g,i)=>{
+  const ringing=!!(typeof alarms!=='undefined'&&alarms['prod-off']);
+  const banner=ringing?('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:color-mix(in srgb,var(--red,#ef4444) 14%,transparent);border:1px solid var(--red,#ef4444);border-radius:10px;padding:9px 12px;margin-bottom:9px;">'
+    +'<b style="font-size:13px;">&#128276; Alarm ringing</b><span style="flex:1;"></span>'
+    +'<button class="po-btn" onclick="prodOffSilenceAll(\'hour\')">Silence all &mdash; 1 hr</button>'
+    +'<button class="po-btn" onclick="prodOffSilenceAll(\'day\')">Silence all &mdash; today</button></div>'):'';
+  el.innerHTML=banner+_pdOffGroups().map((g,i)=>{
     const tags=g.tags.map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('');
     const until=_pdOffGroupMutedUntil(g);
     const sil=(until>Date.now())
-      ?'<button class="po-btn" onclick="prodOffUnmuteG('+i+')">Unsilence</button>'
-      :'<button class="po-btn" onclick="prodOffMuteG('+i+',\'hour\')">1 hr</button><button class="po-btn" onclick="prodOffMuteG('+i+',\'day\')">Today</button>';
+      ?'<span style="font-size:11px;color:var(--muted);align-self:center;">silenced '+_pdOffWhen(until).replace('at','until')+'</span><button class="po-btn" onclick="prodOffUnmuteG('+i+')">Unsilence</button>'
+      :'<button class="po-btn" onclick="prodOffMuteG('+i+',\'hour\')">Silence 1 hr</button><button class="po-btn" onclick="prodOffMuteG('+i+',\'day\')">Silence today</button>';
     const nev=_pdOffNever(g.name)?' checked':'';
     return '<div class="prodoff-row">'
       +'<div style="min-width:0;flex:1;">'
@@ -5414,6 +5420,7 @@ function _prodOffRenderModal(){
     +'</div>';
   }).join('')+_poNeverChips();
 }
+function prodOffSilenceAll(mode){_prodOffMuteAll(mode==='hour'?3600000:undefined);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');_prodOffRenderModal();}
 function _poNeverChips(){
   const list=appData.prodoff_never||[];if(!list.length)return '';
   return '<div style="margin-top:11px;font-size:11px;color:var(--muted);">Never auto-on: '
@@ -6169,7 +6176,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
   host.innerHTML=_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
     const ivSel=_IV_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===_ivLabel(c.interval)?' selected':'')+'>'+o[0]+'</option>').join('');
     const asSel=_AS_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===c.autostop?' selected':'')+'>'+o[0]+'</option>').join('');
-    return '<div class="alarm-card'+(c.enabled?'':' off')+'" id="ac-card-'+key+'">'
+    return '<div class="ac-card'+(c.enabled?'':' off')+'" id="ac-card-'+key+'">'
       +'<div style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;min-width:0;"><h4>'+_mEsc(d.label)+'</h4><div class="ac-desc">'+_mEsc(d.desc)+'</div></div>'
       +'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" '+(c.enabled?'checked':'')+' onchange="alarmSet(\''+key+'\',\'enabled\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> '+(key==='service'?'Sound':'On')+'</label>'
       +(key==='service'?'<label style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:10px;"><input type="checkbox" '+(c.popup?'checked':'')+' onchange="alarmSet(\''+key+'\',\'popup\',this.checked);renderAlarmCenter();" style="width:17px;height:17px;"> Popup</label>':'')
