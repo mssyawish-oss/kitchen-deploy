@@ -2090,6 +2090,23 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     </div>
     <button class="btn btn-primary mt-8" id="btn-add-staff" style="width:100%;" onclick="addStaff()">+ Add Staff</button>
     <div class="divider"></div>
+    <div class="section-title">Text shifts to staff</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Reads the published rota from Square Scheduling and texts each person their own shifts (sends as &quot;Brunos&quot;). Publish the rota in Square first, then load it here.</div>
+    <div class="row" style="gap:8px;align-items:end;flex-wrap:wrap;">
+      <div><div class="label">Week</div><select class="input" id="rs-week" style="background:var(--surface2);width:150px;"><option value="next">Next week</option><option value="this">This week</option></select></div>
+      <button class="btn" style="padding:9px 16px;" onclick="rsLoad()">Load rota</button>
+      <span id="rs-status" style="font-size:12px;color:var(--muted);"></span>
+    </div>
+    <div id="rs-list" style="margin-top:8px;"></div>
+    <div id="rs-actions" style="display:none;margin-top:8px;">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:end;">
+        <div style="flex:1;min-width:180px;"><div class="label">Test first — send every ticked person's text to THIS number instead</div><input class="input" id="rs-test-to" placeholder="04xx xxx xxx (your mobile)"></div>
+        <button class="btn" style="padding:9px 14px;" onclick="rsSend(true)">Send test to me</button>
+      </div>
+      <button class="btn btn-primary mt-8" id="rs-send-btn" style="width:100%;" onclick="rsSend(false)">Text staff their shifts</button>
+      <div id="rs-results" style="font-size:12px;margin-top:6px;"></div>
+    </div>
+    <div class="divider"></div>
     <div class="section-title">Probe &amp; Temperature Settings</div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:7px;">Temps that trigger the probe alarms.</div>
     <div class="grid-3">
@@ -6236,6 +6253,43 @@ function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;if(!s.id)s.id=
   document.getElementById('new-staff-role').value=s.role||'cashier';
   setBtn('btn-add-staff','Save Changes');
   document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
+// ── Text shifts to staff (roster SMS) ──
+let _rsData=null;
+function rsLoad(){const wk=document.getElementById('rs-week').value;const st=document.getElementById('rs-status');st.textContent='Loading rota…';document.getElementById('rs-list').innerHTML='';document.getElementById('rs-actions').style.display='none';document.getElementById('rs-results').innerHTML='';
+  fetch('/api/roster_preview?week='+wk).then(r=>r.json()).then(d=>{
+    if(d.error){st.textContent='Error: '+d.error;return;}
+    _rsData=d;
+    if(!(d.staff||[]).length){st.textContent='No published shifts found for that week — publish the rota in Square first.';return;}
+    st.textContent=d.staff.length+' staff rostered ('+d.start+' → '+d.end+')';
+    document.getElementById('rs-list').innerHTML=d.staff.map((s,i)=>`
+      <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+        <div class="row" style="gap:8px;align-items:center;">
+          <input type="checkbox" id="rs-ck-${i}" ${s.phone&&!s.sent_at?'checked':''} ${s.phone?'':'disabled'} style="width:18px;height:18px;">
+          <span style="font-size:13px;font-weight:600;flex:1;">${_mEsc(s.name)}</span>
+          <span class="tag tag-amber">${s.shifts} shift${s.shifts>1?'s':''}</span>
+          ${s.phone?'':'<span class="tag" style="background:#7f1d1d;color:#fecaca;">no phone in Square</span>'}
+          ${s.sent_at?`<span class="tag" style="background:#14532d;color:#bbf7d0;">already texted ${_mEsc(s.sent_at.slice(5,16).replace('T',' '))}</span>`:''}
+          <button class="btn" style="padding:3px 9px;font-size:11px;" onclick="const p=document.getElementById('rs-msg-${i}');p.style.display=p.style.display==='none'?'block':'none';">msg</button>
+        </div>
+        <pre id="rs-msg-${i}" style="display:none;white-space:pre-wrap;font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:8px;margin:6px 0 0 26px;">${_mEsc(s.msg)}</pre>
+      </div>`).join('');
+    document.getElementById('rs-actions').style.display='block';
+  }).catch(e=>{st.textContent='Error: '+e;});}
+function rsSend(isTest){if(!_rsData)return;
+  const tmids=_rsData.staff.filter((s,i)=>{const ck=document.getElementById('rs-ck-'+i);return ck&&ck.checked;}).map(s=>s.tmid);
+  if(!tmids.length){_toast&&_toast('Tick at least one person first.');return;}
+  const testTo=(document.getElementById('rs-test-to').value||'').trim();
+  if(isTest&&!testTo){_toast&&_toast('Enter your mobile for the test.');return;}
+  const go=()=>{const res=document.getElementById('rs-results');res.innerHTML='Sending…';
+    fetch('/api/roster_send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({week:_rsData.week,tmids:tmids,test_to:isTest?testTo:''})})
+    .then(r=>r.json()).then(d=>{
+      if(d.error){res.innerHTML='<span style="color:var(--red,#ef4444);">'+_mEsc(d.error)+'</span>';return;}
+      res.innerHTML=(d.results||[]).map(r=>`<div>${r.ok?'✅':'❌'} ${_mEsc(r.name)}${r.ok?'':' — '+_mEsc(r.err||'failed')}</div>`).join('')+(isTest?'<div style="color:var(--muted);">(test — nothing went to staff)</div>':'');
+      if(!isTest)rsLoad();   // refresh the "already texted" tags
+    }).catch(e=>{res.innerHTML='Error: '+e;});};
+  if(isTest)go();
+  else _askConfirm('Text '+tmids.length+' staff?','Each person gets ONE text with their own '+( _rsData.week==='next'?'next week':'this week')+' shifts. Sends as “Brunos”.',go,'Send texts');}
 function removeStaff(i){if(!confirm('Remove this staff member?'))return;const rem=(appData.staff||[])[i];appData.staff.splice(i,1);if(rem&&editingStaff===rem.id)_staffFormClear();saveAppData();renderStaffAdmin();}
 
 // ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they

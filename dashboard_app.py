@@ -5969,6 +5969,102 @@ def supplier_sms_test():
         else: errs.append((num+": "+(err or "failed")))
     return jsonify({"ok":okc>0,"sent":okc,"error":("" if okc else "; ".join(errs) or "send failed")})
 
+# ===== ROSTER SMS (tracker #8) — text staff their published Square shifts ==========================
+def _sq_sched(path,body):
+    cfg=db.get("square_config") or {}
+    token=(cfg.get("access_token") or "").strip()
+    if not token: raise Exception("Square not configured")
+    req=urllib.request.Request(SQUARE_BASE+path,data=json.dumps(body).encode(),
+        headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+    with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
+        return json.loads(r.read().decode())
+
+def _roster_fetch(which="next"):
+    """Published (not draft) scheduled shifts for 'this' week (today→Sun) or 'next' week (Mon→Sun),
+    grouped per team member with name + mobile from Square Team, ready-to-send message text included."""
+    today=datetime.now().date()
+    monday=today-timedelta(days=today.weekday())
+    if which=="next": start,end=monday+timedelta(days=7),monday+timedelta(days=13)
+    else: start,end=today,monday+timedelta(days=6)
+    body={"query":{"filter":{"start":{"start_at":start.isoformat()+"T00:00:00+10:00",
+                                      "end_at":end.isoformat()+"T23:59:59+10:00"}}},"limit":50}   # Square caps this search at 50/page; the cursor loop below pages through the rest
+    shifts=[];cursor=None
+    while True:
+        if cursor: body["cursor"]=cursor
+        j=_sq_sched("/v2/labor/scheduled-shifts/search",body)
+        shifts+=j.get("scheduled_shifts") or []
+        cursor=j.get("cursor")
+        if not cursor: break
+    tms={}
+    j=_sq_sched("/v2/team-members/search",{"query":{"filter":{"status":"ACTIVE"}},"limit":200})
+    for t in j.get("team_members") or []:
+        tms[t.get("id")]={"first":(t.get("given_name") or "").strip(),
+                          "full":((t.get("given_name") or "")+" "+(t.get("family_name") or "")).strip(),
+                          "phone":(t.get("phone_number") or "").strip()}
+    per={}
+    for s in shifts:
+        det=s.get("published_shift_details") or {}   # drafts are skipped — staff can't see them yet
+        tmid=det.get("team_member_id")
+        if not tmid: continue
+        per.setdefault(tmid,[]).append((det.get("start_at") or "",det.get("end_at") or ""))
+    DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    out=[]
+    for tmid,ss in per.items():
+        ss.sort()
+        tm=tms.get(tmid) or {"first":"","full":"(unknown)","phone":""}
+        lines=[]
+        for st_,en in ss:
+            try:
+                sdt=datetime.fromisoformat(st_);edt=datetime.fromisoformat(en)
+                lines.append("%s %d/%d: %s-%s"%(DOW[sdt.weekday()],sdt.day,sdt.month,
+                                                sdt.strftime("%I:%M%p").lstrip("0").lower(),
+                                                edt.strftime("%I:%M%p").lstrip("0").lower()))
+            except Exception:
+                lines.append(st_[:16]+" - "+en[11:16])
+        msg=("Hi "+(tm["first"] or "there")+", your Bruno's shifts"
+             +(" next week" if which=="next" else " this week")+":\n"+"\n".join(lines)
+             +"\nAny problems let Marcel know.")
+        out.append({"tmid":tmid,"name":tm["full"] or tmid,"phone":tm["phone"],"shifts":len(ss),
+                    "msg":msg,"hash":hashlib.sha1("|".join(a+b for a,b in ss).encode()).hexdigest()[:12]})
+    out.sort(key=lambda x:(x["name"] or "").lower())
+    return {"week":which,"start":start.isoformat(),"end":end.isoformat(),"staff":out}
+
+@app.route("/api/roster_preview")
+def api_roster_preview():
+    try:
+        data=_roster_fetch(request.args.get("week") or "next")
+        sent=db.get("roster_sms_sent") or {}
+        for st_ in data["staff"]:
+            rec=sent.get(st_["tmid"]) or {}
+            st_["sent_at"]=rec.get("at") if rec.get("hash")==st_["hash"] else None   # already texted THESE exact shifts
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error":str(e)[:220]}),500
+
+@app.route("/api/roster_send",methods=["POST"])
+def api_roster_send():
+    p=request.get_json(silent=True) or {}
+    which=p.get("week") or "next"
+    only=set(p.get("tmids") or [])
+    test_to=(p.get("test_to") or "").strip()   # set → every selected message goes to THIS number instead of staff
+    try: data=_roster_fetch(which)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)[:220]}),500
+    sent=db.setdefault("roster_sms_sent",{})
+    results=[]
+    for st_ in data["staff"]:
+        if only and st_["tmid"] not in only: continue
+        to=test_to or st_["phone"]
+        if not to:
+            results.append({"tmid":st_["tmid"],"name":st_["name"],"ok":False,"err":"no phone in Square"});continue
+        try: ok,err=_clicksend_sms(to,st_["msg"])
+        except Exception as e: ok,err=False,str(e)[:140]
+        if ok and not test_to:
+            sent[st_["tmid"]]={"hash":st_["hash"],"at":datetime.now().isoformat(timespec="seconds"),"week":data["start"]}
+        results.append({"tmid":st_["tmid"],"name":st_["name"],"ok":ok,"err":err})
+    save_data(db)
+    return jsonify({"ok":all(r["ok"] for r in results) if results else False,
+                    "sent":sum(1 for r in results if r["ok"]),"results":results,"test":bool(test_to)})
+
 @app.route("/api/test_email",methods=["POST"])
 def test_email_route():
     data=request.get_json(silent=True) or {}
