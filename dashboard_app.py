@@ -2227,6 +2227,10 @@ def _prodoff_auto_enable(manual=False):
         if nm.upper() in never: skipped.append(nm); continue
         try: ok,e=_sq_enable_variation(it.get("id"))
         except Exception as ex: ok,e=False,str(ex)
+        if not ok and e and "add-on" not in str(e) and not str(e).startswith("SCHEDULED"):
+            time.sleep(0.8)                       # same transient-hiccup retry as the manual Turn on button
+            try: ok,e=_sq_enable_variation(it.get("id"))
+            except Exception as ex: ok,e=False,str(ex)
         if ok: enabled.append(nm)
         elif it.get("kind")=="modifier": addons.append(nm)      # Square can't do add-ons from an app
         elif e and str(e).startswith("SCHEDULED"): scheduled.append(nm)   # on a Square timer — comes back by itself
