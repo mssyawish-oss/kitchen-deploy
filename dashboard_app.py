@@ -199,7 +199,17 @@ def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
            "total_mins":total_mins,"hot_mins":hot_mins,"birds":bpr}
     try:
         with data_lock:
-            log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]; save_data(db)
+            log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]
+            # a pull IS the start of a batch on the bench — start the next free timer automatically,
+            # stamped with the pull time + the temp it came off at (the batch row on the dash)
+            if db.get("batch_auto_start") is not False:
+                for i,t in enumerate(db.get("timers") or []):
+                    if not t.get("running") and not t.get("expired"):
+                        rem=int(t.get("total") or 7200)
+                        t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem,
+                                  "started_at":now,"start_temp":entry.get("pull_temp"),"id":i})
+                        break
+            save_data(db)
     except Exception as e: print(f"record_pull:{e}")
 
 def record_cook(pid,name,temp,cook_mins):
@@ -1380,10 +1390,11 @@ def _sq_offline_products():
                 md=obj.get("modifier_data") or {}
                 name=md.get("name") or "?"
                 _off=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in md.get("location_overrides") or [])
-                if loc in (obj.get("absent_at_location_ids") or []): _off=True   # switched off from the dash via location presence
                 if _off:
                     out.append({"id":obj.get("id"),"version":obj.get("version"),"item":name,"variation":"add-on","kind":"modifier"})
                     _SQ_OBJ_CACHE[obj.get("id")]=obj
+        for bid,b in (db.get("mod_86_bin") or {}).items():   # dash-86'd add-ons (deleted, archived here)
+            out.append({"id":bid,"version":0,"item":b.get("name") or "?","variation":"add-on","kind":"modifier","dash86":True})
             cursor=data.get("cursor")
             if not cursor: break
         return out,None
@@ -1451,6 +1462,7 @@ def _sq_enable_variation(vid):
     global _ENABLE_DBG; _ENABLE_DBG=None
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
+    if vid in (db.get("mod_86_bin") or {}): return _sq_restore_modifier(vid)   # dash-86'd add-on → recreate from archive
     dbg={"loc":loc,"vid":vid,"steps":[]}
     def _get_obj():
         try:
@@ -1471,28 +1483,8 @@ def _sq_enable_variation(vid):
     ov0=_ov(obj) or {}
     tracked=bool(ov0.get("track_inventory"))
     dbg.update({"type":obj.get("type"),"sold_out_before":bool(ov0.get("sold_out")),"track_inventory":tracked})
-    if not ov0.get("sold_out") and not (is_mod and loc in (obj.get("absent_at_location_ids") or [])):
+    if not ov0.get("sold_out"):
         _SQ_OBJ_CACHE.pop(vid,None); _ENABLE_DBG=dbg; return True,None      # already on
-    if is_mod and loc in (obj.get("absent_at_location_ids") or []):
-        # switched off from the dash via location presence → switching on = restore presence
-        import uuid as _u3
-        o_r=copy.deepcopy(obj)
-        o_r["absent_at_location_ids"]=[x for x in (o_r.get("absent_at_location_ids") or []) if x!=loc]
-        if not o_r["absent_at_location_ids"]: o_r.pop("absent_at_location_ids",None)
-        try:
-            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-                data=json.dumps({"idempotency_key":str(_u3.uuid4()),"object":o_r}).encode(),headers=hdr)
-            with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: resR=json.loads(r.read().decode())
-            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
-            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
-            if loc not in (chk.get("absent_at_location_ids") or []):
-                _SQ_OBJ_CACHE.pop(vid,None);_ENABLE_DBG=dbg
-                return True,None
-        except Exception as e:
-            dbg["steps"].append({"presence_restore_err":str(e)[:140]})
-        _ENABLE_DBG=dbg
-        return False,"couldn't restore this add-on's availability — check it in Square"
     if is_mod:
         # Square's API silently ignores every write that would clear a modifier's sold_out (direct
         # upsert, parent-list upsert, even sold_out_valid_until — all verified no-ops, 3 Aug 2026).
@@ -2388,10 +2380,10 @@ def _sq_disable_variation(vid):
         return True,"switched off, but couldn't re-check"
 
 def _sq_disable_modifier(vid):
-    """86 an add-on from the dash. Square ignores sold_out EDITS on modifiers, but an untested door
-    remains: a NEWLY CREATED modifier may be allowed to be born sold-out. Reverse twin-swap with a
-    self-test: make the twin WITH the flag, verify Square kept it, then delete the original — and if
-    the flag got stripped, delete the TWIN (never the original) and admit defeat honestly."""
+    """86 an add-on from the dash — the only way Square permits: archive its full definition in OUR
+    data, then DELETE it from the catalog (drops off POS + online instantly). Turn-on recreates it
+    from the archive. sold_out writes are API-guarded and location-presence can't go to zero
+    locations (both proven no-ops live, 3 Aug 2026); create + delete are the proven primitives."""
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return False,"Square not configured"
     try:
@@ -2402,76 +2394,47 @@ def _sq_disable_modifier(vid):
         return False,"couldn't read this add-on from Square: "+str(e)[:120]
     if not obj or obj.get("type")!="MODIFIER": return False,"not an add-on"
     md=obj.get("modifier_data") or {}
-    if any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])):
-        return True,None                                     # already off
-    # DOOR 1: location PRESENCE — a different field entirely from the guarded sold_out machinery.
-    # Mark the add-on absent at this location; the POS + online drop it. Reversal = restore presence.
-    import uuid as _u2
-    o_abs=copy.deepcopy(obj)
-    o_abs["present_at_all_locations"]=False
-    pl=set(o_abs.get("present_at_location_ids") or [])
-    al=set(o_abs.get("absent_at_location_ids") or [])
-    if obj.get("present_at_all_locations",True):
-        al.add(loc)                                   # was everywhere → everywhere-except-here
-        o_abs["present_at_all_locations"]=True        # keep the everywhere base, carve this location out
-    else:
-        pl.discard(loc); al.add(loc)
-    if pl: o_abs["present_at_location_ids"]=sorted(pl)
-    o_abs["absent_at_location_ids"]=sorted(al)
+    with data_lock:
+        bin_=db.setdefault("mod_86_bin",{})
+        bin_[vid]={"obj":obj,"name":md.get("name") or "?","list_id":md.get("modifier_list_id"),
+                   "at":int(time.time()*1000)}
+        save_data(db)                       # archive FIRST — the delete only happens once this is on disk
     try:
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-            data=json.dumps({"idempotency_key":str(_u2.uuid4()),"object":o_abs}).encode(),headers=hdr)
-        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: resA=json.loads(r.read().decode())
-        if not resA.get("errors"):
-            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
-            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
-            if loc in (chk.get("absent_at_location_ids") or []):
-                _SQ_OBJ_CACHE.pop(vid,None)
-                return True,None                       # absence stuck — the add-on is off at this location
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr,method="DELETE")
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: r.read()
     except Exception as e:
-        print("mod absence attempt:",str(e)[:120])
-    # DOOR 2: born-sold-out twin (kept in case Square's behaviour differs by API version)
-    new_md=copy.deepcopy(md)
-    ovs=[{k:v for k,v in ov.items() if k!="sold_out_valid_until"} for ov in (new_md.get("location_overrides") or [])]
-    ov=next((x for x in ovs if x.get("location_id")==loc),None)
-    if ov is None: ov={"location_id":loc};ovs.append(ov)
-    ov["sold_out"]=True
-    new_md["location_overrides"]=ovs
-    new_obj={"type":"MODIFIER","id":"#off","present_at_all_locations":obj.get("present_at_all_locations",True),"modifier_data":new_md}
+        with data_lock: db.get("mod_86_bin",{}).pop(vid,None); save_data(db)
+        return False,"Square refused the delete: "+str(e)[:120]
+    _SQ_OBJ_CACHE.pop(vid,None)
+    return True,None
+
+def _sq_restore_modifier(vid):
+    """Turn a dash-86'd add-on back on: recreate it from the archive."""
+    hdr=_sq_headers()
+    b=(db.get("mod_86_bin") or {}).get(vid)
+    if not b or not hdr: return False,"no archived copy for this add-on"
+    old=b["obj"];md=old.get("modifier_data") or {}
+    new_obj={"type":"MODIFIER","id":"#restore","present_at_all_locations":old.get("present_at_all_locations",True),
+             "modifier_data":copy.deepcopy(md)}
     for f in ("present_at_location_ids","absent_at_location_ids"):
-        if obj.get(f): new_obj[f]=obj[f]
+        if old.get(f): new_obj[f]=old[f]
     import uuid as _uuid
-    def _delete(oid):
-        try:
-            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(oid),headers=hdr,method="DELETE")
-            with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: r.read()
-            return True
-        except Exception: return False
     try:
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
             data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":new_obj}).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
     except Exception as e:
-        return False,"couldn't create the switched-off copy: "+str(e)[:120]
-    if res.get("errors"): return False,"Square rejected the switched-off copy"
+        return False,"couldn't recreate the add-on: "+str(e)[:120]
+    if res.get("errors"): return False,"Square rejected the recreate"
     newid=((res.get("id_mappings") or [{}])[0].get("object_id")) or (res.get("catalog_object") or {}).get("id")
-    if not newid: return False,"copy created but Square returned no id"
-    # SELF-TEST: did the newborn keep its sold_out flag?
     try:
-        u2=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(newid)
-        with urllib.request.urlopen(urllib.request.Request(u2,headers=hdr),timeout=20,context=SSL_CTX) as r:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(newid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
             tw=(json.loads(r.read().decode()) or {}).get("object") or {}
+        if (tw.get("modifier_data") or {}).get("name")!=md.get("name"): return False,"recreate didn't verify"
     except Exception:
-        _delete(newid); return False,"couldn't verify the copy — nothing changed"
-    tmd=tw.get("modifier_data") or {}
-    kept=any(x.get("location_id")==loc and x.get("sold_out") for x in (tmd.get("location_overrides") or []))
-    if not kept or tmd.get("name")!=md.get("name") or tmd.get("modifier_list_id")!=md.get("modifier_list_id"):
-        _delete(newid)
-        return False,"Square doesn't allow add-ons to be switched OFF from an app — use the POS for this one"
-    if not _delete(vid):
-        return True,"switched off, but the old copy couldn't be deleted — it may show twice until removed in Square"
-    _SQ_OBJ_CACHE.pop(vid,None);_SQ_OBJ_CACHE.pop(newid,None)
+        return False,"recreated but couldn't verify"
+    with data_lock: db.get("mod_86_bin",{}).pop(vid,None); save_data(db)
     return True,None
 
 @app.route("/api/product_disable",methods=["POST"])
