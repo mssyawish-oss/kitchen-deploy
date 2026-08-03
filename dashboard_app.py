@@ -1379,10 +1379,11 @@ def _sq_offline_products():
                 if obj.get("type")!="MODIFIER": continue
                 md=obj.get("modifier_data") or {}
                 name=md.get("name") or "?"
-                for ov in md.get("location_overrides") or []:
-                    if ov.get("location_id")==loc and ov.get("sold_out"):
-                        out.append({"id":obj.get("id"),"version":obj.get("version"),"item":name,"variation":"add-on","kind":"modifier"})
-                        _SQ_OBJ_CACHE[obj.get("id")]=obj
+                _off=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in md.get("location_overrides") or [])
+                if loc in (obj.get("absent_at_location_ids") or []): _off=True   # switched off from the dash via location presence
+                if _off:
+                    out.append({"id":obj.get("id"),"version":obj.get("version"),"item":name,"variation":"add-on","kind":"modifier"})
+                    _SQ_OBJ_CACHE[obj.get("id")]=obj
             cursor=data.get("cursor")
             if not cursor: break
         return out,None
@@ -1470,8 +1471,28 @@ def _sq_enable_variation(vid):
     ov0=_ov(obj) or {}
     tracked=bool(ov0.get("track_inventory"))
     dbg.update({"type":obj.get("type"),"sold_out_before":bool(ov0.get("sold_out")),"track_inventory":tracked})
-    if not ov0.get("sold_out"):
+    if not ov0.get("sold_out") and not (is_mod and loc in (obj.get("absent_at_location_ids") or [])):
         _SQ_OBJ_CACHE.pop(vid,None); _ENABLE_DBG=dbg; return True,None      # already on
+    if is_mod and loc in (obj.get("absent_at_location_ids") or []):
+        # switched off from the dash via location presence → switching on = restore presence
+        import uuid as _u3
+        o_r=copy.deepcopy(obj)
+        o_r["absent_at_location_ids"]=[x for x in (o_r.get("absent_at_location_ids") or []) if x!=loc]
+        if not o_r["absent_at_location_ids"]: o_r.pop("absent_at_location_ids",None)
+        try:
+            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+                data=json.dumps({"idempotency_key":str(_u3.uuid4()),"object":o_r}).encode(),headers=hdr)
+            with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: resR=json.loads(r.read().decode())
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+            if loc not in (chk.get("absent_at_location_ids") or []):
+                _SQ_OBJ_CACHE.pop(vid,None);_ENABLE_DBG=dbg
+                return True,None
+        except Exception as e:
+            dbg["steps"].append({"presence_restore_err":str(e)[:140]})
+        _ENABLE_DBG=dbg
+        return False,"couldn't restore this add-on's availability — check it in Square"
     if is_mod:
         # Square's API silently ignores every write that would clear a modifier's sold_out (direct
         # upsert, parent-list upsert, even sold_out_valid_until — all verified no-ops, 3 Aug 2026).
@@ -2383,6 +2404,34 @@ def _sq_disable_modifier(vid):
     md=obj.get("modifier_data") or {}
     if any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])):
         return True,None                                     # already off
+    # DOOR 1: location PRESENCE — a different field entirely from the guarded sold_out machinery.
+    # Mark the add-on absent at this location; the POS + online drop it. Reversal = restore presence.
+    import uuid as _u2
+    o_abs=copy.deepcopy(obj)
+    o_abs["present_at_all_locations"]=False
+    pl=set(o_abs.get("present_at_location_ids") or [])
+    al=set(o_abs.get("absent_at_location_ids") or [])
+    if obj.get("present_at_all_locations",True):
+        al.add(loc)                                   # was everywhere → everywhere-except-here
+        o_abs["present_at_all_locations"]=True        # keep the everywhere base, carve this location out
+    else:
+        pl.discard(loc); al.add(loc)
+    if pl: o_abs["present_at_location_ids"]=sorted(pl)
+    o_abs["absent_at_location_ids"]=sorted(al)
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_u2.uuid4()),"object":o_abs}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: resA=json.loads(r.read().decode())
+        if not resA.get("errors"):
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+            if loc in (chk.get("absent_at_location_ids") or []):
+                _SQ_OBJ_CACHE.pop(vid,None)
+                return True,None                       # absence stuck — the add-on is off at this location
+    except Exception as e:
+        print("mod absence attempt:",str(e)[:120])
+    # DOOR 2: born-sold-out twin (kept in case Square's behaviour differs by API version)
     new_md=copy.deepcopy(md)
     ovs=[{k:v for k,v in ov.items() if k!="sold_out_valid_until"} for ov in (new_md.get("location_overrides") or [])]
     ov=next((x for x in ovs if x.get("location_id")==loc),None)
