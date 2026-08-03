@@ -80,6 +80,20 @@ def _default_timers():
 if not isinstance(db.get("timers"),list) or len(db.get("timers") or [])!=4:
     db["timers"]=_default_timers(); save_data(db)
 
+def _batch_auto_start(temp=None):
+    """A batch landed on the bench (probed pull OR manual + Cooked row) → start the next free
+    batch timer so the dash grows its batch row automatically."""
+    if db.get("batch_auto_start") is False: return
+    now=time.time()
+    with data_lock:
+        for i,t in enumerate(db.get("timers") or []):
+            if not t.get("running") and not t.get("expired"):
+                rem=int(t.get("total") or 7200)
+                t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem,
+                          "started_at":now,"start_temp":temp,"id":i})
+                save_data(db)
+                break
+
 def _recent_pull_temp():
     """Best guess at 'the temp when they got pulled' for a batch started right after a pull:
     the last pull_log entry if it's fresh (<10 min), else the hottest live probe, else nothing."""
@@ -199,17 +213,8 @@ def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
            "total_mins":total_mins,"hot_mins":hot_mins,"birds":bpr}
     try:
         with data_lock:
-            log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]
-            # a pull IS the start of a batch on the bench — start the next free timer automatically,
-            # stamped with the pull time + the temp it came off at (the batch row on the dash)
-            if db.get("batch_auto_start") is not False:
-                for i,t in enumerate(db.get("timers") or []):
-                    if not t.get("running") and not t.get("expired"):
-                        rem=int(t.get("total") or 7200)
-                        t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem,
-                                  "started_at":now,"start_temp":entry.get("pull_temp"),"id":i})
-                        break
-            save_data(db)
+            log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]; save_data(db)
+        _batch_auto_start(entry.get("pull_temp"))   # a pull IS a batch landing on the bench
     except Exception as e: print(f"record_pull:{e}")
 
 def record_cook(pid,name,temp,cook_mins):
@@ -684,6 +689,9 @@ def rot_put_on(rows):   # a finished row went into the warmer → add straight t
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
     _rot_save()
+    if rows>0:
+        try: _batch_auto_start(_recent_pull_temp())   # unprobed batches ride on the button staff already press
+        except Exception as e: print("cookedrow batch:",e)
 def rot_adjust(delta):
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]+delta   # may go negative (oversold)
     _rot_save()
