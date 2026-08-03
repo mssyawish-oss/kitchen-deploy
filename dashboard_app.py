@@ -1530,6 +1530,21 @@ def _sq_enable_variation(vid):
             req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
             with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: dbg["steps"].append({"restock":json.loads(r.read().decode()).get("errors")})
         except Exception as e: dbg["steps"].append({"restock_err":str(e)[:140]})
+        # BLIND SPOT FIX (3 Aug 2026): restocking to qty 1 clears the sold-out, but leaving tracking ON
+        # means ONE sale drives it to zero and Square auto-86s it again — the negative-stock loop. After
+        # restoring, untrack (verified below) unless this item is deliberately tracked (retail allowlist).
+        allow=[str(a).strip().upper() for a in (db.get("sq_tracking_allow") or ["BRUNOS COTTON CAP","CHOTTO MOTTO"])]
+        _iname=""
+        try:
+            iid=(obj.get("item_variation_data") or {}).get("item_id")
+            if iid:
+                ureq=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(iid),headers=hdr)
+                with urllib.request.urlopen(ureq,timeout=20,context=SSL_CTX) as r:
+                    _iname=(((json.loads(r.read().decode()) or {}).get("object") or {}).get("item_data") or {}).get("name") or ""
+        except Exception: pass
+        if not any(a in _iname.upper() for a in allow):
+            dbg["steps"].append({"untrack_after_restock":_set_tracking(False)})
+            tracked=False              # run the verify-untrack loop below (both levels, 3 retries)
     else:
         # NOT inventory-tracked: sold_out is a manual flag and is read-only… but toggling track_inventory
         # makes Square drop it. Flip it on then straight back off — ends in the original state, so Square
@@ -2475,8 +2490,11 @@ def api_product_disable():
     kind=str(d.get("kind") or "")
     fn=_sq_disable_modifier if kind=="modifier" else _sq_disable_variation
     ok,err=fn(vid)
-    if not ok and err and "POS" not in str(err):
+    if not ok and err and "404" in str(err):
+        err="this listing is out of date (the add-on got a new id when it was last switched) — search again"
+    elif not ok and err and "POS" not in str(err):
         time.sleep(0.8); ok,err=fn(vid)
+    _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
     return jsonify({"ok":ok,"error":(None if ok else err)})
 
 @app.route("/api/product_enable",methods=["POST"])
@@ -2489,6 +2507,8 @@ def api_product_enable():
         # versions under us) — one fresh read-modify-write attempt fixes virtually all of them
         time.sleep(0.8)
         ok,err=_sq_enable_variation(vid)
+    try: _PSRCH_CACHE["at"]=0     # revive swaps mint new ids — refresh the search index
+    except Exception: pass
     out={"ok":ok,"error":(None if ok else err)}
     if ok and err: out["warn"]=err          # e.g. tracking stuck ON — item works but needs a look in Square
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
