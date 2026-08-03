@@ -2272,10 +2272,13 @@ def api_sq_tracking_audit():
             if not cursor: break
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)[:200]})
+    allow=[str(a).strip().upper() for a in (db.get("sq_tracking_allow") or ["BRUNOS COTTON CAP","CHOTTO MOTTO"])]
+    for h in hits:
+        h["allowed"]=any(a in (h.get("name") or "").upper() for a in allow)   # intentionally tracked (retail)
     if not fix:
         return jsonify({"ok":True,"tracking_on":len(hits),"items":hits})
     fixed=0; fails=[]
-    for h in hits:
+    for h in [x for x in hits if not x.get("allowed")]:
         try:
             u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(h["vid"])
             with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
@@ -2525,6 +2528,12 @@ def _prodoff_auto_enable(manual=False):
     res={"ok":True,"at":int(time.time()*1000),"date":datetime.now().strftime("%Y-%m-%d"),
          "enabled":en,"skipped":uniq(skipped),"failed":fl,"addons":ad,"scheduled":sc,
          "manual":bool(manual),"seen":True if manual else False}
+    if not manual:
+        try:
+            with app.test_request_context("/api/sq_tracking_audit",method="POST",json={"fix":True}):
+                heal=api_sq_tracking_audit().get_json()
+            if heal and heal.get("fixed"): print("morning tracking heal:",heal.get("fixed"),"untracked")
+        except Exception as e: print("morning tracking heal:",e)
     with data_lock:
         db["prodoff_autolog"]=res
         if not manual: db["prodoff_auto_lastrun"]=res["date"]
