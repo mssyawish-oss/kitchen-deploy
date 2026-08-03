@@ -2312,6 +2312,18 @@ def api_product_search():
                                          "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],"off":off})
                 cursor=data.get("cursor")
                 if not cursor: break
+            cursor=None
+            for _ in range(25):
+                url=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                    data=json.loads(r.read().decode())
+                for obj in data.get("objects",[]) or []:
+                    if obj.get("is_deleted"): continue
+                    md=obj.get("modifier_data") or {}
+                    items.append({"name":md.get("name") or "?","ids":[obj.get("id")],"sizes":["ADD-ON"],"off":any(
+                        ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])),"kind":"modifier"})
+                cursor=data.get("cursor")
+                if not cursor: break
             _PSRCH_CACHE.update({"at":now,"items":items})
         except Exception as e:
             return jsonify({"ok":False,"error":str(e)[:160]})
@@ -2354,13 +2366,74 @@ def _sq_disable_variation(vid):
     except Exception:
         return True,"switched off, but couldn't re-check"
 
+def _sq_disable_modifier(vid):
+    """86 an add-on from the dash. Square ignores sold_out EDITS on modifiers, but an untested door
+    remains: a NEWLY CREATED modifier may be allowed to be born sold-out. Reverse twin-swap with a
+    self-test: make the twin WITH the flag, verify Square kept it, then delete the original — and if
+    the flag got stripped, delete the TWIN (never the original) and admit defeat honestly."""
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return False,"Square not configured"
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            obj=(json.loads(r.read().decode()) or {}).get("object")
+    except Exception as e:
+        return False,"couldn't read this add-on from Square: "+str(e)[:120]
+    if not obj or obj.get("type")!="MODIFIER": return False,"not an add-on"
+    md=obj.get("modifier_data") or {}
+    if any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])):
+        return True,None                                     # already off
+    new_md=copy.deepcopy(md)
+    ovs=[{k:v for k,v in ov.items() if k!="sold_out_valid_until"} for ov in (new_md.get("location_overrides") or [])]
+    ov=next((x for x in ovs if x.get("location_id")==loc),None)
+    if ov is None: ov={"location_id":loc};ovs.append(ov)
+    ov["sold_out"]=True
+    new_md["location_overrides"]=ovs
+    new_obj={"type":"MODIFIER","id":"#off","present_at_all_locations":obj.get("present_at_all_locations",True),"modifier_data":new_md}
+    for f in ("present_at_location_ids","absent_at_location_ids"):
+        if obj.get(f): new_obj[f]=obj[f]
+    import uuid as _uuid
+    def _delete(oid):
+        try:
+            req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(oid),headers=hdr,method="DELETE")
+            with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: r.read()
+            return True
+        except Exception: return False
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":new_obj}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+    except Exception as e:
+        return False,"couldn't create the switched-off copy: "+str(e)[:120]
+    if res.get("errors"): return False,"Square rejected the switched-off copy"
+    newid=((res.get("id_mappings") or [{}])[0].get("object_id")) or (res.get("catalog_object") or {}).get("id")
+    if not newid: return False,"copy created but Square returned no id"
+    # SELF-TEST: did the newborn keep its sold_out flag?
+    try:
+        u2=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(newid)
+        with urllib.request.urlopen(urllib.request.Request(u2,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            tw=(json.loads(r.read().decode()) or {}).get("object") or {}
+    except Exception:
+        _delete(newid); return False,"couldn't verify the copy — nothing changed"
+    tmd=tw.get("modifier_data") or {}
+    kept=any(x.get("location_id")==loc and x.get("sold_out") for x in (tmd.get("location_overrides") or []))
+    if not kept or tmd.get("name")!=md.get("name") or tmd.get("modifier_list_id")!=md.get("modifier_list_id"):
+        _delete(newid)
+        return False,"Square doesn't allow add-ons to be switched OFF from an app — use the POS for this one"
+    if not _delete(vid):
+        return True,"switched off, but the old copy couldn't be deleted — it may show twice until removed in Square"
+    _SQ_OBJ_CACHE.pop(vid,None);_SQ_OBJ_CACHE.pop(newid,None)
+    return True,None
+
 @app.route("/api/product_disable",methods=["POST"])
 def api_product_disable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
-    ok,err=_sq_disable_variation(vid)
-    if not ok and err:
-        time.sleep(0.8); ok,err=_sq_disable_variation(vid)
+    kind=str(d.get("kind") or "")
+    fn=_sq_disable_modifier if kind=="modifier" else _sq_disable_variation
+    ok,err=fn(vid)
+    if not ok and err and "POS" not in str(err):
+        time.sleep(0.8); ok,err=fn(vid)
     return jsonify({"ok":ok,"error":(None if ok else err)})
 
 @app.route("/api/product_enable",methods=["POST"])

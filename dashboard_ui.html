@@ -5503,8 +5503,8 @@ function poSwitchOff(i){const it=_poHits[i];if(!it)return;
     _poStatus('Switching off '+_mEsc(it.name)+'&hellip;');
     let ok=0,fail=0;
     for(const id of it.ids){
-      try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json());
-        if(d&&d.ok)ok++;else fail++;}catch(e){fail++;}
+      try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||''})}).then(r=>r.json());
+        if(d&&d.ok)ok++;else{fail++;if(d&&d.error)_poStatus(_mEsc(d.error),'var(--red)');}}catch(e){fail++;}
     }
     _poStatus(_mEsc(it.name)+': '+ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed</span>'):''),fail?'var(--red)':'var(--green)');
     checkProductsOff();poSearch();
