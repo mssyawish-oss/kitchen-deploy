@@ -1789,6 +1789,10 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <input type="time" id="po-time" onchange="poSaveAuto()">
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
+    <div class="row" style="gap:8px;margin-top:8px;">
+      <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
+    </div>
+    <div id="po-search-results"></div>
     <div id="po-status"></div>
     <div id="prodoff-list"></div>
   </div>
@@ -5476,6 +5480,35 @@ function _poNeverChips(){
     +list.map((n,i)=>'<button class="po-btn" style="padding:3px 8px;font-size:11px;margin:3px 3px 0 0;" onclick="poNeverRemove('+i+')">'+_mEsc(n)+' &#10005;</button>').join('')+'</div>';
 }
 function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);_prodOffRenderModal();}
+let _poQT=null,_poHits=[];
+function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
+  const q=(document.getElementById('po-search').value||'').trim();
+  const box=document.getElementById('po-search-results');
+  if(q.length<2){box.innerHTML='';_poHits=[];return;}
+  box.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0;">Searching&hellip;</div>';
+  fetch('/api/product_search?q='+encodeURIComponent(q)).then(r=>r.json()).then(d=>{
+    if(!d.ok){box.innerHTML='<div style="font-size:12px;color:var(--red);">'+_mEsc(d.error||'search failed')+'</div>';return;}
+    _poHits=d.items||[];
+    if(!_poHits.length){box.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No match.</div>';return;}
+    box.innerHTML=_poHits.map((it,i)=>'<div class="prodoff-row">'
+      +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
+      +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+'</div>'
+      +(it.off?'<div style="font-size:11px;color:var(--amber);">already has something switched off</div>':'')+'</div>'
+      +'<div class="po-ctl"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOff('+i+')">Switch OFF</button></div>'
+      +'</div>').join('');
+  }).catch(()=>{box.innerHTML='<div style="font-size:12px;color:var(--red);">search failed</div>';});
+},350);}
+function poSwitchOff(i){const it=_poHits[i];if(!it)return;
+  _askConfirm('Switch off '+it.name+'?','Marks '+(it.ids.length>1?('all '+it.ids.length+' sizes'):'it')+' SOLD OUT in Square — on the POS and online too.',async()=>{
+    _poStatus('Switching off '+_mEsc(it.name)+'&hellip;');
+    let ok=0,fail=0;
+    for(const id of it.ids){
+      try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json());
+        if(d&&d.ok)ok++;else fail++;}catch(e){fail++;}
+    }
+    _poStatus(_mEsc(it.name)+': '+ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed</span>'):''),fail?'var(--red)':'var(--green)');
+    checkProductsOff();poSearch();
+  },'Switch off');}
 function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
 function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}

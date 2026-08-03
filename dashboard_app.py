@@ -2282,6 +2282,87 @@ def api_sq_tracking_audit():
             fails.append({"vid":h["vid"],"name":h.get("name"),"err":str(e)[:140]})
     return jsonify({"ok":True,"found":len(hits),"fixed":fixed,"failed":fails})
 
+_PSRCH_CACHE={"at":0,"items":[]}
+@app.route("/api/product_search")
+def api_product_search():
+    """Search the whole Square catalog by name so staff can 86 a product FROM the dash.
+    Returns item groups: {name, ids:[variation ids], sizes:[names], off:bool-any-off}."""
+    q=(request.args.get("q") or "").strip().lower()
+    if len(q)<2: return jsonify({"ok":True,"items":[]})
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    now=time.time()
+    if now-_PSRCH_CACHE["at"]>180:      # refresh the item index every 3 min
+        items=[];cursor=None
+        try:
+            for _ in range(25):
+                url=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                    data=json.loads(r.read().decode())
+                for obj in data.get("objects",[]) or []:
+                    idata=obj.get("item_data") or {}
+                    if idata.get("is_archived") or obj.get("is_deleted"): continue
+                    vs=[];off=False
+                    for v in idata.get("variations",[]) or []:
+                        vd=v.get("item_variation_data") or {}
+                        vs.append({"id":v.get("id"),"name":vd.get("name") or ""})
+                        for ov in vd.get("location_overrides") or []:
+                            if ov.get("location_id")==loc and ov.get("sold_out"): off=True
+                    if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
+                                         "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],"off":off})
+                cursor=data.get("cursor")
+                if not cursor: break
+            _PSRCH_CACHE.update({"at":now,"items":items})
+        except Exception as e:
+            return jsonify({"ok":False,"error":str(e)[:160]})
+    hits=[it for it in _PSRCH_CACHE["items"] if q in it["name"].lower()]
+    return jsonify({"ok":True,"items":hits[:20]})
+
+def _sq_disable_variation(vid):
+    """Mark one item-variation SOLD OUT at this location (86 it) — the reverse of enable.
+    Variations honour this write (modifiers do not — those stay POS-only for switching OFF)."""
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return False,"Square not configured"
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            obj=(json.loads(r.read().decode()) or {}).get("object")
+    except Exception as e:
+        return False,"couldn't read this product from Square: "+str(e)[:120]
+    if not obj or obj.get("type")!="ITEM_VARIATION": return False,"not an item variation"
+    o2=copy.deepcopy(obj); vd=o2.get("item_variation_data") or {}
+    ovs=vd.setdefault("location_overrides",[])
+    ov=next((x for x in ovs if x.get("location_id")==loc),None)
+    if ov is None: ov={"location_id":loc};ovs.append(ov)
+    if ov.get("sold_out"): return True,None                      # already off
+    ov["sold_out"]=True
+    import uuid as _uuid
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":o2}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        if res.get("errors"): return False,"Square rejected the change"
+    except Exception as e:
+        return False,str(e)[:140]
+    # verify — a silent no-op must not report success
+    try:
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+        for x in (chk.get("item_variation_data") or {}).get("location_overrides") or []:
+            if x.get("location_id")==loc and x.get("sold_out"): return True,None
+        return False,"Square ignored the switch-off"
+    except Exception:
+        return True,"switched off, but couldn't re-check"
+
+@app.route("/api/product_disable",methods=["POST"])
+def api_product_disable():
+    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
+    if not vid: return jsonify({"ok":False,"error":"no id"})
+    ok,err=_sq_disable_variation(vid)
+    if not ok and err:
+        time.sleep(0.8); ok,err=_sq_disable_variation(vid)
+    return jsonify({"ok":ok,"error":(None if ok else err)})
+
 @app.route("/api/product_enable",methods=["POST"])
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
