@@ -1733,7 +1733,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <button class="nav-btn" data-page="jobs" onclick="navTo('jobs',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg><span>Prep/Tasks</span></div><div class="nav-badge" id="jobs-badge">!</div></button>
     <button class="nav-btn" data-page="orders" onclick="navTo('orders',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l3 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Orders</span></div><div class="nav-badge" id="orders-badge">!</div></button>
     <button class="nav-btn" data-page="comp" onclick="openComp(this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 12h20"/><path d="M12 7v14"/><path d="M12 7S9.5 3.5 7.5 4.2 6.4 7 8 7Z"/><path d="M12 7s2.5-3.5 4.5-2.8S17.6 7 16 7Z"/></svg><span>Comp</span></div></button>
-    <button class="nav-btn" id="nav-prodoff" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>OFF</span></div><div class="nav-badge" id="prodoff-nav-badge" style="display:block;">!</div></button>
+    <button class="nav-btn" id="nav-prodoff" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9m9 5h-9m9 5h-9M5 7l1 1 2-2m-3 6 1 1 2-2m-3 6 1 1 2-2"/></svg><span>ITEMS</span></div><div class="nav-badge" id="prodoff-nav-badge" style="display:block;">!</div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -1789,11 +1789,11 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <input type="time" id="po-time" onchange="poSaveAuto()">
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
-    <div class="row" style="gap:8px;margin-top:8px;">
+    <div class="row" style="gap:8px;margin-top:10px;">
       <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
     </div>
-    <div id="po-search-results"></div>
-    <div id="po-status"></div>
+    <div id="po-search-results" style="margin-top:6px;"></div>
+    <div id="po-status" style="margin-top:8px;clear:both;"></div>
     <div id="prodoff-list"></div>
   </div>
 </div>
@@ -5492,7 +5492,8 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
     if(!d.ok){box.innerHTML='<div style="font-size:12px;color:var(--red);">'+_mEsc(d.error||'search failed')+'</div>';return;}
     _poHits=d.items||[];
     if(!_poHits.length){box.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0;">No match.</div>';return;}
-    box.innerHTML=_poHits.map((it,i)=>'<div class="prodoff-row">'
+    const allBtn=(_poHits.length>1)?('<div style="display:flex;justify-content:flex-end;margin:4px 0;"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOffAll()">Switch OFF all '+_poHits.length+' results</button></div>'):'';
+    box.innerHTML=allBtn+_poHits.map((it,i)=>'<div class="prodoff-row">'
       +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
       +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+'</div>'
       +(it.off?'<div style="font-size:11px;color:var(--amber);">already has something switched off</div>':'')+'</div>'
@@ -5500,15 +5501,27 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
       +'</div>').join('');
   }).catch(()=>{box.innerHTML='<div style="font-size:12px;color:var(--red);">search failed</div>';});
 },350);}
+async function _poDoSwitchOff(it){
+  let ok=0,fail=0,lastErr='';
+  for(const id of it.ids){
+    try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||''})}).then(r=>r.json());
+      if(d&&d.ok)ok++;else{fail++;if(d&&d.error)lastErr=d.error;}}catch(e){fail++;lastErr='network error';}
+  }
+  return {ok,fail,lastErr};
+}
+function poSwitchOffAll(){const hits=_poHits.slice();if(!hits.length)return;
+  _askConfirm('Switch off ALL '+hits.length+' results?','Every listed product/add-on gets marked unavailable in Square.',async()=>{
+    _poStatus('Switching off '+hits.length+' products&hellip;');
+    let ok=0,fail=0,lastErr='';
+    for(const it of hits){const r=await _poDoSwitchOff(it);ok+=r.ok;fail+=r.fail;if(r.lastErr)lastErr=r.lastErr;}
+    _poStatus(ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed'+(lastErr?(' &mdash; '+_mEsc(lastErr)):'')+'</span>'):''),fail?'var(--red)':'var(--green)');
+    checkProductsOff();poSearch();
+  },'Switch all off');}
 function poSwitchOff(i){const it=_poHits[i];if(!it)return;
   _askConfirm('Switch off '+it.name+'?','Marks '+(it.ids.length>1?('all '+it.ids.length+' sizes'):'it')+' SOLD OUT in Square — on the POS and online too.',async()=>{
     _poStatus('Switching off '+_mEsc(it.name)+'&hellip;');
-    let ok=0,fail=0;
-    for(const id of it.ids){
-      try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||''})}).then(r=>r.json());
-        if(d&&d.ok)ok++;else{fail++;if(d&&d.error)_poStatus(_mEsc(d.error),'var(--red)');}}catch(e){fail++;}
-    }
-    _poStatus(_mEsc(it.name)+': '+ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed</span>'):''),fail?'var(--red)':'var(--green)');
+    const r=await _poDoSwitchOff(it);
+    _poStatus(_mEsc(it.name)+': '+r.ok+' switched off'+(r.fail?(' &middot; <span style="color:var(--red);">'+r.fail+' failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>'):''),r.fail?'var(--red)':'var(--green)');
     checkProductsOff();poSearch();
   },'Switch off');}
 function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}

@@ -2361,6 +2361,7 @@ def _sq_disable_variation(vid):
     if ov is None: ov={"location_id":loc};ovs.append(ov)
     if ov.get("sold_out"): return True,None                      # already off
     ov["sold_out"]=True
+    if "track_inventory" not in ov: ov["track_inventory"]=False  # Square drops a bare sold_out=true; pairing it with an explicit tracking value makes the write stick
     import uuid as _uuid
     try:
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
