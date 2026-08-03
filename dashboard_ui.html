@@ -267,6 +267,9 @@ body.view-wall .probe-stale{font-size:15px;}
   color:var(--muted);background:color-mix(in srgb,var(--muted) 15%,transparent);display:inline-block;}
 .probe-batt::before{content:'\1F50B ';}
 .probe-batt.crit{color:var(--red);background:color-mix(in srgb,var(--red) 16%,transparent);}
+.probe-batt.warn{color:var(--amber,#f59e0b);background:color-mix(in srgb,var(--amber,#f59e0b) 16%,transparent);}
+.probe-batt.ok{color:var(--muted);background:color-mix(in srgb,var(--muted) 12%,transparent);}
+.probe-offline{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:6px;color:#fff;background:var(--red);margin-left:6px;}
 body.style-v2 .probe-lost{align-self:center;}
 .p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
 /* probe card v2 */
@@ -1556,6 +1559,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="alarm-bell"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
     <div style="font-size:29px;font-weight:800;color:#fff;line-height:1.2;" id="alarm-title">REMINDER</div>
     <div style="font-size:16px;color:#c7ccd6;line-height:1.5;margin:12px auto 0;max-width:430px;" id="alarm-sub"></div>
+    <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#16a34a;margin-top:14px;"></button>
     <button class="alarm-silence-btn" onclick="silenceAlarm()">SILENCE ALARM</button>
   </div>
 </div>
@@ -2605,7 +2609,14 @@ let sectionUnlockedAt={};
 function gateUnlocked(key){return sectionUnlockedAt[key]&&(Date.now()-sectionUnlockedAt[key]<GATE_GRACE_MS);}
 const DNAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let currentUser=null,appData={suppliers:[],products:[],recipes:[],packdown_tasks:[],packdown_log:[],service_alerts:[],quiet_jobs:[],email_config:{},staff:[],handover_notes:[],packdown_checks:{},jobs_done:{},stock_on_hand:{},ui:{}};
-let serviceAlertsDismissed={},lastFired={},packdownShift='auto',packdownDueDismissed={},_routineNag={};
+let serviceAlertsDismissed={},packdownShift='auto',packdownDueDismissed={},_routineNag={};
+// Reminders fire ONCE per day. This flag used to live only in page memory, so any reload (server
+// restart, UI update) wiped it and the popup fired again — the 'order reminder keeps coming back'
+// bug. Now persisted per device and pruned to today's keys.
+let lastFired=(function(){try{const o=JSON.parse(localStorage.getItem('lastFired')||'{}')||{};
+  const d=(new Date()).getFullYear()+'-'+((new Date()).getMonth()+1)+'-'+(new Date()).getDate();
+  const out={};Object.keys(o).forEach(k=>{if(k.indexOf(d)>=0)out[k]=o[k];});return out;}catch(e){return {};}})();
+function _markFired(k){lastFired[k]=true;try{localStorage.setItem('lastFired',JSON.stringify(lastFired));}catch(e){}}
 let activeAlarmId=null,dropTimes={bbq:70,fried:15},serverSettings={},lastDrop={bbq:null,fried:null};
 const DEFAULT_USE_BY=90;
 // ── editing state for in-place edits across the dash ──
@@ -2666,12 +2677,13 @@ const _ALARM_DEF={
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
- walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'}
+ walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'},
+ probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -2681,7 +2693,8 @@ function _migrateProbeAlarms(){
     saveKeys(['alarm_cfg']);
   }catch(e){}
 }
-function _legacyEnabled(key){if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
+function _legacyEnabled(key){if(key==='probeoffline')return false;   // visual-only until the owner opts in
+  if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
 function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})[key])||{};return {
   enabled:(c.enabled!==undefined)?(c.enabled!==false):_legacyEnabled(key),
   popup:c.popup!==false,   // reminders group only: show the on-screen card/banner (independent of sound)
@@ -2727,7 +2740,7 @@ function stopAlarm(id){alarms[id]=false;_updateFlash();}
 function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateFlash();}
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
-function triggerAlarm(title,sub){
+function triggerAlarm(title,sub,action){
   // Two INDEPENDENT Alarm Center switches for the reminders group: 'Popup' (the on-screen card +
   // lock banner) and 'Sound'. Both off = fully silent — but that's an explicit choice now, not the
   // old side effect where one toggle made every TASK/PREP/JOB/ORDER reminder vanish without a trace.
@@ -2739,6 +2752,9 @@ function triggerAlarm(title,sub){
     const ov=document.getElementById('alarm-overlay');
     ov.style.setProperty('--alarm-accent',cfg.color||'#ef4444');   // card accent = this alarm's colour setting
     ov.classList.add('active');
+    const _ab=document.getElementById('alarm-action-btn');
+    if(_ab){ if(action&&action.label){_ab.textContent=action.label;_ab.onclick=action.fn;_ab.style.display='';}
+             else {_ab.style.display='none';_ab.onclick=null;} }
     showLockBanner(title,sub);_updateFlash();   // modal is up → _updateFlash suppresses the screen-edge flashing
   }
   if(!cfg.enabled)return;
@@ -2930,6 +2946,17 @@ setInterval(_updateFlash,400);
 function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
 // ── cross-screen silence: silencing on one dashboard silences them all ──
 let _silenceSeen=0,_silenceSynced=false,_applyingRemoteSilence=false;
+window._remAcks=[];
+function _ackedToday(key){return (window._remAcks||[]).indexOf(key)>=0;}
+function _ackReminder(key,label){
+  _markFired(key);
+  if(!window._remAcks)window._remAcks=[];
+  if(window._remAcks.indexOf(key)<0)window._remAcks.push(key);
+  fetch('/api/reminder_ack',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({key:key})}).catch(()=>{});
+  silenceAlarm();
+  if(typeof _toast==='function')_toast('\u2713 '+(label||'Done')+' \u2014 cleared for today');
+}
 function _broadcastSilence(key){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key||''})}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=Math.max(_silenceSeen,d.ts);}).catch(()=>{});}
 function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(list){
@@ -3626,6 +3653,7 @@ let _probeOrderAt=0;
 // destroyed between touchstart and touchend, the tap landed on a DIFFERENT probe — resetting the wrong
 // cook (wiping its log and re-arming its stock credit). pointerup also refreshes the hold so the click
 // event, which fires after it, still lands on the card the finger actually went down on.
+const _probeOfflineNow=new Set();
 const _BATT_LOW=20;        // at or below this the probe pill goes red and a notice is raised
 // Deliberately NOT wired into the alarm bar: that's a sounding-siren system with silence buttons, and a
 // siren for a 19% battery would be noise during service. One toast per probe per day + the red pill on
@@ -3837,13 +3865,23 @@ function renderProbes(){
       : '';
     // Docked in the charger: the cloud's battery_state tells us outright, so say CHARGING instead of
     // leaving a blank card that looks like a fault. Suppresses the stale-age stamp — nothing is wrong.
+    // Offline: it WAS reporting and has now gone quiet longer than the allowed gap. Charging probes and
+    // never-connected ones are not "offline" — only a probe that dropped out mid-service.
+    const _offMins=(function(){const m=parseFloat((serverSettings||{}).probe_offline_mins);return (isFinite(m)&&m>0)?m:10;})();
+    const _isOffline=(!_charging&&typeof _ageS==='number'&&isFinite(_ageS)&&(_ageS/60)>=_offMins);
+    const offHtml=_isOffline?`<span class="probe-offline">OFFLINE ${Math.round(_ageS/60)}m</span>`:'';
+    if(_isOffline)_probeOfflineNow.add(pidN); else _probeOfflineNow.delete(pidN);
     const staleHtml=_charging?''
                        :((p._lost&&_ageTxt)?`<div class="probe-stale">last reading ${_ageTxt}</div>`:'');
     // Wireless probes: a flat battery just goes silent, so warn BEFORE it does. Pill shows from 30%,
     // turns red (and raises the alarm-bar warning) at or below _BATT_LOW.
     const _bat=(window._rfxBattery||{})[pidN];
     const _batN=(typeof _bat==='number'&&isFinite(_bat))?_bat:null;
-    const batHtml=(_batN!==null&&_batN<=30&&dstatus!=='none')?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':''}" title="probe battery">${Math.round(_batN)}%</span>`:'';   // a "no probe" card must not show a battery — that % is just the cloud's last cached value
+    // Battery is ALWAYS shown while the probe is reporting, so staff can swap one out before it dies
+    // (owner, 4 Aug). Green normally, amber under 30%, red at/below _BATT_LOW. A "no probe" card still
+    // shows nothing — that % would just be the cloud's last cached value.
+    const batHtml=(_batN!==null&&dstatus!=='none')
+      ?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':(_batN<=30?' warn':' ok')}" title="probe battery">${Math.round(_batN)}%</span>`:'';
     // RFX: each probe has 4 internal sensors — show them all, small, under the main (coldest) temp.
     const _sv=((window._rfxSensors||{})[pidN]||[]).filter(v=>typeof v==='number'&&isFinite(v));
     const _svMin=_sv.length?Math.min.apply(null,_sv):null;
@@ -3865,7 +3903,7 @@ function renderProbes(){
       ${staleHtml}${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
@@ -3877,7 +3915,7 @@ function renderProbes(){
       ${tempHtml}<div class="probe-unit">&#176;C</div>
       ${staleHtml}${sensHtml}
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
-      ${batHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
+      ${batHtml}${offHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
@@ -4211,7 +4249,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
-_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
+_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(Array.isArray(d.reminder_acks))window._remAcks=d.reminder_acks;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
@@ -6523,8 +6561,9 @@ function checkAllReminders(){
   try{(appData.suppliers||[]).forEach(sup=>{
     if(!sup.remind_time||!_dueWithin(sup.remind_time,now,_REMIND_GRACE))return;
     const days=sup.remind_days||[];if(days.length>0&&!days.includes(todayDay))return;
-    const key='sup-'+sup.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
-    triggerAlarm('ORDER REMINDER','Time to place your order with '+sup.name+'!');
+    const key='sup-'+sup.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
+    triggerAlarm('ORDER REMINDER','Time to place your order with '+sup.name+'!',
+      {label:'\u2713 ORDERED \u2014 DONE FOR TODAY',fn:(function(k,n){return function(){_ackReminder(k,n+' order');};})(key,sup.name)});
     document.getElementById('stock-badge').classList.add('show');
     document.querySelector('.nav-btn[data-page="stock"]')?.classList.add('alarming');
     // NOTE: the reminder EMAIL is sent by the server (once per supplier per day) — see reminder_loop in
@@ -6535,8 +6574,9 @@ function checkAllReminders(){
   try{(appData.suppliers||[]).forEach(sup=>{
     const dd=sup.delivery_days||[];if(!dd.includes(todayDay))return;
     if(!_dueWithin(sup.delivery_time||'09:00',now,_REMIND_GRACE))return;
-    const key='del-'+sup.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
-    triggerAlarm('DELIVERY — PUT STOCK AWAY',sup.name+' delivery is due — check it in and put the stock away.');
+    const key='del-'+sup.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
+    triggerAlarm('DELIVERY \u2014 PUT STOCK AWAY',sup.name+' delivery is due \u2014 check it in and put the stock away.',
+      {label:'\u2713 PUT AWAY \u2014 DONE',fn:(function(k,n){return function(){_ackReminder(k,n+' delivery');};})(key,sup.name)});
   });}catch(e){}
   try{(appData.service_alerts||[]).forEach(a=>{
     if(!_taskActiveToday(a))return;   // daily / weekly / fortnightly / specific dates
@@ -6553,7 +6593,7 @@ function checkAllReminders(){
     if(!t.remind_at||!_dueWithin(t.remind_at,now,_REMIND_GRACE))return;
     if(!_taskActiveToday(t))return;   // weekly / fortnightly / set-date scheduling
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
-    const key='pack-'+t.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
+    const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
     if(t.alarm){triggerAlarm('TASK DUE',t.name);}
     else{const _sc=_acfg('service');
@@ -6565,7 +6605,7 @@ function checkAllReminders(){
     if(!j.remind_time||!_dueWithin(j.remind_time,now,_REMIND_GRACE))return;
     const days=j.days||[];if(days.length>0&&!days.includes(todayDay))return;
     if((appData.jobs_done||{})[j.id])return;
-    const key='job-'+j.id+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
+    const key='job-'+j.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     triggerAlarm('JOB REMINDER',j.text+(j.area?' ('+j.area+')':''));
     document.getElementById('jobs-badge')?.classList.add('show');
     document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
@@ -6588,7 +6628,7 @@ function checkAllReminders(){
         _routineNag['prep_'+iid]=nowMs;
       }else{                                          // one-off: fire once, catching up if the minute was missed
         if(!_dueWithin(p.remind,now,_REMIND_GRACE))return;
-        const key='prep-'+iid+'-'+dateKey;if(lastFired[key])return;lastFired[key]=true;
+        const key='prep-'+iid+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
       }
       triggerAlarm('PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
       document.getElementById('jobs-badge')?.classList.add('show');

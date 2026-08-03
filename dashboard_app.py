@@ -59,7 +59,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"standby_steady":True,"standby_after_secs":60}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -3346,7 +3346,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -4955,7 +4955,7 @@ def temps():
                 # KEEP the temp visible (old code blanked it, which hid working probes) and just flag it.
                 item["status"]="standby"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"batch_log":batch_day_log(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"batch_log":batch_day_log(),"reminder_acks":_reminder_acks_today(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
 "rfx_age":({p:int(_now-ts) for p,ts in RFX_SEEN.items()} if _probe_source()=="rfx" else {}),
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
@@ -4974,7 +4974,7 @@ def set_name():
 @app.route("/set_settings",methods=["POST"])
 def set_settings():
     d=request.get_json(silent=True) or {}
-    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp"]:
+    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins"]:
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
@@ -6402,6 +6402,22 @@ def api_roster_send():
     save_data(db)
     return jsonify({"ok":all(r["ok"] for r in results) if results else False,
                     "sent":sum(1 for r in results if r["ok"]),"results":results,"test":bool(test_to)})
+
+def _reminder_acks_today():
+    day=time.strftime("%Y-%m-%d")
+    return [k for k,v in (db.get("reminder_ack") or {}).items() if v==day]
+
+@app.route("/api/reminder_ack",methods=["POST"])
+def api_reminder_ack():
+    """A reminder was actioned ('ordered', 'put away') — record it so EVERY screen stops showing it,
+    and it can't come back after a page reload. Self-prunes to today."""
+    k=str((request.get_json(silent=True) or {}).get("key") or "")[:120]
+    if not k: return jsonify({"ok":False,"error":"no key"})
+    day=time.strftime("%Y-%m-%d")
+    with data_lock:
+        acks={kk:vv for kk,vv in (db.get("reminder_ack") or {}).items() if vv==day}
+        acks[k]=day; db["reminder_ack"]=acks; save_data(db)
+    return jsonify({"ok":True,"acks":_reminder_acks_today()})
 
 @app.route("/api/test_email",methods=["POST"])
 def test_email_route():
