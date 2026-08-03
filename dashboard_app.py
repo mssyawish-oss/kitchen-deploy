@@ -2371,14 +2371,41 @@ def _sq_disable_variation(vid):
     except Exception as e:
         return False,str(e)[:140]
     # verify — a silent no-op must not report success
+    def _is_off():
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+            return any(x.get("location_id")==loc and x.get("sold_out")
+                       for x in (chk.get("item_variation_data") or {}).get("location_overrides") or [])
+        except Exception: return None
+    if _is_off(): return True,None
+    # Square guards sold_out=true against API writes (clear-only, verified live 3 Aug 2026). The one
+    # sanctioned road: switch the variation to inventory tracking and count it to ZERO — Square then
+    # marks it sold out ITSELF (the exact mechanics of the old negative-stock bug, now used on purpose).
+    # Turn-on already reverses this fully: clears sold-out AND verifiably untracks (see bug #12 fix).
+    import uuid as _uu
     try:
-        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
-            chk=(json.loads(r.read().decode()) or {}).get("object") or {}
-        for x in (chk.get("item_variation_data") or {}).get("location_overrides") or []:
-            if x.get("location_id")==loc and x.get("sold_out"): return True,None
-        return False,"Square ignored the switch-off"
-    except Exception:
-        return True,"switched off, but couldn't re-check"
+        o3=copy.deepcopy(obj); vd3=o3.get("item_variation_data") or {}
+        ovs3=vd3.setdefault("location_overrides",[])
+        ov3=next((x for x in ovs3 if x.get("location_id")==loc),None)
+        if ov3 is None: ov3={"location_id":loc};ovs3.append(ov3)
+        ov3["track_inventory"]=True
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_uu.uuid4()),"object":o3}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
+            if (json.loads(r.read().decode()) or {}).get("errors"): return False,"couldn't arm stock tracking"
+        body={"idempotency_key":str(_uu.uuid4()),"changes":[{"type":"PHYSICAL_COUNT","physical_count":{
+              "catalog_object_id":vid,"state":"IN_STOCK","location_id":loc,"quantity":"0",
+              "occurred_at":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}}]}
+        req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes",data=json.dumps(body).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
+            if (json.loads(r.read().decode()) or {}).get("errors"): return False,"couldn't zero the stock count"
+        for _ in range(6):                                     # Square applies the auto-86 asynchronously
+            time.sleep(1.2)
+            if _is_off(): return True,None
+        return False,"stock zeroed but Square hasn't marked it sold out — check it in Square"
+    except Exception as e:
+        return False,str(e)[:140]
 
 def _sq_disable_modifier(vid):
     """86 an add-on from the dash — the only way Square permits: archive its full definition in OUR
