@@ -928,6 +928,22 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 
 /* ── PROBES — large display ── */
 .probes-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+#timers-grid.brows{display:flex;flex-direction:column;gap:7px;max-height:42vh;overflow-y:auto;padding-right:2px;}
+.brow{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border2);border-left:4px solid var(--bacc,#fb9b24);padding:8px 12px;flex-shrink:0;}
+.brow .bnum{background:var(--bacc,#fb9b24);color:#141414;font-weight:800;font-size:15px;border-radius:8px;padding:3px 10px;flex-shrink:0;}
+.brow .binfo{flex:1;min-width:0;}
+.brow .binfo b{font-size:13.5px;display:block;}
+.brow .binfo span{font-size:11.5px;color:var(--muted);}
+.brow .bclock{font-family:ui-monospace,Menlo,monospace;font-size:22px;font-weight:700;color:var(--bacc,#fb9b24);flex-shrink:0;}
+.brow.done{opacity:.55;border-left-color:var(--border2);}
+.brow.done .bclock{font-size:13px;color:var(--muted);}
+.brow.alarm{border-color:var(--red);animation:browflash 1s linear infinite;}
+@keyframes browflash{0%,100%{background:var(--surface2);}50%{background:color-mix(in srgb,var(--red) 22%,var(--surface2));}}
+.brow .bbtn{flex-shrink:0;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;}
+.brow .bbtn.go{background:#16a34a;border-color:#16a34a;color:#fff;}
+.brow .bbtn.stopal{background:var(--red);border-color:var(--red);color:#fff;}
+.brow.startrow{border-style:dashed;border-left-width:1px;}
+
 .probe-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 14px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:11px;justify-content:flex-start;box-shadow:var(--shadow);}
 .probe-card.almost{animation:flash-amber 1s infinite;}
 .probe-card.ready{animation:flash-green .8s infinite;}
@@ -3525,7 +3541,7 @@ timers.forEach(t=>{t.total=DEFAULT_USE_BY*60;t.remaining=t.total;});
 // timers are now SHARED via the server. these helpers post the action; the /temps poll syncs all devices.
 function postTimer(id,action,value){fetch('/api/timer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action,value})}).then(()=>pollTemps());}
 function setTimerLabel(id,val){timers[id].batch=val;postTimer(id,'label',val);}
-function syncTimers(serverTimers){
+function syncTimers(serverTimers,batchLog){
   if(!Array.isArray(serverTimers))return;
   let structural=false;
   serverTimers.forEach(st=>{
@@ -3535,10 +3551,13 @@ function syncTimers(serverTimers){
     const lblInput=document.querySelector('#tc'+st.id+' .batch-input');
     const editingLabel=lblInput&&document.activeElement===lblInput;
     if(!editingLabel&&t.batch!==st.label){t.batch=st.label;structural=true;}
+    if(t.started_at!==st.started_at||t.start_temp!==st.start_temp){t.started_at=st.started_at;t.start_temp=st.start_temp;structural=true;}
     t.remaining=st.remaining;t.total=st.total;t.running=st.running;t.expired=st.expired;
     if(st.expired&&!t._alarmed){t._alarmed=true;playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}
     if(!st.expired){t._alarmed=false;if(typeof alarms!=='undefined'&&alarms[st.id]&&typeof stopAlarm==='function')stopAlarm(st.id);}   // ended/confirmed/reset on ANY dash → stop this batch timer's alarm here too
   });
+  const _bl=JSON.stringify(batchLog||[]);
+  if(_bl!==window._batchLogStr){window._batchLogStr=_bl;window._batchLog=batchLog||[];structural=true;}
   if(structural)renderTimers();else timers.forEach(t=>updateT(t.id));
 }
 let probeData={1:{temp:null,name:'Probe 1'},2:{temp:null,name:'Probe 2'},3:{temp:null,name:'Probe 3'},4:{temp:null,name:'Probe 4'}};
@@ -3911,34 +3930,38 @@ function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{m
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
 function fmt(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;if(h>0)return h+':'+String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');return String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');}
 function renderTimers(){
-  document.getElementById('timers-grid').innerHTML=timers.map(t=>{
-    const pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;
-    const dispCls=(t.expired?'expired':warn&&t.running?'warning':(!t.running&&t.remaining===t.total)?'idle':'')+(fmt(t.remaining).length>6?' tlong':'');
-    const arc=t.expired?'var(--red)':'var(--acc)';
-    const sDot=t.expired?'expired':t.running?'running':t.remaining<t.total&&!t.expired?'paused':'ready';
-    if(window.DASH_V2){
-      const C=402.12,off=(C*(1-pct/100)).toFixed(1);
-      const stCls=t.expired?'exp':t.running?'run':(t.remaining<t.total?'pause':'ready');
-      const stTxt=t.expired?'EXPIRED':t.running?'Running':(t.remaining<t.total?'Paused':'&#10003; Ready');
-      return `<div class="timer-card t2 ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
-      <div class="t2-head"><input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="BATCH ${t.id+1}"><span class="t2-state ${stCls}">${stTxt}</span></div>
-      <div class="t2-gauge"><svg viewBox="0 0 160 160"><circle class="t2-track" cx="80" cy="80" r="64"/><circle class="t2-prog" id="tr${t.id}" cx="80" cy="80" r="64" style="stroke-dasharray:${C};stroke-dashoffset:${off};"/></svg>
-        <div class="t2-timewrap"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="t2-rem">REMAINING</div><i id="tb${t.id}" style="display:none;"></i></div></div>
-      <div class="t2-actions">${t.running
-        ?`<button class="t2-start" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`
-        :`<button class="t2-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}
-        <button class="t2-end" onclick="endT(${t.id})">&#9632; End</button></div>
-      ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
-      </div>`;
-    }
-    return `<div class="timer-card ac${t.id%4} ${t.expired?'alarm':''}" id="tc${t.id}">
-      <input class="batch-input" value="${t.batch}" onchange="setTimerLabel(${t.id},this.value)" placeholder="Label this timer…">
-      <div class="timer-status ${t.expired?'st-exp':t.running?'st-run':t.remaining<t.total?'st-pause':'st-ready'}"><span class="s-dot ${sDot}"></span>${t.expired?'EXPIRED':t.running?'Running':t.remaining<t.total?'Paused':'&#10003; Ready'}</div>
-      <div class="gauge" id="tg${t.id}"><div class="gauge-inner"><div class="timer-display ${dispCls}" id="td${t.id}">${fmt(t.remaining)}</div><div class="gauge-sub">REMAINING</div></div><div class="tbar"><i id="tb${t.id}" style="width:${pct.toFixed(1)}%;background:${arc};"></i></div></div>
-      <div class="action-row">${t.running?`<button class="action-btn btn-pause" onclick="pauseT(${t.id})">&#10074;&#10074; Pause</button>`:`<button class="action-btn btn-start" onclick="startT(${t.id})">&#9658; ${t.remaining<t.total&&!t.expired?'Resume':'Start'}</button>`}<button class="action-btn btn-end" onclick="endT(${t.id})">&#9632; End</button></div>
-      ${t.expired?`<button class="confirm-btn" onclick="confirmT(${t.id})">CONFIRM &#8212; STOP ALARM</button>`:''}
-    </div>`;
-  }).join('');
+  const grid=document.getElementById('timers-grid');grid.classList.add('brows');
+  const AC=['#fb9b24','#60a5fa','#a78bfa','#34d399'];
+  const _tm=ms=>{if(!ms)return '';const d=new Date(ms*1000);return d.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ','');};
+  const active=timers.filter(t=>t.running||t.expired||(t.remaining<t.total&&t.remaining>0));
+  const idle=timers.find(t=>!t.running&&!t.expired&&t.remaining>=t.total);
+  const rows=[];
+  rows.push(`<div class="brow startrow"><span style="color:var(--muted);font-size:18px;line-height:1;">+</span>
+    <div class="binfo"><span>Start a batch — takes the next free number</span></div>
+    ${idle?`<button class="bbtn go" onclick="startT(${timers.indexOf(idle)})">&#9658; Start</button>`:`<span style="font-size:11.5px;color:var(--muted);">all ${timers.length} running</span>`}</div>`);
+  active.sort((a,b)=>(b.started_at||0)-(a.started_at||0)).forEach(t=>{
+    const id=timers.indexOf(t);
+    const meta=[t.started_at?('Started '+_tm(t.started_at)):null,
+                (t.start_temp!=null)?(t.start_temp.toFixed(1)+'&deg; at pull'):null,
+                t.expired?'<b style="color:var(--red);">TIME UP</b>':(t.running?null:'paused')].filter(Boolean).join(' &middot; ');
+    rows.push(`<div class="brow ${t.expired?'alarm':''}" id="tc${id}" style="--bacc:${AC[id%4]};">
+      <span class="bnum">${id+1}</span>
+      <div class="binfo"><b>${_mEsc(t.batch||('Batch '+(id+1)))}</b><span>${meta}</span></div>
+      <span class="bclock"><span class="timer-display" id="td${id}" style="font-size:inherit;color:inherit;">${fmt(t.remaining)}</span></span>
+      ${t.expired?`<button class="bbtn stopal" onclick="confirmT(${id})">Stop alarm</button>`
+        :(t.running?'':`<button class="bbtn" onclick="startT(${id})">&#9658; Resume</button>`)}
+      <button class="bbtn" onclick="endT(${id})">&#9632; End</button>
+    </div>`);
+  });
+  (window._batchLog||[]).slice().reverse().forEach(e=>{
+    const meta=[e.started_at?(_tm(e.started_at)+' &ndash; '+_tm(e.ended_at)):_tm(e.ended_at),
+                (e.temp!=null)?(Number(e.temp).toFixed(1)+'&deg; at pull'):null,
+                e.expired?'ran full time':null].filter(Boolean).join(' &middot; ');
+    rows.push(`<div class="brow done"><span class="bnum" style="background:var(--border2);color:var(--muted);">${e.n}</span>
+      <div class="binfo"><b>${_mEsc(e.label||('Batch '+e.n))}</b><span>${meta}</span></div>
+      <span class="bclock">done</span></div>`);
+  });
+  grid.innerHTML=rows.join('');
   _fitPad();   // batch count changed the content height → re-balance the vertical fit
 }
 function startT(id){const t=timers[id];if(t.remaining<=0&&!t.expired)return;t.running=true;t.expired=false;renderTimers();postTimer(id,'start');}
@@ -4184,7 +4207,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
-_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
+_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;

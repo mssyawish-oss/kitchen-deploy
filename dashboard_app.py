@@ -80,6 +80,35 @@ def _default_timers():
 if not isinstance(db.get("timers"),list) or len(db.get("timers") or [])!=4:
     db["timers"]=_default_timers(); save_data(db)
 
+def _recent_pull_temp():
+    """Best guess at 'the temp when they got pulled' for a batch started right after a pull:
+    the last pull_log entry if it's fresh (<10 min), else the hottest live probe, else nothing."""
+    try:
+        pl=db.get("pull_log") or []
+        if pl and (time.time()*1000-pl[-1].get("ts",0))<600000 and pl[-1].get("pull_temp") is not None:
+            return pl[-1]["pull_temp"]
+    except Exception: pass
+    try:
+        with probe_lock:
+            vals=[v for v in probe_temps.values() if isinstance(v,(int,float)) and v>60]
+        return round(max(vals),1) if vals else None
+    except Exception: return None
+
+def _batch_log_add(t,now,expired):
+    """One finished batch → today's history strip. Pruned to the current day."""
+    try:
+        lt=time.localtime(now); day=time.strftime("%Y-%m-%d",lt)
+        log=[e for e in (db.get("batch_day_log") or []) if e.get("day")==day]
+        log.append({"day":day,"n":(t.get("id",0) or 0)+1,"label":t.get("label") or "",
+                    "started_at":t.get("started_at"),"ended_at":now,
+                    "temp":t.get("start_temp"),"expired":bool(expired)})
+        db["batch_day_log"]=log[-60:]
+    except Exception as e: print("batch_log_add:",e)
+
+def batch_day_log():
+    day=time.strftime("%Y-%m-%d")
+    return [e for e in (db.get("batch_day_log") or []) if e.get("day")==day]
+
 def timers_snapshot():
     # compute live 'remaining' for running timers; lazily flip expired ones
     now=time.time(); changed=False; out=[]
@@ -104,7 +133,9 @@ def timers_snapshot():
                     if not ea:
                         t["expired_at"]=ea=now; changed=True
                     if lt.tm_hour>=21 or ea<today0:
-                        t.update({"expired":False,"remaining":t.get("total",5400),"end_at":None,"expired_at":None})
+                        if t.get("started_at"): _batch_log_add(t,ea or now,True)
+                        t.update({"expired":False,"remaining":t.get("total",5400),"end_at":None,"expired_at":None,
+                                  "started_at":None,"start_temp":None})
                         changed=True
                 out.append(dict(t))
         if changed: save_data(db)
@@ -4693,7 +4724,7 @@ def temps():
                 # KEEP the temp visible (old code blanked it, which hid working probes) and just flag it.
                 item["status"]="standby"
             s[k]=item
-    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
+    return Response(json.dumps({"probes":t,"states":s,"eta":{p:_probe_eta(p) for p in probe_state},"names":probe_names,"status":ble_status["message"],"connected":ble_status["connected"],"settings":settings,"timer_triggers":dict(timer_triggers),"timers":timers_snapshot(),"batch_log":batch_day_log(),"wait":wait_state(),"drop_times":{"bbq":avg_cook_time("bbq",settings["bbq_drop_minutes"]),"fried":avg_cook_time("fried",settings["fried_drop_minutes"])},"rot":rot_state(),"fry":fry_state(),"alarm_silence_ts":ALARM_SILENCE_TS,"alarm_silences":list(ALARM_SILENCES),"boot":SERVER_BOOT_ID,"ui_ver":_ui_ver(),"rfx_sensors":(dict(RFX_SENSORS) if _probe_source()=="rfx" else {}),
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
 "rfx_age":({p:int(_now-ts) for p,ts in RFX_SEEN.items()} if _probe_source()=="rfx" else {}),
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
@@ -4762,7 +4793,10 @@ def api_timer():
         cur=max(0,int(round(t["end_at"]-now))) if (t.get("running") and t.get("end_at")) else int(t.get("remaining",0))
         if action=="start":
             rem=cur if cur>0 else t["total"]
+            fresh=not (0<cur<t["total"])                      # a resume keeps the original start stamps
             t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem})
+            if fresh or not t.get("started_at"):
+                t["started_at"]=now; t["start_temp"]=_recent_pull_temp(); t["id"]=i
         elif action=="pause":
             t.update({"running":False,"end_at":None,"remaining":cur})
         elif action=="adjust":
@@ -4770,7 +4804,9 @@ def api_timer():
             if t.get("running"): t["end_at"]=now+nr
             if val>0 and t.get("expired"): t["expired"]=False
         elif action in ("end","confirm"):
-            t.update({"running":False,"expired":False,"end_at":None,"remaining":t["total"]})
+            if t.get("started_at"): t["id"]=i; _batch_log_add(t,now,bool(t.get("expired")))
+            t.update({"running":False,"expired":False,"end_at":None,"remaining":t["total"],
+                      "started_at":None,"start_temp":None})
         elif action=="label":
             t["label"]=str(d.get("value",""))[:40]
         elif action=="settotal":
