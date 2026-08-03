@@ -5369,8 +5369,10 @@ function _prodOffMuteAll(ms){appData.prodoff_mutes=appData.prodoff_mutes||{};
   saveKeys(['prodoff_mutes']);}
 function checkProductsOff(){
   const fab=document.getElementById('prodoff-fab');if(!fab)return;
-  const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');const _nb=document.getElementById('nav-prodoff');if(_nb){_nb.style.display='none';_nb.classList.remove('alarming');}if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
-  if(appData.products_off_enabled===false){_prodOffList=[];hide();return;}
+  const hide=()=>{fab.style.display='none';fab.classList.remove('flashing');const _nb=document.getElementById('nav-prodoff');
+    if(_nb){_nb.style.display='';_nb.classList.remove('alarming');const _bg=document.getElementById('prodoff-nav-badge');if(_bg)_bg.textContent='';}   // nav button stays — the panel is also the search-and-86 tool now
+    if(typeof stopAlarm==='function')stopAlarm('prod-off');if(document.getElementById('prodoff-modal').classList.contains('open'))_prodOffRenderModal();};
+  if(appData.products_off_enabled===false){_prodOffList=[];fab.style.display='none';fab.classList.remove('flashing');const _nbX=document.getElementById('nav-prodoff');if(_nbX)_nbX.style.display='none';if(typeof stopAlarm==='function')stopAlarm('prod-off');return;}
   const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden')){fab.style.display='none';const _nb3=document.getElementById('nav-prodoff');if(_nb3)_nb3.style.display='none';return;}   // not on lock screen
   fetch('/api/products_offline').then(r=>r.json()).then(d=>{
     _prodOffList=(d&&d.ok&&d.off)?d.off:[];
