@@ -480,9 +480,9 @@ function ensureGstLine(){
 }
 function nav(dir){
   if(viewMode==='month'){ curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+dir,1); status(''); render(); return; }
-  curMon=mondayOf(addDays(curMon,7*dir)); status(''); render(); maybeAutoSync();
+  _navSeq++; curMon=mondayOf(addDays(curMon,7*dir)); status(''); render(); maybeAutoSync();
 }
-function goToday(){ viewMode='week'; curMon=mondayOf(new Date()); status(''); render(); maybeAutoSync(); }
+function goToday(){ _navSeq++; viewMode='week'; curMon=mondayOf(new Date()); status(''); render(); maybeAutoSync(); }
 // ── Month view: zoom out and see the month week by week ──
 let viewMode='week'; let curMonth=null;
 function toggleView(){
@@ -490,7 +490,7 @@ function toggleView(){
   if(viewMode==='month') curMonth=new Date(curMon.getFullYear(),curMon.getMonth(),1);
   render();
 }
-function jumpWeek(k){ viewMode='week'; curMon=parseISO(k); render(); maybeAutoSync(); }
+function jumpWeek(k){ _navSeq++; viewMode='week'; curMon=parseISO(k); render(); maybeAutoSync(); }
 function weekTotals(wkKey){
   const wt=TX.filter(t=>weekKey(t.date)===wkKey);
   const sum=a=>a.reduce((s,t)=>s+weeklyVal(t),0);
@@ -662,6 +662,7 @@ function groupRowHTML(cat,g,gi){
     +'<div id="grp'+gi+'" style="display:none;margin:0 6px 10px 10px">'+items+'</div>';
 }
 function render(focusNew,focusKey){
+  if(window._warming) return;   // warm-up moves curMon week by week; don't repaint until it restores your view
   if(viewMode==='month'){ renderMonth(); return; }
   document.getElementById('weekView').style.display='';
   document.getElementById('monthView').style.display='none';
@@ -1228,6 +1229,41 @@ function maybeAutoSync(){
   if(Date.now()-((lastSyncMap()[k])||0) < 30*60*1000) return;
   syncWeek();
 }
+// ── Background warm-up ────────────────────────────────────────────────────────
+// Previously only the week you were LOOKING at ever synced, so stepping back a few
+// weeks always meant "click Sync and wait". On open we now quietly top up the last
+// WARM_WEEKS weeks, oldest→newest, reusing the exact same per-week sync path.
+// It backs off the moment you navigate, and never runs while a sync is in flight.
+const WARM_WEEKS=8, WARM_FRESH_MS=12*3600*1000;
+let _navSeq=0;                                   // bumped by every user navigation
+async function warmRecentWeeks(){
+  if(!IN_CLAUDE || window._warmRan) return; window._warmRan=true;
+  const startSeq=_navSeq, userMon=new Date(curMon), today=mondayOf(new Date());
+  const due=[];
+  for(let i=0;i<WARM_WEEKS;i++){
+    const w=mondayOf(addDays(today,-7*i)), k=isoOf(w);
+    if(k<'2026-03-02') break;
+    if(k===isoOf(userMon)) continue;                                  // the viewed week is handled by maybeAutoSync
+    if(Date.now()-((lastSyncMap()[k])||0) < WARM_FRESH_MS) continue;  // synced recently → leave it
+    due.push(w);
+  }
+  if(!due.length) return;
+  due.reverse();                                   // oldest first, so the newest data lands last
+  window._warming=true;
+  try{
+    for(let i=0;i<due.length;i++){
+      if(_navSeq!==startSeq) break;                // you moved → stop touching the view
+      while(window._syncBusy) await new Promise(r=>setTimeout(r,1500));
+      if(_navSeq!==startSeq) break;
+      curMon=new Date(due[i]);
+      status('Updating recent weeks… '+(i+1)+' of '+due.length);
+      try{ await syncWeek(); }catch(e){}
+    }
+  } finally {
+    window._warming=false; curMon=userMon; render();
+    status(_navSeq===startSeq?'Recent weeks up to date ✓':'');
+  }
+}
 // Uber's payout email lands ~midnight Sunday and DoorDash's on Monday — AFTER the week has closed.
 // So early each week (Mon–Thu), quietly check for LAST week's payout emails and book them into last week.
 async function backfillPrevWeek(){
@@ -1465,6 +1501,7 @@ function drawDayChart(hrS,hrW){
     }
   }catch(e){}
   load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
+  setTimeout(warmRecentWeeks, 8000);   // let the viewed week finish first, then top up the rest quietly
   if(window._dedupeRemoved){ setTimeout(()=>{ try{ status('✓ Removed '+window._dedupeRemoved+' duplicate expense'+(window._dedupeRemoved>1?'s':'')+' — kept the blue auto ones.'); }catch(e){} }, 1500); }
 })();
 if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
