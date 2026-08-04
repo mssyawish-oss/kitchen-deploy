@@ -2624,7 +2624,30 @@ let editingSupplier=null,editingProduct=null,editingTask=null,editingAlert=null,
 function setDayPills(sel,days){document.querySelectorAll(sel+' .day-pill').forEach(p=>{p.classList.toggle('on',(days||[]).includes(parseInt(p.dataset.d)));});}
 function setBtn(id,txt){const b=document.getElementById(id);if(b)b.textContent=txt;}
 
-function getCtx(){if(!window._ac)window._ac=new(window.AudioContext||window.webkitAudioContext)();return window._ac;}
+function getCtx(){if(!window._ac)window._ac=new(window.AudioContext||window.webkitAudioContext)();
+  // A browser SUSPENDS the audio engine when a screen sits untouched or the tab is backgrounded, and
+  // while suspended its clock FREEZES — so every alarm tone gets scheduled at the same dead timestamp,
+  // makes no sound, and then escapes as one clipped blip the moment something wakes it. That was the
+  // "alarms silent, then a cut-short beep when I touched the menu" fault (4 Aug 2026).
+  if(window._ac.state!=='running'){try{window._ac.resume();}catch(e){}}
+  return window._ac;}
+// Keep the audio engine awake: resume on any interaction, on tab focus, and on a 5s watchdog. The
+// silent oscillator gives the engine a permanently live node, which stops most browsers suspending
+// it at all on a screen nobody touches for hours.
+function _audioWake(){try{const c=getCtx();if(c.state!=='running')c.resume();}catch(e){}}
+function _audioKeepAlive(){
+  try{const c=getCtx();
+    if(!window._acKeep){const o=c.createOscillator(),g=c.createGain();
+      g.gain.value=0.0000001;o.frequency.value=1;o.connect(g);g.connect(c.destination);o.start();
+      window._acKeep=o;}
+  }catch(e){}}
+function _audioBlocked(){try{return getCtx().state!=='running';}catch(e){return false;}}
+(function(){
+  ['pointerdown','touchstart','keydown','click'].forEach(ev=>
+    window.addEventListener(ev,()=>{_audioWake();_audioKeepAlive();},{passive:true}));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)_audioWake();});
+  setInterval(()=>{_audioWake();_audioKeepAlive();},5000);
+})();
 function playTone(f,t,d,g){try{const ctx=getCtx(),o=ctx.createOscillator(),gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);o.frequency.value=f;o.type=t;gn.gain.setValueAtTime(g||.25,ctx.currentTime);gn.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+d);o.start();o.stop(ctx.currentTime+d);}catch(e){}}
 function playAlmostTone(v){v=v==null?1:v;playTone(600,'sine',.3,.2*v);setTimeout(()=>playTone(700,'sine',.3,.2*v),350);}
 function playReadyTone(v){v=v==null?1:v;playTone(880,'sine',.2,.3*v);setTimeout(()=>playTone(1100,'sine',.2,.3*v),200);setTimeout(()=>playTone(1320,'sine',.4,.3*v),400);}
@@ -2717,6 +2740,17 @@ function _devMuteSet(key,on){const m=_devMutes();if(on)m[key]=true;else delete m
   try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _alarmHit(key){const c=_acfg(key);const v=c.volume;
+  _audioWake();
+  if(_audioBlocked()){                      // engine asleep and won't wake without a tap — say so, don't fail silently
+    try{const b=document.getElementById('audio-blocked');
+      if(b)b.style.display='flex';
+      else{const d=document.createElement('div');d.id='audio-blocked';
+        d.innerHTML='&#128266; Alarm sound is blocked &mdash; tap the screen to enable';
+        d.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9999;background:#b45309;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);display:flex;cursor:pointer;';
+        d.onclick=()=>{_audioWake();_audioKeepAlive();d.remove();};
+        document.body.appendChild(d);}
+    }catch(e){}
+  } else {const b=document.getElementById('audio-blocked');if(b)b.remove();}
   if(!_devMuted(key)){                       // muted here = no sound on THIS screen; visuals still run
     if(c.has_custom){try{const a=_customAudioFor(key,c.sound_v);a.volume=Math.max(0,Math.min(1,v));try{a.currentTime=0;}catch(e){}a.play().catch(()=>{});}catch(e){}}
     else if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(v);}catch(e){}}
