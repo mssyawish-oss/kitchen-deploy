@@ -787,6 +787,18 @@ function dedupeMark(){   // keeps its old name so every call site still works
 const SQUARE='mcp__4220cd7e-0564-4b88-9067-3cbb9998d4f3__make_api_request';
 const GSEARCH='mcp__a88318f0-837d-4458-90f7-adee0d5aed3c__search_threads';
 const GTHREAD='mcp__a88318f0-837d-4458-90f7-adee0d5aed3c__get_thread';
+// Uber changed its payout email (~Jul/Aug 2026): OLD = "payment summary" from restaurants.melbourne@, body "Total Payment $X", subject dates M/D/YY.
+// NEW = "Payouts Summary" from noreply@, body "Net Payout $X", subject dates "Mon DD, YYYY". Match BOTH so syncing keeps working.
+const _MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _uNew(d,padDay){ return _MON3[d.getMonth()]+' '+(padDay?pad(d.getDate()):d.getDate())+', '+d.getFullYear(); }
+function uberSubjMatchesWeek(subj,mon,sun){
+  if(subj.indexOf(usDate(mon)+' - '+usDate(sun))!==-1) return true;            // old  "7/27/26 - 8/2/26"
+  if(subj.indexOf(_uNew(mon,true)+' - '+_uNew(sun,true))!==-1) return true;     // new  "Jul 27, 2026 - Aug 02, 2026"
+  if(subj.indexOf(_uNew(mon,false)+' - '+_uNew(sun,false))!==-1) return true;   // new, non-padded day
+  return false;
+}
+const UBER_AMT=/(?:Total Payment|Net Payout)[\s\S]{0,600}?\$([0-9,]+\.[0-9]{2})/i;  // old "Total Payment" + new "Net Payout"
+const UBER_QUERY='from:uber.com subject:summary newer_than:150d';                   // matches "payment summary" AND "Payouts Summary"
 const DRIVE_SEARCH='mcp__6abedaba-a266-4b21-b0c6-bbce2c12e092__search_files';
 const DRIVE_READ='mcp__6abedaba-a266-4b21-b0c6-bbce2c12e092__read_file_content';
 const BILLS_FOLDER='1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t';
@@ -1151,17 +1163,15 @@ async function syncWeek(){
   }catch(e){ setDone('wage'); }
   try{
     status('Reading Uber Eats payout emails…');
-    const q='from:uber.com "payment summary"';  // broad search — the exact week is verified client-side below
-    const s=await call(GSEARCH,{query:q,pageSize:20});
+    const s=await call(GSEARCH,{query:UBER_QUERY,pageSize:25});
     let uber=0, found=0;
-    const wkTag=`${usDate(mon)} - ${usDate(sun)}`;
     for(const th of (s.threads||[])){
       const subj=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');
       if(!BRAND.test(subj)) continue; // only count the active brand; ignore old closed businesses
-      if(subj.indexOf(wkTag)===-1) continue; // Gmail search is fuzzy — require THIS week's exact range in the subject
+      if(!uberSubjMatchesWeek(subj,mon,sun)) continue; // require THIS week's exact range (old OR new date format)
       const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
       const body=(t.messages||[]).map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
-      const m=body.match(/Total Payment[\s\S]{0,500}?\$([0-9,]+\.[0-9]{2})/);
+      const m=body.match(UBER_AMT);
       if(m){ uber+=parseFloat(m[1].replace(/,/g,'')); found++; }
     }
     if(uber>0){ setSyncLine('Uber Eats (net payout)',uber); save(); render(); } // never clears an existing line — booked figures stay put
@@ -1236,15 +1246,14 @@ async function backfillPrevWeek(){
     // if it does NOT exist, any figure sitting there is a ghost and gets removed.
     const dropLine=function(cat){ const n=TX.length; TX=TX.filter(t=>!(weekKey(t.date)===k && t.src==='sync' && t.cat===cat)); if(TX.length!==n) changed=true; };
     {
-      const wkTag=usDate(pMon)+' - '+usDate(pSun);
-      const s=await call(GSEARCH,{query:'from:uber.com "payment summary"',pageSize:20});
+      const s=await call(GSEARCH,{query:UBER_QUERY,pageSize:25});
       let uber=0;
       for(const th of (s.threads||[])){
         const subj=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');
-        if(!BRAND.test(subj)||subj.indexOf(wkTag)===-1) continue;
+        if(!BRAND.test(subj)||!uberSubjMatchesWeek(subj,pMon,pSun)) continue;
         const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
         const body=(t.messages||[]).map(m=>m.htmlBody||m.plaintext_body||'').join(' ');
-        const m=body.match(/Total Payment[\s\S]{0,500}?\$([0-9,]+\.[0-9]{2})/);
+        const m=body.match(UBER_AMT);
         if(m) uber+=parseFloat(m[1].replace(/,/g,''));
       }
       if(uber>0){ setWkLine('Uber Eats (net payout)',uber); changed=true; } else dropLine('Uber Eats (net payout)');
