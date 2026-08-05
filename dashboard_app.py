@@ -59,7 +59,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -180,6 +180,19 @@ def record_batch(bt,mins):
             with open(HISTORY_FILE,"w",encoding="utf-8") as f: json.dump(h,f)
             _hist_cache["mtime"]=None
     except Exception as e: print(f"record_batch:{e}")
+
+def _fall_rate(ps,window=120):
+    """How fast the reading is FALLING right now, in C per minute, over the last `window` seconds.
+    0 if it is flat or rising. A probe pulled out of a bird plunges (10C/min+); a bird cooling on a
+    turned-down rotisserie drifts (under 1C/min) — that difference is what separates a real pull from
+    the owner's 5 Aug false credit (peak 79.0 -> 74.8 counted because it merely crossed the line)."""
+    hist=ps.get("hist") or []
+    if len(hist)<2: return 0.0
+    now_t,now_c=hist[-1]
+    old=next(((t,c) for t,c in hist if (now_t-t)<=window),hist[0])
+    dt=(now_t-old[0])/60.0
+    if dt<=0: return 0.0
+    return max(0.0,(old[1]-now_c)/dt)
 
 def _probe_eta(pid):
     # Minutes until this probe reaches the Cooked temp, from its own recent rate of climb.
@@ -511,8 +524,18 @@ def check_probe_status(pid,temp):
                     # USE-BY TICKET prints NOW (on pull), showing the cooked (peak) temp + a use-by clock from now.
                     _ub=datetime.now()+timedelta(minutes=settings["use_by_minutes"]); _pt=ps.get("peak_temp") or temp
                     threading.Thread(target=print_ticket,args=(pid,probe_names.get(pid,f"Probe {pid}"),_pt,_ub),daemon=True).start()
-            elif peak and peak>=count_temp and temp<pull:                    # first drop below pull after cooking → arm the window
-                ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
+            elif peak and peak>=count_temp and temp<pull:                    # crossed the pull line after cooking…
+                # …but crossing alone is not a pull. A bird left on a turned-DOWN rotisserie drifts down
+                # past the line and used to be credited as cooked+pulled (owner, 5 Aug: peak 79.0, "at
+                # pull" 74.8, never touched — real pulls that day landed at 53.9/54.1/59.4/59.8). Require
+                # BOTH a real fall below peak AND a real rate of fall before arming the window.
+                try: _dropmin=float(settings.get("probe_pull_drop",12.0) or 0)
+                except (TypeError,ValueError): _dropmin=12.0
+                try: _ratemin=float(settings.get("probe_pull_rate",3.0) or 0)
+                except (TypeError,ValueError): _ratemin=3.0
+                _fell=(peak-temp); _rate=_fall_rate(ps)
+                if _fell>=_dropmin and _rate>=_ratemin:
+                    ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
 
 def _rfx_saver():
     # 'Battery saver' probe mode: owner sets the RFX probes to a 2-3 degree transmission interval in the
@@ -4974,7 +4997,7 @@ def set_name():
 @app.route("/set_settings",methods=["POST"])
 def set_settings():
     d=request.get_json(silent=True) or {}
-    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins"]:
+    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins","probe_pull_drop","probe_pull_rate"]:
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
