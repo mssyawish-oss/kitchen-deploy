@@ -708,11 +708,13 @@ def rot_state():
                 "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
                 "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:],   # credit audit trail (newest last) for the on-screen log + debug shots
                 "pulls":[e for e in (db.get("pull_log",[]) or []) if e.get("kind") in (None,"pull","row_add")][-15:]}   # card line + stale-warning: real stock arrivals only, adjustments excluded
-def rot_put_on(rows):   # a finished row went into the warmer → add straight to available
+def rot_put_on(rows,batch=True):   # a finished row went into the warmer → add straight to available
+    # batch=False when the caller's event ALREADY started a use-by timer (a probe pull calls both
+    # _record_pull and _probe_credit_stock, and both used to auto-start → 2 timers per real row).
     c=_rot_cfg()
     with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
     _rot_save()
-    if rows>0:
+    if rows>0 and batch:
         try: _batch_auto_start(_recent_pull_temp())   # unprobed batches ride on the button staff already press
         except Exception as e: print("cookedrow batch:",e)
 def rot_adjust(delta):
@@ -732,7 +734,8 @@ def _probe_credit_stock(pid,name,temp):
     # the camera uses, so the on-screen log shows exactly what happened.
     if _rot_mode()!="probe": return
     bpr=_rot_cfg().get("bpr",4) or 4
-    try: rot_put_on(1)                                   # +bpr birds to 'available' (also persists rot_live)
+    try: rot_put_on(1,batch=False)                       # +bpr birds to 'available' (also persists rot_live)
+    # NO batch timer here: _record_pull fires on the same confirmed pull and already started one.
     except Exception: return
     try:
         with data_lock:
