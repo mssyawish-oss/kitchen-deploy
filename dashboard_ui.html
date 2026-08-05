@@ -2634,19 +2634,24 @@ function getCtx(){if(!window._ac)window._ac=new(window.AudioContext||window.webk
 // Keep the audio engine awake: resume on any interaction, on tab focus, and on a 5s watchdog. The
 // silent oscillator gives the engine a permanently live node, which stops most browsers suspending
 // it at all on a screen nobody touches for hours.
-function _audioWake(){try{const c=getCtx();if(c.state!=='running')c.resume();}catch(e){}}
+// CRITICAL (4 Aug 2026, second pass): NEVER create the audio engine before a user gesture. Chrome
+// creates it SUSPENDED in that case and it can only ever be woken by a tap — so a watchdog that
+// created it at page load guaranteed silence after every reload. Created lazily (on a gesture, or at
+// the moment a sound is needed) it is born RUNNING. These helpers therefore only ever touch an engine
+// that already exists; getCtx() is the single place allowed to create one.
+function _audioWake(){try{if(!window._ac)return;if(window._ac.state!=='running')window._ac.resume();}catch(e){}}
 function _audioKeepAlive(){
-  try{const c=getCtx();
-    if(!window._acKeep){const o=c.createOscillator(),g=c.createGain();
-      g.gain.value=0.0000001;o.frequency.value=1;o.connect(g);g.connect(c.destination);o.start();
-      window._acKeep=o;}
+  try{if(!window._ac||window._acKeep)return;
+    const c=window._ac,o=c.createOscillator(),g=c.createGain();
+    g.gain.value=0.0000001;o.frequency.value=1;o.connect(g);g.connect(c.destination);o.start();
+    window._acKeep=o;
   }catch(e){}}
-function _audioBlocked(){try{return getCtx().state!=='running';}catch(e){return false;}}
+function _audioBlocked(){try{return !!window._ac&&window._ac.state!=='running';}catch(e){return false;}}
 (function(){
-  ['pointerdown','touchstart','keydown','click'].forEach(ev=>
-    window.addEventListener(ev,()=>{_audioWake();_audioKeepAlive();},{passive:true}));
+  const onGesture=()=>{try{getCtx();_audioKeepAlive();}catch(e){}};   // first touch CREATES it — born running, then kept alive
+  ['pointerdown','touchstart','keydown','click'].forEach(ev=>window.addEventListener(ev,onGesture,{passive:true}));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)_audioWake();});
-  setInterval(()=>{_audioWake();_audioKeepAlive();},5000);
+  setInterval(()=>{_audioWake();_audioKeepAlive();},5000);           // wakes/keeps an EXISTING engine; never creates one
 })();
 function playTone(f,t,d,g){try{const ctx=getCtx(),o=ctx.createOscillator(),gn=ctx.createGain();o.connect(gn);gn.connect(ctx.destination);o.frequency.value=f;o.type=t;gn.gain.setValueAtTime(g||.25,ctx.currentTime);gn.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+d);o.start();o.stop(ctx.currentTime+d);}catch(e){}}
 function playAlmostTone(v){v=v==null?1:v;playTone(600,'sine',.3,.2*v);setTimeout(()=>playTone(700,'sine',.3,.2*v),350);}
