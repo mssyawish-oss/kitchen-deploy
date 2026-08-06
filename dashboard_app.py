@@ -428,18 +428,11 @@ def print_ticket(probe_id,batch_name,temp,use_by_time):
     except Exception as e: print(f"Printer:{e}")
 
 def trigger_timer_start(pid):
-    i=pid-1
-    if 0<=i<4:
-        # In PROBE-count mode the probe roams between rows, so a pull must NOT reset a use-by timer that's
-        # already counting down a previously-pulled row — only auto-start Batch N when it's idle (a running
-        # countdown is left alone; expired/idle starts fresh). Camera mode keeps the old always-restart.
-        if _rot_mode()=="probe":
-            with data_lock: already=bool(db["timers"][i].get("running"))
-            if already: timer_triggers[pid]=True; return
-        secs=settings["use_by_minutes"]*60; now=time.time()
-        with data_lock:
-            db["timers"][i].update({"total":secs,"remaining":secs,"running":True,"expired":False,"end_at":now+secs})
-            save_data(db)
+    # Batch timers are owned SOLELY by _batch_auto_start now (a pull takes the next FREE slot and is
+    # stamped with the displayed pull temp). This used to ALSO start "Batch N" for probe N, so one
+    # pull produced two timers whenever slot N-1 happened to be idle — 6 Aug 2026: the 12:09:04
+    # probe-4 pull started Batch 1 (stamped 45.4°) AND Batch 4 (no stamp, no temp). Which probe
+    # collided with which slot was pure luck, which is why the extras looked random.
     timer_triggers[pid]=True
 
 def check_probe_status(pid,temp):
