@@ -2463,12 +2463,64 @@ def _sq_disable_variation(vid):
         req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
             if (json.loads(r.read().decode()) or {}).get("errors"): return False,"couldn't zero the stock count"
-        for _ in range(6):                                     # Square applies the auto-86 asynchronously
+        # Square applies the auto-86 asynchronously and is NOT quick about it. On 6 Aug 2026 four
+        # sweet-potato sizes came back "failed" here, then Square 86'd them by itself minutes later —
+        # meanwhile they sat TRACKED at a count of 1, i.e. one sale from a real sell-out. Whatever
+        # happens, tracking must not be left armed, so the wait now finishes in the background and
+        # always untracks at the end (sold_out survives untracking — verified live).
+        for _ in range(10):
             time.sleep(1.2)
-            if _is_off(): return True,None
-        return False,"stock zeroed but Square hasn't marked it sold out — check it in Square"
+            if _is_off():
+                _sq_untrack(vid); return True,None
+        threading.Thread(target=_sq_disable_watch,args=(vid,loc,hdr,u),daemon=True).start()
+        return False,"Square is still applying this — it usually lands within a minute. Stock tracking will be cleared either way; re-check the item shortly."
     except Exception as e:
+        try: _sq_untrack(vid)          # never leave tracking armed behind a crash
+        except Exception: pass
         return False,str(e)[:140]
+
+def _sq_untrack(vid):
+    """Turn inventory tracking back off on one variation. The shop tracks nothing (bar the two retail
+    allowlist items), so tracking is only ever a means to an end here — never a state to leave behind."""
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return False
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            o=(json.loads(r.read().decode()) or {}).get("object")
+        if not o: return False
+        o2=copy.deepcopy(o); vd=o2.get("item_variation_data") or {}
+        if not vd.get("track_inventory") and not any(x.get("location_id")==loc and x.get("track_inventory")
+                                                     for x in (vd.get("location_overrides") or [])):
+            return True                                        # already clean
+        vd["track_inventory"]=False
+        for x in (vd.get("location_overrides") or []):
+            if x.get("location_id")==loc: x["track_inventory"]=False
+        o2["item_variation_data"]=vd
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":_secrets.token_hex(16),"object":o2}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r:
+            if (json.loads(r.read().decode()) or {}).get("errors"): return False
+        _SQ_OBJ_CACHE.pop(vid,None); return True
+    except Exception as e:
+        print("sq_untrack %s: %s"%(vid,e)); return False
+
+def _sq_disable_watch(vid,loc,hdr,u):
+    """Keep watching a slow auto-86 for up to ~2 min, then untrack whichever way it went."""
+    def _off():
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                chk=(json.loads(r.read().decode()) or {}).get("object") or {}
+            return any(x.get("location_id")==loc and x.get("sold_out")
+                       for x in (chk.get("item_variation_data") or {}).get("location_overrides") or [])
+        except Exception: return False
+    got=False
+    for _ in range(24):
+        time.sleep(5)
+        if _off(): got=True; break
+    _sq_untrack(vid)
+    print("sq_disable_watch %s: %s"%(vid,"sold out, tracking cleared" if got
+          else "NEVER went sold out - tracking cleared, item still on sale"))
 
 def _sq_disable_modifier(vid):
     """86 an add-on from the dash — the only way Square permits: archive its full definition in OUR
