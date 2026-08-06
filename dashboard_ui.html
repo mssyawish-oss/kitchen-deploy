@@ -5619,7 +5619,7 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
 async function _poDoSwitchOff(it){
   let ok=0,fail=0,lastErr='';
   for(const id of it.ids){
-    try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||''})}).then(r=>r.json());
+    try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||'',name:it.name||''})}).then(r=>r.json());   // name lets the server re-resolve a stale add-on id
       if(d&&d.ok)ok++;else{fail++;if(d&&d.error)lastErr=d.error;}}catch(e){fail++;lastErr='network error';}
   }
   return {ok,fail,lastErr};

@@ -2570,18 +2570,67 @@ def _sq_restore_modifier(vid):
         if (tw.get("modifier_data") or {}).get("name")!=md.get("name"): return False,"recreate didn't verify"
     except Exception:
         return False,"recreated but couldn't verify"
-    with data_lock: db.get("mod_86_bin",{}).pop(vid,None); save_data(db)
+    with data_lock:
+        db.get("mod_86_bin",{}).pop(vid,None)
+        # A dash-86'd add-on is DELETED from Square and RECREATED here, so it gets a brand new id
+        # every off/on cycle. Anything still holding the old id — a search listing, another tablet's
+        # open panel — used to just 404 with "search again". Remember old -> new so we can follow it.
+        m=db.setdefault("mod_id_map",{}); m[vid]=newid
+        if len(m)>800:
+            for k in list(m)[:len(m)-800]: m.pop(k,None)
+        save_data(db)
     return True,None
+
+def _sq_follow_mod_id(vid,depth=6):
+    """Translate a stale add-on id through however many off/on cycles it has been through."""
+    m=db.get("mod_id_map") or {}; seen=set()
+    while vid in m and vid not in seen and depth>0:
+        seen.add(vid); vid=m[vid]; depth-=1
+    return vid
+
+def _sq_find_modifier_by_name(name):
+    """Last resort when there's no id-map entry (map pruned, or the add-on was rebuilt in Square).
+    Returns an id ONLY when exactly one add-on carries that name — never guess which one to 86."""
+    nm=(name or "").strip().lower()
+    if not nm: return None
+    hdr=_sq_headers()
+    if not hdr: return None
+    hits=[]; cursor=None
+    try:
+        for _pg in range(40):
+            u=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER_LIST"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for ml in data.get("objects") or []:
+                for mod in ((ml.get("modifier_list_data") or {}).get("modifiers") or []):
+                    if ((mod.get("modifier_data") or {}).get("name") or "").strip().lower()==nm:
+                        hits.append(mod.get("id"))
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        print("find_modifier_by_name:",e); return None
+    return hits[0] if len(hits)==1 else None
 
 @app.route("/api/product_disable",methods=["POST"])
 def api_product_disable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
-    kind=str(d.get("kind") or "")
+    kind=str(d.get("kind") or ""); nm=str(d.get("name") or "")
     fn=_sq_disable_modifier if kind=="modifier" else _sq_disable_variation
+    if kind=="modifier": vid=_sq_follow_mod_id(vid)      # stale listing? follow the rename chain first
     ok,err=fn(vid)
-    if not ok and err and "404" in str(err):
-        err="this listing is out of date (the add-on got a new id when it was last switched) — search again"
+    if not ok and err and "404" in str(err) and kind=="modifier":
+        # The id is genuinely gone and we have no mapping for it. Re-resolve by name and retry once,
+        # instead of making the owner search again and re-click (they hit this twice on 6 Aug).
+        alt=_sq_find_modifier_by_name(nm)
+        if alt and alt!=vid:
+            ok,err=fn(alt)
+            if ok: print("product_disable: followed '%s' %s -> %s"%(nm,vid,alt))
+        if not ok and not alt:
+            err=("couldn't find an add-on called \"%s\" in Square any more — it may have been renamed or deleted"%nm) if nm \
+                else "this listing is out of date — search again"
+    elif not ok and err and "404" in str(err):
+        err="this listing is out of date — search again"
     elif not ok and err and "POS" not in str(err):
         time.sleep(0.8); ok,err=fn(vid)
     _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
