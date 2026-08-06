@@ -7,6 +7,7 @@
 
 $ErrorActionPreference = "Continue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # 2012 R2 defaults to TLS 1.0; GitHub/python.org refuse it
+try{ Start-Transcript -Path "$env:TEMP\ordermate-transcript.log" -Force | Out-Null }catch{}   # the .bat copies this onto the USB
 
 $TEST = "C:\KitchenDash-Test"
 function Say($m){ Write-Host "`n=== $m ===" -ForegroundColor Cyan }
@@ -122,3 +123,4 @@ Say "DONE"
 Write-Host "  Test dashboard should be at  http://192.168.0.33:8080" -ForegroundColor Cyan
 Write-Host "  Tell Claude it's up and it will verify the rest over the network."
 Write-Host "  This changed NOTHING on the Surface and holds no credentials."
+try{ Stop-Transcript | Out-Null }catch{}
