@@ -1160,6 +1160,14 @@ body.view-wall .confirm-btn{min-height:60px;font-size:17px;}
 .orun-order .q.count{font-size:12px;color:var(--amber);font-weight:700;letter-spacing:.03em;}
 .orun-row.needcount{border-color:var(--amber);}
 .orun-row.needcount .orun-have input{border-color:var(--amber);}
+.orun-acts{display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
+.orun-acts button{width:32px;height:32px;border-radius:8px;background:var(--surface);border:1px solid var(--border2);color:var(--muted);cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;}
+.orun-acts button:hover{color:var(--text);border-color:var(--amber);}
+.orun-acts button .ico{width:15px;height:15px;}
+.orun-acts button.on{background:var(--amber);border-color:var(--amber);color:#1a1200;}
+.orun-row.skipped{opacity:.45;border-style:dashed;}
+.orun-row.skipped .orun-have,.orun-row.skipped .orun-order{visibility:hidden;}
+.orun-row.skipped .orun-nm .s{color:var(--amber);}
 .orun-order .u{font-size:11px;color:var(--muted);display:block;font-weight:600;}
 .orun-ordwrap{display:flex;flex-direction:column;align-items:center;gap:5px;}
 .orun-adj{display:inline-flex;gap:6px;}
@@ -4459,12 +4467,13 @@ let _orunSup=null,_orunDay=null,_orunHave={};
 let _orunUnit={};   // pid -> 'base'|'alt'
 let _orunAdj={};    // pid -> manual +/- nudge on the calculated order (in base units)
 let _orunBatchOn={}, _orunBatch={}, _orunBatchRepl={};   // selected batches; per-item batch qty; per-item replace-flag
+let _orunSkip={};   // pid -> true: "not ordering this one today" — no count needed, left off the order
 function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
   const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
 }
 function openOrderRun(supId){
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
-  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={};
+  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={}; _orunSkip={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
@@ -4499,8 +4508,16 @@ function _orunRowHtml(p){
        +'<button class="'+(cu==='alt'?'on':'')+'" onclick="_orunSetUnit(\''+p.id+'\',\'alt\')">'+_mEsc(_orunAltName(p))+'</button>'
        +'</div>'
     : '';
-  return '<div class="orun-row'+(needCount?' needcount':'')+'" data-row="'+p.id+'">'
-    +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+sub+'</div></div>'
+  const skipped=!!_orunSkip[p.id];
+  const acts='<div class="orun-acts">'
+    +'<button title="Edit this item’s ordering rule" aria-label="Edit item" onclick="_orunEditProduct(\''+p.id+'\')">'
+      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
+    +'<button class="'+(skipped?'on':'')+'" title="'+(skipped?'Put this back on the order':'Skip — don’t order this today')+'" aria-label="Skip item" onclick="_orunToggleSkip(\''+p.id+'\')">'
+      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></button>'
+    +'</div>';
+  return '<div class="orun-row'+(needCount&&!skipped?' needcount':'')+(skipped?' skipped':'')+'" data-row="'+p.id+'">'
+    +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+(skipped?'skipped — not on this order':sub)+'</div></div>'
+    +acts
     +'<div class="orun-have"><input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
     +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c,p.id)+'</div>'
     +'</div>';
@@ -4531,7 +4548,17 @@ function _orunBatchPrompt(batchName,names,apply){
   window._baApply=apply; openModal('batchask-modal');
 }
 function _baChoose(replace){ closeModal('batchask-modal'); if(window._baApply){ window._baApply(replace); window._baApply=null; } }
-function _orunSetDay(d){_orunDay=d;_orunHave={};_orunAdj={};renderOrderRun();}
+function _orunSetDay(d){_orunDay=d;_orunHave={};_orunAdj={};renderOrderRun();}   // skips survive a day switch — skipping is a decision about the ITEM, not the day
+function _orunToggleSkip(pid){
+  if(_orunSkip[pid])delete _orunSkip[pid]; else _orunSkip[pid]=true;
+  renderOrderRun();
+}
+function _orunEditProduct(pid){
+  const i=(appData.products||[]).findIndex(x=>x.id===pid);
+  if(i<0){_toast&&_toast('Could not find that item.');return;}
+  window._orunEditing=true;      // so saving drops you back on the order list, not the settings list
+  editProduct(i);
+}
 function renderOrderRun(){
   const sup=_orunSup; if(!sup)return;
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
@@ -4630,7 +4657,7 @@ function _orunRecalc(pid){
 }
 function sendOrderRun(){
   const sup=_orunSup; if(!sup)return;
-  const supProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
+  const supProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id&&!_orunSkip[p.id]);   // skipped = deliberately left out
   const st=document.getElementById('orun-status');
   // SAFETY: every item that has a level for this run MUST be counted first — a blank is not zero.
   const uncounted=supProds.filter(p=>_orunCalc(p).state==='uncounted');
@@ -4830,7 +4857,9 @@ function saveProductEdit(){
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
-  editingProduct=null;saveAppData();closeModal('prod-edit-modal');renderProductAdmin();}
+  editingProduct=null;saveAppData();closeModal('prod-edit-modal');renderProductAdmin();
+  if(window._orunEditing){window._orunEditing=false;try{renderOrderRun();}catch(e){}}   // opened from the order list → refresh it in place
+}
 function removeProduct(i){appData.products.splice(i,1);saveAppData();renderProductAdmin();}
 
 // PACKDOWN
