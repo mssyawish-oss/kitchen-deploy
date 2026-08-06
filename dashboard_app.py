@@ -74,10 +74,13 @@ for _k,_v in (db.get("probe_names") or {}).items():
 timer_triggers={1:False,2:False,3:False,4:False}
 
 # ── shared batch timers (state lives in db so every device sees the same countdown) ──
+_MIN_TIMERS=4     # the four fixed slots (one per probe — trigger_timer_start indexes these directly)
+_MAX_TIMERS=12    # sanity cap so a runaway loop can't grow the board forever
 def _default_timers():
     s=settings["use_by_minutes"]*60
-    return [{"id":i,"label":"Batch %d"%(i+1),"total":s,"remaining":s,"running":False,"end_at":None,"expired":False} for i in range(4)]
-if not isinstance(db.get("timers"),list) or len(db.get("timers") or [])!=4:
+    return [{"id":i,"label":"Batch %d"%(i+1),"total":s,"remaining":s,"running":False,"end_at":None,"expired":False} for i in range(_MIN_TIMERS)]
+# len < MIN (not !=) so grown slots survive a restart instead of being wiped back to four
+if not isinstance(db.get("timers"),list) or len(db.get("timers") or [])<_MIN_TIMERS:
     db["timers"]=_default_timers(); save_data(db)
 
 def _batch_auto_start(temp=None):
@@ -86,13 +89,21 @@ def _batch_auto_start(temp=None):
     if db.get("batch_auto_start") is False: return
     now=time.time()
     with data_lock:
-        for i,t in enumerate(db.get("timers") or []):
-            if not t.get("running") and not t.get("expired"):
-                rem=int(t.get("total") or 7200)
-                t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem,
-                          "started_at":now,"start_temp":temp,"id":i})
-                save_data(db)
-                break
+        tl=db.get("timers") or []
+        slot=next((i for i,t in enumerate(tl) if not t.get("running") and not t.get("expired")),None)
+        if slot is None:
+            # Every slot busy. Five rows inside one 2h use-by window is a normal big night, and the
+            # old code silently dropped the batch — grow the board instead. Extras collapse again
+            # from the tail as they're ended (see api_timer).
+            if len(tl)>=_MAX_TIMERS: return
+            s=settings["use_by_minutes"]*60
+            tl.append({"id":len(tl),"label":"Batch %d"%(len(tl)+1),"total":s,"remaining":s,
+                       "running":False,"end_at":None,"expired":False})
+            db["timers"]=tl; slot=len(tl)-1
+        t=tl[slot]; rem=int(t.get("total") or 7200)
+        t.update({"running":True,"expired":False,"remaining":rem,"end_at":now+rem,
+                  "started_at":now,"start_temp":temp,"id":slot})
+        save_data(db)
 
 def _recent_pull_temp():
     """Best guess at 'the temp when they got pulled' for a batch started right after a pull:
@@ -5041,11 +5052,12 @@ def api_timer():
     d=request.get_json(silent=True) or {}
     try: i=int(d.get("id",-1))
     except (TypeError,ValueError): i=-1
-    if not (0<=i<4): return jsonify({"ok":False,"error":"bad id"})
+    if i<0: return jsonify({"ok":False,"error":"bad id"})
     action=str(d.get("action","")); now=time.time()
     try: val=int(d.get("value",0))
     except (TypeError,ValueError): val=0
     with data_lock:
+        if i>=len(db["timers"]): return jsonify({"ok":False,"error":"bad id"})   # board may have grown/shrunk
         t=db["timers"][i]
         cur=max(0,int(round(t["end_at"]-now))) if (t.get("running") and t.get("end_at")) else int(t.get("remaining",0))
         if action=="start":
@@ -5064,6 +5076,13 @@ def api_timer():
             if t.get("started_at"): t["id"]=i; _batch_log_add(t,now,bool(t.get("expired")))
             t.update({"running":False,"expired":False,"end_at":None,"remaining":t["total"],
                       "started_at":None,"start_temp":None})
+            # collapse grown slots from the TAIL only — popping a middle one would renumber the
+            # batches still counting down on the wall.
+            tl=db["timers"]
+            while len(tl)>_MIN_TIMERS:
+                last=tl[-1]
+                if last.get("running") or last.get("expired") or last.get("started_at"): break
+                tl.pop()
         elif action=="label":
             t["label"]=str(d.get("value",""))[:40]
         elif action=="settotal":

@@ -3615,7 +3615,12 @@ function syncTimers(serverTimers,batchLog){
   if(!Array.isArray(serverTimers))return;
   let structural=false;
   serverTimers.forEach(st=>{
-    const t=timers[st.id];if(!t)return;
+    let t=timers[st.id];
+    if(!t){   // server grew the board (a 5th+ row inside one use-by window) — grow with it
+      while(timers.length<=st.id)timers.push({id:timers.length,batch:'Batch '+(timers.length+1),
+        remaining:0,total:DEFAULT_USE_BY*60,running:false,expired:false,interval:null});
+      t=timers[st.id];structural=true;
+    }
     if(t.running!==st.running||t.expired!==st.expired||t.total!==st.total)structural=true;
     // don't stomp a label the user is currently typing
     const lblInput=document.querySelector('#tc'+st.id+' .batch-input');
@@ -3626,6 +3631,10 @@ function syncTimers(serverTimers,batchLog){
     if(st.expired&&!t._alarmed){t._alarmed=true;playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}
     if(!st.expired){t._alarmed=false;if(typeof alarms!=='undefined'&&alarms[st.id]&&typeof stopAlarm==='function')stopAlarm(st.id);}   // ended/confirmed/reset on ANY dash → stop this batch timer's alarm here too
   });
+  // server collapsed grown slots again → drop ours too, clearing their tickers
+  while(timers.length>serverTimers.length&&serverTimers.length>=4){
+    const gone=timers.pop();if(gone&&gone.interval)clearInterval(gone.interval);structural=true;
+  }
   const _bl=JSON.stringify(batchLog||[]);
   if(_bl!==window._batchLogStr){window._batchLogStr=_bl;window._batchLog=batchLog||[];structural=true;}
   if(structural)renderTimers();else timers.forEach(t=>updateT(t.id));
