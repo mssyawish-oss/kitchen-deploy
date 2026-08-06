@@ -5507,11 +5507,38 @@ def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     except Exception as e:
         return False,str(e)[:160]
 
+def _relay_label_print(img,qty=1):
+    """Hand the rendered label to ANOTHER dash on the LAN that still has Bluetooth and the NIIMBOT
+    pairing, and let that one do the BLE print.
+
+    Why: bleak drives Bluetooth through WinRT, which is Windows 10+ only, and Windows Server has no
+    Bluetooth stack at all — so a dash running on a server can never talk to the NIIMBOT no matter
+    what dongle is fitted. The 80mm network printer works but its paper barely sticks. This keeps the
+    label printer exactly where it already works and moves only the bytes."""
+    cfg=_label_cfg(); url=(cfg.get("relay_url") or "").strip()
+    if not url: return False,"No label relay set — point it at the machine holding the NIIMBOT"
+    if not url.lower().startswith(("http://","https://")): url="http://"+url
+    url=url.rstrip("/")
+    if not url.endswith("/api/label_relay"): url+="/api/label_relay"
+    import io as _io
+    buf=_io.BytesIO(); img.save(buf,format="PNG")
+    hdr={"Content-Type":"image/png"}
+    key=(cfg.get("relay_key") or "").strip()
+    if key: hdr["X-Label-Key"]=key
+    try:
+        req=urllib.request.Request("%s?qty=%d"%(url,max(1,int(qty))),data=buf.getvalue(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=45,context=SSL_CTX) as r:
+            res=json.loads((r.read().decode() or "{}"))
+        return (True,None) if res.get("ok") else (False,(res.get("error") or "the relay refused it"))
+    except Exception as e:
+        return False,"can't reach the label relay: %s"%str(e)[:110]
+
 def _print_label(img,qty=1):
-    """Send a rendered label to whichever printer is selected. 'network' is the 80mm ESC/POS printer;
-    anything else keeps the original NIIMBOT Bluetooth path untouched."""
-    if (_label_cfg().get("mode") or "niimbot")=="network":
-        ok,err=_network_label_print(img,qty)
+    """Send a rendered label to whichever printer is selected. 'network' is the 80mm ESC/POS printer,
+    'relay' hands it to another machine's Bluetooth NIIMBOT; anything else prints over BLE here."""
+    m=(_label_cfg().get("mode") or "niimbot")
+    if m in ("network","relay"):
+        ok,err=(_network_label_print if m=="network" else _relay_label_print)(img,qty)
         _niim_note(ok,err)          # same status light, so the dashboard reflects whichever is in use
         return ok
     return _niimbot_print(img,qty)
@@ -5793,7 +5820,9 @@ def api_label_printer():
         d=request.get_json(silent=True) or {}
         with data_lock:
             c=dict(db.get("label_printer") or {})
-            if "mode" in d: c["mode"]="network" if d.get("mode")=="network" else "niimbot"
+            if "mode" in d: c["mode"]=d.get("mode") if d.get("mode") in ("network","relay","niimbot") else "niimbot"
+            if "relay_url" in d: c["relay_url"]=str(d.get("relay_url") or "").strip()[:200]
+            if "relay_key" in d: c["relay_key"]=str(d.get("relay_key") or "").strip()[:80]
             if "ip" in d: c["ip"]=re.sub(r"[^0-9a-zA-Z.\-:]","",str(d.get("ip") or ""))[:60]
             if "port" in d:
                 try: c["port"]=max(1,min(65535,int(d.get("port") or PRINTER_PORT)))
@@ -5802,7 +5831,30 @@ def api_label_printer():
             db["label_printer"]=c; save_data(db)
     c=_label_cfg()
     return jsonify({"ok":True,"mode":c.get("mode") or "niimbot","ip":c.get("ip",""),
-                    "port":c.get("port") or PRINTER_PORT,"format":c.get("format") or "escpos"})
+                    "port":c.get("port") or PRINTER_PORT,"format":c.get("format") or "escpos",
+                    "relay_url":c.get("relay_url",""),"relay_key":c.get("relay_key","")})
+
+@app.route("/api/label_relay",methods=["POST"])
+def api_label_relay():
+    """Print a label another dash rendered, on THIS machine's Bluetooth NIIMBOT.
+    Body = raw PNG, ?qty=N. LAN-only by design; set label_printer.relay_key on BOTH ends to lock it."""
+    cfg=_label_cfg(); key=(cfg.get("relay_key") or "").strip()
+    if key and request.headers.get("X-Label-Key","")!=key:
+        return jsonify({"ok":False,"error":"bad relay key"}),403
+    data=request.get_data() or b""
+    if not data: return jsonify({"ok":False,"error":"no image sent"})
+    try: qty=max(1,min(50,int(request.args.get("qty") or 1)))
+    except (TypeError,ValueError): qty=1
+    try:
+        from PIL import Image; import io
+        img=Image.open(io.BytesIO(data)); img.load()
+    except Exception as e:
+        return jsonify({"ok":False,"error":"unreadable image: %s"%str(e)[:80]})
+    try:
+        ok=_niimbot_print(img,qty)
+        return jsonify({"ok":bool(ok),"error":None if ok else "NIIMBOT didn't take it (paired and awake?)"})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:140]})
 
 @app.route("/api/label_printer_test",methods=["POST"])
 def api_label_printer_test():
