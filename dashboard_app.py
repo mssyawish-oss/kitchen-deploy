@@ -7009,6 +7009,73 @@ def _self_update_once():
     with open(_SELFUP_STATE,"w",encoding="utf-8") as fh: json.dump({"sha":sha},fh)
     if wrote: print(f"self-update: now on {sha[:7]} ({wrote} file(s))")
     return "restart" if backend_changed else ("updated" if wrote else "clean")
+def _http_date_skew():
+    """Local clock minus real time, in seconds, measured from HTTPS Date headers (median of
+    whichever of these big, always-on hosts answer). Positive = this machine runs fast."""
+    skews=[]
+    for u in ("https://www.google.com","https://www.cloudflare.com","https://www.microsoft.com"):
+        try:
+            t0=time.time()
+            req=urllib.request.Request(u,method="HEAD",headers={"User-Agent":"brunos-dashboard"})
+            with urllib.request.urlopen(req,timeout=10,context=SSL_CTX) as r:
+                dh=r.headers.get("Date")
+            if not dh: continue
+            import email.utils as _eu
+            server=_eu.parsedate_to_datetime(dh).timestamp()
+            skews.append(((t0+time.time())/2)-server)      # compare against the midpoint of the request
+        except Exception: continue
+    if not skews: return None
+    skews.sort(); return skews[len(skews)//2]
+
+def clock_guard_loop():
+    """Windows-only: keep the system clock honest. The ORDERMATE server (2012 R2, workgroup, years
+    powered off) booted 37 minutes fast on 7 Aug 2026 — every RFX cloud reading then looked stale and
+    the dash showed no probe temps, and use-by labels printed 37 min ahead. A workgroup box like this
+    has no domain time source, so the dash — which runs with admin rights there — corrects it itself."""
+    if sys.platform!="win32": return
+    time.sleep(30)
+    while True:
+        try:
+            skew=_http_date_skew()
+            if skew is not None and abs(skew)>90:
+                import subprocess
+                r=subprocess.run(["powershell","-NoProfile","-Command",
+                    "Set-Date -Date (Get-Date).AddSeconds(%.1f)"%(-skew)],
+                    capture_output=True,text=True,timeout=30)
+                ok=(r.returncode==0)
+                print("clock_guard: clock was %+.0fs -> %s"%(skew,"corrected" if ok else ("FAILED: "+(r.stderr or "")[:120])))
+            elif skew is not None:
+                pass                                        # within tolerance — say nothing
+        except Exception as e: print("clock_guard:",e)
+        time.sleep(3600)
+
+def photo_restore_once():
+    """One-shot after a server migration: kitchen_data.json travels over the API but the task_photos
+    FILES don't. If db['photo_restore_url'] is set (only ever pushed to the NEW server), fetch the
+    manifest + every photo from the old server's relay instance over the LAN, then clear the key."""
+    time.sleep(20)
+    src=(db.get("photo_restore_url") or "").strip().rstrip("/")
+    if not src: return
+    try:
+        man=json.loads(urllib.request.urlopen(src+"/photos/photo_manifest.json",timeout=30).read())
+        names=[n for n in man.get("files",[]) if re.match(r'^[A-Za-z0-9_.-]+$',n or "")]
+        got=skip=fail=0
+        for n in names:
+            dest=os.path.join(PHOTOS_DIR,n)
+            if os.path.exists(dest): skip+=1; continue
+            try:
+                data=urllib.request.urlopen(src+"/photos/"+urllib.parse.quote(n),timeout=60).read()
+                if data[:3] in (b"\xff\xd8\xff",b"\x89PN"):     # JPEG / PNG only
+                    with open(dest,"wb") as fh: fh.write(data)
+                    got+=1
+                else: fail+=1
+            except Exception: fail+=1
+        print("photo_restore: %d fetched, %d already here, %d failed (of %d)"%(got,skip,fail,len(names)))
+        if fail==0:
+            with data_lock: db.pop("photo_restore_url",None); save_data(db)   # done — never runs again
+    except Exception as e:
+        print("photo_restore:",e)                            # key stays set → retried on next restart
+
 def self_update_loop():
     if not _selfup_on():
         print("self-update: off on this machine");return
@@ -7080,6 +7147,8 @@ if __name__=="__main__":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
     threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
+    threading.Thread(target=clock_guard_loop,daemon=True).start()                  # ORDERMATE booted 37 min fast → probe readings all "stale"; keeps the clock honest
+    threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
