@@ -1628,12 +1628,14 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       </div>
     </div>
     <div class="page" id="page-stock">
-      <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="resetStockCounts()">Reset counts</button><button class="btn" onclick="openStockAdmin()">Setup</button><button class="btn btn-primary" onclick="openOrderModal()">Place Order</button></div></div>
-      <input class="stk-search" id="stock-search" placeholder="Search items…" oninput="setStockSearch(this.value)">
-      <div class="stk-status-tabs" id="stock-status-tabs"></div>
-      <div class="stock-filter-chips" id="stock-filter-chips"></div>
-      <div class="stk-summary" id="stock-summary"></div>
-      <div id="stock-list"></div><div id="stock-empty" class="empty-state"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
+      <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button></div></div>
+      <div id="orun-sups" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
+      <div class="orun-runs" id="orun-runs"></div>
+      <div style="font-size:12px;color:var(--muted);margin:6px 2px 10px;">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div>
+      <div id="orun-list"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Send order to supplier</button>
+      <div id="orun-status" style="font-size:12.5px;margin-top:8px;min-height:16px;text-align:center;"></div>
+      <div id="stock-empty" class="empty-state" style="display:none;"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
     </div>
     <div class="page" id="page-packdown">
       <div class="page-header"><div class="page-title">Packdown &amp; Cleaning Checklist</div><div class="row" style="gap:6px;"><button class="btn" onclick="openPackdownAdmin()">Setup</button><button class="btn btn-danger" id="packdown-reset-btn" onclick="resetPackdown()">Reset</button></div></div>
@@ -2546,17 +2548,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
   </div>
 </div>
 
-<!-- Order run: top-up-to-par count screen (per supplier, per order day) -->
-<div class="modal-overlay" id="orderrun-modal">
-  <div class="modal">
-    <div class="modal-header"><div class="modal-title" id="orun-title">Order</div><button class="modal-close" onclick="closeModal('orderrun-modal')">Close</button></div>
-    <div class="orun-runs" id="orun-runs"></div>
-    <div style="font-size:12px;color:var(--muted);margin:6px 2px 10px;">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div>
-    <div id="orun-list"></div>
-    <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Send order to supplier</button>
-    <div id="orun-status" style="font-size:12.5px;margin-top:8px;min-height:16px;text-align:center;"></div>
-  </div>
-</div>
+<!-- Order run now lives directly on the Stock page (owner, 7 Aug: "no landing page — one screen") -->
+<div class="modal-overlay" id="orderrun-modal" style="display:none!important;"></div>
 
 <div class="modal-overlay" id="order-modal">
   <div class="modal">
@@ -4564,8 +4557,26 @@ function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};con
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
 function updateStockSummary(){const el=document.getElementById('stock-summary');if(el)el.style.display='none';}   // retired: supplier order buttons replace this
 function renderStockPage(){
+  // The Stock page IS the order screen now (owner, 7 Aug: "no landing page — one screen").
+  // Pick the sensible default supplier: one with an order run TODAY, else keep the current one, else first.
+  const products=appData.products||[],suppliers=appData.suppliers||[];
+  const emptyEl=document.getElementById('stock-empty');
+  if(!products.length||!suppliers.length){if(emptyEl)emptyEl.style.display='block';const l=document.getElementById('orun-list');if(l)l.innerHTML='';return;}
+  if(emptyEl)emptyEl.style.display='none';
+  const withProducts=suppliers.filter(s=>products.some(p=>p.supplier_id===s.id));
+  const today=_todayIdx();
+  if(!_orunSup||!withProducts.some(s=>s.id===_orunSup.id)){
+    const due=withProducts.find(s=>(s.order_days||[]).includes(today));
+    openOrderRun((due||withProducts[0]).id);
+    return;
+  }
+  _orunRenderSups();
+  renderOrderRun();
+}
+function _renderStockPage_legacy(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const list=document.getElementById('stock-list'),empty=document.getElementById('stock-empty');
+  if(!list)return;   // legacy stock-count list retired 7 Aug — markup removed, kept for reference
   // build category filter chips from suppliers that actually have products
   const cats=[];suppliers.forEach(s=>{if((products||[]).some(p=>p.supplier_id===s.id)){const c=s.category||'Uncategorised';if(!cats.includes(c))cats.push(c);}});
   const chipBox=document.getElementById('stock-filter-chips');
@@ -4618,14 +4629,26 @@ function _orunNextOrderDay(days,from){ // label: which day this run lasts until 
   const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
 }
 function openOrderRun(supId){
+  // one screen now: selecting a supplier re-points the Stock page's order run (no modal)
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
   _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={}; _orunSkip={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
-  document.getElementById('orun-title').textContent='Order — '+sup.name;
-  openModal('orderrun-modal');
+  _orunRenderSups();
   renderOrderRun();
+}
+function _orunRenderSups(){
+  const el=document.getElementById('orun-sups'); if(!el)return;
+  const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
+  const today=_todayIdx();
+  el.innerHTML=sups.map(s=>{
+    const on=_orunSup&&_orunSup.id===s.id;
+    const todayRun=(s.order_days||[]).includes(today);
+    return '<button class="btn'+(on?' btn-primary':'')+'" style="height:44px;font-size:13.5px;'+(on?'':'opacity:.85;')+'" onclick="openOrderRun(\''+s.id+'\')">'
+      +_mEsc(s.name)+(todayRun?' <span style="font-size:10.5px;background:var(--amber);color:#1a1200;border-radius:7px;padding:1px 6px;margin-left:5px;font-weight:800;">TODAY</span>':'')
+      +'</button>';
+  }).join('');
 }
 function _orunRenderBatches(){
   let el=document.getElementById('orun-batches');
@@ -4827,7 +4850,8 @@ function sendOrderRun(){
   }).catch(()=>{if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
 function openOrderModal(){
-  // supplier chooser → each opens its top-up-to-par order run (new) or the legacy day flow
+  navTo('stock');return;   // one screen now — the Stock page IS the order screen
+  // (legacy chooser below, unreachable)
   const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
   if(!sups.length){_toast&&_toast('Add a supplier and products first.');return;}
   const box=document.getElementById('order-preview');
