@@ -6438,14 +6438,18 @@ function openStaffPick(){
   const pick=g('lbl-staff-pick'); if(pick)pick.innerHTML='<div style="color:var(--muted);font-size:13px;">Loading who’s on…</div>';
   openModal('lbl-staff-modal');
   const _drawAll=()=>{ const names=_kitchenStaff(); if(pick)pick.innerHTML=names.length?names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''):'<div style="color:var(--muted);font-size:13px;">No kitchen staff yet — add them in Settings → Staff.</div>'; };
+  const noneOn=()=>{ if(pick)pick.innerHTML='<div style="color:var(--muted);font-size:13px;">Nobody is clocked in.</div>'
+      +'<button class="btn mt-8" onclick="_lblManualStaff()">Print without a name (Manager)</button>'; };
   fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
     let names=((d&&d.names)||[]).filter(Boolean);
     if(!pick)return;
     if(names.length){ pick.innerHTML=names.map(n=>'<div class="lbl-chip" onclick="_lblPickAndPrint('+_jsq(n)+')">'+_mEsc(n)+'</div>').join(''); }
-    else { _drawAll(); const ss=g('lbl-sm-status'); if(ss)ss.textContent='(Nobody clocked on — showing all staff.)'; }
-  }).catch(_drawAll);
+    else { noneOn(); }
+  }).catch(noneOn);
 }
 function _lblPickAndPrint(name){ _lblStaff=name; closeModal('lbl-staff-modal'); _doPrintLabels(); }
+function _lblManualStaff(){ requirePin('Manager PIN','Print a label with no staff name',()=>{ _lblStaff=''; closeModal('lbl-staff-modal'); _doPrintLabels(); }, SETTINGS_ROLES); }
+function _pl2ManualStaff(){ requirePin('Manager PIN','Print this label with no staff name',()=>{ _pl2Staff=''; _pl2Prev(); _pl2Print&&_pl2Print(); }, SETTINGS_ROLES); }
 function _doPrintLabels(){
   const st=document.getElementById('lbl-status');
   const shelf=parseFloat((document.getElementById('lbl-shelf')||{}).value)||0;
@@ -6492,12 +6496,15 @@ function _pl2Open(id){
     el.innerHTML='<span style="color:var(--muted);font-size:12.5px;">Loading who&rsquo;s on&hellip;</span>';
     const draw=names=>{el.innerHTML=names.length?names.map(n=>'<div class="lbl-chip'+(_pl2Staff===n?' on':'')+'" onclick="_pl2Pick('+_jsq(n)+')">'+_mEsc(n)+'</div>').join('')
       :'<span style="color:var(--muted);font-size:12.5px;">No staff yet &mdash; add them in Settings &rarr; Staff.</span>';};
-    const all=()=>draw(_kitchenStaff());
+    // Nobody clocked in => show NO names (a label stamped with someone who wasn't there is a
+    // food-safety record that lies). Offer a Manager/Admin-PIN manual print instead.
+    const none=()=>{el.innerHTML='<span style="color:var(--muted);font-size:12.5px;">Nobody is clocked in.</span>'
+      +'<button class="btn" style="margin-left:8px;" onclick="_pl2ManualStaff()">Print without a name (Manager)</button>';};
     fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
       const n=((d&&d.names)||[]).filter(Boolean);
       if(n.length===1){_pl2Staff=n[0];_pl2Prev();}   // only one person on — preselect them
-      n.length?draw(n):all();
-    }).catch(all);
+      n.length?draw(n):none();
+    }).catch(none);
   }
   openModal('preplbl-modal');
 }
