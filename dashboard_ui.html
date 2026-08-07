@@ -1544,6 +1544,12 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 .staff-pin{flex:0 0 74px;font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:right;}
 .staff-row .staff-edit,.staff-row .staff-del{flex:0 0 auto;padding:4px 10px;font-size:12px;}
 </style>
+<style id="po-prog-css">
+.po-status-box{border:1.5px solid var(--amber);border-radius:10px;padding:10px 14px;margin:2px 0 10px;display:flex;flex-direction:column;gap:8px;background:var(--surface2);}
+.po-prog{height:6px;border-radius:4px;background:var(--border2);overflow:hidden;}
+.po-prog-fill{height:100%;width:40%;border-radius:4px;background:var(--amber);animation:poprog 1.1s ease-in-out infinite;}
+@keyframes poprog{0%{margin-left:-40%}100%{margin-left:100%}}
+</style>
 </head>
 <body>
 <div id="lock-screen">
@@ -2476,7 +2482,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     </div>
     <div id="pe-mode-help" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
     <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"></select></div>
-    <div id="pe-reorder-row" class="grid-2 mt-8"><div><div class="label" id="pe-reorder-label">Reorder when below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:110px;"></select></div></div><div><div class="label" id="pe-pack-label">Order in lots of <span style="color:var(--muted);font-weight:400;">(the unit is what the supplier sells in)</span></div><div class="row" style="gap:6px;"><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;"><select class="input" id="pe-order-unit" style="width:110px;"></select></div></div></div>
+    <div id="pe-reorder-row" class="mt-8"><div class="label" id="pe-reorder-label">Reorder when below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:130px;"></select></div></div>
+    <div id="pe-order-row" class="mt-8"><div class="label" id="pe-pack-label">Order in lots of <span style="color:var(--muted);font-weight:400;">(and the unit the supplier sells in \u2014 applies to both order modes)</span></div><div class="row" style="gap:6px;"><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;"><select class="input" id="pe-order-unit" style="width:130px;"></select></div></div>
     <div id="pe-targets-row" style="display:none;">
       <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;">
@@ -4802,14 +4809,17 @@ function _orunCalc(p){
     if(order>0) state='order';
     else if(state!=='uncounted'&&state!=='nolevel') state='ok';
   }
-  const mode2=p.order_mode||'topup';
   const psz=parseFloat(p.pack_size)||1;
   let orderUnit=(p.unit||'unit'),orderQty=order,orderBoth=false;
-  if(mode2==='reorder'&&psz>1&&p.pack_unit){
-    if(p.order_unit==='pack'){orderUnit=p.pack_unit;}                      // lots ARE cartons
-    else if(p.order_unit==='both'){                                        // lots are BASE; staff choose the outgoing unit
+  // Order-unit conversion applies to BOTH reorder AND daily-target modes (owner, 8 Aug: potato buns
+  // are on daily targets, counted in sleeves, but the SUPPLIER only sells boxes — so 3 sleeves short
+  // must become "1 box", not "17 sleeves"). order is always in base (count) units; convert to the
+  // supplier's unit, rounding UP to a whole pack since you can't buy a part-box.
+  if(psz>1&&p.pack_unit){
+    if(p.order_unit==='pack'){orderUnit=p.pack_unit; if(order!=null)orderQty=Math.ceil(order/psz);}
+    else if(p.order_unit==='both'){
       orderBoth=true;
-      if((_orunOrdUnit[p.id]||'base')==='pack'&&order!=null){orderUnit=p.pack_unit;orderQty=Math.round(order/psz*100)/100;}
+      if((_orunOrdUnit[p.id]||'base')==='pack'&&order!=null){orderUnit=p.pack_unit;orderQty=Math.ceil(order/psz);}
     }
   }
   return {parN,haveN,order,state,unit:(p.unit||'unit'),orderUnit,orderQty:(orderQty==null?order:orderQty),orderBoth,batch:badd,adj:(isNaN(adj)?0:adj)};
@@ -5783,8 +5793,13 @@ function prodOffNeverToggle(i){
   if(ix>=0)appData.prodoff_never.splice(ix,1);else appData.prodoff_never.push(g.name);
   saveKeys(['prodoff_never']);_prodOffRenderModal();
 }
-function _poStatus(msg,col){const s=document.getElementById('po-status');if(!s)return;
-  s.innerHTML=msg?('<div style="font-size:11.5px;color:'+(col||'var(--muted)')+';margin:-2px 0 9px;">'+msg+'</div>'):'';}
+function _poStatus(msg,col,busy){const s=document.getElementById('po-status');if(!s)return;
+  if(!msg){s.innerHTML='';return;}
+  // A clear, large status with a moving progress bar while busy — so staff can SEE it working
+  // (owner, 8 Aug: the tiny note looked like nothing was happening).
+  const bar=busy?'<div class="po-prog"><div class="po-prog-fill"></div></div>':'';
+  s.innerHTML='<div class="po-status-box" style="border-color:'+(col||'var(--amber)')+';color:'+(col||'var(--text)')+';">'
+    +'<span style="font-size:15px;font-weight:700;">'+msg+'</span>'+bar+'</div>';}
 function _poSummary(lg){
   lg=lg||appData.prodoff_autolog||{};
   const d=new Date(),local=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -5841,20 +5856,41 @@ function _prodOffRenderModal(){
     +'<button class="po-btn" onclick="prodOffSilenceAll(\'hour\')">Silence all &mdash; 1 hr</button>'
     +'<button class="po-btn" onclick="prodOffSilenceAll(\'day\')">Silence all &mdash; today</button></div>'):'';
   el.innerHTML=banner+_pdOffGroups().map((g,i)=>{
-    const tags=g.tags.map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('');
+    // header row per PRODUCT with a "turn on ALL sizes", then one row per SIZE so any single size
+    // can go back on its own (owner, 8 Aug: sizes were lumped together, couldn't revive just one)
     const until=_pdOffGroupMutedUntil(g);
     const sil=(until>Date.now())
       ?'<span style="font-size:11px;color:var(--muted);align-self:center;">silenced '+_pdOffWhen(until).replace('at','until')+'</span><button class="po-btn" onclick="prodOffUnmuteG('+i+')">Unsilence</button>'
       :'<button class="po-btn" onclick="prodOffMuteG('+i+',\'hour\')">Silence 1 hr</button><button class="po-btn" onclick="prodOffMuteG('+i+',\'day\')">Silence today</button>';
     const nev=_pdOffNever(g.name)?' checked':'';
-    return '<div class="prodoff-row">'
+    const members=_prodOffList.filter(p=>(p.item||'?')===g.name);
+    const multi=members.length>1;
+    let rows='<div class="prodoff-row" style="align-items:flex-start;">'
       +'<div style="min-width:0;flex:1;">'
-        +'<div class="prodoff-name">'+_mEsc(g.name)+tags+'</div>'
+        +'<div class="prodoff-name">'+_mEsc(g.name)+(multi?(' <span class="prodoff-tag">'+members.length+' off</span>'):'')+'</div>'
         +'<label class="po-never"><span class="po-sw sm"><input type="checkbox"'+nev+' onchange="prodOffNeverToggle('+i+')"><span class="po-sl"></span></span>Never auto-on</label>'
       +'</div>'
-      +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnG('+i+')">Turn on</button>'+sil+'</div>'
+      +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnG('+i+')">Turn on'+(multi?' all':'')+'</button>'+sil+'</div>'
     +'</div>';
+    if(multi){
+      rows+=members.map(m=>{
+        const t=(m.kind==='modifier')?'ADD-ON':((m.variation&&m.variation.toLowerCase()!=='regular')?m.variation:'Regular');
+        return '<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;">'
+          +'<div class="prodoff-name" style="font-size:13px;font-weight:600;flex:1;">'+_mEsc(t)+'</div>'
+          +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnOne(\''+m.id+'\')">Turn on</button></div>'
+        +'</div>';
+      }).join('');
+    }
+    return rows;
   }).join('')+_poNeverChips();
+}
+function prodOffTurnOnOne(id){
+  _poStatus('Switching on&hellip;',null,true);
+  fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+    .then(r=>r.json()).then(d=>{
+      _poStatus(d&&d.ok?'Switched on \u2713':( (d&&/add-on/i.test(d.error||''))?'This add-on must be switched on in the Square app':'Could not switch on'),d&&d.ok?'var(--green)':'var(--red)');
+      checkProductsOff();
+    }).catch(()=>_poStatus('Could not reach the server',/**/'var(--red)'));
 }
 function prodOffSilenceAll(mode){_prodOffMuteAll(mode==='hour'?3600000:undefined);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');_prodOffRenderModal();}
 function _poNeverChips(){
@@ -5892,7 +5928,7 @@ async function _poDoSwitchOff(it){
 }
 function poSwitchOffAll(){const hits=_poHits.slice();if(!hits.length)return;
   _askConfirm('Switch off ALL '+hits.length+' results?','Every listed product/add-on gets marked unavailable in Square.',async()=>{
-    _poStatus('Switching off '+hits.length+' products&hellip;');
+    _poStatus('Switching off '+hits.length+' products&hellip;',null,true);
     let ok=0,fail=0,lastErr='';
     for(const it of hits){const r=await _poDoSwitchOff(it);ok+=r.ok;fail+=r.fail;if(r.lastErr)lastErr=r.lastErr;}
     _poStatus(ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed'+(lastErr?(' &mdash; '+_mEsc(lastErr)):'')+'</span>'):''),fail?'var(--red)':'var(--green)');
@@ -5900,7 +5936,7 @@ function poSwitchOffAll(){const hits=_poHits.slice();if(!hits.length)return;
   },'Switch all off');}
 function poSwitchOff(i){const it=_poHits[i];if(!it)return;
   _askConfirm('Switch off '+it.name+'?','Marks '+(it.ids.length>1?('all '+it.ids.length+' sizes'):'it')+' SOLD OUT in Square — on the POS and online too.',async()=>{
-    _poStatus('Switching off '+_mEsc(it.name)+'&hellip;');
+    _poStatus('Switching off '+_mEsc(it.name)+'&hellip;',null,true);
     const r=await _poDoSwitchOff(it);
     _poStatus(_mEsc(it.name)+': '+r.ok+' switched off'+(r.fail?(' &middot; <span style="color:var(--red);">'+r.fail+' failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>'):''),r.fail?'var(--red)':'var(--green)');
     checkProductsOff();poSearch();
