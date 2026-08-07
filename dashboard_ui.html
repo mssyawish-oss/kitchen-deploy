@@ -922,12 +922,13 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .lb-title{font-weight:700;color:var(--amber);font-size:15px;}
 .lb-sub{font-size:13px;color:var(--muted);}
 @keyframes lb-pulse{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,.45);}50%{box-shadow:0 0 0 7px rgba(251,191,36,0);}}
-#alarm-overlay{display:none;position:fixed;inset:0;z-index:500;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#04050a;}
+#alarm-overlay{display:none;position:fixed;inset:0;z-index:500;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:rgba(4,5,10,.88);backdrop-filter:blur(6px);}
 #alarm-overlay.active{display:flex;}
-.alarm-card{background:#161b24;border:3px solid var(--alarm-accent,#ef4444);border-radius:22px;padding:30px 28px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 22px 60px rgba(0,0,0,.7);animation:alarm-card-pulse 1.5s ease-in-out infinite;}
+.alarm-card{background:#14171e;border:1px solid rgba(251,155,36,.45);border-radius:20px;padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 @keyframes alarm-card-pulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 26px -8px var(--alarm-accent,#ef4444);}50%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 64px 2px var(--alarm-accent,#ef4444);}}
-.alarm-bell{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;background:rgba(255,255,255,.07);color:var(--alarm-accent,#ef4444);}
-.alarm-silence-btn{background:var(--alarm-accent,#ef4444);color:#fff;border:none;padding:17px 40px;border-radius:14px;font-size:19px;font-weight:800;cursor:pointer;width:100%;margin-top:24px;letter-spacing:.02em;}
+.alarm-bell{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(251,155,36,.08);border:2px solid #fb9b24;color:#fb9b24;box-shadow:0 0 26px rgba(251,155,36,.25);}
+.alarm-silence-btn{background:transparent;color:#e7e9ee;border:1px solid rgba(255,255,255,.22);padding:15px 20px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;width:100%;margin-top:18px;letter-spacing:.02em;}
+.alarm-silence-btn:active{transform:scale(.98);}
 
 /* ── PROBES — large display ── */
 .probes-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
@@ -986,10 +987,10 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 #probe-alert{display:none;position:fixed;inset:0;z-index:450;background:rgba(4,5,10,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;}
 #probe-alert.show{display:flex;}
 .pa-inner{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:94vw;max-height:92vh;overflow:auto;}
-.pa-card{background:linear-gradient(180deg,#191b24,#101117);border:2px solid var(--border2);border-radius:20px;padding:22px 30px;min-width:250px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 24px 60px rgba(0,0,0,.65);}
-.pa-card.almost{border-color:var(--amber);animation:flash-amber 1s infinite;}
-.pa-card.ready{border-color:var(--green);animation:flash-green .8s infinite;}
-.pa-card.overdone{border-color:var(--red);animation:flash-red .5s infinite;}
+.pa-card{background:#14171e;border:1px solid rgba(251,155,36,.45);border-radius:20px;padding:24px 30px;min-width:250px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 24px 70px rgba(0,0,0,.75);}
+.pa-card.almost{animation:flash-amber 1.2s infinite;}
+.pa-card.ready{animation:flash-amber 1s infinite;}
+.pa-card.overdone{animation:flash-amber .6s infinite;}
 .pa-badge{font-family:var(--font-mono);font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--muted);}
 .pa-name{font-size:19px;font-weight:800;color:var(--text);line-height:1.2;}
 .pa-temp{font-family:var(--font-mono);font-size:60px;font-weight:700;line-height:1;}
@@ -1567,7 +1568,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="alarm-bell"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
     <div style="font-size:29px;font-weight:800;color:#fff;line-height:1.2;" id="alarm-title">REMINDER</div>
     <div style="font-size:16px;color:#c7ccd6;line-height:1.5;margin:12px auto 0;max-width:430px;" id="alarm-sub"></div>
-    <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#16a34a;margin-top:14px;"></button>
+    <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#fb9b24;border-color:#fb9b24;color:#1a1200;font-weight:800;margin-top:14px;"></button>
     <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
       <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:96px;" onclick="_ovSnooze(1)">SILENCE 1 MIN</button>
       <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(5)">5 MIN</button>
@@ -2772,15 +2773,51 @@ function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key
 // shouldn't. Muting is stored on the device only (localStorage), and silences the SOUND only: the flash,
 // the alarm bar and the on-screen cue still show, so a muted device still tells you what's happening.
 function _devMutes(){try{return JSON.parse(localStorage.getItem('alarmMutes')||'{}')||{};}catch(e){return {};}}
-function _devMuted(key){return _devMutes()[key]===true;}
+function _devMuted(key){
+  const e=((appData.device_prefs||{})[ (function(){try{return localStorage.getItem('devName')||''}catch(x){return ''}})() ])||{};
+  if(e.mute&&key in e.mute)return e.mute[key]===true;
+  return _devMutes()[key]===true;
+}
+function _devMutedFor(name,key){const e=((appData.device_prefs||{})[name])||{};return !!(e.mute&&e.mute[key]);}
 // Per-screen POPUP routing (owner, 7 Aug: kitchen kiosk needs prep reminders, the FOH iPad doesn't).
 // Stored on the device like the sound mute; hides popup+banner+sound for that alarm on THIS screen only.
 function _devPopMutes(){try{return JSON.parse(localStorage.getItem('alarmPopMutes')||'{}')||{};}catch(e){return {};}}
-function _devPopMuted(key){return _devPopMutes()[key]===true;}
-function _devPopSet(key,on){const m=_devPopMutes();if(on)m[key]=true;else delete m[key];
-  try{localStorage.setItem('alarmPopMutes',JSON.stringify(m));}catch(e){}}
-function _devMuteSet(key,on){const m=_devMutes();if(on)m[key]=true;else delete m[key];
-  try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}
+// ── screen identity + server-held per-screen prefs, so any screen's settings are editable from any
+// other (owner, 7 Aug: "change settings for the iPad or kiosk from my Mac"). Each device applies the
+// entry matching ITS name from db.device_prefs; local localStorage stays as instant cache/fallback.
+function devName(){
+  let n='';try{n=localStorage.getItem('devName')||'';}catch(e){}
+  if(!n){n='Screen-'+Math.random().toString(36).slice(2,6).toUpperCase();try{localStorage.setItem('devName',n);}catch(e){}}
+  return n;
+}
+function devNameSet(n){n=(n||'').trim().slice(0,24);if(!n)return;
+  const prefs=appData.device_prefs||{};const oldN=devName();
+  if(prefs[oldN]&&!prefs[n]){prefs[n]=prefs[oldN];delete prefs[oldN];appData.device_prefs=prefs;saveKeys(['device_prefs']);}
+  try{localStorage.setItem('devName',n);}catch(e){}
+  if(typeof renderAlarmCenter==='function')renderAlarmCenter();
+}
+function _devEntry(name){return ((appData.device_prefs||{})[name])||{};}
+window._acEditDev=null;   // which screen the Alarm Center is editing (null = this one)
+function _acPickDev(v){window._acEditDev=(v===devName())?null:v;renderAlarmCenter();}
+function _acDevTarget(){return window._acEditDev||devName();}
+function _devPopMuted(key){
+  const e=_devEntry(devName());
+  if(e.pop&&key in e.pop)return e.pop[key]===true;
+  return _devPopMutes()[key]===true;                       // legacy local fallback
+}
+function _devPopMutedFor(name,key){const e=_devEntry(name);return !!(e.pop&&e.pop[key]);}
+function _devPopSet(key,on){_devPrefSet(_acDevTarget(),'pop',key,on);
+  if(_acDevTarget()===devName()){const m=_devPopMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmPopMutes',JSON.stringify(m));}catch(e){}}}
+function _devPrefSet(name,kind,key,on){
+  appData.device_prefs=appData.device_prefs||{};
+  const e=appData.device_prefs[name]=appData.device_prefs[name]||{};
+  const m=e[kind]=e[kind]||{};
+  if(on)m[key]=true;else delete m[key];
+  saveKeys(['device_prefs']);
+}
+function _devMuteSet(key,on){
+  _devPrefSet(_acDevTarget(),'mute',key,on);
+  if(_acDevTarget()===devName()){const m=_devMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}}
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _alarmHit(key){if(_devPopMuted(key))return;const c=_acfg(key);const v=c.volume;
   _audioWake();
@@ -2868,7 +2905,7 @@ function triggerAlarmKey(key,title,sub,action){
     document.getElementById('alarm-title').textContent=title;
     document.getElementById('alarm-sub').textContent=sub;
     const ov=document.getElementById('alarm-overlay');
-    ov.style.setProperty('--alarm-accent',cfg.color||'#ef4444');   // card accent = this alarm's colour setting
+    ov.style.setProperty('--alarm-accent','#fb9b24');   // ONE colour across every popup (owner, 7 Aug)
     ov.classList.add('active');
     const _ab=document.getElementById('alarm-action-btn');
     if(_ab){ if(action&&action.label){_ab.textContent=action.label;_ab.onclick=action.fn;_ab.style.display='';}
@@ -6529,14 +6566,25 @@ function _acStyleSet(key,v){
   else alarmSet(key,'enabled',v==='on');
   renderAlarmCenter();}
 function renderAlarmCenter(){const host=document.getElementById('alarm-center');if(!host)return;
-  host.innerHTML=_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
+  const my=devName();const tgt=_acDevTarget();
+  const names=Object.keys(appData.device_prefs||{});if(!names.includes(my))names.unshift(my);
+  const picker='<div class="ac-card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;">'
+    +'<span style="font-size:12px;color:var(--muted);">This screen is</span>'
+    +'<input class="input" style="width:130px;height:34px;font-size:13px;" value="'+_mEsc(my)+'" onchange="devNameSet(this.value)" onclick="event.stopPropagation();">'
+    +'<span style="font-size:12px;color:var(--muted);margin-left:10px;">Editing settings for</span>'
+    +'<select class="input" style="height:34px;font-size:13px;" onclick="event.stopPropagation();" onchange="_acPickDev(this.value)">'
+    +names.map(n=>'<option value="'+_mEsc(n)+'"'+(n===tgt?' selected':'')+'>'+_mEsc(n)+(n===my?' (this screen)':'')+'</option>').join('')
+    +'</select>'
+    +(tgt!==my?'<span style="font-size:11.5px;color:var(--amber);font-weight:700;">The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s</span>':'')
+    +'</div>';
+  host.innerHTML=picker+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
     const open=!!_acOpen[key];const style=_acStyleOf(key,c);
     const opts=(key==='service')?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
                                 :[['on','Sound on'],['off','Sound off']];
     const sel='<select class="input acr-style" onclick="event.stopPropagation();" onchange="_acStyleSet(\''+key+'\',this.value)">'
       +opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===style?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
     const toneName=c.has_custom?'own sound file':(c.sound_preset&&_TONES[c.sound_preset]?_TONES[c.sound_preset].name:(_DEF_TONE_NAME[key]||'built-in tone'));
-    const summary=[(key==='probeAlmost'?'single ping':''),toneName,(_devMuted(key)?'muted on this screen':'')].filter(Boolean).join(' · ');
+    const summary=[(key==='probeAlmost'?'single ping':''),toneName,(_devMutedFor(tgt,key)?('muted on '+tgt):''),(_devPopMutedFor(tgt,key)?('hidden on '+tgt):'')].filter(Boolean).join(' · ');
     let det='';
     if(open){
       const ivSel=_IV_OPTS.map(o=>'<option value="'+o[1]+'"'+(o[1]===_ivLabel(c.interval)?' selected':'')+'>'+o[0]+'</option>').join('');
@@ -6551,9 +6599,9 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row"><span style="min-width:48px;">Flash</span><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.flash?'checked':'')+' onchange="alarmSet(\''+key+'\',\'flash\',this.checked)" style="width:16px;height:16px;"> screen</label><input type="color" value="'+c.color+'" onchange="alarmSet(\''+key+'\',\'color\',this.value)" title="flash colour"></div>'
       +(oneShot?'':'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:12px;" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>')
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
-      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMutedFor(tgt,key)||(tgt===my&&_devMuted(key))?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>'+_mEsc(tgt===my?'this screen':tgt)+'</b> only</label>'
       +'<span style="font-size:11px;color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
-      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devPopMuted(key)?'checked':'')+' onchange="_devPopSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Hidden on <b>this screen only</b></label>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devPopMutedFor(tgt,key)||(tgt===my&&_devPopMuted(key))?'checked':'')+' onchange="_devPopSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Hidden on <b>'+_mEsc(tgt===my?'this screen':tgt)+'</b> only</label>'
       +'<span style="font-size:11px;color:var(--muted);">no popup, banner or sound HERE at all &mdash; other screens unaffected (e.g. keep prep reminders off the front-of-house iPad)</span></div>'
       +'</div>'
       +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Built-in: '+(_DEF_TONE_NAME[key]||'default')+'</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
@@ -6803,6 +6851,12 @@ function _prepCarryDo(){
 function checkAllReminders(){
   const now=nowHHMM(),todayDay=(new Date().getDay()+6)%7,dateKey=todayDateStr();
   try{_ovSnoozeCheck();}catch(e){}                              // snoozed popups come back here
+  try{  // announce this screen once so every other dash can pick it in the Alarm Center
+    const dn=devName();
+    if(appData&&appData.products&&!((appData.device_prefs||{})[dn])&&!window._devAnnounced){
+      window._devAnnounced=true;appData.device_prefs=appData.device_prefs||{};appData.device_prefs[dn]={};saveKeys(['device_prefs']);
+    }
+  }catch(e){}
   try{
     const ct=appData.prep_carry_time||'21:00';
     if(_dueWithin(ct,now,_REMIND_GRACE)&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length){
