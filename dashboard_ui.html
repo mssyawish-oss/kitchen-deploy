@@ -4666,8 +4666,8 @@ function _orunRowHtml(p){
   const _pn=p.par_note?(' · '+p.par_note):'';
   const cUnit=(p.count_unit||p.unit||'unit');
   const _lvlPack=(p.reorder_unit==='pack'&&(parseFloat(p.pack_size)||1)>1&&p.pack_unit);
-  const _lvlTxt=(c.parN!==null)?(_fmtQ(c.parN)+' '+cUnit)
-    :((p.reorder_at!=null&&p.reorder_at!=='')?(_fmtQ(parseFloat(p.reorder_at))+' '+(_lvlPack?p.pack_unit:cUnit)):null);
+  const _lvlTxt=(p.reorder_at!=null&&p.reorder_at!=='')?(_fmtQ(parseFloat(p.reorder_at))+' '+(_lvlPack?p.pack_unit:cUnit))
+    :((c.parN!==null)?(_fmtQ(c.parN)+' '+cUnit):null);
   const sub=(p.order_mode==='reorder')
     ? (_lvlTxt?('order below '+_lvlTxt+_pn):'no level set')
     : (c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set');
@@ -4772,14 +4772,16 @@ function _orunCalc(p){
   const mode=p.order_mode||'topup';
   const ps=parseFloat(p.pack_size)||1;
   if(mode==='reorder'){
-    // per-day par from the setup tool wins; else the editor's single level, converted from the unit
-    // it was TYPED in ("reorder below 6 packs" or "below 2 cartons" — owner, 7 Aug).
-    let level=parN;
-    if(level===null&&p.reorder_at!=null&&p.reorder_at!==''){
+    // The level TYPED in the editor wins (it's the freshest human intent — 8 Aug: a stale converted
+    // daily target of 12 was overriding "reorder below 2 packs"). Per-day pars from the setup tool
+    // apply only when no single level is set — the tool writes run_pars and leaves reorder_at empty.
+    let level=null;
+    if(p.reorder_at!=null&&p.reorder_at!==''){
       level=parseFloat(p.reorder_at)*((p.reorder_unit==='pack'&&ps>1)?ps:1);
     }
-    let qty=parseFloat((p.run_qty||{})[_orunDay]);
-    if(isNaN(qty)&&p.pack!=null&&p.pack!=='')qty=parseFloat(p.pack);   // editor's "order in lots of"
+    if(level===null)level=parN;
+    let qty=(p.pack!=null&&p.pack!=='')?parseFloat(p.pack):NaN;        // editor's "order in lots of" first
+    if(isNaN(qty))qty=parseFloat((p.run_qty||{})[_orunDay]);
     if(level===null||level===undefined||isNaN(qty)) state='nolevel';
     else if(typed===null) state='uncounted';
     else { order=(haveN<level)?qty:0; state=(order>0)?'order':'ok'; }
@@ -5117,7 +5119,7 @@ function saveProductEdit(){
   const _ruSel=document.getElementById('pe-reorder-unit'),_ouSel=document.getElementById('pe-order-unit');
   const reorder_unit=(ps>1&&_ruSel&&_ruSel.value==='pack')?'pack':'base';   // which unit the level was TYPED in
   const order_unit=(ps>1&&_ouSel&&['pack','both'].includes(_ouSel.value))?_ouSel.value:'base';   // what the supplier sells in; 'both' = staff choose per order
-  const fields={name,supplier_id,unit,count_step,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
+  const fields={name,supplier_id,unit,count_step,order_mode:(_prodMode==='reorder'?'reorder':'topup'),targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
