@@ -2802,10 +2802,12 @@ const _PROBE_SNOOZE_MIN=1;
 function _psnMap(){try{return JSON.parse(localStorage.getItem('probeSnooze')||'{}')||{};}catch(e){return {};}}
 function _psnSet(m){try{localStorage.setItem('probeSnooze',JSON.stringify(m));}catch(e){}}
 function stopProbeAlarm(pid,snooze){
+  // snooze: false = clear (probe genuinely pulled), a NUMBER = silence that many minutes,
+  // anything else = the 1-minute default.
   probeToken[pid]++; delete _probeAlarms[pid];
   const m=_psnMap();
-  if(snooze!==false) m[pid]=Date.now()+_PROBE_SNOOZE_MIN*60000;
-  else delete m[pid];
+  if(snooze===false) delete m[pid];
+  else m[pid]=Date.now()+((typeof snooze==='number'&&snooze>0)?snooze:_PROBE_SNOOZE_MIN)*60000;
   _psnSet(m);
   _updateFlash();
 }
@@ -3990,7 +3992,7 @@ function renderProbes(){
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
-      ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
+      ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
     }
@@ -4002,7 +4004,7 @@ function renderProbes(){
       ${staleHtml}${sensHtml}
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
       ${batHtml}${offHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
-      ${showAck?`<button class="probe-ack-btn" onclick="ackProbe(${pidN})">Silence Alarm</button>`:''}
+      ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
       <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
   }).join('');
@@ -4035,13 +4037,19 @@ function renderProbeAlerts(){
   const LBL={almost:'ALMOST READY',ready:'READY',overdone:'OVERDONE'};
   document.getElementById('probe-alert-cards').innerHTML=active.map(pid=>{
     const p=probeData[pid]||{},st=probeStates[pid],sSt=st.status,t=p.temp;
-    const cta=(sSt==='ready'||sSt==='overdone')?'Silence &amp; dismiss':'Got it';
+    const foot=(sSt==='ready'||sSt==='overdone')
+      ? '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">'
+        +'<button class="pa-btn" style="flex:1;min-width:72px;" onclick="snoozeProbe('+pid+',1)">Silence 1 min</button>'
+        +'<button class="pa-btn" style="flex:1;min-width:72px;" onclick="snoozeProbe('+pid+',5)">5 min</button>'
+        +'<button class="pa-btn" style="flex:1;min-width:72px;" onclick="snoozeProbe('+pid+',10)">10 min&hellip;</button>'
+        +'</div>'
+      : '<button class="pa-btn" onclick="dismissProbeAlert('+pid+')">Got it</button>';
     return '<div class="pa-card '+sSt+'">'
       +'<div class="pa-badge">PROBE '+String(pid).padStart(2,'0')+'</div>'
       +(p.name?('<div class="pa-name">'+_mEsc(p.name)+'</div>'):'')
       +'<div class="pa-temp">'+(t===null||t===undefined?'&#8212;':t.toFixed(1))+'<span>&#176;C</span></div>'
       +'<div class="pa-status pa-'+sSt+'">'+LBL[sSt]+'</div>'
-      +'<button class="pa-btn" onclick="dismissProbeAlert('+pid+')">'+cta+'</button>'
+      +foot
       +'</div>';
   }).join('');
   ov.classList.add('show');
@@ -4052,7 +4060,14 @@ function dismissProbeAlert(pid){
   else _probePopDismissed[pid]=sSt;                    // 'almost' has no persistent alarm — just hide it
   renderProbeAlerts();
 }
-function ackProbe(pid){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence(_k);}
+function ackProbe(pid,mins){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid,(typeof mins==='number'&&mins>0)?mins:undefined);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence(_k);}
+function snoozeProbe(pid,mins){
+  // the 3 buttons on the probe popup / card. 10 min is a long time for a cooked bird to sit —
+  // that one asks first (owner's request, 7 Aug).
+  const go=()=>{ackProbe(pid,mins);const st=probeStates[pid];if(st)_probePopDismissed[pid]=st.status;if(typeof renderProbeAlerts==='function')renderProbeAlerts();_toast&&_toast('Probe '+pid+' silenced for '+mins+' min');};
+  if(mins>=10&&typeof _askConfirm==='function')_askConfirm('Silence Probe '+pid+' for 10 minutes?','The bird stays at temp with no alarm for that whole time.',go,'Silence 10 min');
+  else go();
+}
 function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';_tempHist[pid]=[];_saveTempHist();fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
 function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,name})});}
 function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
