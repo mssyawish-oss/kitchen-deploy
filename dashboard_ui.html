@@ -2444,18 +2444,16 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="form-row mt-8"><div class="label">Section <span style="color:var(--muted);font-weight:400;">(groups items on the order screen — Frozen, Dairy, Dry…)</span></div><input class="input" id="pe-section" list="pe-section-list" placeholder="e.g. Dairy"><datalist id="pe-section-list"><option value="Dairy"></option><option value="Frozen"></option><option value="Dry"></option><option value="Sauces"></option><option value="Bread"></option><option value="Produce"></option><option value="Meat"></option><option value="Packaging"></option><option value="Spices"></option><option value="Drinks"></option></datalist></div>
     <div class="label mt-8">Bigger pack <span style="color:var(--muted);font-weight:400;">(optional — the supplier’s carton/box, so counting and ordering can use either)</span></div>
     <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;font-size:16px;margin-top:4px;">
-      <input class="input" id="pe-packunit" list="pe-packunit-list" oninput="syncUnitLabels()" placeholder="carton" style="width:120px;">
-      <datalist id="pe-packunit-list"><option value="carton"></option><option value="box"></option><option value="case"></option><option value="crate"></option><option value="tray"></option><option value="tub"></option><option value="jar"></option><option value="bottle"></option><option value="bag"></option><option value="bucket"></option><option value="tin"></option><option value="pack"></option><option value="sleeve"></option><option value="roll"></option><option value="bunch"></option><option value="block"></option><option value="sack"></option></datalist>
-      <span style="color:var(--muted);">then</span>
       <input class="input" id="pe-eq-n1" type="number" step="any" min="0.01" placeholder="6" style="width:64px;text-align:center;" value="">
-      <select class="input" id="pe-eq-u1" style="width:110px;"></select>
+      <select class="input" id="pe-eq-u1" style="width:120px;"></select>
       <span style="color:var(--muted);font-weight:700;">=</span>
       <input class="input" id="pe-eq-n2" type="number" step="any" min="0.01" placeholder="1" style="width:64px;text-align:center;" value="">
-      <select class="input" id="pe-eq-u2" style="width:110px;"></select>
+      <select class="input" id="pe-eq-u2" style="width:120px;"></select>
+      <input type="hidden" id="pe-packunit">
       <input type="hidden" id="pe-packsize">
       <span id="pe-base-unit" style="display:none;"></span>
     </div>
-    <div id="pe-eq-msg" style="font-size:11.5px;color:var(--muted);margin-top:5px;">Write it whichever way you think of it: <b>6 unit = 1 carton</b> or <b>1 carton = 6 unit</b> — both work. The two dropdowns hold the units you named above.</div>
+    <div id="pe-eq-msg" style="font-size:11.5px;color:var(--muted);margin-top:5px;">All four boxes are yours: <b>6 unit = 1 carton</b>, <b>1 carton = 6 unit</b>, even <b>12 bottle = 2 case</b>. One side must be your “Count in” unit; the other side becomes the bigger pack. Leave the numbers empty if you only count it one way.</div>
     <div class="label mt-8">How should I work out the order?</div>
     <div class="day-pills" id="pe-mode" style="display:flex;gap:6px;">
       <div class="set-tab on" data-m="reorder" onclick="setProdMode('reorder')">Reorder when low</div>
@@ -4865,31 +4863,38 @@ function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingPr
   const div=(_peTargetUnit==='order'?pk.ps:1);const t=p.targets||{};
   for(let d=0;d<7;d++){const v=t[d];document.getElementById('pe-t'+d).value=(v!==undefined&&v!=='')?(Math.round(v/div*100)/100):'';}
   openModal('prod-edit-modal');}
+const _PE_UNITS=['unit','each','piece','bag','bottle','tub','jar','pack','packet','sleeve','roll','bunch','block','tray','punnet','can','tin','sachet','kg','g','L','ml','box','carton','case','crate','bucket','sack','dozen','sheet'];
 function syncUnitLabels(){
   const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
   const bu=document.getElementById('pe-base-unit'); if(bu)bu.textContent=(u||'units');
-  // the equation dropdowns hold exactly the two units named above (count unit + bigger pack)
+  // both equation dropdowns carry the FULL unit list (like the stock-setup tool the owner liked),
+  // with the product's own count-in unit added if it's a custom word
   const pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
+  const list=_PE_UNITS.slice();
+  for(const extra of [u,pu]) if(extra&&!list.includes(extra)) list.unshift(extra);
   ['pe-eq-u1','pe-eq-u2'].forEach((id,i)=>{
     const s=document.getElementById(id); if(!s)return;
     const keep=s.value;
-    s.innerHTML='<option value="'+_mEsc(u)+'">'+_mEsc(u)+'</option>'+(pu?'<option value="'+_mEsc(pu)+'">'+_mEsc(pu)+'</option>':'');
-    // default orientation: N small = 1 pack
-    s.value=(keep&&[u,pu].includes(keep))?keep:(i===0?u:(pu||u));
+    s.innerHTML=list.map(x=>'<option value="'+_mEsc(x)+'">'+_mEsc(x)+'</option>').join('');
+    if(keep&&list.includes(keep))s.value=keep;
+    else s.value=(i===0?u:(pu||'carton'));
   });
 }
 function _peEqRead(){
-  // Returns {ps, pu, err}: ps = how many COUNT units make one pack, whichever way the equation was written.
+  // Returns {ps, pu, err}. The side whose unit matches "Count in" is the small side; the OTHER
+  // side's unit becomes the bigger pack. Works written either way round, any numbers.
   const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
-  const pu=((document.getElementById('pe-packunit').value||'').trim());
   const n1=parseFloat(document.getElementById('pe-eq-n1').value),n2=parseFloat(document.getElementById('pe-eq-n2').value);
   const u1=document.getElementById('pe-eq-u1').value,u2=document.getElementById('pe-eq-u2').value;
-  if(!pu||(!n1&&!n2))return {ps:1,pu:pu||null,err:null};            // no pack set up — single-unit product
-  if(!(n1>0)||!(n2>0))return {ps:null,pu:pu,err:'Fill in both numbers of the pack equation (e.g. 6 '+u+' = 1 '+pu+').'};
+  if(!n1&&!n2)return {ps:1,pu:null,err:null};                        // no pack — single-unit product
+  if(!(n1>0)||!(n2>0))return {ps:null,pu:null,err:'Fill in both numbers (e.g. 6 '+u+' = 1 carton).'};
   const norm=s=>String(s||'').toLowerCase().replace(/s$/,'');
-  if(norm(u1)===norm(u2))return {ps:null,pu:pu,err:'The two sides of the equation are both “'+u1+'” — one side should be '+u+', the other '+pu+'.'};
-  const ratio=(norm(u1)===norm(u))?(n1/n2):(n2/n1);                  // small-units per one pack
-  if(!(ratio>0))return {ps:null,pu:pu,err:'That equation doesn’t work out — check the numbers.'};
+  if(norm(u1)===norm(u2))return {ps:null,pu:null,err:'Both sides say “'+u1+'” — one side must be '+u+', the other the bigger pack.'};
+  let ratio,pu;
+  if(norm(u1)===norm(u)){ratio=n1/n2;pu=u2;}
+  else if(norm(u2)===norm(u)){ratio=n2/n1;pu=u1;}
+  else return {ps:null,pu:null,err:'One side of the equation must be your “Count in” unit ('+u+').'};
+  if(!(ratio>0))return {ps:null,pu:null,err:'That equation doesn’t work out — check the numbers.'};
   return {ps:Math.round(ratio*100)/100,pu:pu,err:null};
 }
 function saveProductEdit(){
