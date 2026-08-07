@@ -2661,6 +2661,13 @@ def api_product_disable():
     elif not ok and err and "POS" not in str(err):
         time.sleep(0.8); ok,err=fn(vid)
     _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
+    if ok:
+        # Fresh grace clock NOW. The offline scan only clears a stamp when it SEES the product back on
+        # (scans are ~1/min), so off→on→off inside that window kept the old stamp and the "1 hour after
+        # switch-off" alarm delay looked already spent — alarm fired the instant it was switched off
+        # (owner, 7 Aug: "the alarm instantly starts").
+        with data_lock:
+            s=db.setdefault("prodoff_since",{}); s[vid]=int(time.time()*1000); save_data(db)
     return jsonify({"ok":ok,"error":(None if ok else err)})
 
 @app.route("/api/product_enable",methods=["POST"])
@@ -2675,6 +2682,10 @@ def api_product_enable():
         ok,err=_sq_enable_variation(vid)
     try: _PSRCH_CACHE["at"]=0     # revive swaps mint new ids — refresh the search index
     except Exception: pass
+    if ok:
+        with data_lock:            # back on → drop its grace stamp so the NEXT off starts a fresh hour
+            s=db.get("prodoff_since") or {}
+            if vid in s: del s[vid]; db["prodoff_since"]=s; save_data(db)
     out={"ok":ok,"error":(None if ok else err)}
     if ok and err: out["warn"]=err          # e.g. tracking stuck ON — item works but needs a look in Square
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
