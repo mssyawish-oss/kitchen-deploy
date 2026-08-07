@@ -2796,14 +2796,20 @@ function stopAlarm(id){alarms[id]=false;_updateFlash();}
 // has actually pulled it, the alarm must come back. Owner, 7 Aug: "just 1 min silence then it
 // reactivates". Cleared properly when the probe leaves ready/overdone (i.e. it really was pulled).
 const _PROBE_SNOOZE_MIN=1;
-window._probeSnooze={};                    // pid -> timestamp when the alarm may sound again
+// pid -> timestamp when the alarm may sound again. Persisted in localStorage because every dashboard
+// UPDATE reloads the page, and an in-memory snooze died with each reload — so on busy update days the
+// alarm came back well inside the minute (owner, 7 Aug: "it feels much faster").
+function _psnMap(){try{return JSON.parse(localStorage.getItem('probeSnooze')||'{}')||{};}catch(e){return {};}}
+function _psnSet(m){try{localStorage.setItem('probeSnooze',JSON.stringify(m));}catch(e){}}
 function stopProbeAlarm(pid,snooze){
   probeToken[pid]++; delete _probeAlarms[pid];
-  if(snooze!==false) window._probeSnooze[pid]=Date.now()+_PROBE_SNOOZE_MIN*60000;
-  else delete window._probeSnooze[pid];
+  const m=_psnMap();
+  if(snooze!==false) m[pid]=Date.now()+_PROBE_SNOOZE_MIN*60000;
+  else delete m[pid];
+  _psnSet(m);
   _updateFlash();
 }
-function _probeSnoozed(pid){const t=window._probeSnooze[pid];return !!t&&Date.now()<t;}
+function _probeSnoozed(pid){const t=_psnMap()[pid];return !!t&&Date.now()<t;}
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub,action){
