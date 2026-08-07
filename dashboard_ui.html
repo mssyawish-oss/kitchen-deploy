@@ -2754,7 +2754,10 @@ function _devMuteSet(key,on){const m=_devMutes();if(on)m[key]=true;else delete m
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _alarmHit(key){const c=_acfg(key);const v=c.volume;
   _audioWake();
-  if(_audioBlocked()){                      // engine asleep and won't wake without a tap — say so, don't fail silently
+  // No point nagging about blocked sound on a screen that's deliberately muted (e.g. the office
+  // iPad, kept visual-only). iOS gives no way to pre-authorise audio, so on a muted device that
+  // banner is pure noise about something the owner already chose.
+  if(_audioBlocked()&&!_devMuted(key)){     // engine asleep and won't wake without a tap — say so, don't fail silently
     try{const b=document.getElementById('audio-blocked');
       if(b)b.style.display='flex';
       else{const d=document.createElement('div');d.id='audio-blocked';
