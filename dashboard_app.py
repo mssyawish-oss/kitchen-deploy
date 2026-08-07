@@ -5277,7 +5277,11 @@ _PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/bl
 # ever saves them back — and a client posting e.g. {"timers":[]} would kill every countdown and make
 # trigger_timer_start raise inside a Timer thread, silently breaking the use-by clock after a probe pull.
 _SERVER_KEYS=("timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
-              "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state")
+              "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state",
+              # label_printer has its own endpoint (/api/label_printer). Tablets doing a bulk
+              # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
+              # printer off relay mode and silently broke label printing mid-service.
+              "label_printer")
 @app.route("/api/data",methods=["POST"])
 def update_db():
     payload=request.get_json(silent=True) or {}
