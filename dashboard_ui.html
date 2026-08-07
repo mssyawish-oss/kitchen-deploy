@@ -2738,13 +2738,15 @@ const _ALARM_DEF={
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'},
+ checklist:{label:'Checklist tasks (front of house)',color:'#60a5fa',interval:2800,desc:'Timed checklist-task reminders. Route to FOH screens: hide it on kitchen screens with the per-screen toggle.'},
+ preptasks:{label:'Prep & daily tasks (kitchen)',color:'#34d399',interval:2800,desc:'Prep-item and daily-task reminders. Kitchen business: hide it on the front-of-house iPad with the per-screen toggle.'},
  prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin','prepcarry','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -2920,7 +2922,10 @@ function triggerAlarmKey(key,title,sub,action){
     _alarmHit(key);setTimeout(()=>{if(activeAlarmId===id)loop();},c.interval);}
   loop();
 }
-function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence(window._ovKey||'service');}
+function silenceAlarmLocal(){activeAlarmId=null;const ov=document.getElementById('alarm-overlay');if(ov)ov.classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();}
+function silenceAlarm(){
+  if(window._ovKind==='prepcarry'&&appData.prep_carry_last!==todayDateStr()){appData.prep_carry_last=todayDateStr();saveKeys(['prep_carry_last']);}   // dismiss = asked and answered for today
+  silenceAlarmLocal();_broadcastSilence(window._ovKey||'service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
 function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_devPopMuted('orders'))return;if(_waitAlarm)return;_waitAlarm=true;const t0=Date.now();(function b(){if(!_waitAlarm)return;const c=_acfg('orders');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_waitAlarm=false;_updateFlash();return;}_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},c.interval);})();}
@@ -6579,7 +6584,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +'</div>';
   host.innerHTML=picker+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
     const open=!!_acOpen[key];const style=_acStyleOf(key,c);
-    const opts=(key==='service')?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
+    const opts=(['service','checklist','preptasks','prepcarry'].includes(key))?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
                                 :[['on','Sound on'],['off','Sound off']];
     const sel='<select class="input acr-style" onclick="event.stopPropagation();" onchange="_acStyleSet(\''+key+'\',this.value)">'
       +opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===style?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
@@ -6859,10 +6864,16 @@ function checkAllReminders(){
   }catch(e){}
   try{
     const ct=appData.prep_carry_time||'21:00';
-    if(_dueWithin(ct,now,_REMIND_GRACE)&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length){
-      appData.prep_carry_last=dateKey;saveKeys(['prep_carry_last']);   // once per day, shop-wide (first screen wins)
+    // Pops on EVERY screen someone can actually see (background tabs excluded — on 7 Aug a hidden
+    // Chrome tab claimed the once-a-day flag and the popup was never seen). The day is only claimed
+    // when a human ACTS: reschedule or dismiss. Handling it on one screen clears the others.
+    if(activeAlarmId&&window._ovKind==='prepcarry'&&appData.prep_carry_last===dateKey){silenceAlarmLocal();}
+    if(_dueWithin(ct,now,_REMIND_GRACE)&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length
+       &&document.visibilityState==='visible'&&!_devPopMuted('prepcarry')&&!window._pcShown){
+      window._pcShown=dateKey;
       _prepCarryPop();
     }
+    if(window._pcShown&&window._pcShown!==dateKey)window._pcShown=null;   // new day → re-arm
   }catch(e){}
   // each block wrapped in try/catch: one bad record or missing element must not kill the other checks
   try{(appData.suppliers||[]).forEach(sup=>{
@@ -6892,7 +6903,7 @@ function checkAllReminders(){
     const nowMs=Date.now(),last=_routineNag[a.id]||0;
     if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
     _routineNag[a.id]=nowMs;
-    triggerAlarm(((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // skip SVG-markup icons (they'd print as raw code in the alarm title)
+    triggerAlarmKey('preptasks',((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // daily tasks are kitchen business
     document.getElementById('service-badge')?.classList.add('show');
     document.getElementById('nav-service-btn')?.classList.add('alarming');
   });}catch(e){}
@@ -6902,10 +6913,10 @@ function checkAllReminders(){
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
-    if(t.alarm){triggerAlarm('TASK DUE',t.name);}
-    else{const _sc=_acfg('service');
-      if(_sc.enabled&&!_devMuted('service'))playChime();          // chime obeys the Sound switch + this device's mute
-      if(_sc.popup)showLockBanner('TASK DUE',t.name);}            // banner obeys the Popup switch
+    if(t.alarm){triggerAlarmKey('checklist','TASK DUE',t.name);}
+    else{const _sc=_acfg('checklist');
+      if(_sc.enabled&&!_devMuted('checklist')&&!_devPopMuted('checklist'))playChime();
+      if(_sc.popup&&!_devPopMuted('checklist'))showLockBanner('TASK DUE',t.name);}
     document.getElementById('packdown-badge')?.classList.add('show');
   });}catch(e){}
   try{(appData.quiet_jobs||[]).forEach(j=>{
@@ -6937,7 +6948,7 @@ function checkAllReminders(){
         if(!_dueWithin(p.remind,now,_REMIND_GRACE))return;
         const key='prep-'+iid+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
       }
-      triggerAlarm('PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
+      triggerAlarmKey('preptasks','PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
       document.getElementById('jobs-badge')?.classList.add('show');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
     });
