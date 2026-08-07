@@ -2784,7 +2784,18 @@ function playAlarm(id){if(alarms[id])return;const key=_keyForId(id);if(!_acfg(ke
 function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeout(()=>playTone(988,'sine',.5,.16*v),230);setTimeout(()=>playTone(1319,'sine',.6,.13*v),470);}
 function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;const t0=Date.now();function loop(){if(!alarms['prod-off'])return;const c=_acfg('prodoff');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){alarms['prod-off']=false;_updateFlash();return;}_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},c.interval);}loop();}
 function stopAlarm(id){alarms[id]=false;_updateFlash();}
-function stopProbeAlarm(pid){probeToken[pid]++;delete _probeAlarms[pid];_updateFlash();}
+// Silencing a probe is a SNOOZE, not a dismissal. A bird at temp is a food-safety matter — if nobody
+// has actually pulled it, the alarm must come back. Owner, 7 Aug: "just 1 min silence then it
+// reactivates". Cleared properly when the probe leaves ready/overdone (i.e. it really was pulled).
+const _PROBE_SNOOZE_MIN=1;
+window._probeSnooze={};                    // pid -> timestamp when the alarm may sound again
+function stopProbeAlarm(pid,snooze){
+  probeToken[pid]++; delete _probeAlarms[pid];
+  if(snooze!==false) window._probeSnooze[pid]=Date.now()+_PROBE_SNOOZE_MIN*60000;
+  else delete window._probeSnooze[pid];
+  _updateFlash();
+}
+function _probeSnoozed(pid){const t=window._probeSnooze[pid];return !!t&&Date.now()<t;}
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 function triggerAlarm(title,sub,action){
@@ -3888,13 +3899,18 @@ function renderProbes(){
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
     const status=st.status,acked=st.alerted,cardCls=(status==='idle'||status==='standby')?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
-      if(status==='almost'){stopProbeAlarm(pidN);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
-      if(status==='ready'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
-      if(status==='overdone'){stopProbeAlarm(pidN);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
-      if(status==='idle'||status==='standby')stopProbeAlarm(pidN);
+      if(status==='almost'){stopProbeAlarm(pidN,false);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
+      if(status==='ready'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
+      if(status==='overdone'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
+      if(status==='idle'||status==='standby')stopProbeAlarm(pidN,false);   // genuinely pulled → clear the snooze too
       delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
       if(status==='ready'||status==='overdone')_paint();   // force the Silence button to appear without needing a tap
       prevStatuses[pidN]=status;
+    } else if((status==='ready'||status==='overdone')&&!_probeAlarms[pidN]&&!_probeSnoozed(pidN)){
+      // Still at temp, the 1-minute snooze has run out and nobody pulled it → sound again.
+      delete _probePopDismissed[pidN];
+      startProbeAlarm(pidN,status);
+      _paint();
     }
     const t=p.temp,tempHtml=t===null?'<div class="probe-no-data">&#8212;&#8212;</div>':`<div class="probe-temp">${t.toFixed(1)}</div>`;
     // friendlier badge than a blanket "idle": fill the gap so a warm probe reads "cooking", a steady one
