@@ -2938,9 +2938,13 @@ function walkinLogLoad(){
   fetch('/api/walkin_log').then(r=>r.json()).then(d=>{
     const es=d.entries||[];
     if(!es.length){box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px 0;">No detections logged yet.</div>';return;}
-    box.innerHTML='<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">'+d.count+' detection'+(d.count>1?'s':'')+' logged (newest first). Check each pair: was there really a customer, and really no staff?</div>'
+    const t=d.today||{};
+    const daybar=(t.customers!=null)?('<div style="font-size:12px;font-weight:700;margin-bottom:6px;">Today: '+t.customers+' customer'+(t.customers==1?'':'s')+' · '+(t.served||0)+' served'+(t.avg_wait_secs?(' · avg wait '+t.avg_wait_secs+'s'):'')+(t.left?(' · '+t.left+' walked out'):'')+'</div>'):'';
+    const OUT={served:'served after',left:'walked out after',timeout:'unresolved after',alert:'waited'};
+    box.innerHTML=daybar
+      +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">'+d.count+' entr'+(d.count>1?'ies':'y')+' (newest first). First photo = the customer arriving; second = when staff appeared.</div>'
       +es.map(e=>'<div class="wi-log-row">'
-        +'<div class="wi-log-when">'+_mEsc(e.at||'')+'<span>waited '+(e.waited||0)+'s</span></div>'
+        +'<div class="wi-log-when">'+_mEsc(e.at||'')+'<span>'+(OUT[e.outcome]||'waited')+' '+(e.waited||0)+'s</span></div>'
         +'<div class="wi-log-imgs">'
         +(e.cust_img?'<figure><img src="/walkin_img/'+encodeURIComponent(e.cust_img)+'" onclick="window.open(this.src)"><figcaption>customer cam</figcaption></figure>':'')
         +(e.staff_img?'<figure><img src="/walkin_img/'+encodeURIComponent(e.staff_img)+'" onclick="window.open(this.src)"><figcaption>staff cam</figcaption></figure>':'')

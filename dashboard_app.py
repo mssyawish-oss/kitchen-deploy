@@ -4089,13 +4089,15 @@ WALKIN_DIR=os.path.join(BASE_DIR,"walkin_log")
 try: os.makedirs(WALKIN_DIR,exist_ok=True)
 except Exception: pass
 _WALKIN_KEEP=200   # entries (and their image pairs) to keep; oldest pruned
-def _walkin_log_add(cust_jpeg,staff_jpeg,waited):
+def _walkin_log_add(cust_jpeg,staff_jpeg,waited,outcome="alert"):
     """Record a detection WITH the two frames that caused it — the only way to judge, after the fact,
-    whether a red light was a real walk-in or a false alarm."""
+    whether a red light was a real walk-in or a false alarm.
+    outcome: 'served' = staff arrived (waited = the FULL customer wait, arrival→served — the number the
+    owner actually wants), 'left' = customer gave up, 'timeout' = episode never resolved."""
     ts=int(time.time()*1000)
     stamp=datetime.now().strftime("%Y%m%d_%H%M%S")
     ent={"ts":ts,"at":datetime.now().strftime("%a %d %b %H:%M:%S"),"waited":round(waited,1),
-         "cust_img":"","staff_img":""}
+         "outcome":outcome,"cust_img":"","staff_img":""}
     for tag,jp in (("cust",cust_jpeg),("staff",staff_jpeg)):
         if not jp: continue
         fn="wi_%s_%s.jpg"%(stamp,tag)
@@ -4138,6 +4140,10 @@ def walkin_loop():
                 person=_WALKIN_CACHE["person"]        # picture identical to last look → answer can't have changed
             _WALKIN_SIG["cust"]=sig
             if person is not True:                    # nobody waiting (or unreadable) → clear, and never
+                if WALKIN.get("since") and WALKIN.get("ep_cust"):   # an open wait ends with the customer GONE
+                    try: _walkin_log_add(WALKIN.pop("ep_cust",None),None,now-WALKIN["since"],outcome="left")
+                    except Exception as le: print("walkin log:",le)
+                WALKIN.pop("ep_cust",None)
                 WALKIN.update({"person":False,"alert":False,"since":0.0})   # spend a call on the staff cam
                 time.sleep(iv); continue
             sj,_=_snap_from(scam) if scam else (None,"no cam")
@@ -4149,15 +4155,25 @@ def walkin_loop():
                 staff=_WALKIN_CACHE["staff"]
             _WALKIN_SIG["staff"]=ssig
             WALKIN.update({"person":True,"staff":bool(staff),"err":""})
-            if staff is not False:                    # staff present (or unsure) → not a walk-in
+            if staff is not False:                    # staff present (or unsure) → the wait (if any) is OVER
+                if WALKIN.get("since") and WALKIN.get("ep_cust"):
+                    # THE number the owner wants: customer arrived → staff appeared. Logged with the
+                    # customer's arrival frame and the staff-arrival frame. (±interval seconds accuracy.)
+                    try: _walkin_log_add(WALKIN.pop("ep_cust",None),sj,time.time()-WALKIN["since"],outcome="served")
+                    except Exception as le: print("walkin log:",le)
+                WALKIN.pop("ep_cust",None)
                 WALKIN.update({"alert":False,"since":0.0}); time.sleep(iv); continue
             now=time.time()
-            if not WALKIN["since"]: WALKIN["since"]=now
+            if not WALKIN["since"]:
+                WALKIN["since"]=now
+                WALKIN["ep_cust"]=cj                   # keep the ARRIVAL frame — the episode logs when it ends
             delay=max(0,int(cfg.get("delay_secs",10) if cfg.get("delay_secs") is not None else 10))
             if (now-WALKIN["since"])>=delay and not WALKIN["alert"]:
-                WALKIN.update({"alert":True,"last":now})
-                try: _walkin_log_add(cj,sj,now-WALKIN["since"])   # keep the evidence for tuning
+                WALKIN.update({"alert":True,"last":now})   # red light only — the log entry comes when the wait ENDS
+            if (now-WALKIN["since"])>900 and WALKIN.get("ep_cust"):   # 15 min unresolved → log and reset (someone seated, not queuing)
+                try: _walkin_log_add(WALKIN.pop("ep_cust",None),sj,now-WALKIN["since"],outcome="timeout")
                 except Exception as le: print("walkin log:",le)
+                WALKIN.update({"alert":False,"since":0.0})
         except Exception as e:
             WALKIN["err"]=str(e)[:120]
         time.sleep(iv)
@@ -6485,7 +6501,14 @@ def api_walkin_ack():
 @app.route("/api/walkin_log")
 def api_walkin_log():
     log=list(db.get("walkin_log") or [])
-    return jsonify({"ok":True,"count":len(log),"entries":list(reversed(log))[:60]})   # newest first
+    day=datetime.now().strftime("%Y%m%d")
+    today=[e for e in log if datetime.fromtimestamp((e.get("ts") or 0)/1000).strftime("%Y%m%d")==day]
+    served=[e for e in today if e.get("outcome")=="served" and e.get("waited")]
+    avg=round(sum(e["waited"] for e in served)/len(served),1) if served else None
+    return jsonify({"ok":True,"count":len(log),"entries":list(reversed(log))[:60],   # newest first
+                    "today":{"customers":len(today),"served":len(served),
+                             "left":sum(1 for e in today if e.get("outcome")=="left"),
+                             "avg_wait_secs":avg}})
 
 @app.route("/api/walkin_log",methods=["DELETE"])
 def api_walkin_log_clear():
