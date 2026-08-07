@@ -1568,7 +1568,12 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div style="font-size:29px;font-weight:800;color:#fff;line-height:1.2;" id="alarm-title">REMINDER</div>
     <div style="font-size:16px;color:#c7ccd6;line-height:1.5;margin:12px auto 0;max-width:430px;" id="alarm-sub"></div>
     <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#16a34a;margin-top:14px;"></button>
-    <button class="alarm-silence-btn" onclick="silenceAlarm()">SILENCE ALARM</button>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
+      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:96px;" onclick="_ovSnooze(1)">SILENCE 1 MIN</button>
+      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(5)">5 MIN</button>
+      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(10)">10 MIN&hellip;</button>
+    </div>
+    <button class="alarm-silence-btn" onclick="silenceAlarm()">DISMISS</button>
   </div>
 </div>
 
@@ -1646,6 +1651,12 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="page" id="page-jobs">
       <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button><button class="btn" onclick="openLabelModal()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Labels</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--muted);">
+        <span>Unfinished-prep check at</span>
+        <input class="input" type="time" id="prep-carry-time" style="width:110px;height:34px;font-size:13px;"
+               onchange="appData.prep_carry_time=this.value||'21:00';saveKeys(['prep_carry_time']);_toast&&_toast('Evening prep check set to '+appData.prep_carry_time);">
+        <span>— pops up if anything is unticked, offers to move it to tomorrow</span>
+      </div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
     </div>
@@ -2726,12 +2737,13 @@ const _ALARM_DEF={
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'},
+ prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','walkin','prepcarry','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -2814,11 +2826,36 @@ function stopProbeAlarm(pid,snooze){
 function _probeSnoozed(pid){const t=_psnMap()[pid];return !!t&&Date.now()<t;}
 function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
-function triggerAlarm(title,sub,action){
-  // Two INDEPENDENT Alarm Center switches for the reminders group: 'Popup' (the on-screen card +
-  // lock banner) and 'Sound'. Both off = fully silent — but that's an explicit choice now, not the
-  // old side effect where one toggle made every TASK/PREP/JOB/ORDER reminder vanish without a trace.
-  const cfg=_acfg('service');
+// ── overlay snooze: every popup that uses the big alarm card gets the probe-style 1/5/10 buttons.
+// Snoozing hides the card and stops the sound; the SAME popup re-opens when the time is up (survives
+// reloads via localStorage). 10 minutes asks first.
+function _ovSnooze(mins){
+  const go=()=>{
+    const pay={at:Date.now()+mins*60000,key:window._ovKey||'service',
+               title:(document.getElementById('alarm-title')||{}).textContent||'REMINDER',
+               sub:(document.getElementById('alarm-sub')||{}).textContent||'',
+               kind:window._ovKind||''};
+    try{localStorage.setItem('ovSnoozePop',JSON.stringify(pay));}catch(e){}
+    silenceAlarm();
+    _toast&&_toast('Silenced '+mins+' min — it will come back if still due');
+  };
+  if(mins>=10&&typeof _askConfirm==='function')_askConfirm('Silence for 10 minutes?','No sound and no card for the whole 10 minutes.',go,'Silence 10 min');
+  else go();
+}
+function _ovSnoozeCheck(){
+  let p=null;
+  try{p=JSON.parse(localStorage.getItem('ovSnoozePop')||'null');}catch(e){}
+  if(!p||Date.now()<p.at)return;
+  try{localStorage.removeItem('ovSnoozePop');}catch(e){}
+  if(p.kind==='prepcarry'){_prepCarryPop();return;}          // rebuilt fresh — the unfinished list may have changed
+  triggerAlarmKey(p.key||'service',p.title,p.sub);
+}
+function triggerAlarm(title,sub,action){return triggerAlarmKey('service',title,sub,action);}
+function triggerAlarmKey(key,title,sub,action){
+  // Two INDEPENDENT Alarm Center switches per key: 'Popup' (the on-screen card + lock banner) and
+  // 'Sound'. Both off = fully silent — an explicit choice, never a side effect.
+  const cfg=_acfg(key);
+  window._ovKey=key; window._ovKind=(key==='prepcarry'?'prepcarry':'');
   if(cfg.popup){
     activeAlarmId=Date.now();
     document.getElementById('alarm-title').textContent=title;
@@ -2834,12 +2871,12 @@ function triggerAlarm(title,sub,action){
   if(!cfg.enabled)return;
   const id=activeAlarmId=(cfg.popup?activeAlarmId:Date.now());
   const t0=Date.now();
-  function loop(){if(activeAlarmId!==id)return;const c=_acfg('service');
+  function loop(){if(activeAlarmId!==id)return;const c=_acfg(key);
     if(c.autostop&&(Date.now()-t0)>c.autostop*60000)return;   // auto-stop setting stops the noise; card stays up until dismissed
-    _alarmHit('service');setTimeout(()=>{if(activeAlarmId===id)loop();},c.interval);}
+    _alarmHit(key);setTimeout(()=>{if(activeAlarmId===id)loop();},c.interval);}
   loop();
 }
-function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence('service');}
+function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence(window._ovKey||'service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
 function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;const t0=Date.now();(function b(){if(!_waitAlarm)return;const c=_acfg('orders');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_waitAlarm=false;_updateFlash();return;}_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},c.interval);})();}
@@ -5977,7 +6014,7 @@ function _migrateRoutinesToPrep(){
   saveKeys(['prep_presets','service_alerts','routines_migrated']);
   if(alerts.length)_toast(alerts.length+' routine'+(alerts.length>1?'s':'')+' moved to Prep / Daily Tasks');
 }
-function renderPrepPage(){
+function renderPrepPage(){try{_prepCarryTimeSync();}catch(e){}
   const box=document.getElementById('prep-list');if(!box)return;
   _migrateRoutinesToPrep();         // old Routines → recurring prep items (one-time)
   _promoteScheduledPrep();          // archive yesterday + load any scheduled list, on a new day
@@ -6104,6 +6141,7 @@ function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled
   }
   Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});
   if(changed)saveKeys(['prep_today','prep_scheduled','prep_yesterday','prep_history']);}
+function _prepCarryTimeSync(){const i=document.getElementById('prep-carry-time');if(i&&document.activeElement!==i)i.value=appData.prep_carry_time||'21:00';}
 function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');if(!el)return;const sch=appData.prep_scheduled||{};const today=_prepToday();
   const dates=Object.keys(sch).filter(d=>d>today&&(sch[d].items||[]).length).sort();
   if(!dates.length){el.style.display='none';el.innerHTML='';return;}
@@ -6723,8 +6761,45 @@ function ktTick(){
 function _dueWithin(t,now,grace){const r=_hhmm(t);if(!r)return false;
   const m=s=>(+s.slice(0,2))*60+(+s.slice(3));const d=m(now)-m(r);return d>=0&&d<=grace;}
 const _REMIND_GRACE=60;
+// ── evening prep carry-over: at the owner's set time (default 21:00), if today's prep still has
+// unticked items, pop the big card offering to move them to tomorrow. Once per day; snoozable.
+function _prepUnfinished(){
+  const pt=appData.prep_today||{};const done=pt.done||{};
+  return (pt.items||[]).filter(id=>!done[id]);
+}
+function _prepCarryPop(){
+  const un=_prepUnfinished();
+  if(!un.length)return;
+  const names=un.map(id=>{const p=(appData.prep_presets||[]).find(x=>x.id===id);return p?p.name:null;}).filter(Boolean);
+  triggerAlarmKey('prepcarry','PREP NOT COMPLETE',
+    un.length+' prep item'+(un.length>1?'s':'')+' unfinished'+(names.length?(': '+names.slice(0,4).join(', ')+(names.length>4?'…':'')):'')+'. Reschedule for tomorrow?',
+    {label:'Reschedule '+un.length+' for tomorrow',fn:_prepCarryDo});
+}
+function _prepCarryDo(){
+  const un=_prepUnfinished();if(!un.length){silenceAlarm();return;}
+  const d=new Date();d.setDate(d.getDate()+1);
+  const tmr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  appData.prep_scheduled=appData.prep_scheduled||{};
+  const s=appData.prep_scheduled[tmr]||{items:[],pri:{}};
+  const pt=appData.prep_today||{};
+  un.forEach(id=>{if(!s.items.includes(id))s.items.push(id);if((pt.pri||{})[id])s.pri[id]=pt.pri[id];});
+  appData.prep_scheduled[tmr]=s;
+  pt.items=(pt.items||[]).filter(id=>!un.includes(id));       // off today's list — they live on tomorrow
+  appData.prep_carry_last=todayDateStr();
+  saveKeys(['prep_today','prep_scheduled','prep_carry_last']);
+  silenceAlarm();renderPrepPage&&renderPrepPage();
+  _toast&&_toast(un.length+' prep item'+(un.length>1?'s':'')+' moved to tomorrow');
+}
 function checkAllReminders(){
   const now=nowHHMM(),todayDay=(new Date().getDay()+6)%7,dateKey=todayDateStr();
+  try{_ovSnoozeCheck();}catch(e){}                              // snoozed popups come back here
+  try{
+    const ct=appData.prep_carry_time||'21:00';
+    if(_dueWithin(ct,now,_REMIND_GRACE)&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length){
+      appData.prep_carry_last=dateKey;saveKeys(['prep_carry_last']);   // once per day, shop-wide (first screen wins)
+      _prepCarryPop();
+    }
+  }catch(e){}
   // each block wrapped in try/catch: one bad record or missing element must not kill the other checks
   try{(appData.suppliers||[]).forEach(sup=>{
     if(!sup.remind_time||!_dueWithin(sup.remind_time,now,_REMIND_GRACE))return;
