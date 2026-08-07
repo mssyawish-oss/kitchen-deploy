@@ -2773,10 +2773,16 @@ function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key
 // the alarm bar and the on-screen cue still show, so a muted device still tells you what's happening.
 function _devMutes(){try{return JSON.parse(localStorage.getItem('alarmMutes')||'{}')||{};}catch(e){return {};}}
 function _devMuted(key){return _devMutes()[key]===true;}
+// Per-screen POPUP routing (owner, 7 Aug: kitchen kiosk needs prep reminders, the FOH iPad doesn't).
+// Stored on the device like the sound mute; hides popup+banner+sound for that alarm on THIS screen only.
+function _devPopMutes(){try{return JSON.parse(localStorage.getItem('alarmPopMutes')||'{}')||{};}catch(e){return {};}}
+function _devPopMuted(key){return _devPopMutes()[key]===true;}
+function _devPopSet(key,on){const m=_devPopMutes();if(on)m[key]=true;else delete m[key];
+  try{localStorage.setItem('alarmPopMutes',JSON.stringify(m));}catch(e){}}
 function _devMuteSet(key,on){const m=_devMutes();if(on)m[key]=true;else delete m[key];
   try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
-function _alarmHit(key){const c=_acfg(key);const v=c.volume;
+function _alarmHit(key){if(_devPopMuted(key))return;const c=_acfg(key);const v=c.volume;
   _audioWake();
   // resume() is ASYNCHRONOUS. The old code checked the state on the very next line, where it still
   // read "suspended" even when the engine woke a few ms later — so this banner flashed up after every
@@ -2802,7 +2808,7 @@ function _alarmSynth(key,v){
 function playAlarm(id){if(alarms[id])return;const key=_keyForId(id);if(!_acfg(key).enabled)return;alarms[id]=true;_alarmStart[id]=Date.now();function b(){if(!alarms[id])return;const c=_acfg(key);if(c.autostop&&(Date.now()-_alarmStart[id])>c.autostop*60000){alarms[id]=false;_updateFlash();return;}_alarmHit(key);setTimeout(()=>{if(alarms[id])b();},c.interval);}b();}
 // soft, friendly recurring chime for the "products still off" warning (gentle bell, not a buzzer)
 function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeout(()=>playTone(988,'sine',.5,.16*v),230);setTimeout(()=>playTone(1319,'sine',.6,.13*v),470);}
-function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(alarms['prod-off'])return;alarms['prod-off']=true;const t0=Date.now();function loop(){if(!alarms['prod-off'])return;const c=_acfg('prodoff');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){alarms['prod-off']=false;_updateFlash();return;}_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},c.interval);}loop();}
+function startProdAlarm(){if(!_acfg('prodoff').enabled)return;if(_devPopMuted('prodoff'))return;if(alarms['prod-off'])return;alarms['prod-off']=true;const t0=Date.now();function loop(){if(!alarms['prod-off'])return;const c=_acfg('prodoff');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){alarms['prod-off']=false;_updateFlash();return;}_alarmHit('prodoff');setTimeout(()=>{if(alarms['prod-off'])loop();},c.interval);}loop();}
 function stopAlarm(id){alarms[id]=false;_updateFlash();}
 // Silencing a probe is a SNOOZE, not a dismissal. A bird at temp is a food-safety matter — if nobody
 // has actually pulled it, the alarm must come back. Owner, 7 Aug: "just 1 min silence then it
@@ -2824,7 +2830,7 @@ function stopProbeAlarm(pid,snooze){
   _updateFlash();
 }
 function _probeSnoozed(pid){const t=_psnMap()[pid];return !!t&&Date.now()<t;}
-function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
+function startProbeAlarm(pid,type){const key=type==='overdone'?'probeOverdone':'probeReady';if(!_acfg(key).enabled)return;if(_devPopMuted(key))return;_probeAlarms[pid]=type;probeToken[pid]++;const tok=probeToken[pid];const c=_acfg(key);const iv=c.interval||(type==='overdone'?1800:2800);const t0=Date.now();function loop(){if(probeToken[pid]!==tok)return;const cc=_acfg(key);if(cc.autostop&&(Date.now()-t0)>cc.autostop*60000){stopProbeAlarm(pid);return;}_alarmHit(key);setTimeout(()=>{if(probeToken[pid]===tok)loop();},iv);}setTimeout(loop,80);}
 
 // ── overlay snooze: every popup that uses the big alarm card gets the probe-style 1/5/10 buttons.
 // Snoozing hides the card and stops the sound; the SAME popup re-opens when the time is up (survives
@@ -2852,6 +2858,7 @@ function _ovSnoozeCheck(){
 }
 function triggerAlarm(title,sub,action){return triggerAlarmKey('service',title,sub,action);}
 function triggerAlarmKey(key,title,sub,action){
+  if(_devPopMuted(key))return;   // this screen opted out of this alarm entirely
   // Two INDEPENDENT Alarm Center switches per key: 'Popup' (the on-screen card + lock banner) and
   // 'Sound'. Both off = fully silent — an explicit choice, never a side effect.
   const cfg=_acfg(key);
@@ -2879,7 +2886,7 @@ function triggerAlarmKey(key,title,sub,action){
 function silenceAlarm(){activeAlarmId=null;document.getElementById('alarm-overlay').classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();_broadcastSilence(window._ovKey||'service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
-function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_waitAlarm)return;_waitAlarm=true;const t0=Date.now();(function b(){if(!_waitAlarm)return;const c=_acfg('orders');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_waitAlarm=false;_updateFlash();return;}_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},c.interval);})();}
+function startWaitAlarm(){if(!_acfg('orders').enabled)return;if(_devPopMuted('orders'))return;if(_waitAlarm)return;_waitAlarm=true;const t0=Date.now();(function b(){if(!_waitAlarm)return;const c=_acfg('orders');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_waitAlarm=false;_updateFlash();return;}_alarmHit('orders');setTimeout(()=>{if(_waitAlarm)b();},c.interval);})();}
 function stopWaitAlarm(){_waitAlarm=false;_updateFlash();}
 // ── walk-in watch: a customer is at the counter and nobody is in the service area ──
 let _walkinAlarm=false;
@@ -3704,7 +3711,7 @@ function syncTimers(serverTimers,batchLog){
     if(!editingLabel&&t.batch!==st.label){t.batch=st.label;structural=true;}
     if(t.started_at!==st.started_at||t.start_temp!==st.start_temp){t.started_at=st.started_at;t.start_temp=st.start_temp;structural=true;}
     t.remaining=st.remaining;t.total=st.total;t.running=st.running;t.expired=st.expired;
-    if(st.expired&&!t._alarmed){t._alarmed=true;playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}
+    if(st.expired&&!t._alarmed){t._alarmed=true;if(!_devPopMuted('timer')){playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}}
     if(!st.expired){t._alarmed=false;if(typeof alarms!=='undefined'&&alarms[st.id]&&typeof stopAlarm==='function')stopAlarm(st.id);}   // ended/confirmed/reset on ANY dash → stop this batch timer's alarm here too
   });
   // server collapsed grown slots again → drop ours too, clearing their tickers
@@ -3957,8 +3964,8 @@ function renderProbes(){
     const status=st.status,acked=st.alerted,cardCls=(status==='idle'||status==='standby')?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
       if(status==='almost'){stopProbeAlarm(pidN,false);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
-      if(status==='ready'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'ready');showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
-      if(status==='overdone'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'overdone');showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
+      if(status==='ready'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'ready');if(!_devPopMuted('probeReady'))showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
+      if(status==='overdone'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'overdone');if(!_devPopMuted('probeOverdone'))showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
       if(status==='idle'||status==='standby')stopProbeAlarm(pidN,false);   // genuinely pulled → clear the snooze too
       delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
       if(status==='ready'||status==='overdone')_paint();   // force the Silence button to appear without needing a tap
@@ -4070,6 +4077,7 @@ function renderProbeAlerts(){
     if(!ALERT.includes(sSt))return false;
     const _gk=sSt==='almost'?'probeAlmost':(sSt==='overdone'?'probeOverdone':'probeReady');
     if(!_acfg(_gk).enabled)return false;
+    if(_devPopMuted(_gk))return false;   // hidden on this screen
     if((sSt==='ready'||sSt==='overdone')&&st.alerted&&!_probeAlarms[pid])return false;   // acked AND the alarm has actually stopped
     if(_probePopDismissed[pid]===sSt)return false;                   // dismissed at this status
     return true;
@@ -6545,6 +6553,8 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
       +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMuted(key)?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>this screen only</b></label>'
       +'<span style="font-size:11px;color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devPopMuted(key)?'checked':'')+' onchange="_devPopSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Hidden on <b>this screen only</b></label>'
+      +'<span style="font-size:11px;color:var(--muted);">no popup, banner or sound HERE at all &mdash; other screens unaffected (e.g. keep prep reminders off the front-of-house iPad)</span></div>'
       +'</div>'
       +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:12px;flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Built-in: '+(_DEF_TONE_NAME[key]||'default')+'</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:12px;" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
       +'<div class="ac-sound"><span>Or own file:</span><span class="ac-tag '+(c.has_custom?'custom':'default')+'" id="ac-tag-'+key+'">'+(c.has_custom?'Custom file (overrides tone)':'none')+'</span>'
