@@ -1568,13 +1568,14 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="alarm-bell"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
     <div style="font-size:29px;font-weight:800;color:#fff;line-height:1.2;" id="alarm-title">REMINDER</div>
     <div style="font-size:16px;color:#c7ccd6;line-height:1.5;margin:12px auto 0;max-width:430px;" id="alarm-sub"></div>
-    <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#fb9b24;border-color:#fb9b24;color:#1a1200;font-weight:800;margin-top:14px;"></button>
-    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
+    <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800;margin-top:14px;"></button>
+    <button class="alarm-silence-btn" id="alarm-action2-btn" style="display:none;background:#dc2626;border-color:#dc2626;color:#fff;font-weight:800;margin-top:10px;"></button>
+    <div id="alarm-snooze-row" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
       <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:96px;" onclick="_ovSnooze(1)">SILENCE 1 MIN</button>
       <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(5)">5 MIN</button>
       <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(10)">10 MIN&hellip;</button>
     </div>
-    <button class="alarm-silence-btn" onclick="silenceAlarm()">DISMISS</button>
+    <button class="alarm-silence-btn" id="alarm-dismiss-btn" onclick="silenceAlarm()">DISMISS</button>
   </div>
 </div>
 
@@ -2896,7 +2897,7 @@ function _ovSnoozeCheck(){
   triggerAlarmKey(p.key||'service',p.title,p.sub);
 }
 function triggerAlarm(title,sub,action){return triggerAlarmKey('service',title,sub,action);}
-function triggerAlarmKey(key,title,sub,action){
+function triggerAlarmKey(key,title,sub,action,action2,opts){
   if(_devPopMuted(key))return;   // this screen opted out of this alarm entirely
   // Two INDEPENDENT Alarm Center switches per key: 'Popup' (the on-screen card + lock banner) and
   // 'Sound'. Both off = fully silent — an explicit choice, never a side effect.
@@ -2912,6 +2913,14 @@ function triggerAlarmKey(key,title,sub,action){
     const _ab=document.getElementById('alarm-action-btn');
     if(_ab){ if(action&&action.label){_ab.textContent=action.label;_ab.onclick=action.fn;_ab.style.display='';}
              else {_ab.style.display='none';_ab.onclick=null;} }
+    const _ab2=document.getElementById('alarm-action2-btn');
+    if(_ab2){ if(action2&&action2.label){_ab2.textContent=action2.label;_ab2.onclick=action2.fn;_ab2.style.display='';}
+              else {_ab2.style.display='none';_ab2.onclick=null;} }
+    // a must-answer popup (opts.noDismiss) hides the snooze trio and DISMISS — the two choices are the only exits
+    const _sr=document.getElementById('alarm-snooze-row'),_db=document.getElementById('alarm-dismiss-btn');
+    const _lock=!!(opts&&opts.noDismiss);
+    if(_sr)_sr.style.display=_lock?'none':'flex';
+    if(_db)_db.style.display=_lock?'none':'';
     showLockBanner(title,sub);_updateFlash();   // modal is up → _updateFlash suppresses the screen-edge flashing
   }
   if(!cfg.enabled)return;
@@ -2924,7 +2933,8 @@ function triggerAlarmKey(key,title,sub,action){
 }
 function silenceAlarmLocal(){activeAlarmId=null;const ov=document.getElementById('alarm-overlay');if(ov)ov.classList.remove('active');document.querySelectorAll('.nav-btn.alarming').forEach(b=>b.classList.remove('alarming'));_updateFlash();}
 function silenceAlarm(){
-  if(window._ovKind==='prepcarry'&&appData.prep_carry_last!==todayDateStr()){appData.prep_carry_last=todayDateStr();saveKeys(['prep_carry_last']);}   // dismiss = asked and answered for today
+  // NB: prepcarry is a must-answer popup — closing it any other way (Silence All, another screen's
+  // broadcast) does NOT claim the day; only its two buttons do, so it comes back until one is tapped.
   silenceAlarmLocal();_broadcastSilence(window._ovKey||'service');}
 // ── "Hand out now" order alarm ──
 let _waitAlarm=false;
@@ -5860,8 +5870,8 @@ function _askConfirm(title,body,onYes,yesLabel){
   let o=document.getElementById('app-confirm');
   if(!o){o=document.createElement('div');o.id='app-confirm';document.body.appendChild(o);}
   o.innerHTML='<div class="acf-card"><div class="acf-title"></div><div class="acf-body"></div>'
-    +'<div class="acf-btns"><button class="btn acf-no">Cancel</button>'
-    +'<button class="btn btn-primary acf-yes"></button></div></div>';
+    +'<div class="acf-btns"><button class="btn acf-no" style="background:#dc2626;border-color:#dc2626;color:#fff;font-weight:700;">Cancel</button>'
+    +'<button class="btn acf-yes" style="background:#16a34a;border-color:#16a34a;color:#fff;font-weight:700;"></button></div></div>';
   o.querySelector('.acf-title').textContent=title||'Are you sure?';
   o.querySelector('.acf-body').textContent=body||'';
   o.querySelector('.acf-yes').textContent=yesLabel||'Yes, do it';
@@ -6836,7 +6846,14 @@ function _prepCarryPop(){
   const names=un.map(id=>{const p=(appData.prep_presets||[]).find(x=>x.id===id);return p?p.name:null;}).filter(Boolean);
   triggerAlarmKey('prepcarry','PREP NOT COMPLETE',
     un.length+' prep item'+(un.length>1?'s':'')+' unfinished'+(names.length?(': '+names.slice(0,4).join(', ')+(names.length>4?'…':'')):'')+'. Reschedule for tomorrow?',
-    {label:'Reschedule '+un.length+' for tomorrow',fn:_prepCarryDo});
+    {label:'Reschedule '+un.length+' for tomorrow',fn:_prepCarryDo},
+    {label:'Don\u2019t reschedule \u2014 leave on today',fn:_prepCarryNo},
+    {noDismiss:true});
+}
+function _prepCarryNo(){
+  appData.prep_carry_last=todayDateStr();saveKeys(['prep_carry_last']);   // answered for today, shop-wide
+  silenceAlarmLocal();_broadcastSilence('prepcarry');
+  _toast&&_toast('Okay \u2014 unfinished prep stays on today\u2019s list');
 }
 function _prepCarryDo(){
   const un=_prepUnfinished();if(!un.length){silenceAlarm();return;}
@@ -6868,12 +6885,15 @@ function checkAllReminders(){
     // Chrome tab claimed the once-a-day flag and the popup was never seen). The day is only claimed
     // when a human ACTS: reschedule or dismiss. Handling it on one screen clears the others.
     if(activeAlarmId&&window._ovKind==='prepcarry'&&appData.prep_carry_last===dateKey){silenceAlarmLocal();}
-    if(_dueWithin(ct,now,_REMIND_GRACE)&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length
-       &&document.visibilityState==='visible'&&!_devPopMuted('prepcarry')&&!window._pcShown){
-      window._pcShown=dateKey;
+    // owner, 7 Aug: repeat until one of the TWO buttons is tapped — closing it any other way just
+    // delays it one cycle. Window runs from the set time to midnight (not the 60-min grace).
+    const _ctm=_hhmm(ct),_m=s=>(+s.slice(0,2))*60+(+s.slice(3));
+    const _dueAll=_ctm&&_m(now)>=_m(_ctm);
+    const _showingPC=!!(activeAlarmId&&window._ovKind==='prepcarry');
+    if(_dueAll&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length
+       &&document.visibilityState==='visible'&&!_devPopMuted('prepcarry')&&!_showingPC){
       _prepCarryPop();
     }
-    if(window._pcShown&&window._pcShown!==dateKey)window._pcShown=null;   // new day → re-arm
   }catch(e){}
   // each block wrapped in try/catch: one bad record or missing element must not kill the other checks
   try{(appData.suppliers||[]).forEach(sup=>{
