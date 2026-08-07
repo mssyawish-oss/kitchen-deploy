@@ -1119,7 +1119,20 @@ def _orders_refresh(cfg):
             d=_parse_dt(b.get("created"))
             return bool(d and (now-d).total_seconds()<win_pos*60)
         return False
-    open_tk=[b for b in board if not b["fulfilled"] or _pos_recent(b)]
+    # Payment Links NEVER reach the KDS, so they can't be bumped and sit on the board for ever
+    # (owner, 7 Aug: a paid catering order stuck there with no way to clear it). Hide by default.
+    hide_src={s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}
+    # A ticket nobody ever bumped shouldn't haunt the board either — one was still showing from 19 Jul.
+    try: stale_h=float(db.get("orders_stale_hours") or 24)
+    except (TypeError,ValueError): stale_h=24.0
+    def _stale(b):
+        if not stale_h: return False
+        eff=_parse_dt(b["due"]) if (b.get("sched") and b.get("due")) else _parse_dt(b.get("created"))
+        return bool(eff and (now-eff).total_seconds()>stale_h*3600)
+    open_tk=[b for b in board
+             if (not b["fulfilled"] or _pos_recent(b))
+             and (b.get("src") or "").strip().lower() not in hide_src
+             and not _stale(b)]
     live_ids=set(b["id"] for b in open_tk)
     # Board shows ALL open kitchen orders — INCLUDING scheduled catering/pre-orders (tagged with their due
     # time) so the owner sees + preps them ahead, not only within the KDS fire window. Soonest-relevant first.
