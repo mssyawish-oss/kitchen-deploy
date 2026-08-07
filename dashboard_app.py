@@ -1045,11 +1045,12 @@ def _kds_fetch(cfg):
         oid=o.get("id")
         if oid and oid not in _seen: _seen.add(oid); allo.append(o)
     out=[]
+    bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP   # same whole-bird equivalents the stock deduction uses
     for o in allo:
         oid=o.get("id")
         if not oid: continue
         if not (o.get("fulfillments")): continue   # no fulfillment = not a kitchen order (invoice / payment link) — never hits the KDS, can't be bumped; keep it off the board
-        items=[]; icount=0
+        items=[]; icount=0; birds=0.0; cater=False
         for li in o.get("line_items") or []:
             nm=(li.get("name") or "").strip()
             if not nm: continue
@@ -1057,6 +1058,8 @@ def _kds_fetch(cfg):
             try: q=int(float(li.get("quantity") or 1))
             except (TypeError,ValueError): q=1
             icount+=q
+            if (nm+"|"+var) in bm: birds+=q*bm[nm+"|"+var]
+            if "CATER" in (nm+" "+var).upper(): cater=True
             mods=[m.get("name") for m in (li.get("modifiers") or []) if m.get("name")]
             it={"n":nm+((" "+var) if (var and var.lower()!="regular") else ""),"q":q}
             if mods: it["mods"]=mods
@@ -1078,7 +1081,8 @@ def _kds_fetch(cfg):
         except (TypeError,ValueError): total=0.0
         out.append({"id":oid,"name":name,"items":items,"icount":icount,"src":(o.get("source") or {}).get("name") or "",
                     "total":round(total,2),"sched":sched,"due":(due.isoformat() if due else None),
-                    "created":o.get("created_at"),"fulfilled":fulfilled})
+                    "created":o.get("created_at"),"fulfilled":fulfilled,
+                    "birds":round(birds,2),"cater":cater})
     return out
 def _orders_refresh(cfg):
     global ORDERS_LIVE
@@ -1088,11 +1092,18 @@ def _orders_refresh(cfg):
         return   # transient Square hiccup → keep the last board
     now=datetime.now(timezone.utc)
     oc=db.get("order_alert") or {}
-    enabled=oc.get("enabled",True); schedOn=oc.get("sched",True)
-    try: minT=float(oc.get("min_total",150) or 0)
-    except (TypeError,ValueError): minT=150.0
-    try: minI=int(oc.get("min_items",15) or 0)
-    except (TypeError,ValueError): minI=15
+    enabled=oc.get("enabled",True)
+    # Popup rule (owner, 7 Aug 2026): a big-order heads-up should mean CATERING ITEMS or 4+ CHICKENS —
+    # not every scheduled pickup. Online/phone orders arrive as SCHEDULED, so the old sched trigger
+    # popped for basically everything. sched/min_total/min_items survive as opt-ins only.
+    schedOn=oc.get("sched",False)
+    caterOn=oc.get("cater",True)
+    try: minB=float(oc.get("min_birds",4) or 0)
+    except (TypeError,ValueError): minB=4.0
+    try: minT=float(oc.get("min_total",0) or 0)
+    except (TypeError,ValueError): minT=0.0
+    try: minI=int(oc.get("min_items",0) or 0)
+    except (TypeError,ValueError): minI=0
     try: win=int((db.get("orders_board_window") or 15))
     except (TypeError,ValueError): win=15
     # Paid counter sales: Square auto-COMPLETES their fulfillment the moment they're rung up, while
@@ -1126,13 +1137,16 @@ def _orders_refresh(cfg):
         for b in open_tk:
             if b["id"] in seen: continue
             why=[]
-            if schedOn and b["sched"]: why.append("Catering / pre-order")
+            if caterOn and b.get("cater"): why.append("Catering items")
+            if minB and b.get("birds",0)>=minB: why.append("%g chickens"%b["birds"])
+            if schedOn and b["sched"]: why.append("Pre-order")
             if minT and b["total"]>=minT: why.append("$%d order"%int(b["total"]))
             if minI and b["icount"]>=minI: why.append("%d items"%b["icount"])
             if why:
                 a=dict(b); a["reason"]=" · ".join(why); alerts.append(a)
     ORDERS_LIVE={"board":tickets,"alerts":alerts,"ts":int(time.time()*1000),
-                 "cfg":{"min_total":minT,"min_items":minI,"sched":schedOn,"enabled":enabled,"window":win}}
+                 "cfg":{"min_total":minT,"min_items":minI,"sched":schedOn,"enabled":enabled,"window":win,
+                        "min_birds":minB,"cater":caterOn}}
 def square_poll_loop():
     while True:
         cfg=db.get("square_config",{}) or {}

@@ -6070,8 +6070,10 @@ function renderOrdersPage(){
   if(!board.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
   if(empty)empty.style.display='none';
   grid.innerHTML=board.map(o=>{
-    const big=(o.total>=(cfg.min_total||1e9))||(o.icount>=(cfg.min_items||1e9));
+    const big=(!!o.cater)||((o.birds||0)>=(cfg.min_birds||4))||(cfg.min_total>0&&o.total>=cfg.min_total)||(cfg.min_items>0&&o.icount>=cfg.min_items);
     const tags=[];
+    if(o.cater)tags.push('<span class="ord-tag sched">CATERING</span>');
+    if((o.birds||0)>=(cfg.min_birds||4))tags.push('<span class="ord-tag sched">'+o.birds+' CHICKENS</span>');
     if(o.sched)tags.push('<span class="ord-tag sched">PRE-ORDER</span>');
     if(o.sched&&o.due)tags.push('<span class="ord-tag due">DUE '+_ordDue(o.due)+'</span>');
     if(o.src)tags.push('<span class="ord-tag src">'+_mEsc(o.src)+'</span>');
