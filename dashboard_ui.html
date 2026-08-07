@@ -2475,7 +2475,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div class="set-tab" data-m="targets" onclick="setProdMode('targets')">Daily targets</div>
     </div>
     <div id="pe-mode-help" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
-    <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"><option value="0.25">Quarters (&frac14;)</option><option value="0.5">Halves (&frac12;)</option><option value="1">Whole numbers</option></select></div>
+    <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"></select></div>
     <div id="pe-reorder-row" class="grid-2 mt-8"><div><div class="label" id="pe-reorder-label">Reorder when below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:110px;"></select></div></div><div><div class="label" id="pe-pack-label">Order in lots of <span style="color:var(--muted);font-weight:400;">(the unit is what the supplier sells in)</span></div><div class="row" style="gap:6px;"><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;"><select class="input" id="pe-order-unit" style="width:110px;"></select></div></div></div>
     <div id="pe-targets-row" style="display:none;">
       <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
@@ -4621,6 +4621,7 @@ let _orderAdj={};
 // (par - have) to whole units. "SAME" is stored by copying the number, so every run has an explicit par.
 const _WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let _orunSup=null,_orunDay=null,_orunHave={};
+let _orunOrdUnit={};   // pid -> 'base'|'pack' — per-run choice when the product allows ordering in either
 let _orunUnit={};   // pid -> 'base'|'alt'
 let _orunAdj={};    // pid -> manual +/- nudge on the calculated order (in base units)
 let _orunBatchOn={}, _orunBatch={}, _orunBatchRepl={};   // selected batches; per-item batch qty; per-item replace-flag
@@ -4631,7 +4632,7 @@ function _orunNextOrderDay(days,from){ // label: which day this run lasts until 
 function openOrderRun(supId){
   // one screen now: selecting a supplier re-points the Stock page's order run (no modal)
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
-  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={}; _orunSkip={};
+  _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={}; _orunSkip={}; _orunOrdUnit={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
   _orunDay=days.includes(today)?today:(days[0]!==undefined?days[0]:null);
@@ -4801,17 +4802,33 @@ function _orunCalc(p){
   }
   const mode2=p.order_mode||'topup';
   const psz=parseFloat(p.pack_size)||1;
-  const orderUnit=(mode2==='reorder'&&p.order_unit==='pack'&&psz>1&&p.pack_unit)?p.pack_unit:(p.unit||'unit');
-  return {parN,haveN,order,state,unit:(p.unit||'unit'),orderUnit,batch:badd,adj:(isNaN(adj)?0:adj)};
+  let orderUnit=(p.unit||'unit'),orderQty=order,orderBoth=false;
+  if(mode2==='reorder'&&psz>1&&p.pack_unit){
+    if(p.order_unit==='pack'){orderUnit=p.pack_unit;}                      // lots ARE cartons
+    else if(p.order_unit==='both'){                                        // lots are BASE; staff choose the outgoing unit
+      orderBoth=true;
+      if((_orunOrdUnit[p.id]||'base')==='pack'&&order!=null){orderUnit=p.pack_unit;orderQty=Math.round(order/psz*100)/100;}
+    }
+  }
+  return {parN,haveN,order,state,unit:(p.unit||'unit'),orderUnit,orderQty:(orderQty==null?order:orderQty),orderBoth,batch:badd,adj:(isNaN(adj)?0:adj)};
 }
 function _orunCellHtml(c,pid){
   let mid;
   if(c.state==='nolevel') mid='<span class="q">&mdash;</span>';
   else if(c.state==='uncounted') mid='<span class="q count">count</span>';
-  else if(c.state==='order') mid='<span class="q">+'+_fmtQ(c.order)+' <span class="u">'+(c.orderUnit||c.unit)+'</span></span>';
+  else if(c.state==='order') mid='<span class="q">+'+_fmtQ(c.orderQty!=null?c.orderQty:c.order)+' <span class="u">'+(c.orderUnit||c.unit)+'</span></span>';
   else mid='<span class="q">ok</span>';
   if(pid===undefined) return mid;
-  const arrows='<div class="orun-adj">'
+  let seg='';
+  if(c.orderBoth){
+    const cur=(_orunOrdUnit[pid]||'base');
+    const p=(appData.products||[]).find(x=>x.id===pid)||{};
+    seg='<div class="orun-unit-seg" role="group" style="margin-top:4px;">'
+      +'<button class="'+(cur==='base'?'on':'')+'" onclick="_orunOrdUnit[\''+pid+'\']=\'base\';renderOrderRun()">'+_mEsc(p.unit||'unit')+'</button>'
+      +'<button class="'+(cur==='pack'?'on':'')+'" onclick="_orunOrdUnit[\''+pid+'\']=\'pack\';renderOrderRun()">'+_mEsc(p.pack_unit||'pack')+'</button>'
+      +'</div>';
+  }
+  const arrows=seg+'<div class="orun-adj">'
     +'<button type="button" aria-label="less" onclick="_orunBump(\''+pid+'\',-1)">&minus;</button>'
     +'<button type="button" aria-label="more" onclick="_orunBump(\''+pid+'\',1)">+</button></div>';
   return '<div class="orun-ordwrap">'+mid+arrows+'</div>';
@@ -4853,7 +4870,7 @@ function sendOrderRun(){
     const first=document.querySelector('.orun-row.needcount'); if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
-  const items=supProds.map(p=>{const c=_orunCalc(p);return {code:p.code||'',name:p.name,qty:c.order||0,unit:(c.orderUnit||c.unit)};}).filter(x=>x.qty>0);
+  const items=supProds.map(p=>{const c=_orunCalc(p);return {code:p.code||'',name:p.name,qty:(c.orderQty!=null?c.orderQty:c.order)||0,unit:(c.orderUnit||c.unit)};}).filter(x=>x.qty>0);
   if(!items.length){st.textContent='Nothing to order — everything is at or above its level.';st.style.color='var(--muted)';return;}
   const btn=document.getElementById('orun-send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -5034,11 +5051,23 @@ function syncUnitLabels(){
   const pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
   const list=_PE_UNITS.slice();
   for(const extra of [u,pu]) if(extra&&!list.includes(extra)) list.unshift(extra);
+  const cs=document.getElementById('pe-cstep');
+  if(cs){
+    const keepCS=cs.value;
+    const ps=(function(){try{return _peEqRead().ps||1;}catch(e){return 1;}})();
+    let opts='<option value="0.25">Quarters (\u00bc '+_mEsc(u)+')</option>'
+            +'<option value="0.5">Halves (\u00bd '+_mEsc(u)+')</option>'
+            +'<option value="1">Whole '+_mEsc(u)+'s</option>';
+    if(ps>1&&pu)opts+='<option value="'+ps+'">Whole '+_mEsc(pu)+'s ('+ps+' '+_mEsc(u)+' each)</option>';
+    cs.innerHTML=opts;
+    if(keepCS&&[...cs.options].some(o=>o.value===keepCS))cs.value=keepCS;
+  }
   ['pe-reorder-unit','pe-order-unit'].forEach(id=>{
     const s=document.getElementById(id); if(!s)return;
     const keep=s.value;
-    s.innerHTML='<option value="base">'+_mEsc(u)+'</option>'+(pu?'<option value="pack">'+_mEsc(pu)+'</option>':'');
-    if(keep==='pack'&&pu)s.value='pack'; else if(keep==='base')s.value='base';
+    s.innerHTML='<option value="base">'+_mEsc(u)+'</option>'+(pu?'<option value="pack">'+_mEsc(pu)+'</option>':'')
+      +((pu&&id==='pe-order-unit')?'<option value="both">either \u2014 choose per order</option>':'');
+    if((keep==='pack'||keep==='both')&&pu)s.value=keep; else s.value='base';
   });
   ['pe-eq-u1','pe-eq-u2'].forEach((id,i)=>{
     const s=document.getElementById(id); if(!s)return;
@@ -5087,7 +5116,7 @@ function saveProductEdit(){
   const count_step=parseFloat(document.getElementById('pe-cstep').value)||0.25;
   const _ruSel=document.getElementById('pe-reorder-unit'),_ouSel=document.getElementById('pe-order-unit');
   const reorder_unit=(ps>1&&_ruSel&&_ruSel.value==='pack')?'pack':'base';   // which unit the level was TYPED in
-  const order_unit=(ps>1&&_ouSel&&_ouSel.value==='pack')?'pack':'base';     // the unit the supplier sells in — orders go out in THIS
+  const order_unit=(ps>1&&_ouSel&&['pack','both'].includes(_ouSel.value))?_ouSel.value:'base';   // what the supplier sells in; 'both' = staff choose per order
   const fields={name,supplier_id,unit,count_step,targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
