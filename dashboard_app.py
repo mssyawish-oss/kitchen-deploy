@@ -2345,6 +2345,10 @@ def api_sq_tracking_audit():
                     vd=v.get("item_variation_data") or {}
                     ov=next((x for x in (vd.get("location_overrides") or []) if x.get("location_id")==loc),{})
                     if vd.get("track_inventory") or ov.get("track_inventory"):
+                        # A variation that is SOLD OUT is tracked ON PURPOSE — tracking at zero is what
+                        # holds the 86 (proven 8 Aug: untracking clears sold_out). Healing it would
+                        # silently put the product back on sale, so leave those alone.
+                        if ov.get("sold_out"): continue
                         vn=(vd.get("name") or "").strip()
                         hits.append({"vid":v.get("id"),"name":iname+((" — "+vn) if vn and vn.lower()!="regular" else ""),
                                      "variation_level":bool(vd.get("track_inventory")),"override_level":bool(ov.get("track_inventory"))})
@@ -2480,7 +2484,7 @@ def _sq_disable_variation(vid):
         body={"idempotency_key":str(_uu.uuid4()),"changes":[{"type":"PHYSICAL_COUNT","physical_count":{
               "catalog_object_id":vid,"state":"IN_STOCK","location_id":loc,"quantity":"0",
               "occurred_at":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}}]}
-        req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes",data=json.dumps(body).encode(),headers=hdr)
+        req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/changes/batch-create",data=json.dumps(body).encode(),headers=hdr)
         with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
             if (json.loads(r.read().decode()) or {}).get("errors"): return False,"couldn't zero the stock count"
         # Square applies the auto-86 asynchronously and is NOT quick about it. On 6 Aug 2026 four
@@ -2491,7 +2495,10 @@ def _sq_disable_variation(vid):
         for _ in range(10):
             time.sleep(1.2)
             if _is_off():
-                _sq_untrack(vid); return True,None
+                # DO NOT untrack here. Proven live 8 Aug: clearing track_inventory also clears
+                # sold_out, silently un-86ing the item. Tracking stays armed at ZERO, which is the
+                # state that HOLDS the sold-out. Turn-on clears both (see _sq_enable_variation).
+                return True,None
         threading.Thread(target=_sq_disable_watch,args=(vid,loc,hdr,u),daemon=True).start()
         return False,"Square is still applying this — it usually lands within a minute. Stock tracking will be cleared either way; re-check the item shortly."
     except Exception as e:
@@ -2657,7 +2664,7 @@ def api_product_disable():
             err=("couldn't find an add-on called \"%s\" in Square any more — it may have been renamed or deleted"%nm) if nm \
                 else "this listing is out of date — search again"
     elif not ok and err and "404" in str(err):
-        err="this listing is out of date — search again"
+        err="Square rejected the change (404 from its API) — tell Claude; this is a bug, not your listing"
     elif not ok and err and "POS" not in str(err):
         time.sleep(0.8); ok,err=fn(vid)
     _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
