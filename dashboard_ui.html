@@ -2439,7 +2439,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 <div class="modal-overlay" id="prod-edit-modal" style="z-index:300;">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title" id="pe-title">EDIT PRODUCT</div><button class="modal-close" onclick="closeModal('prod-edit-modal')">Cancel</button></div>
-    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Order as (from supplier)</div><input class="input" id="pe-unit" oninput="syncUnitLabels()" list="pe-unit-list" placeholder="case / box / each" oninput="syncUnitLabels()"><datalist id="pe-unit-list"><option value="each"></option><option value="case"></option><option value="carton"></option><option value="box"></option><option value="bag"></option><option value="tub"></option><option value="pack"></option><option value="bottle"></option><option value="kg"></option></datalist></div></div>
+    <div class="grid-2"><div><div class="label">Product Name</div><input class="input" id="pe-name" placeholder="Chicken Wings"></div><div><div class="label">Count in <span style="color:var(--muted);font-weight:400;">(the SMALL unit — one single one)</span></div><input class="input" id="pe-unit" oninput="syncUnitLabels()" list="pe-unit-list" placeholder="unit / bag / bottle"><datalist id="pe-unit-list"><option value="unit"></option><option value="each"></option><option value="bag"></option><option value="bottle"></option><option value="tub"></option><option value="pack"></option><option value="sleeve"></option><option value="roll"></option><option value="kg"></option></datalist></div></div>
     <div class="form-row mt-8"><div class="label">Supplier</div><select class="input" id="pe-supplier" style="background:var(--surface2);"></select></div>
     <div class="form-row mt-8"><div class="label">Section <span style="color:var(--muted);font-weight:400;">(groups items on the order screen — Frozen, Dairy, Dry…)</span></div><input class="input" id="pe-section" list="pe-section-list" placeholder="e.g. Dairy"><datalist id="pe-section-list"><option value="Dairy"></option><option value="Frozen"></option><option value="Dry"></option><option value="Sauces"></option><option value="Bread"></option><option value="Produce"></option><option value="Meat"></option><option value="Packaging"></option><option value="Spices"></option><option value="Drinks"></option></datalist></div>
     <div class="label mt-8">Bigger pack <span style="color:var(--muted);font-weight:400;">(optional — so staff can count this in cartons/boxes too)</span></div>
@@ -2451,7 +2451,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <input class="input" id="pe-packunit" list="pe-packunit-list" placeholder="carton" style="width:130px;">
       <datalist id="pe-packunit-list"><option value="carton"></option><option value="box"></option><option value="case"></option><option value="crate"></option><option value="tray"></option><option value="tub"></option><option value="jar"></option><option value="bottle"></option><option value="bag"></option><option value="bucket"></option><option value="tin"></option><option value="pack"></option><option value="sleeve"></option><option value="roll"></option><option value="bunch"></option><option value="block"></option><option value="sack"></option></datalist>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">Reads left→right: <b>6 btl = 1 case</b>, or <b>10 pack = 1 carton</b>. The left unit is your “Order as” unit above. <b>The unit box takes any word you type</b> — tub, jar, bucket, whatever the product comes in; the list is just suggestions. Leave blank if you only ever count it one way.</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">Reads left→right: <b>6 unit = 1 carton</b>, or <b>6 btl = 1 case</b>. The small unit comes from “Count in” above; the box here is the BIGGER pack the supplier sells. <b>They must be different words</b> — if both say carton, the maths means nothing. Any word works; the list is just suggestions. Leave blank if you only ever count it one way.</div>
     <div class="label mt-8">How should I work out the order?</div>
     <div class="day-pills" id="pe-mode" style="display:flex;gap:6px;">
       <div class="set-tab on" data-m="reorder" onclick="setProdMode('reorder')">Reorder when low</div>
@@ -4867,6 +4867,13 @@ function saveProductEdit(){
   if(!name||!supplier_id){_toast&&_toast('Enter a product name and pick a supplier.');return;}
   const ps=parseFloat(document.getElementById('pe-packsize').value)||1;const pack_size=ps>1?ps:1;
   const pack_unit=(document.getElementById('pe-packunit').value||'').trim();const section=(document.getElementById('pe-section').value||'').trim();
+  // "6 carton = 1 carton" is meaningless — the small unit and the bigger pack must be different words
+  // (owner hit exactly this on Sponge Fingers, 7 Aug: typed carton in BOTH boxes because the old label
+  // said "Order as (from supplier)"). Refuse with a plain explanation instead of saving nonsense.
+  if(pack_unit&&ps>1&&pack_unit.toLowerCase().replace(/s$/,'')===unit.toLowerCase().replace(/s$/,'')){
+    _toast&&_toast('“'+ps+' '+unit+' = 1 '+pack_unit+'” doesn’t make sense — “Count in” should be the SMALL unit (e.g. unit, bag), the bigger pack is the '+pack_unit+'.');
+    return;
+  }
   const target_in=(document.getElementById('pe-target-unit').value==='order'&&ps>1)?'order':'count';
   const mult=(target_in==='order'?ps:1);
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
