@@ -2723,9 +2723,11 @@ const _TONES={
  pager:{name:'Guest pager',fn:v=>[0,.26,.52].forEach(t=>_buzz(1000,t,.18,v,30))},
  register:{name:'Register beep',fn:v=>_voice(1760,'square',0,.12,v*.28)},
  urgent:{name:'Urgent alert',fn:v=>[0,.16,.32,.48].forEach(t=>_voice(2300,'square',t,.1,v*.28))},
- sonar:{name:'Sonar ping',fn:v=>_voice(1320,'sine',0,.7,v*.3)}
+ sonar:{name:'Sonar ping',fn:v=>_voice(1320,'sine',0,.7,v*.3)},
+ softrise:{name:'Soft rising ping',fn:v=>{playTone(600,'sine',.3,.2*v);setTimeout(()=>playTone(700,'sine',.3,.2*v),350);}},
+ risetriple:{name:'Rising triple bell',fn:v=>{playTone(880,'sine',.2,.3*v);setTimeout(()=>playTone(1100,'sine',.2,.3*v),200);setTimeout(()=>playTone(1320,'sine',.4,.3*v),400);}}
 };
-const _TONE_ORDER=['bell','ready','doorbell','microwave','fryer','hennyPenny','fryStation','frymelody','pitcoPulse','holdCab','shakeChirp','ovenbuzz','dryer','alarmclock','klaxon','marimba','chime','pager','register','urgent','sonar'];
+const _TONE_ORDER=['softrise','risetriple','bell','ready','doorbell','microwave','fryer','hennyPenny','fryStation','frymelody','pitcoPulse','holdCab','shakeChirp','ovenbuzz','dryer','alarmclock','klaxon','marimba','chime','pager','register','urgent','sonar'];
 const alarms={};const probeToken={1:0,2:0,3:0,4:0};const _probeAlarms={};const _alarmStart={};
 // ── Alarm Center: per-alarm config (sound / volume / interval / flash colour / vibrate / auto-stop) ──
 const _ALARM_DEF={
