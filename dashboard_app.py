@@ -2431,6 +2431,46 @@ def api_sq_tracking_audit():
             fails.append({"vid":h["vid"],"name":h.get("name"),"err":str(e)[:140]})
     return jsonify({"ok":True,"found":len(hits),"fixed":fixed,"failed":fails})
 
+@app.route("/api/sq_addon_dedup",methods=["GET","POST"])
+def api_sq_addon_dedup():
+    """Find (GET) and clean (POST {fix:true}) duplicate add-ons — modifiers with the SAME name inside
+    the same modifier list, the residue of the turn-on-stacks-copies bug (the 6x sweet-potato). Only
+    collapses copies that are truly identical (same name AND same price): keeps one, deletes the rest.
+    Different-priced same-name modifiers are left alone (could be intentional). GET is read-only."""
+    hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    fix=bool((request.get_json(silent=True) or {}).get("fix")) if request.method=="POST" else False
+    groups=[]; cursor=None
+    try:
+        for _pg in range(50):
+            u=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER_LIST"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for ml in data.get("objects") or []:
+                mld=ml.get("modifier_list_data") or {}; lname=mld.get("name") or "?"
+                by={}
+                for m in (mld.get("modifiers") or []):
+                    md=m.get("modifier_data") or {}
+                    key=((md.get("name") or "?"),((md.get("price_money") or {}).get("amount")))
+                    by.setdefault(key,[]).append(m.get("id"))
+                for (nm,price),ids in by.items():
+                    if len(ids)<2: continue
+                    groups.append({"list":lname,"name":nm,"price":price,"copies":len(ids),
+                                   "keep":ids[0],"remove":ids[1:]})
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:200]})
+    extra=sum(len(g["remove"]) for g in groups)
+    if not fix:
+        return jsonify({"ok":True,"dup_names":len(groups),"extra_rows":extra,"groups":groups})
+    removed=0; fails=[]
+    for g in groups:
+        for oid in g["remove"]:
+            if _sq_delete_catalog_obj(oid,hdr): removed+=1
+            else: fails.append({"list":g["list"],"name":g["name"],"id":oid})
+    return jsonify({"ok":True,"dup_names":len(groups),"removed":removed,"failed":fails})
+
 _PSRCH_CACHE={"at":0,"items":[]}
 @app.route("/api/product_search")
 def api_product_search():
