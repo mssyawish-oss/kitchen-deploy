@@ -1470,10 +1470,56 @@ def _sq_offline_products():
             except Exception: pass
         return None,str(e)
 _ENABLE_DBG=None
+def _sq_mods_by_name_in_list(list_id,name,hdr,loc):
+    """Every modifier named `name` inside modifier-list `list_id`, as [{'id','sold_out'}].
+    Used to stop the turn-on path from stacking duplicate add-ons (the 6x sweet-potato bug)."""
+    out=[]
+    if not list_id or not hdr or not name: return out
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(list_id)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            o=(json.loads(r.read().decode()) or {}).get("object") or {}
+    except Exception:
+        return out
+    nm=(name or "").strip().lower()
+    for m in ((o.get("modifier_list_data") or {}).get("modifiers") or []):
+        md=m.get("modifier_data") or {}
+        if ((md.get("name") or "").strip().lower())!=nm: continue
+        so=next((ov.get("sold_out") for ov in (md.get("location_overrides") or []) if ov.get("location_id")==loc),None)
+        out.append({"id":m.get("id"),"sold_out":bool(so)})
+    return out
+
+def _sq_delete_catalog_obj(oid,hdr):
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(oid),headers=hdr,method="DELETE")
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: r.read()
+        _SQ_OBJ_CACHE.pop(oid,None)
+        return True
+    except Exception:
+        return False
+
+def _sq_dedup_mod_list(list_id,name,keep_id,hdr,loc):
+    """Ensure at most one copy of `name` survives in `list_id`: delete every same-name modifier
+    except `keep_id` (pass keep_id=None to remove ALL of them, e.g. on 86). Returns count deleted."""
+    n=0
+    for m in _sq_mods_by_name_in_list(list_id,name,hdr,loc):
+        if m["id"] and m["id"]!=keep_id:
+            if _sq_delete_catalog_obj(m["id"],hdr): n+=1
+    return n
+
 def _sq_swap_modifier(vid,obj,loc,hdr,dbg):
     """Revive a sold-out modifier by twin-swap (see comment at the call site). Returns (ok,err)."""
     import uuid as _uuid
     md=(obj.get("modifier_data") or {})
+    # If a good copy of this add-on already exists (e.g. an earlier swap made the twin but couldn't
+    # delete the stuck original), adopt it and clear every other same-name copy — never make a 3rd.
+    _ex=[e for e in _sq_mods_by_name_in_list(md.get("modifier_list_id"),md.get("name"),hdr,loc)
+         if not e["sold_out"] and e["id"]!=vid]
+    if _ex:
+        keep=_ex[0]["id"]
+        _sq_dedup_mod_list(md.get("modifier_list_id"),md.get("name"),keep,hdr,loc)
+        dbg["steps"].append({"adopted_existing":keep,"deduped":True})
+        return True,None
     new_md=copy.deepcopy(md)
     new_md["location_overrides"]=[{k:v for k,v in ov.items() if k not in ("sold_out","sold_out_valid_until")}
                                   for ov in (md.get("location_overrides") or [])]
@@ -1514,6 +1560,9 @@ def _sq_swap_modifier(vid,obj,loc,hdr,dbg):
         dbg["steps"].append({"old_delete_err":str(e)[:160]})
         return True,"add-on revived, but the old sold-out copy couldn't be deleted — it may show twice until removed in Square"
     _SQ_OBJ_CACHE.pop(vid,None);_SQ_OBJ_CACHE.pop(newid,None)
+    # sweep any leftover same-name copies from earlier interrupted swaps — keep only the fresh twin
+    _d=_sq_dedup_mod_list(md.get("modifier_list_id"),md.get("name"),newid,hdr,loc)
+    if _d: dbg["steps"].append({"deduped":_d})
     dbg["steps"].append({"swapped":True})
     return True,None
 
@@ -2576,6 +2625,7 @@ def _sq_disable_modifier(vid):
         with data_lock: db.get("mod_86_bin",{}).pop(vid,None); save_data(db)
         return False,"Square refused the delete: "+str(e)[:120]
     _SQ_OBJ_CACHE.pop(vid,None)
+    _sq_dedup_mod_list(md.get("modifier_list_id"),md.get("name"),None,hdr,loc)  # remove any stray duplicates too
     return True,None
 
 def _sq_restore_modifier(vid):
@@ -2584,6 +2634,18 @@ def _sq_restore_modifier(vid):
     b=(db.get("mod_86_bin") or {}).get(vid)
     if not b or not hdr: return False,"no archived copy for this add-on"
     old=b["obj"];md=old.get("modifier_data") or {}
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    list_id=md.get("modifier_list_id"); nm=md.get("name")
+    # IDEMPOTENCY: if a working copy of this add-on is already in the list, adopt it (and clear any
+    # strays) instead of creating another — this is what stops repeated toggles stacking duplicates.
+    _avail=[e for e in _sq_mods_by_name_in_list(list_id,nm,hdr,loc) if not e["sold_out"]]
+    if _avail:
+        keep=_avail[0]["id"]
+        _sq_dedup_mod_list(list_id,nm,keep,hdr,loc)
+        with data_lock:
+            db.get("mod_86_bin",{}).pop(vid,None)
+            m=db.setdefault("mod_id_map",{}); m[vid]=keep; save_data(db)
+        return True,None
     new_obj={"type":"MODIFIER","id":"#restore","present_at_all_locations":old.get("present_at_all_locations",True),
              "modifier_data":copy.deepcopy(md)}
     for f in ("present_at_location_ids","absent_at_location_ids"):
@@ -2604,6 +2666,7 @@ def _sq_restore_modifier(vid):
         if (tw.get("modifier_data") or {}).get("name")!=md.get("name"): return False,"recreate didn't verify"
     except Exception:
         return False,"recreated but couldn't verify"
+    _sq_dedup_mod_list(list_id,nm,newid,hdr,loc)   # clear any strays; keep only the copy we just made
     with data_lock:
         db.get("mod_86_bin",{}).pop(vid,None)
         # A dash-86'd add-on is DELETED from Square and RECREATED here, so it gets a brand new id
