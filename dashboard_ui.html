@@ -2779,8 +2779,15 @@ function _devMutes(){try{return JSON.parse(localStorage.getItem('alarmMutes')||'
 // The blocked-audio banner is now OPT-IN per screen (owner, 8 Aug: most screens run visual-only, so
 // warning about blocked sound was pure noise and kept reappearing). Default OFF everywhere; a screen
 // that is genuinely the "loud alarm" screen turns it on in the Alarm Center.
-function _audioWarnOn(){try{return localStorage.getItem('audioWarn')!=='0';}catch(e){return true;}}   // DEFAULT ON — safety net for a silent screen; a visual-only screen can switch it off
-function _audioWarnSet(on){try{on?localStorage.removeItem('audioWarn'):localStorage.setItem('audioWarn','0');}catch(e){}
+function _audioWarnOn(){                                   // DEFAULT ON; off if THIS screen (local) or its central pref says so
+  try{ if(localStorage.getItem('audioWarn')==='0')return false; }catch(e){}
+  try{ if(((appData.device_prefs||{})[devName()]||{}).noAudioWarn)return false; }catch(e){}
+  return true;
+}
+function _audioWarnSet(on){
+  try{on?localStorage.removeItem('audioWarn'):localStorage.setItem('audioWarn','0');}catch(e){}
+  try{appData.device_prefs=appData.device_prefs||{};const e=appData.device_prefs[devName()]=appData.device_prefs[devName()]||{};
+      if(on)delete e.noAudioWarn; else e.noAudioWarn=true; saveKeys(['device_prefs']);}catch(e){}
   if(!on){try{_audioBanner(false);}catch(e){}} if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _devMuted(key){
   const e=((appData.device_prefs||{})[ (function(){try{return localStorage.getItem('devName')||''}catch(x){return ''}})() ])||{};
