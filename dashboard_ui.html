@@ -2734,7 +2734,7 @@ const _ALARM_DEF={
  probeAlmost:{label:'Probe \u2014 almost ready',color:'#f59e0b',interval:2800,desc:'A meat probe is nearly at temperature.'},
  probeReady:{label:'Probe \u2014 ready',color:'#34d399',interval:2800,desc:'A meat probe hits target temperature.'},
  probeOverdone:{label:'Probe \u2014 overdone',color:'#ef4444',interval:1800,desc:'A meat probe has gone over temperature.'},
- stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie or fried stock is running low.'},
+ stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie/fried stock low. The amber “Cook more” pill ALWAYS shows on the card — this switch is the SOUND only.'},
  prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (opening alarm from 10:10am).'},
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
@@ -5280,7 +5280,14 @@ function fmtBird(v){const neg=(v<0)?'-':'';v=Math.abs(Math.round(v*4)/4);const w
 // ── low-stock alarms: 'warn' = strobe + pleasant 3s chime once; 'crit' = strobe + looping sound until tapped ──
 const stockAlert={bbq:{lvl:'none',acked:false},fry:{lvl:'none',acked:false}};
 function playStockWarn(){const v=_acfg('stock').volume;playChime(v);setTimeout(()=>playChime(v),1000);setTimeout(()=>playChime(v),2000);}
-function updateStockAlert(key,lvl){if(appData.stock_alarm_enabled===false)return 'none';const s=stockAlert[key];if(lvl!==s.lvl){s.lvl=lvl;s.acked=false;stopAlarm('stock-'+key);if(lvl==='warn')playStockWarn();else if(lvl==='crit')playAlarm('stock-'+key);}return s.acked?'none':lvl;}
+function updateStockAlert(key,lvl){
+  // VISUAL (the amber/red "Cook more" pill + card colour) always shows when stock is low.
+  // The stock_alarm_enabled toggle now controls the SOUND only (owner, 8 Aug: wanted visual-only
+  // stock warning without the noise — previously OFF killed the pill too).
+  const s=stockAlert[key];const soundOn=(appData.stock_alarm_enabled!==false)&&!_devMuted('stock');
+  if(lvl!==s.lvl){s.lvl=lvl;s.acked=false;stopAlarm('stock-'+key);
+    if(soundOn){if(lvl==='warn')playStockWarn();else if(lvl==='crit')playAlarm('stock-'+key);}}
+  return s.acked?'none':lvl;}
 function ackStock(key){stockAlert[key].acked=true;stopAlarm('stock-'+key);if(key==='bbq')_rotSig='';else _frySig='';if(typeof _broadcastSilence==='function')_broadcastSilence('stock');}   // silence stock on all dashes too
 let _rotSig='';
 // the count can be "4", "12¾" or "-10½" — shrink the digits as they get longer so they never
