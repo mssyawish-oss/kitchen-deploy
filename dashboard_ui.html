@@ -2483,11 +2483,11 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="form-row mt-8"><div class="label">Section <span style="color:var(--muted);font-weight:400;">(groups items on the order screen — Frozen, Dairy, Dry…)</span></div><input class="input" id="pe-section" list="pe-section-list" placeholder="e.g. Dairy"><datalist id="pe-section-list"><option value="Dairy"></option><option value="Frozen"></option><option value="Dry"></option><option value="Sauces"></option><option value="Bread"></option><option value="Produce"></option><option value="Meat"></option><option value="Packaging"></option><option value="Spices"></option><option value="Drinks"></option></datalist></div>
     <div class="label mt-8">Bigger pack <span style="color:var(--muted);font-weight:400;">(optional — the supplier’s carton/box, so counting and ordering can use either)</span></div>
     <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;font-size:16px;margin-top:4px;">
-      <input class="input" id="pe-eq-n1" type="number" step="any" min="0.01" placeholder="6" style="width:64px;text-align:center;" value="">
-      <select class="input" id="pe-eq-u1" style="width:120px;"></select>
+      <input class="input" id="pe-eq-n1" type="number" step="any" min="0.01" placeholder="6" style="width:64px;text-align:center;" value="" oninput="syncUnitLabels()">
+      <select class="input" id="pe-eq-u1" style="width:120px;" onchange="syncUnitLabels()"></select>
       <span style="color:var(--muted);font-weight:700;">=</span>
-      <input class="input" id="pe-eq-n2" type="number" step="any" min="0.01" placeholder="1" style="width:64px;text-align:center;" value="">
-      <select class="input" id="pe-eq-u2" style="width:120px;"></select>
+      <input class="input" id="pe-eq-n2" type="number" step="any" min="0.01" placeholder="1" style="width:64px;text-align:center;" value="" oninput="syncUnitLabels()">
+      <select class="input" id="pe-eq-u2" style="width:120px;" onchange="syncUnitLabels()"></select>
       <input type="hidden" id="pe-packunit">
       <input type="hidden" id="pe-packsize">
       <span id="pe-base-unit" style="display:none;"></span>
@@ -5230,8 +5230,12 @@ function syncUnitLabels(){
   const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
   const bu=document.getElementById('pe-base-unit'); if(bu)bu.textContent=(u||'units');
   // both equation dropdowns carry the FULL unit list (like the stock-setup tool the owner liked),
-  // with the product's own count-in unit added if it's a custom word
-  const pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
+  // with the product's own count-in unit added if it's a custom word.
+  // The bigger-pack unit comes from the LIVE equation first — so typing "6 sleeve = 1 box" makes
+  // "box" appear in the reorder/order dropdowns immediately, not only after a save+reopen
+  // (the owner hit exactly that on 9 Aug and reasonably read it as "box is missing").
+  let pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
+  try{const _eq=_peEqRead();if(_eq&&!_eq.err&&_eq.ps>1&&_eq.pu)pu=_eq.pu.trim();}catch(e){}
   const list=_PE_UNITS.slice();
   for(const extra of [u,pu]) if(extra&&!list.includes(extra)) list.unshift(extra);
   const cs=document.getElementById('pe-cstep');
