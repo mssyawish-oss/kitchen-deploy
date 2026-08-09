@@ -5227,7 +5227,7 @@ let _prodMode='reorder';
 function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier');sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');if(val)sel.value=val;}
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
 let _peTargetUnit='count';
-function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
+function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';let ps=parseFloat(document.getElementById('pe-packsize').value)||1;try{const _e=_peEqRead();if(!_e.err&&_e.ps>1)ps=_e.ps;}catch(e){}if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
 function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';document.getElementById('pe-eq-n1').value='';document.getElementById('pe-eq-n2').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';document.getElementById('pe-cstep').value='0.25';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(ref){const list=appData.products||[];const p=(typeof ref==='number')?list[ref]:list.find(x=>x.id===ref);if(!p){_toast&&_toast('Could not find that item — the list just refreshed. Try again.');return;}editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';document.getElementById('pe-section').value=p.section||'';
@@ -5244,7 +5244,22 @@ function editProduct(ref){const list=appData.products||[];const p=(typeof ref===
   document.getElementById('pe-cstep').value=String(p.count_step||0.25);
   const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';setProdMode(hasRe?'reorder':'targets');
   _peTargetUnit=(p.target_in==='order'&&pk.split)?'order':'count';
+  // The equation selects still hold the PREVIOUS product's units here, and syncUnitLabels derives
+  // the bigger pack from them live — wipe them first (empty = falls back to this product's stored
+  // pack_unit), then pin them to THIS product's units and re-derive. Fixes "6 bottle = 1 unit" on
+  // opening Milk after another item (owner, 9 Aug).
+  const _q1=document.getElementById('pe-eq-u1'),_q2=document.getElementById('pe-eq-u2');
+  if(_q1)_q1.innerHTML='';if(_q2)_q2.innerHTML='';
   syncUnitLabels();
+  if(_q1)_q1.value=(p.unit||'unit');
+  if(_q2&&(p.pack_unit||p.count_unit))_q2.value=(p.pack_unit||p.count_unit);
+  syncUnitLabels();
+  // selects whose values were assigned BEFORE their options existed (fresh page load) lose them —
+  // re-apply every stored choice now that the option lists are real
+  const _tu=document.getElementById('pe-target-unit');if(_tu)_tu.value=_peTargetUnit;
+  if(_ru)_ru.value=(p.reorder_unit==='pack'?'pack':'base');
+  if(_ou)_ou.value=(p.order_unit==='pack'||p.order_unit==='both')?p.order_unit:'base';
+  document.getElementById('pe-cstep').value=String(p.count_step||0.25);
   const div=(_peTargetUnit==='order'?pk.ps:1);const t=p.targets||{};
   for(let d=0;d<7;d++){const v=t[d];document.getElementById('pe-t'+d).value=(v!==undefined&&v!=='')?(Math.round(v/div*100)/100):'';}
   openModal('prod-edit-modal');}
@@ -5258,7 +5273,8 @@ function syncUnitLabels(){
   // "box" appear in the reorder/order dropdowns immediately, not only after a save+reopen
   // (the owner hit exactly that on 9 Aug and reasonably read it as "box is missing").
   let pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
-  try{const _eq=_peEqRead();if(_eq&&!_eq.err&&_eq.ps>1&&_eq.pu)pu=_eq.pu.trim();}catch(e){}
+  let psLive=parseFloat((document.getElementById('pe-packsize')||{}).value)||1;
+  try{const _eq=_peEqRead();if(_eq&&!_eq.err&&_eq.ps>1&&_eq.pu){pu=_eq.pu.trim();psLive=_eq.ps;}}catch(e){}
   const list=_PE_UNITS.slice();
   for(const extra of [u,pu]) if(extra&&!list.includes(extra)) list.unshift(extra);
   const cs=document.getElementById('pe-cstep');
@@ -5279,6 +5295,15 @@ function syncUnitLabels(){
       +((pu&&id==='pe-order-unit')?'<option value="both">either \u2014 choose per order</option>':'');
     if((keep==='pack'||keep==='both')&&pu)s.value=keep; else s.value='base';
   });
+  // "Daily target, in" \u2014 this select shipped with NO options (dead dropdown, owner found it 9 Aug).
+  // Offer the count unit, plus the bigger pack once an equation exists.
+  const tu=document.getElementById('pe-target-unit');
+  if(tu){
+    const keepT=(tu.value||_peTargetUnit||'count');
+    tu.innerHTML='<option value="count">'+_mEsc(u)+'</option>'
+      +((pu&&psLive>1)?'<option value="order">'+_mEsc(pu)+' ('+psLive+' '+_mEsc(u)+' each)</option>':'');
+    tu.value=(keepT==='order'&&pu&&psLive>1)?'order':'count';
+  }
   ['pe-eq-u1','pe-eq-u2'].forEach((id,i)=>{
     const s=document.getElementById(id); if(!s)return;
     const keep=s.value;
