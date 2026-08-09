@@ -3625,7 +3625,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -4287,6 +4287,244 @@ def walkin_loop():
         except Exception as e:
             WALKIN["err"]=str(e)[:120]
         time.sleep(iv)
+
+# ===== DISPLAY FOOD WATCH — "which hot/cold display trays are running low" ====================
+# Each tray is a named RECTANGLE (crop box) on one of the display cameras (192.168.0.153 / .78).
+# Every `interval` seconds we grab each camera once, crop out each tray, and ask Gemini how full it
+# is (FULL / LOW / EMPTY). Trust first, like the walk-in watch: every read is logged with the crop it
+# judged, levels show on a dash tile, and it is VISUAL-ONLY until the owner opts into sound
+# ([[alarm-preferences]]). A tray must read the SAME low/empty answer TWICE running before it flags,
+# so a hand reaching in for one frame never cries wolf.
+DISPLAYW={}   # tray id -> {level,raw,at,err,sig,pend,since,img}
+_DISPLAY_RECHECK=600    # force a fresh AI look at least this often even if the crop looks unchanged (10 min)
+_DISPLAY_PROMPT=("This photo is ONE food tray in a takeaway shop's hot/cold food display. "
+                 "How full is the tray of food right now? Ignore the tray rim, labels and any tongs. "
+                 "Answer with ONE word only: FULL, LOW, or EMPTY. "
+                 "FULL = plenty left; LOW = running down, refill soon; EMPTY = little or nothing left.")
+DISPLAY_DIR=os.path.join(BASE_DIR,"display_log")
+try: os.makedirs(DISPLAY_DIR,exist_ok=True)
+except Exception: pass
+_DISPLAY_KEEP=300       # log entries (and their crop images) to keep; oldest pruned
+def _display_cfg(): return db.get("display_watch",{}) or {}
+def _display_trays():
+    return [t for t in (_display_cfg().get("trays") or []) if t.get("id") and t.get("cam")]
+def _display_open_now(cfg):
+    try:
+        h=datetime.now().hour
+        return int(cfg.get("start_hour",10))<=h<int(cfg.get("end_hour",21))
+    except Exception: return True
+def _crop_box(data,box):
+    """Crop a fractional rectangle box={x,y,w,h} (each 0..1) out of a JPEG. Returns the whole frame
+    unchanged if there's no usable box (so an un-cropped tray still works)."""
+    try:
+        if not box: return data
+        x=max(0.0,min(1.0,float(box.get("x",0)))); y=max(0.0,min(1.0,float(box.get("y",0))))
+        w=max(0.0,min(1.0,float(box.get("w",1)))); h=max(0.0,min(1.0,float(box.get("h",1))))
+        if w<=0.02 or h<=0.02: return data
+        from PIL import Image; import io
+        im=Image.open(io.BytesIO(data)); im.load()
+        if im.mode!="RGB": im=im.convert("RGB")
+        W,H=im.size
+        l=int(x*W); t=int(y*H); r=int(min(W,(x+w)*W)); b=int(min(H,(y+h)*H))
+        if r-l<4 or b-t<4: return data
+        im=im.crop((l,t,r,b))
+        out=io.BytesIO(); im.save(out,"JPEG",quality=88); return out.getvalue()
+    except Exception:
+        return data
+def _display_ask(jpeg):
+    """FULL/LOW/EMPTY for one tray crop -> ('ok'|'low'|'empty', raw), or (None, raw) if unreadable."""
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,"no key/frame"
+    img=_downscale_jpeg(jpeg)
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":8}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    prompt=(_display_cfg().get("prompt") or _DISPLAY_PROMPT)
+    body={"contents":[{"parts":[{"text":prompt},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict)).strip().upper()
+        if "EMPTY" in txt: return "empty",txt
+        if "FULL" in txt: return "ok",txt
+        if "LOW" in txt: return "low",txt
+        return None,(txt or "empty reply")
+    except Exception as e:
+        return None,("error: "+str(e)[:100])
+def _display_log_add(tray,crop_jpeg,level):
+    """Record a confirmed level change WITH the crop that caused it — so the owner can audit the AI's
+    judgement before ever turning on sound (the same trust path that made the walk-in watch reliable)."""
+    stamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+    ent={"ts":int(time.time()*1000),"at":datetime.now().strftime("%a %d %b %H:%M:%S"),
+         "tray":tray.get("name") or tray.get("id"),"tid":tray.get("id"),"level":level,"img":""}
+    if crop_jpeg:
+        fn="dw_%s_%s.jpg"%(stamp,re.sub(r'[^A-Za-z0-9]','',str(tray.get('id'))[:12]) or "t")
+        try:
+            with open(os.path.join(DISPLAY_DIR,fn),"wb") as f: f.write(crop_jpeg)
+            ent["img"]=fn
+        except Exception: pass
+    with data_lock:
+        log=list(db.get("display_log") or []); log.append(ent)
+        drop=log[:-_DISPLAY_KEEP]; log=log[-_DISPLAY_KEEP:]
+        db["display_log"]=log; save_data(db)
+    for old in drop:
+        try:
+            if old.get("img"): os.remove(os.path.join(DISPLAY_DIR,old["img"]))
+        except Exception: pass
+def _display_check_once(force=False,save_preview=False):
+    """Run one full sweep of every tray. Returns [{id,name,level,raw,err,preview?}]. `force` skips the
+    motion/stale gate (used by the Test button); `save_preview` returns the crop as base64 for setup."""
+    cfg=_display_cfg(); trays=_display_trays(); out=[]
+    frames={}    # cam id -> (jpeg,err); each camera grabbed at most once per sweep
+    for t in trays:
+        cid=t["cam"]
+        if cid not in frames:
+            cam=_cam_by_id(cid); frames[cid]=(_snap_from(cam) if cam else (None,"camera not found"))
+        jpeg,err=frames[cid]
+        st=DISPLAYW.setdefault(t["id"],{"level":None,"raw":"","at":0.0,"err":"","sig":None,"pend":None,"since":0.0,"img":""})
+        row={"id":t["id"],"name":t.get("name") or t["id"],"level":st.get("level"),"raw":"","err":""}
+        if err or not jpeg:
+            st["err"]=err or "no frame"; row["err"]=st["err"]; out.append(row); continue
+        crop=_crop_box(jpeg,t.get("crop")) if t.get("crop") else jpeg
+        sig=_frame_sig(crop)
+        stale=(time.time()-st.get("at",0))>_DISPLAY_RECHECK
+        if not force and not (_frame_moved(st.get("sig"),sig) or stale or st.get("level") is None):
+            st["sig"]=sig; row["level"]=st.get("level"); row["raw"]=st.get("raw",""); out.append(row); continue
+        level,raw=_display_ask(crop)
+        st["sig"]=sig; st["raw"]=raw; st["at"]=time.time(); st["err"]=""
+        row["raw"]=raw
+        if level is None:
+            row["level"]=st.get("level"); row["err"]="unreadable"
+        else:
+            # two equal reads must agree before a change is committed (debounce hands/blur/motion)
+            if level!=st.get("level"):
+                if st.get("pend")==level:
+                    st["level"]=level; st["pend"]=None; st["since"]=time.time()
+                    _display_log_add(t,crop,level)
+                else:
+                    st["pend"]=level   # first sighting of the new level → hold for confirmation
+            else:
+                st["pend"]=None
+            row["level"]=st.get("level")
+        if save_preview:
+            try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(crop)).decode()
+            except Exception: pass
+        out.append(row)
+    return out
+def display_loop():
+    while True:
+        cfg=_display_cfg(); iv=max(15,int(cfg.get("interval",90) or 90))
+        try:
+            if not (cfg.get("enabled") and _display_trays() and (_rotcam_cfg().get("gemini_key") or "").strip()
+                    and _display_open_now(cfg)):
+                time.sleep(iv); continue
+            _display_check_once()
+        except Exception as e:
+            print("display_loop:",str(e)[:120])
+        time.sleep(iv)
+def _display_low_trays():
+    """Trays currently flagged low or empty (for the tile + alarm), most urgent first."""
+    order={"empty":0,"low":1}
+    hits=[]
+    for t in _display_trays():
+        st=DISPLAYW.get(t["id"]) or {}
+        if st.get("level") in ("empty","low"):
+            hits.append({"id":t["id"],"name":t.get("name") or t["id"],"level":st["level"]})
+    hits.sort(key=lambda h:order.get(h["level"],9))
+    return hits
+
+@app.route("/api/display_status")
+def api_display_status():
+    cfg=_display_cfg(); rows=[]
+    for t in _display_trays():
+        st=DISPLAYW.get(t["id"]) or {}
+        rows.append({"id":t["id"],"name":t.get("name") or t["id"],"cam":t.get("cam"),
+                     "level":st.get("level"),"raw":st.get("raw",""),"err":st.get("err",""),
+                     "at":st.get("at",0)})
+    low=_display_low_trays()
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"alarm":bool(cfg.get("alarm")),
+                    "open":_display_open_now(cfg),"interval":int(cfg.get("interval",90) or 90),
+                    "trays":rows,"low":low,"any_low":bool(low),
+                    "any_empty":any(h["level"]=="empty" for h in low)})
+
+@app.route("/api/display_config",methods=["POST"])
+def api_display_config():
+    d=request.get_json(silent=True) or {}
+    cur=dict(_display_cfg())
+    for k in ("enabled","alarm"):
+        if k in d: cur[k]=bool(d[k])
+    for k in ("interval","start_hour","end_hour"):
+        if k in d:
+            try: cur[k]=int(d[k])
+            except Exception: pass
+    if "prompt" in d: cur["prompt"]=str(d["prompt"] or "")
+    if "trays" in d and isinstance(d["trays"],list):
+        clean=[]
+        for t in d["trays"]:
+            if not isinstance(t,dict): continue
+            tid=str(t.get("id") or "").strip() or ("t"+_secrets.token_hex(3))
+            cam=str(t.get("cam") or "").strip()
+            if not cam: continue
+            row={"id":tid,"cam":cam,"name":str(t.get("name") or "").strip() or "Tray"}
+            cr=t.get("crop") or {}
+            if isinstance(cr,dict) and all(k in cr for k in ("x","y","w","h")):
+                try: row["crop"]={k:round(float(cr[k]),4) for k in ("x","y","w","h")}
+                except Exception: pass
+            clean.append(row)
+        cur["trays"]=clean
+        live={r["id"] for r in clean}
+        for k in list(DISPLAYW.keys()):
+            if k not in live: DISPLAYW.pop(k,None)   # forget state for removed trays
+    with data_lock:
+        db["display_watch"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+
+@app.route("/api/display_test",methods=["POST"])
+def api_display_test():
+    if not (_rotcam_cfg().get("gemini_key") or "").strip():
+        return jsonify({"ok":False,"error":"No Gemini key configured (Rotisserie camera settings)"})
+    try:
+        rows=_display_check_once(force=True,save_preview=True)
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:160]})
+    return jsonify({"ok":True,"trays":rows})
+
+@app.route("/api/display_snap")
+def api_display_snap():
+    """A single full-frame snapshot (base64) from one store camera — powers the crop-drawing UI."""
+    cid=(request.args.get("cam") or "").strip()
+    cam=_cam_by_id(cid)
+    if not cam: return jsonify({"ok":False,"error":"camera not found"})
+    jpeg,err=_snap_from(cam)
+    if err or not jpeg: return jsonify({"ok":False,"error":err or "no frame"})
+    try: jpeg=_downscale_jpeg(jpeg,960)
+    except Exception: pass
+    return jsonify({"ok":True,"img":"data:image/jpeg;base64,"+base64.b64encode(jpeg).decode()})
+
+@app.route("/api/display_log",methods=["GET","DELETE"])
+def api_display_log():
+    if request.method=="DELETE":
+        with data_lock:
+            for e in (db.get("display_log") or []):
+                try:
+                    if e.get("img"): os.remove(os.path.join(DISPLAY_DIR,e["img"]))
+                except Exception: pass
+            db["display_log"]=[]; save_data(db)
+        return jsonify({"ok":True})
+    log=list(db.get("display_log") or [])[::-1]   # newest first
+    return jsonify({"ok":True,"count":len(log),"entries":log[:120]})
+
+@app.route("/api/display_photo/<fn>")
+def api_display_photo(fn):
+    if not re.match(r'^dw_[A-Za-z0-9_]+\.jpg$',fn or ""): return ("bad name",404)
+    p=os.path.join(DISPLAY_DIR,fn)
+    if not os.path.exists(p): return ("not found",404)
+    return send_file(p,mimetype="image/jpeg")
 
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
@@ -7325,6 +7563,7 @@ if __name__=="__main__":
     threading.Thread(target=clock_guard_loop,daemon=True).start()                  # ORDERMATE booted 37 min fast → probe readings all "stale"; keeps the clock honest
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
+    threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
     threading.Thread(target=rotcam_loop,daemon=True).start()

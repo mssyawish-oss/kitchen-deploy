@@ -1628,6 +1628,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
+      <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div class="timers-grid" id="timers-grid"></div></div>
@@ -2351,6 +2352,22 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Detection log <span style="color:var(--muted);font-weight:400;">(every red light, with the two frames that caused it)</span></div><span><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="walkinLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="walkinLogClear()">Clear</button></span></div>
     <div id="wi-log" style="margin-top:8px;"></div>
     <div class="divider"></div>
+    <div class="section-title">Display food levels (camera + AI)</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Watches the hot &amp; cold display cameras and tells you which trays are <b>running low or empty</b>. Each tray is a box you draw on a camera view. It only looks during the hours below, re-checks a tray when its picture changes, and needs the same Gemini key as the rotisserie camera. Starts <b>visual-only</b> (a coloured tile) &mdash; turn on sound once you trust it.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="dw-enabled" style="width:18px;height:18px;"> Turn display food watch on</label>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="dw-alarm" style="width:18px;height:18px;margin-top:2px;"> <span>Also sound the alarm when a tray is empty <span style="color:var(--muted);font-size:12px;">(leave OFF at first &mdash; you just get a coloured tile until you trust it)</span></span></label>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds &mdash; food changes slowly, 90 is plenty)</span></div><input class="input" id="dw-interval" type="number" min="15" max="900" step="5" placeholder="90"></div>
+      <div><div class="label">Only between &rarr; and (24h)</div><div class="row" style="gap:6px;"><input class="input" id="dw-start" type="number" min="0" max="23" placeholder="10"><input class="input" id="dw-end" type="number" min="1" max="24" placeholder="21"></div></div>
+    </div>
+    <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Trays <span style="color:var(--muted);font-weight:400;">(one box per tray you want watched)</span></div><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="dwAddTray()">+ Add tray</button></div>
+    <div id="dw-trays" style="margin-top:8px;"></div>
+    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="displaySave()">Save display watch</button><button class="btn" onclick="displayTest()">Test now</button></div>
+    <div id="dw-status" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--muted);"></div>
+    <div id="dw-test" style="margin-top:8px;"></div>
+    <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Change log <span style="color:var(--muted);font-weight:400;">(every confirmed low/empty, with the crop that caused it)</span></div><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="dwLogLoad()">Refresh</button></div>
+    <div id="dw-log" style="margin-top:8px;"></div>
+    <div class="divider"></div>
     <div class="section-title">Rotisserie Auto-Count (camera + AI)</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Watches the rotisserie camera and counts rows of chickens with AI. When a cooked row comes off, it auto-adds to available stock. Uses Google Gemini's free tier. Needs <b>ffmpeg</b> installed on this machine.</div>
     <div class="label" style="margin-bottom:4px;">Features (turn each on/off)</div>
@@ -2745,12 +2762,13 @@ const _ALARM_DEF={
  checklist:{label:'Checklist tasks (front of house)',color:'#60a5fa',interval:2800,desc:'Timed checklist-task reminders. Route to FOH screens: hide it on kitchen screens with the per-screen toggle.'},
  preptasks:{label:'Prep & daily tasks (kitchen)',color:'#34d399',interval:2800,desc:'Prep-item and daily-task reminders. Kitchen business: hide it on the front-of-house iPad with the per-screen toggle.'},
  prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
- probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'}
+ probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'},
+ display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','display','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3076,8 +3094,145 @@ function walkinTest(){
     st.style.color='var(--text)';
   }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
+// ── display food watch: which hot/cold trays are running low or empty ──
+let _dwTrays=[];
+const _DW_LVL={ok:{t:'OK',c:'var(--green)',bg:'rgba(34,197,94,.14)'},low:{t:'LOW',c:'var(--amber)',bg:'rgba(245,158,11,.16)'},
+  empty:{t:'EMPTY',c:'var(--red)',bg:'rgba(239,68,68,.16)'},null:{t:'—',c:'var(--muted)',bg:'transparent'}};
+function _dwBadge(level){const d=_DW_LVL[level]||_DW_LVL.null;return '<span style="font-weight:800;font-size:11px;letter-spacing:.4px;color:'+d.c+';background:'+d.bg+';padding:2px 8px;border-radius:999px;">'+d.t+'</span>';}
+function displayLoad(){
+  fetch('/api/display_config').then(r=>r.json()).then(d=>{
+    const g=id=>document.getElementById(id); if(!g('dw-enabled'))return;
+    const c=d.config||d||{};
+    g('dw-enabled').checked=!!c.enabled; g('dw-alarm').checked=!!c.alarm;
+    g('dw-interval').value=c.interval||90;
+    g('dw-start').value=(c.start_hour!==undefined?c.start_hour:10); g('dw-end').value=(c.end_hour!==undefined?c.end_hour:21);
+    _dwTrays=(c.trays||[]).map(t=>({id:t.id,name:t.name||'Tray',cam:t.cam||'',crop:t.crop||null}));
+    dwRenderTrays(); dwLogLoad();
+    const st=g('dw-status');
+    if(st&&d.has_key===false){st.textContent='No AI key yet — set the Gemini key under Rotisserie Auto-Count first.';st.style.color='var(--amber)';}
+  }).catch(()=>{});
+}
+function dwRenderTrays(){
+  const box=document.getElementById('dw-trays');if(!box)return;
+  if(!_dwTrays.length){box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:4px 0;">No trays yet. Tap “+ Add tray”, name it, pick its camera, then “Set area” to draw the box over that tray.</div>';return;}
+  box.innerHTML=_dwTrays.map((t,i)=>{
+    const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
+    const opts='<option value="">— camera —</option>'+cams.map(c=>'<option value="'+c.id+'"'+(c.id===t.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');
+    const hasBox=t.crop&&t.crop.w>0.02;
+    return '<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);">'
+      +'<input class="input" style="flex:1;min-width:0;" placeholder="Tray name (e.g. Roast chicken)" value="'+_mEsc(t.name||'')+'" oninput="_dwTrays['+i+'].name=this.value">'
+      +'<select class="input" style="flex:1;min-width:0;background:var(--surface2);" onchange="_dwTrays['+i+'].cam=this.value">'+opts+'</select>'
+      +'<button class="btn" style="padding:4px 10px;font-size:12px;'+(hasBox?'color:var(--green);':'')+'" onclick="dwSetArea('+i+')">'+(hasBox?'Area ✓':'Set area')+'</button>'
+      +'<button class="btn btn-danger" style="padding:4px 8px;font-size:12px;" onclick="dwRemoveTray('+i+')">✕</button>'
+      +'</div>';
+  }).join('');
+}
+function dwAddTray(){_dwTrays.push({id:'',name:'',cam:'',crop:null});dwRenderTrays();}
+function dwRemoveTray(i){_dwTrays.splice(i,1);dwRenderTrays();}
+function displaySave(){
+  const g=id=>document.getElementById(id),st=g('dw-status');
+  const trays=_dwTrays.filter(t=>t.cam).map(t=>({id:t.id||'',name:(t.name||'').trim()||'Tray',cam:t.cam,crop:t.crop||null}));
+  if(g('dw-enabled').checked&&!trays.length){st.textContent='Add at least one tray (with a camera) first.';st.style.color='var(--amber)';return;}
+  const body={enabled:g('dw-enabled').checked,alarm:g('dw-alarm').checked,interval:parseInt(g('dw-interval').value)||90,
+    start_hour:parseInt(g('dw-start').value),end_hour:parseInt(g('dw-end').value),trays:trays};
+  st.textContent='Saving…';st.style.color='var(--muted)';
+  fetch('/api/display_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved ✓':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';
+      if(d.ok&&d.config){_dwTrays=(d.config.trays||[]).map(t=>({id:t.id,name:t.name,cam:t.cam,crop:t.crop||null}));dwRenderTrays();}})
+    .catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function displayTest(){
+  const st=document.getElementById('dw-status'),box=document.getElementById('dw-test');
+  const trays=_dwTrays.filter(t=>t.cam);
+  if(!trays.length){st.textContent='Add a tray (with a camera) first.';st.style.color='var(--amber)';return;}
+  st.textContent='Saving then looking at every tray…';st.style.color='var(--muted)';
+  // save first so the server tests exactly what's on screen, then run the test
+  const body={enabled:document.getElementById('dw-enabled').checked,alarm:document.getElementById('dw-alarm').checked,
+    interval:parseInt(document.getElementById('dw-interval').value)||90,start_hour:parseInt(document.getElementById('dw-start').value),
+    end_hour:parseInt(document.getElementById('dw-end').value),
+    trays:trays.map(t=>({id:t.id||'',name:(t.name||'').trim()||'Tray',cam:t.cam,crop:t.crop||null}))};
+  fetch('/api/display_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(cf=>{if(cf.ok&&cf.config){_dwTrays=(cf.config.trays||[]).map(t=>({id:t.id,name:t.name,cam:t.cam,crop:t.crop||null}));dwRenderTrays();}
+      return fetch('/api/display_test',{method:'POST'}).then(r=>r.json());})
+    .then(d=>{
+      if(!d.ok){st.textContent=d.error||'Test failed';st.style.color='var(--red)';return;}
+      st.textContent='Read '+d.trays.length+' tray'+(d.trays.length==1?'':'s')+' ✓';st.style.color='var(--green)';
+      box.innerHTML=d.trays.map(t=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">'
+        +(t.preview?'<img src="'+t.preview+'" style="width:64px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;" onclick="window.open(this.src)">':'<div style="width:64px;height:44px;border-radius:6px;background:var(--surface2);flex-shrink:0;"></div>')
+        +'<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">'+_mEsc(t.name)+'</div>'
+        +'<div style="font-size:11px;color:var(--muted);">'+(t.err?_mEsc(t.err):('AI said: '+_mEsc(t.raw||'—')))+'</div></div>'
+        +_dwBadge(t.level)+'</div>').join('');
+    }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function dwLogLoad(){
+  const box=document.getElementById('dw-log');if(!box)return;
+  fetch('/api/display_log').then(r=>r.json()).then(d=>{
+    const es=d.entries||[];
+    if(!es.length){box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px 0;">Nothing logged yet.</div>';return;}
+    box.innerHTML='<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">'+d.count+' change'+(d.count==1?'':'s') +' (newest first).</div>'
+      +es.map(e=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">'
+        +(e.img?'<img src="/api/display_photo/'+encodeURIComponent(e.img)+'" style="width:56px;height:40px;object-fit:cover;border-radius:5px;flex-shrink:0;" onclick="window.open(this.src)">':'')
+        +'<div style="flex:1;min-width:0;"><b style="font-size:12.5px;">'+_mEsc(e.tray||'')+'</b><div style="font-size:11px;color:var(--muted);">'+_mEsc(e.at||'')+'</div></div>'
+        +_dwBadge(e.level)+'</div>').join('');
+  }).catch(()=>{box.innerHTML='<div style="color:var(--red);font-size:12px;">Could not load the log.</div>';});
+}
+// crop-box drawer: drag a rectangle over a live camera snapshot; stores fractional {x,y,w,h}
+function dwSetArea(i){
+  const t=_dwTrays[i]; if(!t||!t.cam){alert('Pick a camera for this tray first.');return;}
+  let ov=document.getElementById('dw-cropov');
+  if(!ov){ov=document.createElement('div');ov.id='dw-cropov';
+    ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+    document.body.appendChild(ov);}
+  ov.innerHTML='<div style="color:#fff;font-size:14px;margin-bottom:8px;">Drag a box over <b>'+_mEsc(t.name||'this tray')+'</b>, then Save area.</div>'
+    +'<div id="dw-cropwrap" style="position:relative;max-width:92vw;max-height:72vh;touch-action:none;user-select:none;"><div id="dw-croploading" style="color:#bbb;padding:40px;">Loading camera…</div></div>'
+    +'<div style="margin-top:12px;display:flex;gap:8px;"><button class="btn btn-primary" id="dw-cropsave">Save area</button>'
+    +'<button class="btn" id="dw-cropclear">Whole view</button><button class="btn" id="dw-cropcancel">Cancel</button></div>';
+  document.getElementById('dw-cropcancel').onclick=()=>ov.remove();
+  fetch('/api/display_snap?cam='+encodeURIComponent(t.cam)).then(r=>r.json()).then(d=>{
+    const wrap=document.getElementById('dw-cropwrap');if(!wrap)return;
+    if(!d.ok){wrap.innerHTML='<div style="color:#f88;padding:30px;">'+_mEsc(d.error||'Could not get a snapshot')+'</div>';return;}
+    wrap.innerHTML='<img id="dw-cropimg" src="'+d.img+'" style="display:block;max-width:92vw;max-height:72vh;border-radius:6px;">'
+      +'<div id="dw-cropbox" style="position:absolute;border:2px solid #22d3ee;background:rgba(34,211,238,.18);display:none;"></div>';
+    const img=document.getElementById('dw-cropimg'),bx=document.getElementById('dw-cropbox');
+    let sx=0,sy=0,drawing=false,cur=null;
+    const rectOf=e=>{const R=img.getBoundingClientRect();const p=(e.touches&&e.touches[0])||e;return {R,x:Math.max(0,Math.min(R.width,p.clientX-R.left)),y:Math.max(0,Math.min(R.height,p.clientY-R.top))};};
+    const down=e=>{const o=rectOf(e);sx=o.x;sy=o.y;drawing=true;bx.style.display='block';bx.style.left=sx+'px';bx.style.top=sy+'px';bx.style.width='0px';bx.style.height='0px';e.preventDefault();};
+    const move=e=>{if(!drawing)return;const o=rectOf(e);const x=Math.min(sx,o.x),y=Math.min(sy,o.y),w=Math.abs(o.x-sx),h=Math.abs(o.y-sy);bx.style.left=x+'px';bx.style.top=y+'px';bx.style.width=w+'px';bx.style.height=h+'px';cur={x:x/o.R.width,y:y/o.R.height,w:w/o.R.width,h:h/o.R.height};e.preventDefault();};
+    const up=()=>{drawing=false;};
+    img.addEventListener('mousedown',down);window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+    img.addEventListener('touchstart',down,{passive:false});window.addEventListener('touchmove',move,{passive:false});window.addEventListener('touchend',up);
+    // show existing box if any
+    if(t.crop&&t.crop.w>0.02){img.onload=()=>{const R=img.getBoundingClientRect();bx.style.display='block';bx.style.left=(t.crop.x*R.width)+'px';bx.style.top=(t.crop.y*R.height)+'px';bx.style.width=(t.crop.w*R.width)+'px';bx.style.height=(t.crop.h*R.height)+'px';};if(img.complete)img.onload();cur={...t.crop};}
+    document.getElementById('dw-cropsave').onclick=()=>{if(cur&&cur.w>0.02&&cur.h>0.02){_dwTrays[i].crop={x:+cur.x.toFixed(4),y:+cur.y.toFixed(4),w:+cur.w.toFixed(4),h:+cur.h.toFixed(4)};}dwRenderTrays();ov.remove();};
+    document.getElementById('dw-cropclear').onclick=()=>{_dwTrays[i].crop=null;dwRenderTrays();ov.remove();};
+  }).catch(()=>{const w=document.getElementById('dw-cropwrap');if(w)w.innerHTML='<div style="color:#f88;padding:30px;">Could not reach the server.</div>';});
+}
+// on-dash status tile + optional alarm
+let _dwAlarm=false;
+function startDisplayAlarm(){if(!_acfg('display').enabled)return;if(_dwAlarm)return;_dwAlarm=true;const t0=Date.now();
+  (function b(){if(!_dwAlarm)return;const c=_acfg('display');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_dwAlarm=false;_updateFlash();return;}_alarmHit('display');setTimeout(()=>{if(_dwAlarm)b();},c.interval);})();}
+function stopDisplayAlarm(){_dwAlarm=false;_updateFlash();}
+function displayStatusPoll(){
+  fetch('/api/display_status').then(r=>r.json()).then(d=>{
+    const tile=document.getElementById('dw-tile');
+    if(!d.enabled||!(d.trays||[]).length){if(tile)tile.style.display='none';if(_dwAlarm)stopDisplayAlarm();return;}
+    if(tile){
+      tile.style.display='';
+      const low=d.low||[];
+      const head=low.length?('<b style="color:'+(d.any_empty?'var(--red)':'var(--amber)')+';">'+low.length+' tray'+(low.length==1?'':'s')+' need attention</b>'):'<b style="color:var(--green);">All displays OK</b>';
+      tile.innerHTML='<div style="font-size:12px;font-weight:700;margin-bottom:6px;">🍗 Displays &middot; '+head+'</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'+(d.trays||[]).map(t=>{
+          const lv=_DW_LVL[t.level]||_DW_LVL.null;
+          return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:999px;background:'+lv.bg+';border:1px solid var(--border);">'+_mEsc(t.name)+' '+_dwBadge(t.level)+'</span>';
+        }).join('')+'</div>';
+    }
+    const snd=d.alarm&&d.any_empty&&d.open;
+    if(snd&&_acfg('display').enabled&&!_dwAlarm)startDisplayAlarm();
+    else if(!snd&&_dwAlarm)stopDisplayAlarm();
+  }).catch(()=>{});
+}
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(_dwAlarm)ks.add('display');return ks;}
 // Every alarm currently sounding, in plain words, with the key needed to silence just that one.
 function _activeAlarmDetails(){
   const out=[];
@@ -6659,7 +6814,7 @@ let _setSeeded=false;try{_setSeeded=localStorage.getItem('setCollapsed_v2')!=nul
 function setupSettingsTabs(){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
   const grpOf=t=>{t=(t||'').toLowerCase();
     if(t.includes('square')||t.includes('cook log')||t.includes('sales feed')||t.includes('phone order'))return 'Sales';
-    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out')||t.includes('products'))return 'Kitchen';
+    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out')||t.includes('products')||t.includes('display food'))return 'Kitchen';
     if(t.includes('task photos')||t.includes('recent task')||t.includes('store camera'))return 'Camera';
     if(t.includes('staff'))return 'Staff';
     return 'General';};
@@ -6820,7 +6975,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();lpLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();displayLoad();lpLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}
@@ -7373,6 +7528,7 @@ async function init(){
   setInterval(checkAllReminders,20000);checkAllReminders();
   setInterval(checkStockPrompt,30000);
   checkProductsOff();setInterval(checkProductsOff,60000);   // morning sold-out check
+  displayStatusPoll();setInterval(displayStatusPoll,30000);   // hot/cold display food-level tile (no-op unless configured)
   checkUpdateBanner();setInterval(()=>{const _fin=()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();if(typeof renderDeployHealth==='function')renderDeployHealth();};if(typeof loadAppData==='function')loadAppData().then(_fin).catch(_fin);else _fin();},60000);   // refresh from server so the 'update ready' banner clears on every device once applied, + refresh deploy health
   checkUiVersion();setInterval(checkUiVersion,60000);
   refreshNiimStatus();setInterval(refreshNiimStatus,60000);   // reads stored state only — never touches Bluetooth
