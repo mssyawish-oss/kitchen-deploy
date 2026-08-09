@@ -4723,10 +4723,21 @@ function stockRowHtml(p){
   return `<div class="stk-card ${st.cls}" data-id="${p.id}">
     <div class="stk-info"><div class="stk-name">${p.name}</div><div class="stk-sub">${st.sub}</div></div>
     <div class="stk-pill ${st.cls}">${st.label}</div>
-    <div class="stk-stepper"><button onclick="stepStock('${p.id}',-1)">−</button><input type="number" min="0" step="${parseFloat(p.count_step)||0.25}" inputmode="decimal" value="${onHand}" placeholder="0" onfocus="this.select()" oninput="setOnHand('${p.id}',this.value)"><button onclick="stepStock('${p.id}',1)">+</button></div>
+    <div class="stk-stepper"><button onclick="stepStock('${p.id}',-1)">−</button><input type="number" min="0" step="${parseFloat(p.count_step)||0.25}" inputmode="decimal" value="${onHand}" placeholder="0" onfocus="this.select()" oninput="setOnHand('${p.id}',this.value)" onchange="snapOnHand('${p.id}',this)"><button onclick="stepStock('${p.id}',1)">+</button></div>
   </div>`;
 }
 function setOnHand(id,val){appData.stock_on_hand=appData.stock_on_hand||{};if(val===''){delete appData.stock_on_hand[id];}else{appData.stock_on_hand[id]=parseFloat(val)||0;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
+// counting steps are a RULE, not a hint: the number input's step= only guides the spinner arrows —
+// anything TYPED sailed straight past it (owner could enter ¼s on whole-unit items, 9 Aug). Snap the
+// typed value to the product's step when the box is left.
+function _snapCount(v,st){st=parseFloat(st)||1;if(!(st>0))st=1;return +(Math.round(v/st)*st).toFixed(2);}
+function snapOnHand(id,inp){
+  if(inp.value==='')return;
+  const p=(appData.products||[]).find(x=>x.id===id);
+  const snapped=_snapCount(parseFloat(inp.value)||0,(p&&p.count_step)||1);
+  if(String(snapped)!==inp.value){inp.value=snapped;}
+  setOnHand(id,String(snapped));
+}
 function resetStockCounts(){
   const n=(appData.products||[]).length;
   if(!n){_toast&&_toast('No products to reset.');return;}
@@ -4742,7 +4753,7 @@ function resetStockCounts(){
   if(btn){btn.textContent=btn.dataset.o||'Reset counts';btn.style.color='';}
   appData.stock_on_hand={};saveKeys(['stock_on_hand']);renderStockPage();_toast&&_toast('Stock counts reset.');
 }
-function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;const _p=(appData.products||[]).find(x=>x.id===id);const _stp=(_p&&parseFloat(_p.count_step))||1;let v=+(cur+delta*_stp).toFixed(2);if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
+function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};const cur=parseFloat(appData.stock_on_hand[id]||0)||0;const _p=(appData.products||[]).find(x=>x.id===id);const _stp=(_p&&parseFloat(_p.count_step))||1;let v=_snapCount(cur+delta*_stp,_stp);if(v<0)v=0;appData.stock_on_hand[id]=v;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(card){const inp=card.querySelector('input');if(inp)inp.value=v;}saveStockSoon();_refreshStockRow(id);updateStockSummary();}
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
 function updateStockSummary(){const el=document.getElementById('stock-summary');if(el)el.style.display='none';}   // retired: supplier order buttons replace this
 function renderStockPage(){
@@ -4880,7 +4891,7 @@ function _orunRowHtml(p){
   return '<div class="orun-row'+(needCount&&!skipped?' needcount':'')+(skipped?' skipped':'')+'" data-row="'+p.id+'">'
     +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+(skipped?'skipped — not on this order':sub)+'</div></div>'
     +acts
-    +'<div class="orun-have"><input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')">'+toggle+'</div>'
+    +'<div class="orun-have"><input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')" onchange="_orunHaveSnap(\''+p.id+'\',this)">'+toggle+'</div>'
     +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c,p.id)+'</div>'
     +'</div>';
 }
@@ -4945,6 +4956,15 @@ function renderOrderRun(){
     body+=bySec[s].map(_orunRowHtml).join('');
   });
   list.innerHTML=head+body;
+}
+function _orunHaveSnap(pid,inp){
+  // typed counts obey the item's counting step here too; counting in the bigger pack = whole packs
+  if(inp.value==='')return;
+  const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
+  const st=(_orunCountUnit(p)==='alt')?1:((parseFloat(p.count_step))||1);
+  const snapped=_snapCount(parseFloat(inp.value)||0,st);
+  if(String(snapped)!==inp.value)inp.value=snapped;
+  _orunHave[pid]=String(snapped);_orunRecalc(pid);
 }
 function _orunHasAlt(p){const ps=parseFloat(p.pack_size);const pu=p.pack_unit||p.count_unit;return ps>1 && pu && pu!==(p.unit||'');}
 function _orunAltName(p){return p.pack_unit||p.count_unit||'pack';}   // the bigger pack (e.g. carton)
