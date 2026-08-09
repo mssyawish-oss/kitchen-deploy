@@ -2504,7 +2504,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     </div>
     <div id="pe-mode-help" style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;"></div>
     <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"></select></div>
-    <div id="pe-reorder-row" class="mt-8"><div class="label" id="pe-reorder-label">Reorder when below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:130px;"></select></div></div>
+    <div id="pe-reorder-row" class="mt-8"><div class="label" id="pe-reorder-label">Reorder when at or below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:130px;"></select></div></div>
     <div id="pe-order-row" class="mt-8"><div class="label" id="pe-pack-label">Order in lots of <span style="color:var(--muted);font-weight:400;">(and the unit the supplier sells in \u2014 applies to both order modes)</span></div><div class="row" style="gap:6px;"><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;"><select class="input" id="pe-order-unit" style="width:130px;"></select></div></div>
     <div id="pe-targets-row" style="display:none;">
       <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
@@ -4869,7 +4869,7 @@ function _orunRowHtml(p){
   const _lvlTxt=(p.reorder_at!=null&&p.reorder_at!=='')?(_fmtQ(parseFloat(p.reorder_at))+' '+(_lvlPack?p.pack_unit:cUnit))
     :((c.parN!==null)?(_fmtQ(c.parN)+' '+cUnit):null);
   const sub=(p.order_mode==='reorder')
-    ? (_lvlTxt?('order below '+_lvlTxt+_pn):'no level set')
+    ? (_lvlTxt?('order at '+_lvlTxt+' or below'+_pn):'no level set')
     : (c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set');
   const needCount=(c.state==='uncounted');
   const have=_orunHave[p.id];
@@ -5010,7 +5010,7 @@ function _orunCalc(p){
     if(isNaN(qty))qty=parseFloat((p.run_qty||{})[_orunDay]);
     if(level===null||level===undefined||isNaN(qty)) state='nolevel';
     else if(typed===null) state='uncounted';
-    else { order=(haveN<level)?qty:0; state=(order>0)?'order':'ok'; }
+    else { order=(haveN<=level)?qty:0; state=(order>0)?'order':'ok'; }   // AT or below (owner, 9 Aug)
   } else if(parN===null||parN<=0){ state='nolevel'; }
   else if(typed===null){ state='uncounted'; }
   else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
@@ -5222,7 +5222,7 @@ function setupTab(t){
 function _setupTabOld(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
 function toggleSupplierForm(force){const w=document.getElementById('supplier-form-wrap');if(!w)return;const show=force===undefined?(w.style.display==='none'):force;w.style.display=show?'block':'none';const t=document.getElementById('supplier-form-toggle');if(t)t.style.display=show?'none':'block';}
 function renderSupplierAdmin(){document.getElementById('supplier-list-admin').innerHTML=(appData.suppliers||[]).map((s,i)=>{const days=(s.remind_days||[]).map(d=>DNAMES[d]).join(', ')||'Every day';const ddays=(s.delivery_days||[]).map(d=>DNAMES[d]).join(', ');return `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div class="row-between"><span style="font-size:var(--fs-md);font-weight:600;">${s.name} <span class="tag tag-amber" style="margin-left:4px;">${s.category||'Uncategorised'}</span></span><span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editSupplier(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removeSupplier(${i})">&#10005;</button></span></div>${s.email?`<div style="font-size:var(--fs-sm);color:var(--muted);">${s.email}</div>`:`<div style="font-size:var(--fs-sm);color:var(--muted);opacity:.7;">No email — order by phone/app</div>`}${s.remind_time?`<div style="font-size:var(--fs-sm);color:var(--cyan);"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${s.remind_time} | ${days}</div>`:''}${ddays?`<div style="font-size:var(--fs-sm);color:var(--green,#34d399);">Delivery: ${ddays}${s.delivery_time?` at ${_hhmm(s.delivery_time)||s.delivery_time}`:''} — &quot;put stock away&quot; reminder</div>`:''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No suppliers yet.</div>';const sel=document.getElementById('new-prod-supplier');if(sel)sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');}
-function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' · '+pk.ps+' '+cu+'/'+pk.orderUnit):'';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder below '+p.reorder_at+' '+cu+pack;const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+cu+'/day'+pack;}
+function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' · '+pk.ps+' '+cu+'/'+pk.orderUnit):'';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder at '+p.reorder_at+' '+cu+' or below'+pack;const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+cu+'/day'+pack;}
 function renderProductAdmin(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   if(products.length===0){document.getElementById('product-list-admin').innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm);padding:14px 0;text-align:center;">No products yet. Tap "+ New Product" to add your first item.</div>';return;}
@@ -5401,7 +5401,7 @@ function saveProductEdit(){
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
   const pv=document.getElementById('pe-pack').value.trim(),rv=document.getElementById('pe-reorder').value.trim();
   let reorder_at,finalTargets;
-  if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder below.');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
+  if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder at (orders when stock is at or below it).');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
   else{if(Object.keys(targets).length===0){_toast&&_toast('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
   const count_step=parseFloat(document.getElementById('pe-cstep').value)||0.25;
   const _ruSel=document.getElementById('pe-reorder-unit'),_ouSel=document.getElementById('pe-order-unit');
