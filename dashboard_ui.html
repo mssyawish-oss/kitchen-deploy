@@ -4938,9 +4938,26 @@ function renderOrderRun(){
 function _orunHasAlt(p){const ps=parseFloat(p.pack_size);const pu=p.pack_unit||p.count_unit;return ps>1 && pu && pu!==(p.unit||'');}
 function _orunAltName(p){return p.pack_unit||p.count_unit||'pack';}   // the bigger pack (e.g. carton)
 function _orunCountUnit(p){ return (_orunUnit[p.id]==='alt'&&_orunHasAlt(p))?'alt':'base'; }
+function _orunTargetsPar(p){
+  // The editor's DAILY TARGETS win over the imported per-run pars (same precedent as reorder
+  // mode, 8 Aug: the editor is the freshest human intent). A run's need = the sum of targets
+  // for every day this order covers — the day after the order day through the NEXT order day
+  // inclusive ("Sun order lasts to Thu" = Mon+Tue+Wed+Thu). Found 9 Aug: bread crumbs targeted
+  // Mon 2 + Thu 1 but a stale imported Sun par of 4 made the run order 3 instead of 2.
+  const t=p.targets||{};
+  if(!Object.values(t).some(v=>v!==''&&v!=null&&parseFloat(v)>0))return null;   // no targets set → use run_pars
+  const days=((_orunSup&&_orunSup.order_days)||[]).slice();
+  if(_orunDay==null||!days.length)return null;
+  const to=_orunNextOrderDay(days,_orunDay);
+  let need=0,d=_orunDay;
+  for(let i=0;i<7;i++){d=(d+1)%7;need+=parseFloat(t[d]||0)||0;if(d===to)break;}
+  return need;
+}
 function _orunCalc(p){
   const par=((p.run_pars||{})[_orunDay]);
-  const parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+  let parN=(par===undefined||par===null||par==='')?null:parseFloat(par);
+  const _tp=((p.order_mode||'topup')==='topup')?_orunTargetsPar(p):null;
+  if(_tp!=null)parN=_tp;   // daily targets present → they define the run's need (and the 'need X' label)
   const have=_orunHave[p.id];
   const typed=(have===undefined||have==='')?null:parseFloat(have);   // BLANK = not counted, NOT zero
   // convert the typed amount to BASE units (par is always in base units)
