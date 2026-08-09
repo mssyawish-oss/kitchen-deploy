@@ -3887,7 +3887,7 @@ let _localSavedAt={};   // keys this device just saved → don't let a stale bac
 async function loadAppData(){try{const r=await fetch('/api/data');const srv=await r.json();const now=Date.now();Object.keys(srv).forEach(k=>{if(_localSavedAt[k]&&(now-_localSavedAt[k])<9000)return;appData[k]=srv[k];});}catch(e){}appData.packdown_checks=appData.packdown_checks||{};appData.jobs_done=appData.jobs_done||{};appData.stock_on_hand=appData.stock_on_hand||{};appData.ui=appData.ui||{};appData.prep_presets=appData.prep_presets||[];appData.prep_today=appData.prep_today||{};appData.prep_saved_lists=appData.prep_saved_lists||[];if(typeof applyFriedVis==='function')applyFriedVis();}
 async function saveAppData(){try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(appData)});}catch(e){}}
 // save only specific top-level keys — avoids overwriting another device's unrelated changes
-async function saveKeys(keys){const body={};const now=Date.now();keys.forEach(k=>{body[k]=appData[k];_localSavedAt[k]=now;});try{await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(e){}}
+async function saveKeys(keys){const body={};const now=Date.now();keys.forEach(k=>{body[k]=appData[k];_localSavedAt[k]=now;});try{const r=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.ok;}catch(e){return false;}}
 let _stockSaveT=null;function saveStockSoon(){clearTimeout(_stockSaveT);_stockSaveT=setTimeout(()=>saveKeys(['stock_on_hand']),800);}
 // pull shared data from the server and refresh the current screen — so changes on another device appear here.
 // skips when a popup is open or you're typing, so it never wipes work in progress.
@@ -5178,9 +5178,11 @@ function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' ·
 function renderProductAdmin(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
   if(products.length===0){document.getElementById('product-list-admin').innerHTML='<div style="color:var(--muted);font-size:12px;padding:14px 0;text-align:center;">No products yet. Tap "+ New Product" to add your first item.</div>';return;}
-  const idx={};products.forEach((p,i)=>idx[p.id]=i);
   let html='';
-  const group=(name,items)=>{if(!items.length)return;html+=`<div style="font-size:12px;font-weight:700;color:var(--amber);margin:12px 0 6px;">${name}</div>`;html+=items.map(p=>`<div class="prod-row"><div style="min-width:0;"><div class="pr-name">${p.name}</div><div class="pr-sub">${_prodRule(p)}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="editProduct(${idx[p.id]})">Edit</button><button class="btn btn-danger" style="padding:4px 9px;font-size:12px;" onclick="removeProduct(${idx[p.id]})">&#10005;</button></span></div>`).join('');};
+  // buttons carry the product's stable ID, never its list position — the 60s background refresh can
+  // replace appData.products after render, and a stale index then edits/deletes the WRONG product
+  // (same root cause as the staff-list dupes, 28 Jul).
+  const group=(name,items)=>{if(!items.length)return;html+=`<div style="font-size:12px;font-weight:700;color:var(--amber);margin:12px 0 6px;">${name}</div>`;html+=items.map(p=>`<div class="prod-row"><div style="min-width:0;"><div class="pr-name">${p.name}</div><div class="pr-sub">${_prodRule(p)}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="editProduct(${_jsq(p.id)})">Edit</button><button class="btn btn-danger" style="padding:4px 9px;font-size:12px;" onclick="removeProduct(${_jsq(p.id)})">&#10005;</button></span></div>`).join('');};
   suppliers.forEach(s=>group(s.name,products.filter(p=>p.supplier_id===s.id)));
   group('No supplier',products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id)));
   document.getElementById('product-list-admin').innerHTML=html;
@@ -5206,7 +5208,7 @@ function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab
 let _peTargetUnit='count';
 function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';const ps=parseFloat(document.getElementById('pe-packsize').value)||1;if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
 function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';document.getElementById('pe-eq-n1').value='';document.getElementById('pe-eq-n2').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';document.getElementById('pe-cstep').value='0.25';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
-function editProduct(i){const p=(appData.products||[])[i];if(!p)return;editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
+function editProduct(ref){const list=appData.products||[];const p=(typeof ref==='number')?list[ref]:list.find(x=>x.id===ref);if(!p){_toast&&_toast('Could not find that item — the list just refreshed. Try again.');return;}editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';document.getElementById('pe-section').value=p.section||'';
   _fillProdSupplier(p.supplier_id||'');
   const pk=_pkg(p);
@@ -5311,7 +5313,18 @@ function saveProductEdit(){
   editingProduct=null;saveAppData();closeModal('prod-edit-modal');renderProductAdmin();
   if(window._orunEditing){window._orunEditing=false;try{renderOrderRun();}catch(e){}}   // opened from the order list → refresh it in place
 }
-function removeProduct(i){appData.products.splice(i,1);saveAppData();renderProductAdmin();}
+async function removeProduct(ref){
+  const list=appData.products||[];
+  const i=(typeof ref==='number')?ref:list.findIndex(x=>x.id===ref);
+  const p=list[i]; if(!p){_toast&&_toast('Could not find that item — the list just refreshed. Try again.');return;}
+  if(!confirm('Delete "'+(p.name||'this product')+'" and all its settings?'))return;
+  list.splice(i,1);renderProductAdmin();
+  // verify the save actually landed — on this shop's WiFi a silent failure meant the row vanished
+  // on screen, the server kept it, and the 60s refresh "resurrected" it (owner hit this 9 Aug)
+  const ok=await saveKeys(['products']);
+  if(!ok){list.splice(i,0,p);renderProductAdmin();_toast&&_toast('Delete didn\'t reach the server — nothing was removed. Check the connection and try again.');}
+  else _toast&&_toast('"'+(p.name||'Product')+'" deleted.');
+}
 
 // PACKDOWN
 function autoShift(){const h=new Date().getHours();return h>=17?'night':'day';}
