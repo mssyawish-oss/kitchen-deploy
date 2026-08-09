@@ -5324,6 +5324,17 @@ function saveProductEdit(){
   const reorder_unit=(ps>1&&_ruSel&&_ruSel.value==='pack')?'pack':'base';   // which unit the level was TYPED in
   const order_unit=(ps>1&&_ouSel&&['pack','both'].includes(_ouSel.value))?_ouSel.value:'base';   // what the supplier sells in; 'both' = staff choose per order
   const fields={name,supplier_id,unit,count_step,order_mode:(_prodMode==='reorder'?'reorder':'topup'),targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
+  // ONE SOURCE OF TRUTH: a save from the editor RETIRES the imported per-run numbers it replaces —
+  // stale twins silently outvoting fresh intent is what made orders read wrong (bread crumbs, 9 Aug).
+  // Topup + targets typed → the old run_pars die; reorder + a threshold typed → same; a typed
+  // "order in lots of" retires the imported per-run qty. Items saved WITHOUT those inputs keep
+  // their imported numbers (they're the only source left).
+  if(_prodMode==='reorder'){
+    if(rv!=='')fields.run_pars=null;
+    if(pv!=='')fields.run_qty=null;
+  }else if(Object.keys(finalTargets).length){
+    fields.run_pars=null;
+  }
   appData.products=appData.products||[];
   if(editingProduct){const p=appData.products.find(x=>x.id===editingProduct);if(p)Object.assign(p,fields);}
   else{appData.products.push(Object.assign({id:'prod_'+Date.now()},fields));}
