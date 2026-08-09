@@ -5291,6 +5291,8 @@ function editProduct(ref){const list=appData.products||[];const p=(typeof ref===
   for(let d=0;d<7;d++){const v=t[d];document.getElementById('pe-t'+d).value=(v!==undefined&&v!=='')?(Math.round(v/div*100)/100):'';}
   openModal('prod-edit-modal');}
 const _PE_UNITS=['unit','each','piece','bag','bottle','tub','jar','pack','packet','sleeve','roll','bunch','block','tray','punnet','can','tin','sachet','kg','g','L','ml','box','carton','case','crate','bucket','sack','dozen','sheet'];
+let _peLastU='';   // previous "Count in" word — so the equation can follow a rename
+const _PE_EQMSG_DEF=(document.getElementById('pe-eq-msg')||{}).innerHTML||'';
 function syncUnitLabels(){
   const u=((document.getElementById('pe-unit').value||'').trim())||'unit';
   const bu=document.getElementById('pe-base-unit'); if(bu)bu.textContent=(u||'units');
@@ -5301,7 +5303,14 @@ function syncUnitLabels(){
   // (the owner hit exactly that on 9 Aug and reasonably read it as "box is missing").
   let pu=((document.getElementById('pe-packunit')||{}).value||'').trim();
   let psLive=parseFloat((document.getElementById('pe-packsize')||{}).value)||1;
-  try{const _eq=_peEqRead();if(_eq&&!_eq.err&&_eq.ps>1&&_eq.pu){pu=_eq.pu.trim();psLive=_eq.ps;}}catch(e){}
+  let eqRes=null;
+  try{eqRes=_peEqRead();if(eqRes&&!eqRes.err&&eqRes.ps>1&&eqRes.pu){pu=eqRes.pu.trim();psLive=eqRes.ps;}}catch(e){}
+  // Renaming "Count in" used to strand the equation on the old word ("6 sleeve = 1 box" after
+  // sleeve->bag) and Save silently refused — the editor felt "glitchy" (owner, 9 Aug). Detect the
+  // rename here; the follow is applied AFTER the equation dropdowns rebuild (bottom of this fn).
+  const _nrm=s=>String(s||'').toLowerCase().replace(/s$/,'');
+  const _renamedFrom=(_peLastU&&_nrm(_peLastU)!==_nrm(u))?_peLastU:null;
+  _peLastU=u;
   const list=_PE_UNITS.slice();
   for(const extra of [u,pu]) if(extra&&!list.includes(extra)) list.unshift(extra);
   const cs=document.getElementById('pe-cstep');
@@ -5338,6 +5347,23 @@ function syncUnitLabels(){
     if(keep&&list.includes(keep))s.value=keep;
     else s.value=(i===0?u:(pu||'carton'));
   });
+  // apply the count-in rename to the equation now that its option lists are rebuilt, then re-sync
+  // once so every label derives from the corrected equation
+  if(_renamedFrom&&!window._peResync){
+    const _q=document.getElementById('pe-eq-u1');
+    if(_q&&_nrm(_q.value)===_nrm(_renamedFrom)){
+      _q.value=u;
+      window._peResync=1;try{syncUnitLabels();}finally{window._peResync=0;}
+      return;
+    }
+  }
+  // the reason a Save would be refused lives HERE, in red, where the owner is looking — a bottom
+  // toast was invisible and made blocked saves feel like dead clicks
+  const _msg=document.getElementById('pe-eq-msg');
+  if(_msg){
+    if(eqRes&&eqRes.err)_msg.innerHTML='<b style="color:var(--red);">'+_mEsc(eqRes.err)+'</b>';
+    else if(_PE_EQMSG_DEF)_msg.innerHTML=_PE_EQMSG_DEF;
+  }
 }
 function _peEqRead(){
   // Returns {ps, pu, err}. The side whose unit matches "Count in" is the small side; the OTHER
@@ -5365,7 +5391,9 @@ function saveProductEdit(){
   const ps=eq.ps||1;const pack_size=ps>1?ps:1;
   const pack_unit=(eq.pu||'').trim();const section=(document.getElementById('pe-section').value||'').trim();
   if(pack_unit&&ps>1&&pack_unit.toLowerCase().replace(/s$/,'')===unit.toLowerCase().replace(/s$/,'')){
-    _toast&&_toast('“Count in” and the bigger pack are both “'+unit+'” — they must be different words for the maths to mean anything.');
+    const _m='“Count in” and the bigger pack are both “'+unit+'” — they must be different words for the maths to mean anything.';
+    const _me=document.getElementById('pe-eq-msg');if(_me)_me.innerHTML='<b style="color:var(--red);">'+_mEsc(_m)+'</b>';
+    _toast&&_toast(_m);
     return;
   }
   const target_in=(document.getElementById('pe-target-unit').value==='order'&&ps>1)?'order':'count';
