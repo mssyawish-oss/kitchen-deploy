@@ -6595,6 +6595,136 @@ def api_labour_cost():
     for p in out["people"]: p["cost"]=round(p["cost"],2); p["hours"]=round(p["hours"],1)
     return jsonify(out)
 
+# ===== TIMECARD AUDIT — the Sunday-night tidy-up report ==========================================
+# STRICTLY READ-ONLY. It reports what LOOKS wrong on the week's timecards; the owner decides and
+# applies. Deliberately never writes to Square: rounding someone's clock-in is a pay cut, and an
+# unattended job that only ever trims downward is exactly the pattern that gets employers in
+# trouble (built 10 Aug 2026 after a manual pass found 45 early starts AND two Saturdays sitting
+# on the weekday pay rate).
+_TC_EARLY_CAP_MIN=15      # more than this early isn't a rounding case — it's a "why?" case
+_TC_MIN_BREAK_MIN=30
+
+def _tc_daytype(d):
+    return "SAT" if d.weekday()==5 else ("SUN" if d.weekday()==6 else "WEEKDAY")
+
+def _tc_title_daytype(t):
+    tl=(t or "").lower()
+    if "sun" in tl: return "SUN"
+    if "sat" in tl: return "SAT"
+    if "weekday" in tl or "mon-fri" in tl: return "WEEKDAY"
+    return None
+
+def _tc_audit(start_date,end_date):
+    """Compare clocked times against the published roster for [start_date,end_date] (inclusive
+    dates, Melbourne). Returns the three lists the owner actually acts on."""
+    MEL=timezone(timedelta(hours=10))
+    def _iso(t): return datetime.fromisoformat(t.replace("Z","+00:00"))
+    s_iso=start_date.isoformat()+"T00:00:00+10:00"
+    e_iso=(end_date+timedelta(days=1)).isoformat()+"T00:00:00+10:00"
+    names={}
+    try:
+        j=_sq_sched("/v2/team-members/search",{"query":{},"limit":200})
+        for t in j.get("team_members") or []:
+            names[t.get("id")]=((t.get("given_name") or "")+" "+(t.get("family_name") or "")).strip()
+    except Exception as e:
+        return {"ok":False,"error":"Couldn't read the team list from Square: "+str(e)[:120]}
+    cards=[];cursor=None
+    try:
+        while True:
+            body={"query":{"filter":{"start":{"start_at":s_iso,"end_at":e_iso}}},"limit":200}
+            if cursor: body["cursor"]=cursor
+            j=_sq_sched("/v2/labor/timecards/search",body)
+            cards+=j.get("timecards") or []
+            cursor=j.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        return {"ok":False,"error":"Couldn't read timecards from Square: "+str(e)[:120]}
+    sched=[];cursor=None
+    try:
+        while True:
+            # scheduled-shifts caps at 50 a page (a bigger limit is a hard 400)
+            body={"query":{"filter":{"start":{"start_at":s_iso,"end_at":e_iso}}},"limit":50}
+            if cursor: body["cursor"]=cursor
+            j=_sq_sched("/v2/labor/scheduled-shifts/search",body)
+            sched+=j.get("scheduled_shifts") or []
+            cursor=j.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        sched=[]        # no roster → we simply can't judge start times; breaks/rates still work
+    rostered={}
+    for s in sched:
+        det=s.get("published_shift_details") or s.get("draft_shift_details") or {}
+        if det.get("is_deleted"): continue
+        tm,st=det.get("team_member_id"),det.get("start_at")
+        if tm and st: rostered.setdefault(tm,[]).append(_iso(st))
+    early=[];breaks=[];rates=[];checks=[]
+    for c in cards:
+        tm=c.get("team_member_id"); who=names.get(tm,"(unknown)")
+        if not c.get("start_at"): continue
+        a=_iso(c["start_at"]); aL=a.astimezone(MEL)
+        day=aL.strftime("%a %d %b")
+        match=None
+        for st in rostered.get(tm,[]):
+            if abs((st-a).total_seconds())<=4*3600: match=st; break
+        if match and a<match:
+            mins=int((match-a).total_seconds()//60)
+            row={"who":who,"day":day,"clocked":aL.strftime("%H:%M"),
+                 "rostered":match.astimezone(MEL).strftime("%H:%M"),"mins":mins}
+            (early if mins<=_TC_EARLY_CAP_MIN else checks).append(row)
+        for br in c.get("breaks") or []:
+            if br.get("start_at") and br.get("end_at"):
+                m=(_iso(br["end_at"])-_iso(br["start_at"])).total_seconds()/60
+                if m<_TC_MIN_BREAK_MIN:
+                    breaks.append({"who":who,"day":day,
+                                   "at":_iso(br["start_at"]).astimezone(MEL).strftime("%H:%M"),
+                                   "mins":int(round(m))})
+        title=((c.get("wage") or {}).get("title") or "")
+        want=_tc_daytype(aL.date()); got=_tc_title_daytype(title)
+        if got and got!=want:
+            rates.append({"who":who,"day":day,"worked":want,"selected":title})
+    fmt="%a %d %b"
+    return {"ok":True,"from":start_date.strftime(fmt),"to":end_date.strftime(fmt),
+            "timecards":len(cards),"rostered_shifts":len(sched),
+            "early":early,"breaks":breaks,"rates":rates,"checks":checks,
+            "total":len(early)+len(breaks)+len(rates)+len(checks)}
+
+@app.route("/api/timecard_audit")
+def api_timecard_audit():
+    """GET ?days=7 (default) or ?from=YYYY-MM-DD&to=YYYY-MM-DD. Read-only — reports only."""
+    q=request.args
+    try:
+        if q.get("from") and q.get("to"):
+            s=datetime.strptime(q["from"],"%Y-%m-%d").date(); e=datetime.strptime(q["to"],"%Y-%m-%d").date()
+        else:
+            e=datetime.now().date(); s=e-timedelta(days=max(1,int(q.get("days",7)))-1)
+    except Exception:
+        return jsonify({"ok":False,"error":"bad dates"})
+    out=_tc_audit(s,e)
+    if out.get("ok"):
+        with data_lock:
+            db["timecard_audit"]=dict(out,at=int(time.time()*1000)); save_data(db)
+    return jsonify(out)
+
+def timecard_audit_loop():
+    """Sunday 23:00 — audit the week just finished and leave the result on the dashboard.
+    Reports only; nothing is changed in Square."""
+    done=None
+    while True:
+        try:
+            now=datetime.now()
+            key=now.strftime("%Y-%W")
+            if now.weekday()==6 and now.hour>=23 and done!=key and (db.get("square_config") or {}).get("access_token"):
+                e=now.date(); s=e-timedelta(days=6)
+                out=_tc_audit(s,e)
+                if out.get("ok"):
+                    with data_lock:
+                        db["timecard_audit"]=dict(out,at=int(time.time()*1000)); save_data(db)
+                    print("timecard audit: %d thing(s) to look at for %s-%s"%(out["total"],out["from"],out["to"]))
+                done=key
+        except Exception as e:
+            print("timecard_audit_loop:",str(e)[:120])
+        time.sleep(600)
+
 @app.route("/api/timesheets_csv")
 def api_timesheets_csv():
     """Payroll-ready timesheet export from Square timecards. ?week=0 = this week (Mon-Sun), -1 = last
@@ -7564,6 +7694,7 @@ if __name__=="__main__":
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
+    threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
     threading.Thread(target=rotcam_loop,daemon=True).start()
