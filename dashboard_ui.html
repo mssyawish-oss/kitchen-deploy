@@ -1151,8 +1151,16 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .orun-nm{flex:1;min-width:0;}
 .orun-nm .n{font-size:var(--fs-md);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .orun-nm .s{font-size:var(--fs-sm);color:var(--muted);margin-top:2px;}
-.orun-have{width:112px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
-.orun-have input{width:88px;height:46px;text-align:center;font-size:var(--fs-lg);font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--text);outline:none;}
+.orun-have{width:auto;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.orun-have input{width:64px;height:46px;text-align:center;font-size:var(--fs-lg);font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--text);outline:none;}
+/* big thumb-friendly ± around the count box — items count in steps of ¼/½/1, so arrows beat typing */
+.oh-step{display:flex;align-items:center;gap:5px;}
+.oh-step button{width:46px;height:46px;flex-shrink:0;font-size:22px;font-weight:700;border-radius:var(--r-sm);background:var(--surface2);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.oh-step button:active{background:var(--amber);color:#111;}
+.orun-editlnk{margin-top:3px;background:none;border:none;padding:2px 8px 2px 0;font-size:var(--fs-xs);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
+.orun-editlnk:hover{color:var(--amber);}
+.orun-skipbtn{width:auto!important;padding:0 12px!important;height:40px!important;gap:6px;font-size:var(--fs-sm);font-weight:600;}
+.orun-skipbtn.on{color:var(--amber);border-color:var(--amber);}
 .orun-unit-tog{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--amber);font-size:var(--fs-xs);font-weight:700;padding:3px 8px;cursor:pointer;white-space:nowrap;}
 .orun-unit-seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;background:var(--surface);}
 .orun-unit-seg button{border:none;background:transparent;color:var(--muted);font-size:var(--fs-sm);font-weight:700;padding:4px 10px;cursor:pointer;white-space:nowrap;line-height:1.4;}
@@ -1186,8 +1194,9 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
   .orun-row{gap:8px;padding:10px 11px;}
   .orun-nm{flex:1 1 auto;}
   .orun-nm .n{white-space:normal;overflow:hidden;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
-  .orun-have{width:74px;}
-  .orun-have input{width:66px;height:44px;font-size:var(--fs-lg);}
+  .orun-have{width:auto;}
+  .orun-have input{width:52px;height:44px;font-size:var(--fs-lg);}
+  .oh-step button{width:40px;height:44px;font-size:20px;}
   .orun-unit-seg button{padding:3px 6px;font-size:var(--fs-xs);}
   .orun-order{width:70px;}
   .orun-order .q{font-size:var(--fs-lg);}
@@ -4893,16 +4902,22 @@ function _orunRowHtml(p){
        +'</div>'
     : '';
   const skipped=!!_orunSkip[p.id];
+  // one BIG labelled Skip button; the edit pencil lives small under the item name (owner, 10 Aug:
+  // counting needs big targets, editing shouldn't be this easy to fat-finger)
   const acts='<div class="orun-acts">'
-    +'<button title="Edit this item’s ordering rule" aria-label="Edit item" onclick="_orunEditProduct(\''+p.id+'\')">'
-      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
-    +'<button class="'+(skipped?'on':'')+'" title="'+(skipped?'Put this back on the order':'Skip — don’t order this today')+'" aria-label="Skip item" onclick="_orunToggleSkip(\''+p.id+'\')">'
-      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></button>'
+    +'<button class="orun-skipbtn'+(skipped?' on':'')+'" title="'+(skipped?'Put this back on the order':'Skip — don’t order this today')+'" onclick="_orunToggleSkip(\''+p.id+'\')">'
+      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>'+(skipped?'Back':'Skip')+'</button>'
     +'</div>';
   return '<div class="orun-row'+(needCount&&!skipped?' needcount':'')+(skipped?' skipped':'')+'" data-row="'+p.id+'">'
-    +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+(skipped?'skipped — not on this order':sub)+'</div></div>'
+    +'<div class="orun-nm"><div class="n">'+_mEsc(p.name||'')+'</div><div class="s">'+(skipped?'skipped — not on this order':sub)+'</div>'
+      +'<button class="orun-editlnk" title="Edit this item’s ordering rule" onclick="_orunEditProduct(\''+p.id+'\')">'
+      +'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>edit item</button></div>'
     +acts
-    +'<div class="orun-have"><input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')" onchange="_orunHaveSnap(\''+p.id+'\',this)">'+toggle+'</div>'
+    +'<div class="orun-have"><div class="oh-step">'
+      +'<button onclick="_orunHaveStep(\''+p.id+'\',-1)" aria-label="count down">&minus;</button>'
+      +'<input type="number" min="0" step="'+(parseFloat(p.count_step)||0.25)+'" inputmode="decimal" placeholder="'+_mEsc(curUnitName)+'" value="'+(have!==undefined?have:'')+'" onfocus="this.select()" oninput="_orunHave[\''+p.id+'\']=this.value;_orunRecalc(\''+p.id+'\')" onchange="_orunHaveSnap(\''+p.id+'\',this)">'
+      +'<button onclick="_orunHaveStep(\''+p.id+'\',1)" aria-label="count up">+</button>'
+    +'</div>'+toggle+'</div>'
     +'<div class="orun-order '+(c.state==='order'?'':'zero')+'" data-id="'+p.id+'">'+_orunCellHtml(c,p.id)+'</div>'
     +'</div>';
 }
@@ -4967,6 +4982,18 @@ function renderOrderRun(){
     body+=bySec[s].map(_orunRowHtml).join('');
   });
   list.innerHTML=head+body;
+}
+function _orunHaveStep(pid,dir){
+  // the big ± arrows: step by the item's own counting increment (¼/½/1), whole packs in pack mode.
+  // A blank box counts as 0 — so one tap on − marks an item "counted: none left".
+  const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
+  const st=(_orunCountUnit(p)==='alt')?1:((parseFloat(p.count_step))||1);
+  const cur=parseFloat(_orunHave[pid]);
+  let v=_snapCount((isNaN(cur)?0:cur)+dir*st,st); if(v<0)v=0;
+  _orunHave[pid]=String(v);
+  const row=document.querySelector('.orun-row[data-row="'+pid+'"] .oh-step input');
+  if(row)row.value=v;
+  _orunRecalc(pid);
 }
 function _orunHaveSnap(pid,inp){
   // typed counts obey the item's counting step here too; counting in the bigger pack = whole packs
