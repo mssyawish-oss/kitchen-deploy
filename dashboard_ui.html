@@ -2513,7 +2513,9 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     </div>
     <div id="pe-mode-help" style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;"></div>
     <div class="form-row mt-8"><div class="label">Counting steps <span style="color:var(--muted);font-weight:400;">(how the count moves when stock-checking this item)</span></div><select class="input" id="pe-cstep" style="background:var(--surface2);"></select></div>
-    <div id="pe-reorder-row" class="mt-8"><div class="label" id="pe-reorder-label">Reorder when at or below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:130px;"></select></div></div>
+    <div id="pe-reorder-row" class="mt-8"><div class="label" id="pe-reorder-label">Reorder when at or below</div><div class="row" style="gap:6px;"><input class="input" id="pe-reorder" type="number" step="0.01" placeholder="e.g. 2" style="flex:1;"><select class="input" id="pe-reorder-unit" style="width:130px;"></select></div>
+    <div class="label" style="margin-top:8px;">Second level <span style="color:var(--muted);font-weight:400;">(optional — running even lower orders a bigger amount; same units as above)</span></div>
+    <div class="row" style="gap:6px;align-items:center;"><span style="font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;">at or below</span><input class="input" id="pe-reorder2" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;min-width:0;"><span style="font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;">&rarr; order</span><input class="input" id="pe-pack2" type="number" step="0.01" placeholder="e.g. 3" style="flex:1;min-width:0;"></div></div>
     <div id="pe-order-row" class="mt-8"><div class="label" id="pe-pack-label">Order in lots of <span style="color:var(--muted);font-weight:400;">(and the unit the supplier sells in \u2014 applies to both order modes)</span></div><div class="row" style="gap:6px;"><input class="input" id="pe-pack" type="number" step="0.01" placeholder="e.g. 1" style="flex:1;"><select class="input" id="pe-order-unit" style="width:130px;"></select></div></div>
     <div id="pe-targets-row" style="display:none;">
       <div class="row mt-8" style="gap:8px;align-items:center;flex-wrap:wrap;"><div class="label" style="margin:0;">Daily target, in</div><select class="input" id="pe-target-unit" style="width:auto;background:var(--surface2);" onchange="onTargetUnitChange()"></select></div>
@@ -4888,8 +4890,10 @@ function _orunRowHtml(p){
   const _lvlPack=(p.reorder_unit==='pack'&&(parseFloat(p.pack_size)||1)>1&&p.pack_unit);
   const _lvlTxt=(p.reorder_at!=null&&p.reorder_at!=='')?(_fmtQ(parseFloat(p.reorder_at))+' '+(_lvlPack?p.pack_unit:cUnit))
     :((c.parN!==null)?(_fmtQ(c.parN)+' '+cUnit):null);
+  const _t2=(p.order_mode==='reorder'&&p.reorder_at2!=null&&p.reorder_at2!==''&&p.pack2!=null&&p.pack2!=='')
+    ?(' · at '+_fmtQ(parseFloat(p.reorder_at2))+' → order '+_fmtQ(parseFloat(p.pack2))):'';
   const sub=(p.order_mode==='reorder')
-    ? (_lvlTxt?('order at '+_lvlTxt+' or below'+_pn):'no level set')
+    ? (_lvlTxt?('order at '+_lvlTxt+' or below'+_t2+_pn):'no level set')
     : (c.parN!==null?('need '+_fmtQ(c.parN)+' '+c.unit+_pn):'no level set');
   const needCount=(c.state==='uncounted');
   const have=_orunHave[p.id];
@@ -5046,8 +5050,12 @@ function _orunCalc(p){
     if(level===null)level=parN;
     let qty=(p.pack!=null&&p.pack!=='')?parseFloat(p.pack):NaN;        // editor's "order in lots of" first
     if(isNaN(qty))qty=parseFloat((p.run_qty||{})[_orunDay]);
+    // optional SECOND tier: even lower stock orders a bigger amount (both fields must be set)
+    const level2=(p.reorder_at2!=null&&p.reorder_at2!=='')?parseFloat(p.reorder_at2)*((p.reorder_unit==='pack'&&ps>1)?ps:1):null;
+    const qty2=(p.pack2!=null&&p.pack2!=='')?parseFloat(p.pack2):NaN;
     if(level===null||level===undefined||isNaN(qty)) state='nolevel';
     else if(typed===null) state='uncounted';
+    else if(level2!==null&&!isNaN(qty2)&&haveN<=level2){ order=qty2; state='order'; }   // deeper low → bigger order
     else { order=(haveN<=level)?qty:0; state=(order>0)?'order':'ok'; }   // AT or below (owner, 9 Aug)
   } else if(parN===null||parN<=0){ state='nolevel'; }
   else if(typed===null){ state='uncounted'; }
@@ -5072,7 +5080,7 @@ function _orunCalc(p){
   // are on daily targets, counted in sleeves, but the SUPPLIER only sells boxes — so 3 sleeves short
   // must become "1 box", not "17 sleeves"). order is always in base (count) units; convert to the
   // supplier's unit, rounding UP to a whole pack since you can't buy a part-box.
-  if(psz>1&&p.pack_unit){
+  if(psz>=1&&p.pack_unit){   // >=1: a 1-to-1 pack (1 tub = 1 box, produce) still relabels the order line
     if(p.order_unit==='pack'){orderUnit=p.pack_unit; if(order!=null)orderQty=Math.ceil(order/psz);}
     else if(p.order_unit==='both'){
       orderBoth=true;
@@ -5335,7 +5343,7 @@ function _fillProdSupplier(val){const sel=document.getElementById('pe-supplier')
 function setProdMode(m){_prodMode=m;document.querySelectorAll('#pe-mode .set-tab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));document.getElementById('pe-reorder-row').style.display=m==='reorder'?'':'none';document.getElementById('pe-targets-row').style.display=m==='targets'?'':'none';document.getElementById('pe-mode-help').textContent=m==='reorder'?'Orders a fresh lot whenever the count drops below your minimum. Best for most items.':'Tops up to a set level for each day. Use when needs change day to day.';}
 let _peTargetUnit='count';
 function onTargetUnitChange(){const sel=document.getElementById('pe-target-unit');const nu=sel.value||'count';let ps=parseFloat(document.getElementById('pe-packsize').value)||1;try{const _e=_peEqRead();if(!_e.err&&_e.ps>1)ps=_e.ps;}catch(e){}if(nu!==_peTargetUnit&&ps>1){const f=(nu==='order')?(1/ps):ps;for(let d=0;d<7;d++){const e=document.getElementById('pe-t'+d);if(e&&e.value!==''){e.value=Math.round(parseFloat(e.value)*f*100)/100;}}}_peTargetUnit=nu;}
-function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';document.getElementById('pe-eq-n1').value='';document.getElementById('pe-eq-n2').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';document.getElementById('pe-cstep').value='0.25';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
+function newProduct(){if((appData.suppliers||[]).length===0){_toast&&_toast('Add a supplier first (Suppliers tab).');setupTab('suppliers');return;}editingProduct=null;document.getElementById('pe-title').textContent='NEW PRODUCT';document.getElementById('pe-name').value='';document.getElementById('pe-unit').value='each';_fillProdSupplier();for(let d=0;d<7;d++)document.getElementById('pe-t'+d).value='';document.getElementById('pe-pack').value='1';document.getElementById('pe-reorder').value='';var _n2a=document.getElementById('pe-reorder2');if(_n2a)_n2a.value='';var _n2b=document.getElementById('pe-pack2');if(_n2b)_n2b.value='';document.getElementById('pe-packsize').value='';document.getElementById('pe-packunit').value='';document.getElementById('pe-eq-n1').value='';document.getElementById('pe-eq-n2').value='';var _s=document.getElementById('pe-section');if(_s)_s.value='';document.getElementById('pe-cstep').value='0.25';_peTargetUnit='count';setProdMode('reorder');syncUnitLabels();openModal('prod-edit-modal');document.getElementById('pe-name').focus();}
 function editProduct(ref){const list=appData.products||[];const p=(typeof ref==='number')?list[ref]:list.find(x=>x.id===ref);if(!p){_toast&&_toast('Could not find that item — the list just refreshed. Try again.');return;}editingProduct=p.id;document.getElementById('pe-title').textContent='EDIT PRODUCT';
   document.getElementById('pe-name').value=p.name||'';document.getElementById('pe-unit').value=p.unit||'';document.getElementById('pe-section').value=p.section||'';
   _fillProdSupplier(p.supplier_id||'');
@@ -5346,6 +5354,8 @@ function editProduct(ref){const list=appData.products||[];const p=(typeof ref===
   document.getElementById('pe-eq-n1').value=pk.ps>1?pk.ps:'';
   document.getElementById('pe-eq-n2').value=pk.ps>1?1:'';
   document.getElementById('pe-pack').value=p.pack!=null?p.pack:'';document.getElementById('pe-reorder').value=p.reorder_at!=null?p.reorder_at:'';
+  const _r2=document.getElementById('pe-reorder2');if(_r2)_r2.value=(p.reorder_at2!=null?p.reorder_at2:'');
+  const _p2=document.getElementById('pe-pack2');if(_p2)_p2.value=(p.pack2!=null?p.pack2:'');
   const _ru=document.getElementById('pe-reorder-unit');if(_ru)_ru.value=(p.reorder_unit==='pack'?'pack':'base');
   const _ou=document.getElementById('pe-order-unit');if(_ou)_ou.value=(p.order_unit==='pack'?'pack':'base');
   document.getElementById('pe-cstep').value=String(p.count_step||0.25);
@@ -5397,7 +5407,8 @@ function syncUnitLabels(){
   if(cs){
     const keepCS=cs.value;
     const ps=(function(){try{return _peEqRead().ps||1;}catch(e){return 1;}})();
-    let opts='<option value="0.25">Quarters (\u00bc '+_mEsc(u)+')</option>'
+    let opts='<option value="0.2">Fifths (\u2155 '+_mEsc(u)+' \u2014 finer than \u00bc)</option>'
+            +'<option value="0.25">Quarters (\u00bc '+_mEsc(u)+')</option>'
             +'<option value="0.5">Halves (\u00bd '+_mEsc(u)+')</option>'
             +'<option value="1">Whole '+_mEsc(u)+'s</option>';
     if(ps>1&&pu)opts+='<option value="'+ps+'">Whole '+_mEsc(pu)+'s ('+ps+' '+_mEsc(u)+' each)</option>';
@@ -5480,6 +5491,7 @@ function saveProductEdit(){
   const mult=(target_in==='order'?ps:1);
   const targets={};for(let d=0;d<7;d++){const v=document.getElementById('pe-t'+d).value;if(v!=='')targets[d]=parseFloat(v)*mult;}   // store in COUNT units
   const pv=document.getElementById('pe-pack').value.trim(),rv=document.getElementById('pe-reorder').value.trim();
+  const rv2=(document.getElementById('pe-reorder2')||{value:''}).value.trim(),pv2=(document.getElementById('pe-pack2')||{value:''}).value.trim();
   let reorder_at,finalTargets;
   if(_prodMode==='reorder'){if(rv===''){_toast&&_toast('Enter the level to reorder at (orders when stock is at or below it).');return;}reorder_at=parseFloat(rv);finalTargets=targets;}
   else{if(Object.keys(targets).length===0){_toast&&_toast('Enter at least one daily target.');return;}reorder_at=null;finalTargets=targets;}
@@ -5487,7 +5499,10 @@ function saveProductEdit(){
   const _ruSel=document.getElementById('pe-reorder-unit'),_ouSel=document.getElementById('pe-order-unit');
   const reorder_unit=(ps>1&&_ruSel&&_ruSel.value==='pack')?'pack':'base';   // which unit the level was TYPED in
   const order_unit=(ps>1&&_ouSel&&['pack','both'].includes(_ouSel.value))?_ouSel.value:'base';   // what the supplier sells in; 'both' = staff choose per order
-  const fields={name,supplier_id,unit,count_step,order_mode:(_prodMode==='reorder'?'reorder':'topup'),targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null};
+  const fields={name,supplier_id,unit,count_step,order_mode:(_prodMode==='reorder'?'reorder':'topup'),targets:finalTargets,target:finalTargets[0]||0,pack:pv===''?null:parseFloat(pv),reorder_at,reorder_unit,order_unit,pack_size:ps,pack_unit:pack_unit||null,count_unit:pack_unit||null,section:section||null,target_in:target_in,measure:null,size:null,
+    // second reorder tier (optional): running even lower orders a bigger amount; same units as tier 1
+    reorder_at2:(_prodMode==='reorder'&&rv2!=='')?parseFloat(rv2):null,
+    pack2:(_prodMode==='reorder'&&pv2!=='')?parseFloat(pv2):null};
   // ONE SOURCE OF TRUTH: a save from the editor RETIRES the imported per-run numbers it replaces —
   // stale twins silently outvoting fresh intent is what made orders read wrong (bread crumbs, 9 Aug).
   // Topup + targets typed → the old run_pars die; reorder + a threshold typed → same; a typed
