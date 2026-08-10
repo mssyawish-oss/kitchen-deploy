@@ -1642,7 +1642,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button></div></div>
       <div id="orun-sups" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
       <div class="orun-runs" id="orun-runs"></div>
-      <div style="font-size:var(--fs-sm);color:var(--muted);margin:6px 2px 10px;">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
       <div id="orun-list"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Send order to supplier</button>
       <div id="orun-status" style="font-size:var(--fs-sm);margin-top:8px;min-height:16px;text-align:center;"></div>
@@ -2580,6 +2580,17 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 <!-- Order run now lives directly on the Stock page (owner, 7 Aug: "no landing page — one screen") -->
 <div class="modal-overlay" id="orderrun-modal" style="display:none!important;"></div>
 
+<div class="modal-overlay" id="orun-review-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header"><div class="modal-title">Check the order before it goes</div><button class="modal-close" onclick="closeModal('orun-review-modal')">&times;</button></div>
+    <div id="orv-head" style="font-size:var(--fs-md);line-height:1.5;margin-bottom:10px;"></div>
+    <div id="orv-list" style="max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" style="flex:1;height:46px;" onclick="closeModal('orun-review-modal')">Back</button>
+      <button class="btn btn-primary" style="flex:1.4;height:46px;" id="orv-confirm" onclick="_orunSendConfirmed()">Confirm &mdash; send to supplier</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="order-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">PLACE ORDER</div><button class="modal-close" onclick="closeModal('order-modal')">Close</button></div>
@@ -5102,14 +5113,56 @@ function sendOrderRun(){
     return;
   }
   const items=supProds.map(p=>{const c=_orunCalc(p);return {code:p.code||'',name:p.name,qty:(c.orderQty!=null?c.orderQty:c.order)||0,unit:(c.orderUnit||c.unit)};}).filter(x=>x.qty>0);
-  if(!items.length){st.textContent='Nothing to order — everything is at or above its level.';st.style.color='var(--muted)';return;}
+  if(!items.length){st.textContent='Nothing to order — all counts are above their levels.';st.style.color='var(--muted)';return;}
+  _orunReviewOpen(items);   // review first — the send happens from the confirm button (owner, 9 Aug)
+}
+function _orunRunDates(){
+  // when this order is being placed, and the date range it covers (same window the maths uses:
+  // the day after the order day through the next order day inclusive)
+  const days=((_orunSup&&_orunSup.order_days)||[]).slice();
+  if(_orunDay==null||!days.length)return null;
+  const now=new Date();
+  const cur=(now.getDay()+6)%7;                     // JS Sun=0 -> our Mon=0
+  const addDays=(dt,n)=>{const x=new Date(dt);x.setDate(x.getDate()+n);return x;};
+  const orderDate=addDays(now,(_orunDay-cur+7)%7);  // next occurrence (today counts)
+  const to=_orunNextOrderDay(days,_orunDay);
+  let span=(to-_orunDay+7)%7; if(span===0)span=7;   // single order day = covers the week
+  const fmt=d=>d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  return {orderDate:fmt(orderDate),from:fmt(addDays(orderDate,1)),to:fmt(addDays(orderDate,span))};
+}
+let _orunPendingItems=null;
+function _orunReviewOpen(items){
+  _orunPendingItems=items;
+  const dr=_orunRunDates();
+  document.getElementById('orv-head').innerHTML='<b>'+_mEsc(_orunSup.name)+'</b> · '+_WD[_orunDay]+' order'
+    +(dr?(' — placing '+dr.orderDate+'<br><span style="color:var(--muted);font-size:var(--fs-sm);">Covers <b>'+dr.from+'</b> to <b>'+dr.to+'</b> · '+items.length+' item'+(items.length>1?'s':'')+'</span>'):'');
+  document.getElementById('orv-list').innerHTML=items.map(it=>
+    '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:var(--fs-md);">'
+    +'<span style="min-width:0;">'+_mEsc(it.name)+'</span>'
+    +'<b style="white-space:nowrap;font-variant-numeric:tabular-nums;">'+it.qty+' '+_mEsc(it.unit||'')+'</b></div>').join('');
+  openModal('orun-review-modal');
+}
+function _orunSendConfirmed(){
+  const sup=_orunSup,items=_orunPendingItems,st=document.getElementById('orun-status');
+  if(!sup||!items||!items.length){closeModal('orun-review-modal');return;}
+  const cbtn=document.getElementById('orv-confirm'); if(cbtn){cbtn.disabled=true;cbtn.textContent='Sending…';}
   const btn=document.getElementById('orun-send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  const done=()=>{if(cbtn){cbtn.disabled=false;cbtn.textContent='Confirm — send to supplier';}if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}};
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({orders:{[sup.id]:items},suppliers:appData.suppliers,days:_WD[_orunDay]+' order'})}).then(r=>r.json()).then(d=>{
-    if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}
-    if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';}
+    done();closeModal('orun-review-modal');
+    if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';_orunPendingItems=null;}
     else{st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}
-  }).catch(()=>{if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+  }).catch(()=>{done();st.textContent='Could not reach the server — order NOT sent. Try again.';st.style.color='var(--red)';});
+}
+function _orunClearCounts(){
+  const sup=_orunSup; if(!sup){_toast&&_toast('Pick a supplier first.');return;}
+  const prods=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
+  if(!confirm('Clear ALL typed stock counts for '+sup.name+'? Every item goes back to uncounted (their counts on the stock cards clear too).'))return;
+  prods.forEach(p=>{delete _orunHave[p.id];delete _orunAdj[p.id];if(appData.stock_on_hand)delete appData.stock_on_hand[p.id];});
+  saveKeys(['stock_on_hand']);
+  renderOrderRun();
+  _toast&&_toast('Counts cleared for '+sup.name+' — recount fresh.');
 }
 function openOrderModal(){
   navTo('stock');return;   // one screen now — the Stock page IS the order screen
