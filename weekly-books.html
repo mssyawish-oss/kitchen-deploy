@@ -833,12 +833,35 @@ function parseBill(text,title){
 // Deterministic invoice-date parser (the AI flips DD/MM and mis-files the WEEK — this reads the date itself).
 // Handles DD/MM/YYYY, DD/MM/YY (Russel's), DD.MM.YYYY (Asahi) and "16 Jun 2026" textual (G&W / CFM).
 function parseInvDate(T){
+  // Score every date in the text and take the best-labelled one, instead of the FIRST one found.
+  // Xero-relayed invoices (CFM, G&W) put the tear-off PAYMENT ADVICE slip first in the extracted
+  // text, so its "Due Date" appeared before the real "Invoice Date" — CFM INV-145025 (invoice
+  // 30 Jul, due 6 Aug) was booked into the 3-9 Aug week. Owner spotted it, 11 Aug 2026.
   T=T||'';
-  const dm=T.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/) || T.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);
-  if(dm){ const d=+dm[1],mo=+dm[2]; let y=+dm[3]; if(y<100) y+=2000; if(mo>=1&&mo<=12&&d>=1&&d<=31) return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
-  const tm=T.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i);
-  if(tm){ const M={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}; const d=+tm[1],mo=M[tm[2].toLowerCase().slice(0,3)],y=+tm[3]; if(mo&&d>=1&&d<=31) return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
-  return '';
+  const M={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const mk=(d,mo,y)=>{ d=+d;mo=+mo;y=+y; if(y<100)y+=2000;
+    return (mo>=1&&mo<=12&&d>=1&&d<=31)?y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'):''; };
+  const toISO=s=>{
+    let m=s.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/);          // 30/07/2026 — AU day-first
+    if(m) return mk(m[1],m[2],m[3]);
+    m=s.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(\d{4})/i);  // 30 Jul 2026
+    if(m) return mk(m[1],M[m[2].toLowerCase().slice(0,3)],m[3]);
+    return '';
+  };
+  const re=/(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})/gi;
+  let m2,best=null,bestScore=-99;
+  while((m2=re.exec(T))){
+    const iso=toISO(m2[1]); if(!iso) continue;
+    const before=T.slice(Math.max(0,m2.index-40),m2.index).toLowerCase().replace(/\s+/g,' ');
+    let sc=0;
+    if(/(invoice|document|issue[d]?|tax invoice)\s*date\s*[:\-]?\s*$/.test(before)) sc+=5;   // "Invoice Date  30 Jul 2026"
+    else if(/date of issue\s*[:\-]?\s*$/.test(before)) sc+=5;
+    else if(/(^|[^a-z])date\s*[:\-]\s*$/.test(before)) sc+=2;                                 // United's plain "Date: 03/08/2026"
+    if(/due\s*(date)?\s*[:\-]?\s*$/.test(before)) sc-=6;                                      // never the due date
+    if(/payment advice|amount due|remittance/.test(before)) sc-=3;
+    if(sc>bestScore){ bestScore=sc; best=iso; }
+  }
+  return best||'';
 }
 // Deterministic fallback for COGS supplier invoices — used when the AI errors or misses the total.
 function regexCogs(text,title){
@@ -945,7 +968,7 @@ async function syncXeroBills(){
   }catch(e){}
   return n;
 }
-const BILLCACHE='weeklybooks_billCacheV11';  // V9: re-read all with Asahi's "AUD Total …Payable" extraction + dot-separated dates
+const BILLCACHE='weeklybooks_billCacheV12';  // V12: re-read all — parseInvDate now prefers the LABELLED invoice date over a due date printed earlier in the text (CFM/Xero payment-advice slip). V9: Asahi "AUD Total …Payable" + dot-separated dates
 async function syncBills(){
   const btn=document.getElementById('billBtn'); if(btn)btn.disabled=true; status('Listing bills in Drive…');
   try{
