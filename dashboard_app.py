@@ -3465,7 +3465,7 @@ def _rtsp_frame(url):
         return None,"ffmpeg is not installed on the server"
     except Exception as e:
         return None,str(e)
-def _snap_from(cam):
+def _snap_from(cam,timeout=8):
     # fetch a single JPEG: RTSP cameras via ffmpeg, otherwise Dahua-style snapshot.cgi (HTTP digest)
     cam=cam or {}
     rtsp=(cam.get("rtsp_url") or "").strip()
@@ -3482,7 +3482,10 @@ def _snap_from(cam):
         ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
         opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
             urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
-        with opener.open(urllib.request.Request(url),timeout=8) as r: data=r.read()
+        # 8s suits the 2MP store cams, but the 6MP display camera (.153) answers the auth challenge
+        # instantly and then needs longer to actually render the JPEG — it was timing out mid-capture
+        # and reading as "camera offline". Callers that can wait (display watch) pass a bigger value.
+        with opener.open(urllib.request.Request(url),timeout=timeout) as r: data=r.read()
         if data[:2]==b"\xff\xd8": return data,None
         return None,"Camera did not return a photo (%d bytes) — check address/login."%len(data)
     except Exception as e:
@@ -4384,7 +4387,7 @@ def _display_check_once(force=False,save_preview=False):
     for t in trays:
         cid=t["cam"]
         if cid not in frames:
-            cam=_cam_by_id(cid); frames[cid]=(_snap_from(cam) if cam else (None,"camera not found"))
+            cam=_cam_by_id(cid); frames[cid]=(_snap_from(cam,timeout=25) if cam else (None,"camera not found"))
         jpeg,err=frames[cid]
         st=DISPLAYW.setdefault(t["id"],{"level":None,"raw":"","at":0.0,"err":"","sig":None,"pend":None,"since":0.0,"img":""})
         row={"id":t["id"],"name":t.get("name") or t["id"],"level":st.get("level"),"raw":"","err":""}
@@ -4500,8 +4503,10 @@ def api_display_snap():
     cid=(request.args.get("cam") or "").strip()
     cam=_cam_by_id(cid)
     if not cam: return jsonify({"ok":False,"error":"camera not found"})
-    jpeg,err=_snap_from(cam)
-    if err or not jpeg: return jsonify({"ok":False,"error":err or "no frame"})
+    jpeg,err=_snap_from(cam,timeout=25)   # 6MP cameras are slow to render — worth the wait here
+    if err or not jpeg:
+        hint=" — the camera answered but took too long to send a picture. It is a 6MP camera; try again, or set a url_override using its low-res stream." if "timed out" in str(err) else ""
+        return jsonify({"ok":False,"error":(err or "no frame")+hint})
     try: jpeg=_downscale_jpeg(jpeg,960)
     except Exception: pass
     return jsonify({"ok":True,"img":"data:image/jpeg;base64,"+base64.b64encode(jpeg).decode()})
