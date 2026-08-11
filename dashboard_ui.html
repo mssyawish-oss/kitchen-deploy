@@ -4518,20 +4518,22 @@ function rfxTest(){const el=document.getElementById('rfx-result');el.innerHTML='
     // AGE MATTERS: "Connected — 4 probes found" with a temperature next to each read as healthy even
     // when every reading was days old and two probes were flat (owner, 11 Aug). Show how long ago each
     // probe actually transmitted, and say plainly when a number is history, not a live reading.
+    // Only 1-2 probes are in use at a time here, so a sleeping probe is NORMAL, not a fault — report
+    // ages plainly and save the red for a flat battery (owner, 11 Aug).
     const live=probes.filter(dev=>_rfxAgeMin(dev.last_seen)!=null&&_rfxAgeMin(dev.last_seen)<10).length;
-    let html='<b style="color:'+(live?'var(--green)':'var(--red)')+'">'+(live?'&#10003;':'&#9888;')+' Connected to ThermoWorks.</b> '
-      +probes.length+' probe'+(probes.length===1?'':'s')+' on the account — <b style="color:'+(live?'var(--green)':'var(--red)')+';">'+live+' sending now</b>'
-      +(live<probes.length?(', '+(probes.length-live)+' not reporting'):'')+':';
+    let html='<b style="color:var(--green)">&#10003; Connected to ThermoWorks.</b> '
+      +probes.length+' probe'+(probes.length===1?'':'s')+' on the account — <b style="color:'+(live?'var(--green)':'var(--muted)')+';">'+live+' sending right now</b>'
+      +'<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;">Idle probes stop transmitting to save battery — that is normal. Red = the battery was flat when it last reported.</div>';
     probes.forEach(dev=>{const core=(dev.core!=null)?dev.core+'°C':'—';_rfxProbes.push({serial:dev.serial,label:dev.label||dev.serial,core:core});
       const mins=_rfxAgeMin(dev.last_seen);
       const stale=(mins==null||mins>=10);
       const ageTxt=(mins==null)?'never reported':(mins<1?'just now':(mins<60?(Math.round(mins)+' min ago'):(mins<1440?(Math.round(mins/60)+' h ago'):(Math.round(mins/1440)+' days ago'))));
-      const ageCol=stale?'var(--red)':'var(--green)';
       const batt=(dev.battery==null?'?':dev.battery);
-      const battCol=(batt!=='?'&&batt<=10)?'var(--red)':'var(--muted)';
-      html+='<div style="margin-top:6px;padding:8px;background:var(--surface);border-radius:var(--r-sm);'+(stale?'border-left:3px solid var(--red);':'')+'"><div style="font-weight:700;">'+_mEsc(dev.label||dev.serial)+' — <span style="color:'+(stale?'var(--muted)':'var(--amber)')+';">'+core+'</span> <span style="color:'+ageCol+';font-size:var(--fs-sm);">'+(stale?'&#9888; last sent ':'&#9679; live, ')+ageTxt+'</span></div>'
-        +(stale?'<div style="font-size:var(--fs-sm);color:var(--red);">Not transmitting — the temperature above is an old reading, not what the probe reads now.'+((batt!=='?'&&batt<=10)?' Battery is flat — charge it in the gateway.':' Check it is switched on and near the gateway.')+'</div>':'')
-        +'<div style="font-size:var(--fs-xs);color:var(--muted);">serial '+_mEsc(dev.serial||'')+' · '+(dev.sensor_count||0)+' internal sensors (coldest = centre) · <span style="color:'+battCol+';">battery '+batt+'%</span> · sends every '+(dev.transmit_secs||'?')+'s</div></div>';});
+      const flat=(batt!=='?'&&batt<=10);          // the only thing that needs your attention
+      const ageCol=stale?(flat?'var(--red)':'var(--muted)'):'var(--green)';
+      html+='<div style="margin-top:6px;padding:8px;background:var(--surface);border-radius:var(--r-sm);'+(flat?'border-left:3px solid var(--red);':'')+'"><div style="font-weight:700;">'+_mEsc(dev.label||dev.serial)+' — <span style="color:'+(stale?'var(--muted)':'var(--amber)')+';">'+core+'</span> <span style="color:'+ageCol+';font-size:var(--fs-sm);">'+(stale?'last sent ':'&#9679; live, ')+ageTxt+'</span></div>'
+        +(stale?('<div style="font-size:var(--fs-sm);color:'+(flat?'var(--red)':'var(--muted)')+';">'+(flat?'Battery was flat when it last reported — charge it in the gateway before the next cook.':'Idle (not in use) — the temperature above is its last reading, not a live one.')+'</div>'):'')
+        +'<div style="font-size:var(--fs-xs);color:var(--muted);">serial '+_mEsc(dev.serial||'')+' · '+(dev.sensor_count||0)+' internal sensors (coldest = centre) · <span style="color:'+(flat?'var(--red)':'var(--muted)')+';">battery '+batt+'%</span> · sends every '+(dev.transmit_secs||'?')+'s</div></div>';});
     if(others.length)html+='<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Also seen (not a meat probe, skipped): '+others.map(o=>_mEsc(o.label||o.serial)).join(', ')+'</div>';
     el.style.color='var(--text)';el.innerHTML=html;_rfxBuildMap();
   }).catch(e=>{el.style.color='var(--red)';el.innerHTML='Error: '+e;});}
