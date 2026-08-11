@@ -3465,6 +3465,7 @@ def _rtsp_frame(url):
         return None,"ffmpeg is not installed on the server"
     except Exception as e:
         return None,str(e)
+_SNAP_OK={}   # camera id -> the snapshot URL that actually worked, so we go straight there next time
 def _snap_from(cam,timeout=8):
     # fetch a single JPEG: RTSP cameras via ffmpeg, otherwise Dahua-style snapshot.cgi (HTTP digest)
     cam=cam or {}
@@ -3477,38 +3478,40 @@ def _snap_from(cam,timeout=8):
     user=(cam.get("user","") or "") or (base.get("user","") or ""); pw=(cam.get("pass","") or "") or (base.get("pass","") or "")
     scheme="https" if str(port)=="443" else "http"
     over=(cam.get("url_override") or "").strip()
-    if over:
-        urls=[over]
-    else:
-        # Models differ on the snapshot path/params. The NVR channels answer the first one; the 6MP
-        # display camera 500s on it and wants the low-res sub-stream or a bare call. Try in order and
-        # keep the first real JPEG, so a new camera works without anyone hand-editing a URL.
-        b="%s://%s:%s/cgi-bin/"%(scheme,ip,port)
-        urls=[b+"snapshot.cgi?channel=%s"%ch, b+"snapshot.cgi?channel=%s&subtype=1"%ch,
-              b+"snapshot.cgi?subtype=1", b+"snapshot.cgi", b+"snapshot.cgi?channel=0"]
+    cid=cam.get("id") or ip
     ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+    def _http(u,to):
+        pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,u,user,pw)
+        opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
+            urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
+        with opener.open(urllib.request.Request(u),timeout=to) as r: data=r.read()
+        if data[:2]==b"\xff\xd8": return data,None
+        return None,"Camera did not return a photo (%d bytes) — check address/login."%len(data)
+    b="%s://%s:%s/cgi-bin/"%(scheme,ip,port)
+    primary=over or _SNAP_OK.get(cid) or (b+"snapshot.cgi?channel=%s"%ch)
     last=None
-    for u in urls:
-        try:
-            pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,u,user,pw)
-            opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
-                urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
-            # 8s suits the 2MP store cams, but a 6MP camera answers the auth challenge instantly and
-            # then needs longer to actually render the JPEG. Callers that can wait pass a bigger value.
-            with opener.open(urllib.request.Request(u),timeout=timeout) as r: data=r.read()
-            if data[:2]==b"\xff\xd8": return data,None
-            last="Camera did not return a photo (%d bytes) — check address/login."%len(data)
-        except Exception as e:
-            last=str(e)
-    # Some cameras serve no usable still at all — the 6MP display camera answers every snapshot.cgi
-    # variant with 500/400 — but their RTSP stream is fine. Fall back to pulling one frame off RTSP
-    # with the login already stored for the camera, so nobody has to hand-enter a URL or password.
-    if not over and ip and user:
+    try:
+        d,e=_http(primary,timeout)
+        if d: _SNAP_OK[cid]=primary; return d,None
+        last=e
+    except Exception as e: last=str(e)
+    if over: return None,last            # an explicit override is a deliberate choice — don't second-guess it
+    # This camera's still endpoint failed. RTSP is the reliable route on models whose snapshot.cgi
+    # answers 500/400 (the 6MP display camera does exactly that), so try it BEFORE grinding through
+    # more HTTP variants — each of those can burn 20s+ on a slow camera and tie up the request.
+    if ip and user:
         au=urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw or "",safe="")+"@"
         for sub in (1,0):   # sub-stream first: far quicker, and ample for the AI to judge a tray
             jpeg,rerr=_rtsp_frame("rtsp://%s%s:554/cam/realmonitor?channel=%s&subtype=%d"%(au,ip,ch,sub))
             if jpeg: return jpeg,None
             last=rerr or last
+    for u in (b+"snapshot.cgi?channel=%s&subtype=1"%ch, b+"snapshot.cgi", b+"snapshot.cgi?channel=0"):
+        if u==primary: continue
+        try:
+            d,e=_http(u,min(timeout,6))   # short — these are last-resort guesses, never worth a long wait
+            if d: _SNAP_OK[cid]=u; return d,None
+            last=e
+        except Exception as e: last=str(e)
     return None,last or "no snapshot"
 def _cam_by_id(cid):
     return next((c for c in (db.get("cameras") or []) if c.get("id")==cid),None)
