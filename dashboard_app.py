@@ -3476,20 +3476,31 @@ def _snap_from(cam,timeout=8):
     port=cam.get("port") or base.get("port") or 80; ch=cam.get("channel") or 1
     user=(cam.get("user","") or "") or (base.get("user","") or ""); pw=(cam.get("pass","") or "") or (base.get("pass","") or "")
     scheme="https" if str(port)=="443" else "http"
-    url=(cam.get("url_override") or "").strip() or ("%s://%s:%s/cgi-bin/snapshot.cgi?channel=%s"%(scheme,ip,port,ch))
-    try:
-        pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,url,user,pw)
-        ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
-        opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
-            urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
-        # 8s suits the 2MP store cams, but the 6MP display camera (.153) answers the auth challenge
-        # instantly and then needs longer to actually render the JPEG — it was timing out mid-capture
-        # and reading as "camera offline". Callers that can wait (display watch) pass a bigger value.
-        with opener.open(urllib.request.Request(url),timeout=timeout) as r: data=r.read()
-        if data[:2]==b"\xff\xd8": return data,None
-        return None,"Camera did not return a photo (%d bytes) — check address/login."%len(data)
-    except Exception as e:
-        return None,str(e)
+    over=(cam.get("url_override") or "").strip()
+    if over:
+        urls=[over]
+    else:
+        # Models differ on the snapshot path/params. The NVR channels answer the first one; the 6MP
+        # display camera 500s on it and wants the low-res sub-stream or a bare call. Try in order and
+        # keep the first real JPEG, so a new camera works without anyone hand-editing a URL.
+        b="%s://%s:%s/cgi-bin/"%(scheme,ip,port)
+        urls=[b+"snapshot.cgi?channel=%s"%ch, b+"snapshot.cgi?channel=%s&subtype=1"%ch,
+              b+"snapshot.cgi?subtype=1", b+"snapshot.cgi", b+"snapshot.cgi?channel=0"]
+    ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+    last=None
+    for u in urls:
+        try:
+            pm=urllib.request.HTTPPasswordMgrWithDefaultRealm(); pm.add_password(None,u,user,pw)
+            opener=urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(pm),
+                urllib.request.HTTPBasicAuthHandler(pm),urllib.request.HTTPSHandler(context=ctx))
+            # 8s suits the 2MP store cams, but a 6MP camera answers the auth challenge instantly and
+            # then needs longer to actually render the JPEG. Callers that can wait pass a bigger value.
+            with opener.open(urllib.request.Request(u),timeout=timeout) as r: data=r.read()
+            if data[:2]==b"\xff\xd8": return data,None
+            last="Camera did not return a photo (%d bytes) — check address/login."%len(data)
+        except Exception as e:
+            last=str(e)
+    return None,last or "no snapshot"
 def _cam_by_id(cid):
     return next((c for c in (db.get("cameras") or []) if c.get("id")==cid),None)
 @app.route("/api/cameras",methods=["POST"])
