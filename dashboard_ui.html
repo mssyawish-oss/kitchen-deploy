@@ -265,14 +265,19 @@ body.view-wall .probe-stale{font-size:var(--fs-md);}
 .acf-body{font-size:var(--fs-md);color:var(--muted);line-height:1.5;margin-bottom:18px;}
 .acf-btns{display:flex;gap:10px;}
 .acf-btns .btn{flex:1;min-height:50px;font-size:var(--fs-md);font-weight:700;}
-/* wireless-probe battery: only appears under 30%, red at/below _BATT_LOW so a dying probe is obvious
-   BEFORE it goes silent mid-cook */
-.probe-batt{margin-left:8px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:var(--r-sm);
-  color:var(--muted);background:color-mix(in srgb,var(--muted) 15%,transparent);display:inline-block;}
-.probe-batt::before{content:'\1F50B ';}
-.probe-batt.crit{color:var(--red);background:color-mix(in srgb,var(--red) 16%,transparent);}
-.probe-batt.warn{color:var(--amber,#f59e0b);background:color-mix(in srgb,var(--amber,#f59e0b) 16%,transparent);}
-.probe-batt.ok{color:var(--muted);background:color-mix(in srgb,var(--muted) 12%,transparent);}
+/* wireless-probe battery: the exact % shows the whole time a probe is reporting, big enough to read
+   from across the kitchen (owner, 11 Aug — the old 11px grey pill was invisible until it went red).
+   Green healthy, amber under 30%, red at/below _BATT_LOW so a dying probe is obvious BEFORE it goes
+   silent mid-cook. */
+.probe-batt{margin-left:8px;font-size:var(--fs-lg);font-weight:800;letter-spacing:.02em;padding:3px 11px;border-radius:999px;
+  color:var(--green);background:color-mix(in srgb,var(--green) 18%,transparent);border:1px solid color-mix(in srgb,var(--green) 45%,transparent);
+  display:inline-flex;align-items:center;gap:5px;line-height:1.15;vertical-align:middle;font-variant-numeric:tabular-nums;}
+.probe-batt::before{content:'\1F50B';font-size:1.05em;}
+.probe-batt.crit{color:var(--red);background:color-mix(in srgb,var(--red) 20%,transparent);border-color:var(--red);animation:battpulse 1.6s ease-in-out infinite;}
+.probe-batt.warn{color:var(--amber,#f59e0b);background:color-mix(in srgb,var(--amber,#f59e0b) 20%,transparent);border-color:color-mix(in srgb,var(--amber,#f59e0b) 60%,transparent);}
+.probe-batt.ok{color:var(--green);background:color-mix(in srgb,var(--green) 18%,transparent);border-color:color-mix(in srgb,var(--green) 45%,transparent);}
+@keyframes battpulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+body.view-wall .probe-batt{font-size:clamp(17px,2.1vh,24px);padding:4px 13px;}
 .probe-offline{display:inline-block;font-size:var(--fs-xs);font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:var(--r-sm);color:#fff;background:var(--red);margin-left:6px;}
 body.style-v2 .probe-lost{align-self:center;}
 .p2-mid.lost .p2-temp,.probe-card .probe-lost ~ .probe-temp{opacity:.5;}
