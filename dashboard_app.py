@@ -3500,6 +3500,15 @@ def _snap_from(cam,timeout=8):
             last="Camera did not return a photo (%d bytes) — check address/login."%len(data)
         except Exception as e:
             last=str(e)
+    # Some cameras serve no usable still at all — the 6MP display camera answers every snapshot.cgi
+    # variant with 500/400 — but their RTSP stream is fine. Fall back to pulling one frame off RTSP
+    # with the login already stored for the camera, so nobody has to hand-enter a URL or password.
+    if not over and ip and user:
+        au=urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw or "",safe="")+"@"
+        for sub in (1,0):   # sub-stream first: far quicker, and ample for the AI to judge a tray
+            jpeg,rerr=_rtsp_frame("rtsp://%s%s:554/cam/realmonitor?channel=%s&subtype=%d"%(au,ip,ch,sub))
+            if jpeg: return jpeg,None
+            last=rerr or last
     return None,last or "no snapshot"
 def _cam_by_id(cid):
     return next((c for c in (db.get("cameras") or []) if c.get("id")==cid),None)
