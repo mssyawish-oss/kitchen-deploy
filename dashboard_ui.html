@@ -304,7 +304,15 @@ body.view-wall .p2-sensors{font-size:var(--fs-md);gap:18px;}
 .p2-bar{position:relative;height:7px;border-radius:var(--r-sm);background:var(--surface2);}
 .p2-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:var(--r-sm);background:var(--accv,var(--acc));}
 .p2-bar i::after{content:'';position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:13px;height:13px;border-radius:50%;background:var(--accv,var(--acc));box-shadow:0 0 0 3px color-mix(in srgb,var(--accv,var(--acc)) 30%,transparent);}
-.p2-statusrow{display:flex;justify-content:center;}
+.p2-statusrow{display:flex;justify-content:center;flex-shrink:0;}
+/* The card clips (overflow:hidden) and RFX adds a 4-sensor row, so on a live probe the status row and
+   the Print/Reset buttons were being pushed out of sight entirely (owner screenshot, 11 Aug). The
+   sparkline is the only decorative part — let it give up space first, and never squeeze the controls. */
+.p2-spark{flex:0 1 auto;min-height:0;max-height:34px;overflow:hidden;}
+.p2-sensors,.p2-bar,.p2-actions{flex-shrink:0;}
+body.style-v2 .probe-card.p2{gap:8px;}
+.p2-head{flex-shrink:0;}
+.p2-head .probe-batt{margin-left:auto;}   /* battery sits top-right of the card, always visible */
 .p2-actions{display:flex;gap:10px;margin-top:auto;}
 .p2-actions .probe-btn{flex:1;height:40px;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:var(--fs-md);font-weight:600;}
 /* timer card v2 — the big ring is the point */
@@ -4267,7 +4275,11 @@ function renderProbes(){
     // leaving a blank card that looks like a fault. Suppresses the stale-age stamp — nothing is wrong.
     // Offline: it WAS reporting and has now gone quiet longer than the allowed gap. Charging probes and
     // never-connected ones are not "offline" — only a probe that dropped out mid-service.
-    const _offMins=(function(){const m=parseFloat((serverSettings||{}).probe_offline_mins);return (isFinite(m)&&m>0)?m:10;})();
+    // Battery-saver mode: probes only transmit every 2°, so a HEALTHY probe holding a steady
+    // temperature can legitimately go quiet for far longer than the normal 10-minute window. Stretch
+    // the offline threshold to match the server's saver stale window (20 min) or we cry wolf mid-cook.
+    const _offMins=(function(){const m=parseFloat((serverSettings||{}).probe_offline_mins);
+      const base=(isFinite(m)&&m>0)?m:10; return window._rfxSaver?Math.max(base,20):base;})();
     const _isOffline=(!_charging&&typeof _ageS==='number'&&isFinite(_ageS)&&(_ageS/60)>=_offMins);
     const offHtml=_isOffline?`<span class="probe-offline">OFFLINE ${Math.round(_ageS/60)}m</span>`:'';
     if(_isOffline)_probeOfflineNow.add(pidN); else _probeOfflineNow.delete(pidN);
@@ -4295,7 +4307,7 @@ function renderProbes(){
       return `<div class="probe-card p2 pc${pidN} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
-        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div></div>
+        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div>${batHtml}</div>
       <div class="p2-mid${p._lost?' lost':''}">
         <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
@@ -4303,7 +4315,7 @@ function renderProbes(){
       ${staleHtml}${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${batHtml}${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
+      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
       <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
