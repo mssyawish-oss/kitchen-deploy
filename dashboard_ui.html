@@ -1669,7 +1669,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button></div></div>
       <div id="orun-sups" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
       <div class="orun-runs" id="orun-runs"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunPastOpen()">Past orders</button><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
       <div id="orun-list"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Confirm order</button>
       <div id="orun-status" style="font-size:var(--fs-sm);margin-top:8px;min-height:16px;text-align:center;"></div>
@@ -2612,6 +2612,12 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 <!-- Order run now lives directly on the Stock page (owner, 7 Aug: "no landing page — one screen") -->
 <div class="modal-overlay" id="orderrun-modal" style="display:none!important;"></div>
 
+<div class="modal-overlay" id="orun-past-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header"><div class="modal-title">Past orders</div><button class="modal-close" onclick="closeModal('orun-past-modal')">&times;</button></div>
+    <div id="orp-list" style="max-height:56vh;overflow-y:auto;"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="orun-missing-modal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><div class="modal-title">Step 1 of 2 &mdash; nothing ordered for these</div><button class="modal-close" onclick="closeModal('orun-missing-modal')">&times;</button></div>
@@ -5270,9 +5276,55 @@ function _orunSendConfirmed(){
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({orders:{[sup.id]:items},suppliers:appData.suppliers,days:_WD[_orunDay]+' order'})}).then(r=>r.json()).then(d=>{
     done();closeModal('orun-review-modal');
-    if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';_orunPendingItems=null;}
+    if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';_orunPendingItems=null;
+      // Counts belong to the order that just went — leaving them up invites double-ordering on the
+      // next run (owner, 11 Aug). Clear this supplier's counts and start the next one fresh.
+      const prods=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
+      prods.forEach(p=>{delete _orunHave[p.id];delete _orunAdj[p.id];delete _orunSkip[p.id];delete _orunBatch[p.id];
+        if(appData.stock_on_hand)delete appData.stock_on_hand[p.id];});
+      _orunBatchOn={};saveKeys(['stock_on_hand']);renderOrderRun();
+      _toast&&_toast('Order sent — counts cleared for '+sup.name);}
     else{st.textContent='Error: '+(d.error||'failed');st.style.color='var(--red)';}
   }).catch(()=>{done();st.textContent='Could not reach the server — order NOT sent. Try again.';st.style.color='var(--red)';});
+}
+function _orunPastOpen(){
+  const sup=_orunSup; if(!sup){_toast&&_toast('Pick a supplier first.');return;}
+  const box=document.getElementById('orp-list');
+  box.innerHTML='<div style="color:var(--muted);padding:10px;">Loading…</div>';
+  openModal('orun-past-modal');
+  fetch('/api/order_log?supplier_id='+encodeURIComponent(sup.id)).then(r=>r.json()).then(d=>{
+    const os=d.orders||[];
+    if(!os.length){box.innerHTML='<div style="color:var(--muted);padding:12px 4px;font-size:var(--fs-md);">No orders sent to '+_mEsc(sup.name)+' yet. Once you send one it is kept here, and you can reload it into a new order.</div>';return;}
+    _orunPast=os;
+    box.innerHTML=os.map((o,i)=>{
+      const n=(o.items||[]).length;
+      const preview=(o.items||[]).slice(0,3).map(it=>_mEsc(it.name)).join(', ')+(n>3?(' +'+(n-3)+' more'):'');
+      return '<div style="border-bottom:1px solid var(--border);padding:10px 4px;">'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">'
+        +'<div style="min-width:0;"><b style="font-size:var(--fs-md);">'+_mEsc(o.at||o.date||'')+'</b>'
+        +(o.run?('<span style="color:var(--muted);font-size:var(--fs-sm);"> · '+_mEsc(o.run)+'</span>'):'')
+        +'<div style="color:var(--muted);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+n+' item'+(n===1?'':'s')+' — '+preview+'</div></div>'
+        +'<button class="btn" style="flex-shrink:0;padding:6px 12px;font-size:var(--fs-sm);" onclick="_orunPastLoad('+i+')">Load</button>'
+        +'</div></div>';
+    }).join('');
+  }).catch(()=>{box.innerHTML='<div style="color:var(--red);padding:10px;">Could not load past orders.</div>';});
+}
+let _orunPast=[];
+function _orunPastLoad(i){
+  const o=_orunPast[i]; if(!o)return;
+  const prods=(appData.products||[]).filter(p=>p.supplier_id===(_orunSup||{}).id);
+  const byCode={},byName={};
+  prods.forEach(p=>{if(p.code)byCode[String(p.code)]=p;byName[(p.name||'').trim().toLowerCase()]=p;});
+  let hit=0,miss=[];
+  (o.items||[]).forEach(it=>{
+    const p=(it.code&&byCode[String(it.code)])||byName[(it.name||'').trim().toLowerCase()];
+    if(!p){miss.push(it.name);return;}
+    // the log stores the ORDER quantity in its order unit; drop it in as a manual amount so the
+    // run shows exactly what went last time, whatever this run's counts say
+    _orunAdj[p.id]=parseFloat(it.qty)||0; hit++;
+  });
+  closeModal('orun-past-modal');renderOrderRun();
+  _toast&&_toast('Loaded '+hit+' item'+(hit===1?'':'s')+' from '+(o.at||o.date)+(miss.length?(' — '+miss.length+' no longer on your list'):''));
 }
 function _orunClearCounts(){
   const sup=_orunSup; if(!sup){_toast&&_toast('Pick a supplier first.');return;}

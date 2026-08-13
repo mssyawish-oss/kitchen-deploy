@@ -6965,8 +6965,33 @@ def send_orders():
         covering=f"\nCovering: {days_str}\n" if days_str else ""
         body=f"Hi {sup['name']},\n\nPlease process the following order:\n\n{lines}\n{covering}\nOrder placed: {now}\n\nThank you."
         try: send_email(sup["email"],f"Stock Order — {now}",body);sent+=1
-        except Exception as e: errors.append(f"{sup['name']}: {e}")
+        except Exception as e: errors.append(f"{sup['name']}: {e}"); continue
+        _order_log_add(sup,items,days_str)   # keep it: the dash had no memory of what was ordered
     return jsonify({"ok":not errors,"error":"; ".join(errors),"sent":sent})
+
+_ORDER_LOG_KEEP=400
+def _order_log_add(sup,items,days_str):
+    """Record a sent order so it can be reviewed or reloaded later (owner, 11 Aug: 'let me choose a
+    past day and load what was ordered'). Stores the quantities in the units they were sent in."""
+    ent={"id":"ord_%d"%int(time.time()*1000),"ts":int(time.time()*1000),
+         "date":datetime.now().strftime("%Y-%m-%d"),"at":datetime.now().strftime("%a %d %b %Y, %H:%M"),
+         "supplier_id":sup.get("id"),"supplier":sup.get("name"),"run":days_str or "",
+         "items":[{"code":i.get("code",""),"name":i.get("name",""),"qty":i.get("qty"),"unit":i.get("unit","")} for i in items]}
+    try:
+        with data_lock:
+            log=list(db.get("order_log") or []); log.append(ent)
+            db["order_log"]=log[-_ORDER_LOG_KEEP:]; save_data(db)
+    except Exception as e:
+        print("order_log:",e)
+
+@app.route("/api/order_log")
+def api_order_log():
+    """Past sent orders, newest first. ?supplier_id= filters to one supplier."""
+    sid=(request.args.get("supplier_id") or "").strip()
+    log=list(db.get("order_log") or [])
+    if sid: log=[o for o in log if o.get("supplier_id")==sid]
+    log=log[::-1]
+    return jsonify({"ok":True,"count":len(log),"orders":log[:120]})
 
 @app.route("/api/send_reminder",methods=["POST"])
 def send_reminder():
