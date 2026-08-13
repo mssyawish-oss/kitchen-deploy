@@ -1155,6 +1155,9 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .orun-run{flex:1;min-width:120px;padding:11px;border-radius:var(--radius);background:var(--surface2);border:1.5px solid var(--border2);color:var(--muted);font-size:var(--fs-md);font-weight:700;cursor:pointer;text-align:center;}
 .orun-run.on{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);}
 .orun-run small{display:block;font-size:var(--fs-sm);font-weight:400;color:var(--muted);margin-top:2px;}
+/* the one-off sits apart from the scheduled runs so nobody taps it by habit */
+.orun-run.adhoc{border-style:dashed;flex:0 1 auto;min-width:150px;}
+.orun-run.adhoc.on{border-style:solid;}
 .orun-section{font-size:var(--fs-sm);font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);padding:12px 4px 6px;border-bottom:1px solid var(--border2);margin-bottom:6px;position:sticky;top:34px;background:var(--bg);z-index:1;}
 .orun-head{display:flex;align-items:center;gap:12px;padding:4px 13px 8px;position:sticky;top:0;background:var(--bg);z-index:2;}
 .orun-h-item{flex:1;min-width:0;font-size:var(--fs-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
@@ -2616,6 +2619,14 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
   <div class="modal" style="max-width:560px;">
     <div class="modal-header"><div class="modal-title">Past orders</div><button class="modal-close" onclick="closeModal('orun-past-modal')">&times;</button></div>
     <div id="orp-list" style="max-height:56vh;overflow-y:auto;"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="orun-adhoc-modal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header"><div class="modal-title">One-off order</div><button class="modal-close" onclick="closeModal('orun-adhoc-modal')">&times;</button></div>
+    <div id="orun-adhoc-sub" style="font-size:var(--fs-md);color:var(--muted);margin-bottom:12px;"></div>
+    <div id="orun-adhoc-days" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:12px;">Delivery is next day. Daily-target items are worked out for that many days; reorder-when-low items use their usual level.</div>
   </div>
 </div>
 <div class="modal-overlay" id="orun-missing-modal">
@@ -5020,7 +5031,22 @@ function _orunBatchPrompt(batchName,names,apply){
   window._baApply=apply; openModal('batchask-modal');
 }
 function _baChoose(replace){ closeModal('batchask-modal'); if(window._baApply){ window._baApply(replace); window._baApply=null; } }
-function _orunSetDay(d){_orunDay=d;_orunHave={};_orunAdj={};renderOrderRun();}   // skips survive a day switch — skipping is a decision about the ITEM, not the day
+let _orunAdhoc=null;   // one-off order: how many days of stock it should cover (null = use the schedule)
+function _orunTodayIdx(){return (new Date().getDay()+6)%7;}   // JS Sun=0 -> our Mon=0
+function _orunAdhocPick(){
+  const box=document.getElementById('orun-adhoc-days');
+  document.getElementById('orun-adhoc-sub').textContent='How many days of stock should this '+((_orunSup||{}).name||'')+' order cover?';
+  box.innerHTML=[1,2,3,4,5,6,7].map(n=>'<button class="btn'+(_orunAdhoc===n?' btn-primary':'')+'" style="height:52px;min-width:64px;font-size:var(--fs-lg);font-weight:700;" onclick="_orunAdhocSet('+n+')">'+n+'</button>').join('')
+    +(_orunAdhoc?'<button class="btn" style="height:52px;" onclick="_orunAdhocSet(null)">Use the usual days instead</button>':'');
+  openModal('orun-adhoc-modal');
+}
+function _orunAdhocSet(n){
+  _orunAdhoc=n; closeModal('orun-adhoc-modal');
+  if(n){_orunDay=_orunTodayIdx();}                       // a one-off is placed today
+  _orunHave={};_orunAdj={};renderOrderRun();
+  _toast&&_toast(n?('One-off order — '+n+' day'+(n>1?'s':'')+' of stock'):'Back to the usual order days');
+}
+function _orunSetDay(d){_orunAdhoc=null;_orunDay=d;_orunHave={};_orunAdj={};renderOrderRun();}   // skips survive a day switch — skipping is a decision about the ITEM, not the day
 function _orunToggleSkip(pid){
   if(_orunSkip[pid])delete _orunSkip[pid]; else _orunSkip[pid]=true;
   renderOrderRun();
@@ -5038,7 +5064,11 @@ function renderOrderRun(){
   if(!days.length){runsEl.innerHTML='<div style="color:var(--amber);font-size:var(--fs-md);padding:8px;">No order days set for this supplier yet — add them in Setup → Suppliers.</div>';document.getElementById('orun-list').innerHTML='';return;}
   runsEl.innerHTML=days.map(d=>{const to=_orunNextOrderDay(days,d);
     const toLbl=(to===d)?'covers the week':('lasts to '+_WD[to]);
-    return '<div class="orun-run '+(_orunDay===d?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>'+toLbl+'</small></div>';}).join('');
+    return '<div class="orun-run '+((_orunDay===d&&!_orunAdhoc)?'on':'')+'" onclick="_orunSetDay('+d+')">'+_WD[d]+' order<small>'+toLbl+'</small></div>';}).join('')
+    // ONE-OFF run: order outside the usual schedule for however many days you choose (owner, 13 Aug).
+    // Available on every supplier, alongside their normal order days.
+    +'<div class="orun-run adhoc'+(_orunAdhoc?' on':'')+'" onclick="_orunAdhocPick()">One-off order<small>'
+      +(_orunAdhoc?(_orunAdhoc+' day'+(_orunAdhoc>1?'s':'')+' of stock'):'choose how many days')+'</small></div>';
   _orunRenderBatches();
   const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const list=document.getElementById('orun-list');
@@ -5088,6 +5118,11 @@ function _orunTargetsPar(p){
   // Mon 2 + Thu 1 but a stale imported Sun par of 4 made the run order 3 instead of 2.
   const t=p.targets||{};
   if(!Object.values(t).some(v=>v!==''&&v!=null&&parseFloat(v)>0))return null;   // no targets set → use run_pars
+  if(_orunAdhoc){                       // one-off: cover the next N days from tomorrow
+    let need=0,d=_orunTodayIdx();
+    for(let i=0;i<_orunAdhoc;i++){d=(d+1)%7;need+=parseFloat(t[d]||0)||0;}
+    return need;
+  }
   const days=((_orunSup&&_orunSup.order_days)||[]).slice();
   if(_orunDay==null||!days.length)return null;
   const to=_orunNextOrderDay(days,_orunDay);
@@ -5244,22 +5279,26 @@ function _orunToReview(){
 function _orunRunDates(){
   // when this order is being placed, and the date range it covers (same window the maths uses:
   // the day after the order day through the next order day inclusive)
-  const days=((_orunSup&&_orunSup.order_days)||[]).slice();
-  if(_orunDay==null||!days.length)return null;
   const now=new Date();
   const cur=(now.getDay()+6)%7;                     // JS Sun=0 -> our Mon=0
   const addDays=(dt,n)=>{const x=new Date(dt);x.setDate(x.getDate()+n);return x;};
+  const fmt=d=>d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  if(_orunAdhoc){                                   // one-off placed today, covering N days from tomorrow
+    return {orderDate:fmt(now),from:fmt(addDays(now,1)),to:fmt(addDays(now,_orunAdhoc)),oneoff:_orunAdhoc};
+  }
+  const days=((_orunSup&&_orunSup.order_days)||[]).slice();
+  if(_orunDay==null||!days.length)return null;
   const orderDate=addDays(now,(_orunDay-cur+7)%7);  // next occurrence (today counts)
   const to=_orunNextOrderDay(days,_orunDay);
   let span=(to-_orunDay+7)%7; if(span===0)span=7;   // single order day = covers the week
-  const fmt=d=>d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
   return {orderDate:fmt(orderDate),from:fmt(addDays(orderDate,1)),to:fmt(addDays(orderDate,span))};
 }
 let _orunPendingItems=null;
 function _orunReviewOpen(items){
   _orunPendingItems=items;
   const dr=_orunRunDates();
-  document.getElementById('orv-head').innerHTML='<b>'+_mEsc(_orunSup.name)+'</b> · '+_WD[_orunDay]+' order'
+  const runLbl=_orunAdhoc?('one-off order · '+_orunAdhoc+' day'+(_orunAdhoc>1?'s':'')+' of stock'):(_WD[_orunDay]+' order');
+  document.getElementById('orv-head').innerHTML='<b>'+_mEsc(_orunSup.name)+'</b> · '+runLbl
     +(dr?(' — placing '+dr.orderDate+'<br><span style="color:var(--muted);font-size:var(--fs-sm);">Covers <b>'+dr.from+'</b> to <b>'+dr.to+'</b> · '+items.length+' item'+(items.length>1?'s':'')+'</span>'):'');
   document.getElementById('orv-list').innerHTML=items.map(it=>
     '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:var(--fs-md);">'
@@ -5274,7 +5313,7 @@ function _orunSendConfirmed(){
   const btn=document.getElementById('orun-send'); if(btn){btn.disabled=true;btn.textContent='Sending…';}
   const done=()=>{if(cbtn){cbtn.disabled=false;cbtn.textContent='Confirm — send to supplier';}if(btn){btn.disabled=false;btn.textContent='Send order to supplier';}};
   fetch('/api/send_orders',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({orders:{[sup.id]:items},suppliers:appData.suppliers,days:_WD[_orunDay]+' order'})}).then(r=>r.json()).then(d=>{
+    body:JSON.stringify({orders:{[sup.id]:items},suppliers:appData.suppliers,days:(_orunAdhoc?('one-off · '+_orunAdhoc+' day'+(_orunAdhoc>1?'s':'')):(_WD[_orunDay]+' order'))})}).then(r=>r.json()).then(d=>{
     done();closeModal('orun-review-modal');
     if(d.ok){st.textContent='✓ Sent '+items.length+' item'+(items.length>1?'s':'')+' to '+sup.name;st.style.color='var(--green)';_orunPendingItems=null;
       // Counts belong to the order that just went — leaving them up invites double-ordering on the

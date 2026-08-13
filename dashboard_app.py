@@ -6962,9 +6962,15 @@ def send_orders():
             errors.append(f"{sup.get('name','This supplier')} has no order email — add one in Setup, or just read/print the order.")
             continue
         lines="\n".join(f"  - {i['name']}: {i['qty']} x {i['unit']}" for i in items)
-        covering=f"\nCovering: {days_str}\n" if days_str else ""
-        body=f"Hi {sup['name']},\n\nPlease process the following order:\n\n{lines}\n{covering}\nOrder placed: {now}\n\nThank you."
-        try: send_email(sup["email"],f"Stock Order — {now}",body);sent+=1
+        # The supplier does not care which of OUR runs this covers — they need what, where and when
+        # (owner, 13 Aug). Delivery details come from the shop settings so they stay correct.
+        shop=(db.get("shop_name") or "Bruno's Chicken Shop").strip()
+        addr=(db.get("shop_address") or "471 Main St, Mordialloc VIC 3195").strip()
+        phone=(db.get("shop_phone") or "0413 271 104").strip()
+        deliver=f"Delivery to:\n{shop}\n{addr}"+(f"\nPh: {phone}" if phone else "")
+        body=(f"Hi {sup['name']},\n\nPlease process the following order for NEXT DAY DELIVERY:\n\n"
+              f"{lines}\n\n{deliver}\n\nOrder placed: {now}\n\nThank you.\n{shop}")
+        try: send_email(sup["email"],f"Stock Order — {shop} — next day delivery",body);sent+=1
         except Exception as e: errors.append(f"{sup['name']}: {e}"); continue
         _order_log_add(sup,items,days_str)   # keep it: the dash had no memory of what was ordered
     return jsonify({"ok":not errors,"error":"; ".join(errors),"sent":sent})
