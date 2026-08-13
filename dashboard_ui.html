@@ -1164,8 +1164,13 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .orun-nm{flex:1;min-width:0;}
 .orun-nm .n{font-size:var(--fs-md);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .orun-nm .s{font-size:var(--fs-sm);color:var(--muted);margin-top:2px;}
-.orun-have{width:auto;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
+/* FIXED width: with the +/- arrows this was auto, so every row sized to its own content and the
+   count boxes stepped raggedly down the column (owner, 11 Aug). 46+64+46 + two 5px gaps = 172. */
+.orun-have{width:172px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .orun-have input{width:64px;height:46px;text-align:center;font-size:var(--fs-lg);font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--text);outline:none;}
+/* the unit name is a hint only — full size it got clipped to "eac…"; the unit is already on the row */
+.orun-have input::placeholder{font-size:var(--fs-xs);opacity:.75;}
+.orun-h-have{width:172px;}
 /* big thumb-friendly ± around the count box — items count in steps of ¼/½/1, so arrows beat typing */
 .oh-step{display:flex;align-items:center;gap:5px;}
 .oh-step button{width:46px;height:46px;flex-shrink:0;font-size:22px;font-weight:700;border-radius:var(--r-sm);background:var(--surface2);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;}
@@ -1207,7 +1212,7 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
   .orun-row{gap:8px;padding:10px 11px;}
   .orun-nm{flex:1 1 auto;}
   .orun-nm .n{white-space:normal;overflow:hidden;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
-  .orun-have{width:auto;}
+  .orun-have,.orun-h-have{width:146px;}
   .orun-have input{width:52px;height:44px;font-size:var(--fs-lg);}
   .oh-step button{width:40px;height:44px;font-size:20px;}
   .orun-unit-seg button{padding:3px 6px;font-size:var(--fs-xs);}
@@ -1666,7 +1671,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
       <div class="orun-runs" id="orun-runs"></div>
       <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
       <div id="orun-list"></div>
-      <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Send order to supplier</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Confirm order</button>
       <div id="orun-status" style="font-size:var(--fs-sm);margin-top:8px;min-height:16px;text-align:center;"></div>
       <div id="stock-empty" class="empty-state" style="display:none;"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
     </div>
@@ -2607,14 +2612,25 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 <!-- Order run now lives directly on the Stock page (owner, 7 Aug: "no landing page — one screen") -->
 <div class="modal-overlay" id="orderrun-modal" style="display:none!important;"></div>
 
+<div class="modal-overlay" id="orun-missing-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header"><div class="modal-title">Step 1 of 2 &mdash; nothing ordered for these</div><button class="modal-close" onclick="closeModal('orun-missing-modal')">&times;</button></div>
+    <div id="orv-miss-head" style="font-size:var(--fs-md);line-height:1.5;margin-bottom:10px;"></div>
+    <div id="orv-miss-list" style="max-height:44vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" style="flex:1;height:46px;" onclick="closeModal('orun-missing-modal')">Go back &amp; add them</button>
+      <button class="btn btn-primary" style="flex:1.4;height:46px;" onclick="_orunMissOk()">That&rsquo;s right &mdash; continue</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="orun-review-modal">
   <div class="modal" style="max-width:520px;">
-    <div class="modal-header"><div class="modal-title">Check the order before it goes</div><button class="modal-close" onclick="closeModal('orun-review-modal')">&times;</button></div>
+    <div class="modal-header"><div class="modal-title">Step 2 of 2 &mdash; your order</div><button class="modal-close" onclick="closeModal('orun-review-modal')">&times;</button></div>
     <div id="orv-head" style="font-size:var(--fs-md);line-height:1.5;margin-bottom:10px;"></div>
     <div id="orv-list" style="max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;"></div>
     <div style="display:flex;gap:10px;">
-      <button class="btn" style="flex:1;height:46px;" onclick="closeModal('orun-review-modal')">Back</button>
-      <button class="btn btn-primary" style="flex:1.4;height:46px;" id="orv-confirm" onclick="_orunSendConfirmed()">Confirm &mdash; send to supplier</button>
+      <button class="btn" style="flex:1;height:46px;" onclick="_orunReviewBack()">Back</button>
+      <button class="btn btn-primary" style="flex:1.4;height:46px;" id="orv-confirm" onclick="_orunSendConfirmed()">Send to supplier</button>
     </div>
   </div>
 </div>
@@ -4920,7 +4936,11 @@ function _orunRenderBatches(){
   let el=document.getElementById('orun-batches');
   const runsEl=document.getElementById('orun-runs');
   if(!el){ el=document.createElement('div'); el.id='orun-batches'; el.className='orun-batches'; runsEl.parentNode.insertBefore(el, runsEl.nextSibling); }
-  const batches=appData.batches||[];
+  // A batch belongs to whichever supplier its items come from — showing United's batches on the
+  // Fruit Talk run (owner, 11 Aug) just invites ordering the wrong things from the wrong supplier.
+  const _sid=(_orunSup||{}).id;
+  const _mine=new Set((appData.products||[]).filter(p=>p.supplier_id===_sid).map(p=>p.id));
+  const batches=(appData.batches||[]).filter(b=>(b.items||[]).some(it=>_mine.has(it.pid)));
   if(!batches.length){ el.style.display='none'; return; }
   el.style.display='';
   el.innerHTML='<span class="orun-batch-lbl">Prepping a batch?</span>'+batches.map(b=>
@@ -5177,22 +5197,43 @@ function _orunRecalc(pid){
 }
 function sendOrderRun(){
   const sup=_orunSup; if(!sup)return;
-  const supProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id&&!_orunSkip[p.id]);   // skipped = deliberately left out
   const st=document.getElementById('orun-status');
-  // SAFETY: every item that has a level for this run MUST be counted first — a blank is not zero.
-  const uncounted=supProds.filter(p=>_orunCalc(p).state==='uncounted');
-  if(uncounted.length){
-    const msg='Count '+uncounted.length+' more item'+(uncounted.length>1?'s':'')+' first — every item needs a number (0 is fine).';
-    st.innerHTML='&#9888; '+msg+' Blank items are highlighted below.';
-    st.style.color='var(--amber)';
-    _toast&&_toast('\u26A0 '+msg);   // always-visible reason (the status line can scroll out of view)
-    document.querySelectorAll('.orun-row.needcount .orun-have input').forEach(i=>{i.style.borderColor='var(--amber)';});
-    const first=document.querySelector('.orun-row.needcount'); if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
-    return;
-  }
+  // TWO-STEP CHECKOUT (owner, 11 Aug): instead of refusing to continue until every blank is counted
+  // or skipped, show what is NOT being ordered and let him confirm it — with a way back to fix it.
+  st.textContent='';
+  const allProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
+  const missing=allProds.filter(p=>{
+    if(_orunSkip[p.id])return true;                        // deliberately skipped
+    const c=_orunCalc(p);
+    if(c.state==='uncounted')return true;                  // never counted
+    return !((c.orderQty!=null?c.orderQty:c.order)>0);     // counted, but nothing needed
+  });
+  _orunMissingOpen(missing);
+}
+function _orunMissingOpen(missing){
+  const sup=_orunSup;
+  if(!missing.length){_orunToReview();return;}             // nothing left out → straight to the order
+  document.getElementById('orv-miss-head').innerHTML=
+    '<b>'+missing.length+' item'+(missing.length===1?' is':'s are')+' not on this '+_mEsc(sup.name)+' order.</b>'
+    +'<div style="color:var(--muted);font-size:var(--fs-sm);margin-top:3px;">Skipped, never counted, or counted with enough in stock. Check nothing is missing before you continue.</div>';
+  document.getElementById('orv-miss-list').innerHTML=missing.map(p=>{
+    const c=_orunCalc(p);
+    const why=_orunSkip[p.id]?'skipped':(c.state==='uncounted'?'not counted':'enough in stock');
+    const col=(c.state==='uncounted'||_orunSkip[p.id])?'var(--amber)':'var(--muted)';
+    return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:var(--fs-md);">'
+      +'<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_mEsc(p.name)+'</span>'
+      +'<span style="white-space:nowrap;color:'+col+';font-size:var(--fs-sm);font-weight:700;">'+why+'</span></div>';
+  }).join('');
+  openModal('orun-missing-modal');
+}
+function _orunMissOk(){closeModal('orun-missing-modal');_orunToReview();}
+function _orunReviewBack(){closeModal('orun-review-modal');sendOrderRun();}   // Back = re-run step 1
+function _orunToReview(){
+  const sup=_orunSup,st=document.getElementById('orun-status');
+  const supProds=(appData.products||[]).filter(p=>p.supplier_id===sup.id&&!_orunSkip[p.id]);
   const items=supProds.map(p=>{const c=_orunCalc(p);return {code:p.code||'',name:p.name,qty:(c.orderQty!=null?c.orderQty:c.order)||0,unit:(c.orderUnit||c.unit)};}).filter(x=>x.qty>0);
   if(!items.length){st.textContent='Nothing to order — all counts are above their levels.';st.style.color='var(--muted)';return;}
-  _orunReviewOpen(items);   // review first — the send happens from the confirm button (owner, 9 Aug)
+  _orunReviewOpen(items);
 }
 function _orunRunDates(){
   // when this order is being placed, and the date range it covers (same window the maths uses:
