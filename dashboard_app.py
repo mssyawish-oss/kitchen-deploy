@@ -493,7 +493,9 @@ def check_probe_status(pid,temp):
         # Falls back to almost_temp only if never configured, which is what it used to follow.
         try:
             _ct=float(settings.get("probe_count_temp") or 0) or float(almost)
-            if _rfx_saver(): _ct=max(0.0,_ct-1.0)   # a real 80.5 peak may only ever TRANSMIT ~79 on a 2-degree interval
+            # NO saver compensation: measured live 13 Aug, RFX probes keep transmitting at 0.1-degree
+            # resolution on a ~60s cadence regardless of the temperature-interval setting, so peaks are
+            # NOT under-reported. The old -1.0 here just made the cooked-count fire a degree early.
         except (TypeError,ValueError): _ct=float(almost)
         count_temp=max(_ct,pull+1.0)      # kept just above pull so it can't misfire while heating
         rearm_below=pull-15
