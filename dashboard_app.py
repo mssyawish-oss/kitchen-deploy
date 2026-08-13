@@ -6956,6 +6956,7 @@ def send_report():
 def send_orders():
     data=request.get_json(silent=True) or {};orders=data.get("orders",{});suppliers=data.get("suppliers",[])
     now=datetime.now().strftime("%A %d %B %Y, %H:%M");days_str=data.get("days","")
+    delivery=(data.get("delivery") or "").strip()   # the real delivery date — suppliers differ on lead time
     errors=[];sent=0
     for sup_id,items in orders.items():
         sup=next((s for s in suppliers if s["id"]==sup_id),None)
@@ -6970,9 +6971,12 @@ def send_orders():
         addr=(db.get("shop_address") or "471 Main St, Mordialloc VIC 3195").strip()
         phone=(db.get("shop_phone") or "0413 271 104").strip()
         deliver=f"Delivery to:\n{shop}\n{addr}"+(f"\nPh: {phone}" if phone else "")
-        body=(f"Hi {sup['name']},\n\nPlease process the following order for NEXT DAY DELIVERY:\n\n"
+        # Lead times differ per supplier (United next day, Baiada 2 business days), so name the actual
+        # delivery day rather than promising "next day" to everyone (owner, 13 Aug).
+        when=f"for delivery on {delivery}" if delivery else "for NEXT DAY DELIVERY"
+        body=(f"Hi {sup['name']},\n\nPlease process the following order {when}:\n\n"
               f"{lines}\n\n{deliver}\n\nOrder placed: {now}\n\nThank you.\n{shop}")
-        try: send_email(sup["email"],f"Stock Order — {shop} — next day delivery",body);sent+=1
+        try: send_email(sup["email"],f"Stock Order — {shop}"+(f" — delivery {delivery}" if delivery else " — next day delivery"),body);sent+=1
         except Exception as e: errors.append(f"{sup['name']}: {e}"); continue
         _order_log_add(sup,items,days_str)   # keep it: the dash had no memory of what was ordered
     return jsonify({"ok":not errors,"error":"; ".join(errors),"sent":sent})
