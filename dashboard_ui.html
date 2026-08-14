@@ -1158,6 +1158,19 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 /* the one-off sits apart from the scheduled runs so nobody taps it by habit */
 .orun-run.adhoc{border-style:dashed;flex:0 1 auto;min-width:150px;}
 .orun-run.adhoc.on{border-style:solid;}
+/* today's run, stated plainly — replaces making staff pick from a row of day pills */
+.orun-hd{background:var(--surface2);border:1px solid var(--border2);border-left:4px solid var(--amber);
+  border-radius:var(--radius);padding:12px 15px;margin-bottom:10px;position:relative;}
+.orun-today{font-size:var(--fs-sm);color:var(--muted);margin-bottom:3px;}
+.orun-hd-main{font-size:var(--fs-lg);color:var(--text);margin-bottom:3px;}
+.orun-hd-sub{font-size:var(--fs-md);color:var(--text);}
+.orun-hd-sub b{color:var(--amber);}
+.orun-hd-days{color:var(--muted);font-size:var(--fs-sm);}
+.orun-offday{margin-top:8px;font-size:var(--fs-md);color:var(--amber);line-height:1.45;}
+.orun-hd-change{position:absolute;top:11px;right:12px;background:none;border:1px solid var(--border2);
+  border-radius:999px;color:var(--muted);font-size:var(--fs-sm);padding:5px 12px;cursor:pointer;}
+.orun-hd-change:hover{color:var(--amber);border-color:var(--amber);}
+@media (max-width:700px){.orun-hd-change{position:static;margin-top:9px;width:100%;}}
 .orun-section{font-size:var(--fs-sm);font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);padding:12px 4px 6px;border-bottom:1px solid var(--border2);margin-bottom:6px;position:sticky;top:34px;background:var(--bg);z-index:1;}
 .orun-head{display:flex;align-items:center;gap:12px;padding:4px 13px 8px;position:sticky;top:0;background:var(--bg);z-index:2;}
 .orun-h-item{flex:1;min-width:0;font-size:var(--fs-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
@@ -1672,7 +1685,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="page" id="page-stock">
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button></div></div>
       <div id="orun-sups" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
-      <div class="orun-runs" id="orun-runs"></div>
+      <div id="orun-header"></div>
+      <div class="orun-runs" id="orun-runs" style="display:none;"></div>
       <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunPastOpen()">Past orders</button><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
       <div id="orun-list"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Confirm order</button>
@@ -5054,6 +5068,58 @@ function _orunBatchPrompt(batchName,names,apply){
 }
 function _baChoose(replace){ closeModal('batchask-modal'); if(window._baApply){ window._baApply(replace); window._baApply=null; } }
 let _orunAdhoc=null;   // one-off order: how many days of stock it should cover (null = use the schedule)
+// ── TODAY'S RUN ─────────────────────────────────────────────────────────────────────────────
+// Staff were shown every order day as a pill and had to pick one — on a Friday you'd see six
+// choices with nothing saying which was today's (owner, 14 Aug). The dash knows the date, the
+// supplier's order days and its lead time, so it works the run out itself and simply says what
+// the order has to cover. The picker is still there behind "change" for ordering early or late.
+function _orunAutoDay(){
+  const days=((_orunSup&&_orunSup.order_days)||[]).slice().sort((a,b)=>a-b);
+  if(!days.length)return null;
+  const today=_orunTodayIdx();
+  return days.includes(today)?today:null;      // null = today is not a scheduled order day
+}
+function _orunHeaderHtml(){
+  const sup=_orunSup; if(!sup)return '';
+  const now=new Date();
+  const fmtLong=d=>d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'});
+  const dr=_orunRunDates();
+  const todayLine='<div class="orun-today">Today is <b>'+fmtLong(now)+'</b></div>';
+  const isToday=(_orunAutoDay()!=null&&_orunAutoDay()===_orunDay);
+  let main='',sub='';
+  if(_orunAdhoc){
+    main='<b>'+_mEsc(sup.name)+'</b> — one-off order';
+    sub='Delivered '+((dr&&dr.deliveryDate)||'next day')+' · must last until <b>'+_orunAdhocLbl()+'</b>'
+       +' <span class="orun-hd-days">('+_orunAdhoc+' day'+(_orunAdhoc>1?'s':'')+')</span>';
+  }else if(_orunAutoDay()==null){
+    // not one of this supplier's order days — say so plainly instead of dressing a scheduled run
+    // up as if it were today's order
+    const nice=((sup.order_days)||[]).slice().sort((a,b)=>a-b).map(x=>_WD[x]).join(', ');
+    main='<b>'+_mEsc(sup.name)+'</b> — no order due today';
+    sub='<span class="orun-hd-days">They normally take orders on '+nice+'.</span>';
+  }else if(_orunDay!=null){
+    const del=_orunDeliveryDay(_orunDay);
+    const days=((sup.order_days)||[]).slice();
+    const to=_orunNextDeliveryDay(days,_orunDay);
+    let span=(to-del+7)%7; if(span===0)span=7;
+    const lastDay=(to+6)%7;
+    main='<b>'+_mEsc(sup.name)+'</b> — '+_WD[_orunDay]+' order';
+    sub='Delivered <b>'+((dr&&dr.deliveryDate)||_WD[del])+'</b> · must last until <b>'+_WD[lastDay]
+       +((dr&&dr.to)?(' '+dr.to.replace(/^\w+,\s*/,'')):'')+'</b>'
+       +' <span class="orun-hd-days">('+span+' day'+(span>1?'s':'')+' of stock)</span>';
+  }
+  const off=(_orunAutoDay()==null&&!_orunAdhoc)
+    ? '<div class="orun-offday">Ordering anyway? <button class="btn" style="padding:5px 12px;font-size:var(--fs-sm);margin-left:4px;" onclick="_orunAdhocPick()">Pick how long it must last</button>'
+      +' <button class="btn" style="padding:5px 12px;font-size:var(--fs-sm);margin-left:4px;" onclick="_orunToggleRuns()">or choose a usual day</button></div>' : '';
+  return '<div class="orun-hd">'+todayLine+'<div class="orun-hd-main">'+main+'</div><div class="orun-hd-sub">'+sub+'</div>'+off
+    +'<button class="orun-hd-change" onclick="_orunToggleRuns()">Not this? change &#9662;</button></div>';
+}
+function _orunToggleRuns(){
+  const el=document.getElementById('orun-runs'); if(!el)return;
+  const show=el.style.display==='none'||!el.style.display;
+  el.style.display=show?'flex':'none';
+  window._orunRunsOpen=show;
+}
 function _orunAdhocLbl(){   // the day a one-off runs out, as "Sat 16 Aug"
   if(!_orunAdhoc)return '';
   const d=new Date(); d.setDate(d.getDate()+_orunAdhoc);
@@ -5104,7 +5170,14 @@ function renderOrderRun(){
   const sup=_orunSup; if(!sup)return;
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const runsEl=document.getElementById('orun-runs');
-  if(!days.length){runsEl.innerHTML='<div style="color:var(--amber);font-size:var(--fs-md);padding:8px;">No order days set for this supplier yet — add them in Setup → Suppliers.</div>';document.getElementById('orun-list').innerHTML='';return;}
+  if(!days.length){
+    // no schedule yet — the header must still be rewritten or it keeps the LAST supplier's text
+    const hd0=document.getElementById('orun-header');
+    if(hd0)hd0.innerHTML='<div class="orun-hd"><div class="orun-today">Today is <b>'
+      +new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})+'</b></div>'
+      +'<div class="orun-hd-main"><b>'+_mEsc(sup.name)+'</b></div>'
+      +'<div class="orun-offday">&#9888; No order days set for this supplier yet — add them in Setup &rarr; Suppliers.</div></div>';
+    runsEl.style.display='none';runsEl.innerHTML='';document.getElementById('orun-list').innerHTML='';return;}
   runsEl.innerHTML=days.map(d=>{
     const del=_orunDeliveryDay(d), to=_orunNextDeliveryDay(days,d);
     const lead=_orunLead();
@@ -5116,6 +5189,10 @@ function renderOrderRun(){
     // Available on every supplier, alongside their normal order days.
     +'<div class="orun-run adhoc'+(_orunAdhoc?' on':'')+'" onclick="_orunAdhocPick()">One-off order<small>'
       +(_orunAdhoc?('lasts to '+_orunAdhocLbl()):'pick the day it must last to')+'</small></div>';
+  // the picker stays collapsed until asked for — the header above says what today's order is
+  runsEl.style.display=window._orunRunsOpen?'flex':'none';
+  const hd=document.getElementById('orun-header');
+  if(hd)hd.innerHTML=_orunHeaderHtml();
   _orunRenderBatches();
   const items=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
   const list=document.getElementById('orun-list');
