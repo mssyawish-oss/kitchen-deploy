@@ -5213,7 +5213,15 @@ function _orunCalc(p){
     else { order=(haveN<=level)?qty:0; state=(order>0)?'order':'ok'; }   // AT or below (owner, 9 Aug)
   } else if(parN===null||parN<=0){ state='nolevel'; }
   else if(typed===null){ state='uncounted'; }
-  else { const s=parN-haveN; order=(s>0)?Math.ceil(s):0; state=(order>0)?'order':'ok'; }
+  else {
+    const s=parN-haveN; order=(s>0)?Math.ceil(s):0;
+    // Suppliers who sell in lots: Russels does everything in 5kg except winglets, so a 18kg
+    // shortfall must become 20kg, not 18 (owner, 14 Aug). Round UP to a whole lot — short is
+    // worse than long — and the +/- arrows still let you override it.
+    const lot=parseFloat(p.pack);
+    if(order>0&&isFinite(lot)&&lot>1) order=Math.ceil(order/lot)*lot;
+    state=(order>0)?'order':'ok';
+  }
   // batch add-on: a chosen batch contributes this item's quantity
   const badd=_orunBatch[p.id];
   if(badd!=null){
