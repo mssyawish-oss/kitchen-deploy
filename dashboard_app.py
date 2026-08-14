@@ -5688,6 +5688,19 @@ def update_db():
             # A real one-by-one delete never jumps a 3+ list straight to empty in a single POST.
             if isinstance(payload.get(k),list) and not payload[k] and isinstance(db.get(k),list) and len(db[k])>=3:
                 payload.pop(k); dropped.append(k)
+        # CONCURRENT-EDIT GUARD (14 Aug): products/suppliers arrive as the WHOLE list, so two people
+        # editing at once silently overwrite each other — the owner's deletes wiped my additions and
+        # my writes restored his deleted rows. A genuine edit changes one or two rows; losing several
+        # AT ONCE means the sender was working from a stale copy. Reject those and say so, rather than
+        # accept a destructive replace.
+        for k in ("products","suppliers"):
+            new=payload.get(k); cur=db.get(k)
+            if not (isinstance(new,list) and isinstance(cur,list) and len(cur)>=8): continue
+            cur_ids={x.get("id") for x in cur if isinstance(x,dict)}
+            new_ids={x.get("id") for x in new if isinstance(x,dict)}
+            lost=cur_ids-new_ids
+            if len(lost)>=3:
+                payload.pop(k); dropped.append("%s(stale: would drop %d)"%(k,len(lost)))
         db.update(payload); save_data(db)
     if dropped:
         try: app.logger.warning("api/data: ignored empty overwrite of %s (kept existing)",dropped)
