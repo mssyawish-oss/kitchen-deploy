@@ -50,6 +50,7 @@ body.light{
   --shadow:0 1px 2px rgba(20,30,50,.08),0 4px 12px rgba(20,30,50,.10);
   --shadow-lg:0 18px 50px rgba(20,30,50,.22);
   --ring:0 0 0 3px rgba(194,113,12,.25);
+  --card:linear-gradient(180deg,#ffffff,#eef2f7);   /* was missing — light mode inherited the dark :root card */
 }
 body.light .top-bar{background:linear-gradient(180deg,#ffffff,#e9edf3);box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 2px 8px rgba(20,30,50,.08);}
 body.light .bottom-nav{background:linear-gradient(0deg,#ffffff,#f0f3f8);box-shadow:0 -2px 12px rgba(20,30,50,.10);}
@@ -163,7 +164,7 @@ body.kiosk .topbar-title{cursor:default;}
    across (not side-by-side halves), generous padding, big ring gauges. The page is allowed to scroll on
    short windows — the mock's proportions matter more than zero-scroll, per the owner. All rules scoped
    under body.style-v2; classic untouched. ══ */
-body.style-v2{--bg:#0a0d14;--card:#12161f;--surface:#161b26;--surface2:#1c2230;--border:#1d2432;--border2:#2a3244;}
+body.style-v2:not(.light){--bg:#0a0d14;--card:#12161f;--surface:#161b26;--surface2:#1c2230;--border:#1d2432;--border2:#2a3244;}
 body.style-v2 .top-bar{border-bottom:1px solid var(--border);}
 /* the mock's palette: 01 orange, 02 blue, 03 purple, 04 green — overrides the physical-probe colours
    INSIDE v2 only (classic keeps black/green/brown/orange for matching the real probes) */
@@ -265,6 +266,7 @@ body.view-wall .probe-stale{font-size:var(--fs-md);}
 .acf-body{font-size:var(--fs-md);color:var(--muted);line-height:1.5;margin-bottom:18px;}
 .acf-btns{display:flex;gap:10px;}
 .acf-btns .btn{flex:1;min-height:50px;font-size:var(--fs-md);font-weight:700;}
+.acf-card .acf-input{margin-bottom:18px;min-height:50px;font-size:var(--fs-lg);}
 /* wireless-probe battery: the exact % shows the whole time a probe is reporting, big enough to read
    from across the kitchen (owner, 11 Aug — the old 11px grey pill was invisible until it went red).
    Green healthy, amber under 30%, red at/below _BATT_LOW so a dying probe is obvious BEFORE it goes
@@ -872,6 +874,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .tag-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-dim);}
 .empty-state{text-align:center;padding:40px 20px;color:var(--muted);font-size:var(--fs-md);}
 .divider{height:1px;background:var(--border);margin:12px 0;}
+.note-blue{background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:var(--blue);line-height:1.6;}
 .row{display:flex;align-items:center;gap:8px;}
 .row-between{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .section-title{font-size:var(--fs-sm);font-weight:800;color:var(--text);font-family:var(--font-body);letter-spacing:.1em;text-transform:uppercase;margin:16px 0 8px;}
@@ -924,7 +927,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* sticky action footer: the Save/Send/Add/Confirm row stays pinned at the bottom of any modal */
 .modal-foot{position:sticky;bottom:-22px;z-index:5;margin:14px -22px -22px;padding:14px 22px 20px;background:linear-gradient(0deg,#15181f 82%,rgba(21,24,31,0));}
 .modal-foot .btn,.modal-foot button{margin-top:0;}
-.modal-title{font-size:var(--fs-md);font-weight:700;color:var(--amber);font-family:var(--font-mono);}
+.modal-title{font-size:var(--fs-md);font-weight:700;color:var(--amber);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.04em;}
 .modal-close{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:4px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-sm);}
 #lock-screen{position:fixed;inset:0;background:radial-gradient(900px 500px at 50% 25%,rgba(251,191,36,.07),transparent 60%),var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
 #lock-screen.hidden{display:none;}
@@ -941,7 +944,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 @keyframes lb-pulse{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,.45);}50%{box-shadow:0 0 0 7px rgba(251,191,36,0);}}
 #alarm-overlay{display:none;position:fixed;inset:0;z-index:500;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:rgba(4,5,10,.88);backdrop-filter:blur(6px);}
 #alarm-overlay.active{display:flex;}
-.alarm-card{background:#14171e;border:1px solid rgba(251,155,36,.45);border-radius:20px;padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
+.alarm-card{background:var(--surface);border:1px solid rgba(251,155,36,.45);border-radius:var(--radius-lg);padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 @keyframes alarm-card-pulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 26px -8px var(--alarm-accent,#ef4444);}50%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 64px 2px var(--alarm-accent,#ef4444);}}
 .alarm-bell{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(251,155,36,.08);border:2px solid #fb9b24;color:#fb9b24;box-shadow:0 0 26px rgba(251,155,36,.25);}
 .alarm-silence-btn{background:transparent;color:#e7e9ee;border:1px solid rgba(255,255,255,.22);padding:15px 20px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;cursor:pointer;width:100%;margin-top:18px;letter-spacing:.02em;}
@@ -1004,7 +1007,7 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 #probe-alert{display:none;position:fixed;inset:0;z-index:450;background:rgba(4,5,10,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;}
 #probe-alert.show{display:flex;}
 .pa-inner{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:94vw;max-height:92vh;overflow:auto;}
-.pa-card{background:#14171e;border:1px solid rgba(251,155,36,.45);border-radius:20px;padding:24px 30px;min-width:250px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 24px 70px rgba(0,0,0,.75);}
+.pa-card{background:var(--surface);border:1px solid rgba(251,155,36,.45);border-radius:var(--radius-lg);padding:24px 30px;min-width:250px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 .pa-card.almost{animation:flash-amber 1.2s infinite;}
 .pa-card.ready{animation:flash-amber 1s infinite;}
 .pa-card.overdone{animation:flash-amber .6s infinite;}
@@ -1264,8 +1267,8 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .pd-prog{margin:2px 0 16px;}
 .pd-prog-top{display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-md);font-weight:600;color:var(--muted);margin-bottom:7px;gap:12px;}
 .pd-prog-top b{color:var(--text);font-weight:800;}
-.pd-prog-bar{height:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:99px;overflow:hidden;}
-.pd-prog-fill{height:100%;background:var(--green);border-radius:99px;transition:width .35s ease;min-width:0;}
+.pd-prog-bar{height:9px;background:var(--surface2);border:1px solid var(--border2);border-radius:999px;overflow:hidden;}
+.pd-prog-fill{height:100%;background:var(--green);border-radius:999px;transition:width .35s ease;min-width:0;}
 .pd-tsec{display:flex;align-items:center;gap:10px;font-size:var(--fs-sm);font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:20px 0 8px;}
 .pd-tsec:first-child{margin-top:2px;}
 .pd-tsec.overdue{color:#f87171;}
@@ -1516,12 +1519,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
   .nav-btn span{font-size:var(--fs-xs);letter-spacing:0;}
   .nav-svg{width:19px;height:19px;}
   .cam-grid{grid-template-columns:1fr;}
-  /* Menu button opens the sidebar as a slide-in drawer */
-  .sidebar{display:flex;position:fixed;top:0;left:0;bottom:0;height:100vh;width:min(240px,82vw);z-index:120;transform:translateX(-100%);transition:transform .22s ease;box-shadow:0 0 40px rgba(0,0,0,.55);}
-  .app-shell.nosidebar .sidebar{width:min(240px,82vw);padding:16px 12px;border-right:1px solid var(--border);}
-  .app-shell.drawer-open .sidebar{transform:none;}
-  .drawer-backdrop{display:none;}
-  .app-shell.drawer-open .drawer-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;}
+  /* (slide-in drawer rules live in the 820px block above — they already cover this width) */
 }
 /* ── Live orders board (KDS mirror) ── */
 .orders-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start;}
@@ -1591,6 +1589,45 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 .staff-role{flex:0 0 auto;text-transform:capitalize;}
 .staff-pin{flex:0 0 74px;font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--muted);text-align:right;}
 .staff-row .staff-edit,.staff-row .staff-del{flex:0 0 auto;padding:4px 10px;font-size:var(--fs-sm);}
+
+/* ══ 16 Aug polish: finish the v2 skin beyond the Temps page — modals, dialogs, tables, empty states.
+   Scoped like the rest of v2 where colour-sensitive; classic (?style=classic) untouched. ══ */
+/* v2 modals pick up the flat v2 card surface (they still had the classic gradient) */
+body.style-v2:not(.light) .modal{background:var(--card);}
+body.style-v2:not(.light) .modal-header{background:linear-gradient(180deg,#12161f 82%,rgba(18,22,31,0));}
+body.style-v2:not(.light) .modal-foot{background:linear-gradient(0deg,#12161f 82%,rgba(18,22,31,0));}
+body.style-v2 .acf-card{background:var(--surface);}
+/* light mode: sticky modal header/foot were still the dark gradients */
+body.light .modal-header{background:linear-gradient(180deg,#ffffff 82%,rgba(255,255,255,0));}
+body.light .modal-foot{background:linear-gradient(0deg,#f3f5f9 82%,rgba(243,245,249,0));}
+/* numbers line up in every table (prices, counts, temps) */
+td,th{font-variant-numeric:tabular-nums;}
+/* empty states get structure instead of bare grey text */
+.empty-state{border:1px dashed var(--border2);border-radius:var(--radius-lg);}
+
+/* ══ BOLD skin (16 Aug, round 2) — commercial-product veneer over v2, owner-requested.
+   Deeper ground, flat panels, solid amber primary actions, active nav tab as a filled pill.
+   All scoped to body.style-v2 so ?style=classic is untouched. ══ */
+body.style-v2:not(.light){--bg:#0b0d11;--card:#14171e;--surface:#14171e;--surface2:#1b1f28;--border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.13);}
+/* hero actions: solid amber with dark text (the Square/Toast primary look); danger stays a solid red */
+body.style-v2 .btn{border-radius:10px;}
+body.style-v2 .btn-primary{background:var(--amber);border-color:var(--amber);color:#20150a;font-weight:800;box-shadow:0 2px 10px rgba(251,155,36,.25);}
+body.style-v2 .btn-primary:hover{filter:brightness(1.06);}
+body.style-v2 .btn-danger{background:#e5484d;border-color:#e5484d;color:#fff;font-weight:800;}
+/* top bar: a touch taller, panel surface, tighter title */
+body.style-v2 .top-bar{height:60px;background:var(--surface);}
+body.style-v2 .topbar-title{font-size:19px;font-weight:800;letter-spacing:-.01em;}
+/* bottom nav: the active tab is a filled amber pill — reads instantly across the kitchen */
+body.style-v2 .bottom-nav{background:#101319;}
+body.style-v2 .nav-btn.active{color:#20150a;}
+body.style-v2 .nav-btn.active .nav-inner{background:var(--amber);box-shadow:0 4px 16px rgba(251,155,36,.35);}
+/* bigger, tighter page titles */
+body.style-v2 .page-title{font-size:22px;font-weight:800;letter-spacing:-.015em;}
+/* cards: flat surface + crisp border + soft drop (kills the classic gradients) */
+body.style-v2:not(.light) .probe-card,body.style-v2:not(.light) .timer-card,body.style-v2:not(.light) .kpi-card,body.style-v2:not(.light) .ord-card,body.style-v2:not(.light) .alert-card,body.style-v2:not(.light) .recipe-card,body.style-v2:not(.light) .job-item,body.style-v2:not(.light) .rl-card,body.style-v2:not(.light) .acf-card{background:var(--card);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px rgba(0,0,0,.35);}
+body.style-v2 .modal{border-radius:20px;}
+body.style-v2 .input,body.style-v2 select,body.style-v2 textarea{border-radius:10px;}
+body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 </style>
 <style id="po-prog-css">
 .po-status-box{border:1.5px solid var(--amber);border-radius:var(--radius);padding:10px 14px;margin:2px 0 10px;display:flex;flex-direction:column;gap:8px;background:var(--surface2);}
@@ -1887,7 +1924,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 <!-- PIN confirm modal -->
 <div class="modal-overlay" id="pin-confirm-modal">
   <div class="modal" style="max-width:300px;text-align:center;">
-    <div style="font-size:var(--fs-md);font-weight:700;color:var(--amber);font-family:var(--font-mono);margin-bottom:6px;" id="pin-confirm-title">Enter PIN</div>
+    <div class="modal-title" style="margin-bottom:6px;" id="pin-confirm-title">Enter PIN</div>
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:14px;" id="pin-confirm-sub"></div>
     <div id="cpin-dots" style="font-size:28px;min-height:40px;margin-bottom:14px;"></div>
     <div class="pin-pad" style="margin:0 auto;">
@@ -2107,10 +2144,10 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 
 <!-- Rotisserie camera live feed -->
 <div class="modal-overlay" id="rotcam-modal" onclick="closeRotcam()">
-  <div class="modal" style="max-width:780px;padding:12px;" onclick="event.stopPropagation()">
-    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <div class="page-title" style="font-size:var(--fs-lg);"><b style="color:#ff5b5b;">&#9679;</b> Rotisserie camera &middot; live</div>
-      <button class="btn" onclick="closeRotcam()">Close</button>
+  <div class="modal" style="max-width:780px;" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title"><b style="color:var(--red);">&#9679;</b> Rotisserie camera &middot; live</div>
+      <button class="modal-close" onclick="closeRotcam()">&#10005;</button>
     </div>
     <div style="position:relative;background:#000;border-radius:var(--radius);overflow:hidden;min-height:200px;">
       <img id="rotcam-big" style="width:100%;display:block;" alt="">
@@ -2138,21 +2175,21 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div id="deploy-health" style="margin-top:10px;font-size:var(--fs-sm);border:1px solid var(--border2);border-radius:var(--r-sm);padding:9px 11px;line-height:1.55;"></div>
     <div id="screen-readout" style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;font-family:var(--font-mono);"></div>
     <div class="section-title">Email Config</div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:var(--blue);line-height:1.6;">Google Workspace: myaccount.google.com &#8594; Security &#8594; App passwords &#8594; create one &#8594; paste 16-char password below.</div>
+    <div class="note-blue">Google Workspace: myaccount.google.com &#8594; Security &#8594; App passwords &#8594; create one &#8594; paste 16-char password below.</div>
     <div class="form-row"><div class="label">From Email</div><input class="input" id="cfg-email" type="email" placeholder="orders@yourbusiness.com.au"></div>
     <div class="form-row"><div class="label">App Password</div><input class="input" id="cfg-apppass" type="password" autocomplete="new-password"></div>
     <div id="email-status" style="font-size:var(--fs-sm);min-height:16px;margin-bottom:8px;"></div>
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="saveEmailConfig()">Save</button><button class="btn" onclick="testEmail()">Test</button></div>
     <div class="divider"></div>
     <div class="section-title">Square POS (Busy / Quiet)</div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:#93c5fd;line-height:1.6;">developer.squareup.com &#8594; your app &#8594; <b>Production Access Token</b>. Location ID: Square Dashboard &#8594; Account &amp; Settings &#8594; Business &#8594; Locations.</div>
+    <div class="note-blue">developer.squareup.com &#8594; your app &#8594; <b>Production Access Token</b>. Location ID: Square Dashboard &#8594; Account &amp; Settings &#8594; Business &#8594; Locations.</div>
     <div class="form-row"><div class="label">Access Token</div><input class="input" id="sq-token" type="password" autocomplete="new-password" placeholder="EAAA..."></div>
     <div class="grid-2"><div><div class="label">Location ID (optional)</div><input class="input" id="sq-location" placeholder="L1234ABCD"></div><div><div class="label">Busy at (sales / 30 min)</div><input class="input" id="sq-threshold" type="number" value="3"></div></div>
     <div id="square-status" style="font-size:var(--fs-sm);min-height:16px;margin:8px 0;"></div>
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="saveSquareConfig()">Save</button><button class="btn" onclick="testSquare()">Test</button></div>
     <div class="divider"></div>
     <div class="section-title">Phone Orders — text-back</div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:#93c5fd;line-height:1.6;">When a caller presses a menu option on your Dialpad phone, they automatically get a text with the right link — no one has to answer. Each <b>rule</b> below = one Dialpad <b>department</b> (the “bucket” a menu option forwards into) + the <b>link</b> to text back. Add as many as you like — e.g. an <b>Orders</b> rule and a <b>Catering</b> rule. <b>Set-up:</b> paste your Dialpad <b>API key</b> (dialpad.com &#8594; My Company &#8594; Authentication &#8594; API Keys), tap <b>Load my departments</b>, then for each rule pick its department + link and switch it on. Texts use your existing ClickSend account — same as vouchers.</div>
+    <div class="note-blue">When a caller presses a menu option on your Dialpad phone, they automatically get a text with the right link — no one has to answer. Each <b>rule</b> below = one Dialpad <b>department</b> (the “bucket” a menu option forwards into) + the <b>link</b> to text back. Add as many as you like — e.g. an <b>Orders</b> rule and a <b>Catering</b> rule. <b>Set-up:</b> paste your Dialpad <b>API key</b> (dialpad.com &#8594; My Company &#8594; Authentication &#8594; API Keys), tap <b>Load my departments</b>, then for each rule pick its department + link and switch it on. Texts use your existing ClickSend account — same as vouchers.</div>
     <div class="form-row"><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="dp-enabled" style="width:18px;height:18px;"> <span>Turn on phone-order text-backs</span></label></div>
     <div id="dp-sms-warn" style="display:none;font-size:var(--fs-sm);color:var(--amber);margin-bottom:6px;">⚠ ClickSend isn’t set up yet — set it up under Comp Vouchers first; phone-order texts use the same account.</div>
     <div class="form-row"><div class="label">Dialpad API key</div><input class="input" id="dp-key" type="password" autocomplete="new-password" placeholder="paste your Dialpad API key"></div>
@@ -2163,7 +2200,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="dialpadSave()">Save all</button><input class="input" id="dp-test-phone" placeholder="04xx xxx xxx (test #)" style="max-width:180px;"></div>
     <div class="divider"></div>
     <div class="section-title">Google (Gmail + Drive) — for Weekly Books <span id="google-conn-pill" style="font-size:var(--fs-sm);font-weight:700;margin-left:8px;"></span></div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:#93c5fd;line-height:1.6;">Lets the server read your <b>Uber/DoorDash payout emails</b> + <b>supplier invoices</b> 24/7 (read-only). You get these 3 values once from a Google Cloud OAuth client + the OAuth Playground — ask in chat for the step-by-step.</div>
+    <div class="note-blue">Lets the server read your <b>Uber/DoorDash payout emails</b> + <b>supplier invoices</b> 24/7 (read-only). You get these 3 values once from a Google Cloud OAuth client + the OAuth Playground — ask in chat for the step-by-step.</div>
     <div class="form-row"><div class="label">Client ID</div><input class="input" id="g-cid" placeholder="…apps.googleusercontent.com"></div>
     <div class="form-row"><div class="label">Client Secret</div><input class="input" id="g-csec" type="password" autocomplete="new-password" placeholder="GOCSPX-…"></div>
     <div class="form-row"><div class="label">Refresh Token</div><input class="input" id="g-rtok" type="password" autocomplete="new-password" placeholder="1//…"></div>
@@ -2171,7 +2208,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="saveGoogleConfig()">Save</button><button class="btn" onclick="testGoogle()">Test connection</button></div>
     <div class="divider"></div>
     <div class="section-title">Daily Report Email</div>
-    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;font-size:var(--fs-sm);color:#93c5fd;line-height:1.6;">A nightly summary (batches cooked, avg cook times, packdown done/missed, shift notes) is emailed automatically. Uses the email above.</div>
+    <div class="note-blue">A nightly summary (batches cooked, avg cook times, packdown done/missed, shift notes) is emailed automatically. Uses the email above.</div>
     <div class="form-row"><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="rep-enabled" style="width:18px;height:18px;"> <span>Send daily report automatically</span></label></div>
     <div class="grid-2"><div><div class="label">Send at</div><input class="input" id="rep-time" placeholder="22:30"></div><div><div class="label">To (blank = your email)</div><input class="input" id="rep-to" placeholder="owner@brunoschickenshop.com.au"></div></div>
     <div id="report-status" style="font-size:var(--fs-sm);min-height:16px;margin:8px 0;"></div>
@@ -2780,7 +2817,7 @@ function _audioBanner(show){
   if(b){b.style.display='flex';return;}
   const d=document.createElement('div');d.id='audio-blocked';
   d.innerHTML='&#128266; Alarm sound is blocked &mdash; tap the screen to enable';
-  d.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9999;background:#b45309;color:#fff;padding:12px 18px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);display:flex;cursor:pointer;';
+  d.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 74px);transform:translateX(-50%);z-index:620;background:#b45309;color:#fff;padding:12px 18px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);display:flex;cursor:pointer;';
   d.onclick=()=>{_audioWake();_audioKeepAlive();d.remove();};
   document.body.appendChild(d);
 }
@@ -3175,8 +3212,9 @@ function walkinLogLoad(){
   }).catch(()=>{box.innerHTML='<div style="color:var(--red);font-size:var(--fs-sm);">Could not load the log.</div>';});
 }
 function walkinLogClear(){
-  if(!confirm('Clear the detection log and its saved images?'))return;
-  fetch('/api/walkin_log',{method:'DELETE'}).then(()=>walkinLogLoad()).catch(()=>{});
+  _askConfirm('Clear the detection log?','The log and its saved images are deleted.',function(){
+    fetch('/api/walkin_log',{method:'DELETE'}).then(()=>walkinLogLoad()).catch(()=>{});
+  },'Clear log');
 }
 function walkinTest(){
   const st=document.getElementById('wi-status');st.textContent='Looking at both cameras…';st.style.color='var(--muted)';
@@ -3271,10 +3309,10 @@ function dwLogLoad(){
 }
 // crop-box drawer: drag a rectangle over a live camera snapshot; stores fractional {x,y,w,h}
 function dwSetArea(i){
-  const t=_dwTrays[i]; if(!t||!t.cam){alert('Pick a camera for this tray first.');return;}
+  const t=_dwTrays[i]; if(!t||!t.cam){_askAlert('Pick a camera for this tray first.');return;}
   let ov=document.getElementById('dw-cropov');
   if(!ov){ov=document.createElement('div');ov.id='dw-cropov';
-    ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+    ov.style.cssText='position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
     document.body.appendChild(ov);}
   ov.innerHTML='<div style="color:#fff;font-size:var(--fs-md);margin-bottom:8px;">Drag a box over <b>'+_mEsc(t.name||'this tray')+'</b>, then Save area.</div>'
     +'<div id="dw-cropwrap" style="position:relative;max-width:92vw;max-height:72vh;touch-action:none;user-select:none;"><div id="dw-croploading" style="color:#bbb;padding:40px;">Loading camera…</div></div>'
@@ -3680,30 +3718,32 @@ function compRefreshStatus(){
 }
 function compTestSms(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compTestSms();});return;}
-  const to=prompt('Send a test text to which mobile?','');
+  _askPrompt('Send a test text to which mobile?','',function(to){
   if(!to)return;
   _compStatus('Sending test…','var(--muted)');
   fetch('/api/comp_sms_test',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({code:_compCode,phone:to})}).then(r=>r.json()).then(d=>{
       _compStatus(d&&d.ok?'Test text sent ✓':('SMS failed: '+((d&&d.error)||'unknown')),d&&d.ok?'var(--green)':'var(--red)');
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+  },{yesLabel:'Send',placeholder:'04xx xxx xxx'});
 }
 function compTestMms(){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compTestMms();});return;}
-  const to=prompt('Send a test picture message to which mobile?','');
+  _askPrompt('Send a test picture message to which mobile?','',function(to){
   if(!to)return;
   _compStatus('Sending test MMS…','var(--muted)');
   fetch('/api/comp_mms_test',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({code:_compCode,phone:to})}).then(r=>r.json()).then(d=>{
       _compStatus(d&&d.ok?'Test MMS sent ✓ — check the logo looks right':('MMS failed: '+((d&&d.error)||'unknown')),d&&d.ok?'var(--green)':'var(--red)');
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+  },{yesLabel:'Send',placeholder:'04xx xxx xxx'});
 }
 function compResend(ts){
   if(!_compUnlocked){requireCompCode(()=>{_compUnlocked=true;compLoad();compResend(ts);});return;}
   const v=(_compVouchers||[]).find(x=>x.ts===ts);
   const cur=(v&&v.phone)||'';
-  const to=prompt('Resend this voucher to:\n\nLeave as-is, or correct the number.',cur);
-  if(to===null)return;
+  _askPrompt('Resend this voucher to:',cur,function(to){
+  if(to===null||to===undefined)return;
   if(to.replace(/\D/g,'').length<8){_compStatus('That mobile number doesn\'t look right.','var(--red)');return;}
   _compStatus('Resending…','var(--muted)');
   fetch('/api/comp_resend',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -3714,6 +3754,7 @@ function compResend(ts){
       _compStatus('Resent to '+d.phone+' ✓'+(d.note?('  —  '+d.note):''),'var(--green)');
       compLoad();
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
+  },{body:'Leave as-is, or correct the number.',yesLabel:'Resend'});
 }
 function _ganFmt(g){const d=String(g||'').replace(/\D/g,'');return d.length>=8?d.replace(/(\d{4})(?=\d)/g,'$1 '):String(g||'');}
 function compVerify(gan){
@@ -3776,7 +3817,7 @@ function compCheckCreds(){
       else{_compStatus('ClickSend rejected it: '+((d&&d.error)||'unknown'),'var(--red)');}
     }).catch(()=>_compStatus('Could not reach the server.','var(--red)'));
 }
-function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:#1a1e26;color:#f1f3f8;border:1px solid var(--border2);border-radius:var(--radius);padding:11px 16px;font-size:var(--fs-md);font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
+function _toast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translateX(-50%);background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:11px 16px;font-size:var(--fs-md);font-weight:600;z-index:600;box-shadow:0 10px 34px rgba(0,0,0,.55);max-width:90vw;text-align:center;transition:opacity .35s;';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(window._toastT);window._toastT=setTimeout(()=>{t.style.opacity='0';},4000);}
 function handleWait(w){renderWaitOrders(w);if(w&&w.enabled&&w.alarm)startWaitAlarm();else stopWaitAlarm();}
 function renderWaitOrders(w){const el=document.getElementById('rl-live');if(!el)return;
   const orders=(w&&w.enabled&&w.orders)?w.orders:[];
@@ -3904,7 +3945,7 @@ function completeWithProof(title,sub,onDone,which){
 function showCaptureOverlay(){let c=document.getElementById('capture-chip');if(!c){c=document.createElement('div');c.id='capture-chip';c.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:rgba(20,22,30,.96);border:1px solid var(--border2);color:var(--text);font-size:var(--fs-lg);font-weight:600;padding:14px 22px;border-radius:var(--radius);box-shadow:0 12px 44px rgba(0,0,0,.55);display:flex;align-items:center;gap:11px;pointer-events:none;';c.innerHTML='<span class="cap-spin"></span>Saving…';document.body.appendChild(c);}c.style.display='flex';}
 function hideCaptureOverlay(){const c=document.getElementById('capture-chip');if(c)c.style.display='none';const o=document.getElementById('capture-overlay');if(o)o.style.display='none';}
 function enlargePhoto(name){requirePin('Enter PIN','A PIN is needed to view task photos',function(){_enlargePhotoShow(name);},null);}
-function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:401;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:var(--radius);">';o.style.display='flex';}
+function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:var(--radius);">';o.style.display='flex';}
 function proofHtml(state){if(!state||!state.done)return '';if(state.photo)return '<div class="task-who">&#10003; <img src="/photos/'+state.photo+'" onclick="enlargePhoto(\''+state.photo+'\')" style="width:26px;height:26px;border-radius:var(--r-sm);object-fit:cover;vertical-align:middle;cursor:pointer;border:1px solid var(--border2);"> '+(state.time||'')+'</div>';if(state.who)return '<div class="task-who">&#10003; '+state.who+' at '+(state.time||'')+'</div>';return '';}
 function cPinPress(d){if(cPinBuf.length>=8)return;cPinBuf+=d;updateCPinDots();if(cPinBuf.length>=4&&(_pinMatches(cPinBuf)||cPinBuf.length>=8))setTimeout(checkCPin,80);}
 function cPinBack(){cPinBuf=cPinBuf.slice(0,-1);updateCPinDots();}
@@ -3951,7 +3992,7 @@ function _refreshCamTiles(){(appData.cameras_public||[]).forEach(c=>{const im=do
 const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent||'');
 function enlargeCam(id){
   let o=document.getElementById('cam-enlarge');
-  if(!o){o=document.createElement('div');o.id='cam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:401;background:rgba(0,0,0,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:8px;';o.onclick=function(e){if(e.target!==o)return;o.style.display='none';if(window._camBigT){clearInterval(window._camBigT);window._camBigT=null;}const im=document.getElementById('cam-enlarge-img');if(im)im.src='';};document.body.appendChild(o);}
+  if(!o){o=document.createElement('div');o.id='cam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:8px;';o.onclick=function(e){if(e.target!==o)return;o.style.display='none';if(window._camBigT){clearInterval(window._camBigT);window._camBigT=null;}const im=document.getElementById('cam-enlarge-img');if(im)im.src='';};document.body.appendChild(o);}
   o.innerHTML='<img id="cam-enlarge-img" style="max-width:96vw;max-height:90vh;border-radius:var(--radius);background:#000;"><div style="font-size:var(--fs-sm);color:#9aa;font-family:var(--font-mono);">● LIVE — tap outside to close</div>';
   o.style.display='flex';
   const im=document.getElementById('cam-enlarge-img');
@@ -3967,9 +4008,9 @@ function editCamera(id){const c=(appData.cameras_public||[]).find(x=>x.id===id);
 function _newcamBody(){return {id:document.getElementById('newcam-id').value||undefined,name:document.getElementById('newcam-name').value.trim(),ip:document.getElementById('newcam-ip').value.trim(),port:parseInt(document.getElementById('newcam-port').value||'80'),channel:parseInt(document.getElementById('newcam-ch').value||'1'),user:document.getElementById('newcam-user').value.trim(),pass:document.getElementById('newcam-pass').value,rtsp_url:document.getElementById('newcam-rtsp').value.trim(),enabled:true};}
 function _clearCamForm(){['id','name','ip','port','ch','user','pass','rtsp'].forEach(k=>{const e=document.getElementById('newcam-'+k);if(e)e.value='';});document.getElementById('newcam-pass').placeholder='camera password';document.getElementById('btn-add-cam').textContent='Add Camera';document.getElementById('newcam-preview').innerHTML='';}
 function addCamera(){const b=_newcamBody();const s=document.getElementById('newcam-status');const recIp=(appData.camera_public||{}).ip;if(!b.ip&&!b.rtsp_url&&!recIp){s.textContent='Enter the camera IP or an RTSP URL (or set up the task-photo camera first to reuse its login).';return;}s.textContent='Saving…';fetch('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...b,action:'save'})}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved.':'Error.';_clearCamForm();loadAppData().then(renderCamsList);});}
-function addAllNvrChannels(){const cc=appData.camera_public||{};const ip=(cc.ip||'').trim();const s=document.getElementById('newcam-status');if(!ip){s.textContent='Set up the task-photo camera first (Camera tab) so the recorder login is saved.';return;}const n=parseInt(prompt('How many channels does the recorder have? (each reuses the saved recorder login — rename or delete any you don\'t need afterwards)','7')||'0');if(!n||n<1)return;s.textContent='Adding '+n+' channels…';(async()=>{for(let ch=1;ch<=n;ch++){try{await fetch('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',name:'Camera '+ch,ip:ip,port:cc.port||80,channel:ch,user:'',pass:'',enabled:true})});}catch(e){}}s.textContent='Added '+n+' channels — see the Cameras page (rename each below).';loadAppData().then(renderCamsList);})();}
+function addAllNvrChannels(){const cc=appData.camera_public||{};const ip=(cc.ip||'').trim();const s=document.getElementById('newcam-status');if(!ip){s.textContent='Set up the task-photo camera first (Camera tab) so the recorder login is saved.';return;}_askPrompt('How many channels does the recorder have?','7',function(v){const n=parseInt(v||'0');if(!n||n<1)return;s.textContent='Adding '+n+' channels…';(async()=>{for(let ch=1;ch<=n;ch++){try{await fetch('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',name:'Camera '+ch,ip:ip,port:cc.port||80,channel:ch,user:'',pass:'',enabled:true})});}catch(e){}}s.textContent='Added '+n+' channels — see the Cameras page (rename each below).';loadAppData().then(renderCamsList);})();},{body:'Each reuses the saved recorder login — rename or delete any you don\'t need afterwards.',numeric:true,yesLabel:'Add channels'});}
 function testNewCamera(){const b=_newcamBody();const s=document.getElementById('newcam-status');s.textContent='Testing…';document.getElementById('newcam-preview').innerHTML='';fetch('/api/cam_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()).then(d=>{if(d.ok){s.textContent='Works! ✓';document.getElementById('newcam-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:var(--r-sm);border:1px solid var(--border2);">';}else s.textContent='Failed: '+(d.error||'unknown');});}
-function deleteCamera(id,name){if(!confirm('Delete camera "'+name+'"?'))return;fetch('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id:id})}).then(r=>r.json()).then(()=>{loadAppData().then(renderCamsList);});}
+function deleteCamera(id,name){_askConfirm('Delete camera "'+name+'"?','',function(){fetch('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id:id})}).then(r=>r.json()).then(()=>{loadAppData().then(renderCamsList);});},'Delete');}
 function tick(){const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const el=document.getElementById('clock');if(el)el.textContent=t;const sc=document.getElementById('side-clock');if(sc)sc.textContent=new Date().toLocaleDateString('en-AU',{weekday:'short',day:'2-digit',month:'short'})+'  '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 setInterval(tick,1000);tick();
 function openModal(id){document.getElementById(id).classList.add('open');}
@@ -4133,7 +4174,7 @@ function _saveErrCheck(err){
   if(!err){if(el)el.remove();return;}
   if(!el){
     el=document.createElement('div');el.id='save-err';
-    el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:600;background:#7f1d1d;color:#fff;'+
+    el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:625;background:#7f1d1d;color:#fff;'+
       'font-size:var(--fs-md);font-weight:700;padding:10px 14px;text-align:center;box-shadow:0 -4px 18px rgba(0,0,0,.5);';
     document.body.appendChild(el);
   }
@@ -4490,7 +4531,7 @@ function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remainin
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
 function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}const _rg=document.getElementById('tr'+id);if(_rg){_rg.style.strokeDashoffset=(402.12*(1-pct/100)).toFixed(1);_rg.style.stroke=t.expired?'var(--red)':'';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_count_temp:'ps-count',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',standby_after_secs:'ps-standby-secs',printer_ip:'ps-printer'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});const sb=document.getElementById('ps-standby');if(sb&&s.standby_steady!==undefined)sb.value=s.standby_steady?'1':'0';}
-function saveProbeSettingsFromModal(){const s={probe_count_temp:parseFloat(document.getElementById('ps-count').value),almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),standby_steady:document.getElementById('ps-standby').value==='1',standby_after_secs:parseInt(document.getElementById('ps-standby-secs').value)||60,printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);alert('Saved!');});}
+function saveProbeSettingsFromModal(){const s={probe_count_temp:parseFloat(document.getElementById('ps-count').value),almost_temp:parseFloat(document.getElementById('ps-almost').value),cooked_temp:parseFloat(document.getElementById('ps-cooked').value),overdone_temp:parseFloat(document.getElementById('ps-overdone').value),probe_pull_temp:parseFloat(document.getElementById('ps-pull').value),probe_confirm_secs:parseInt(document.getElementById('ps-confirm').value),use_by_minutes:parseInt(document.getElementById('ps-useby').value),bbq_drop_minutes:parseInt(document.getElementById('ps-bbqdrop').value),fried_drop_minutes:parseInt(document.getElementById('ps-frieddrop').value),standby_steady:document.getElementById('ps-standby').value==='1',standby_after_secs:parseInt(document.getElementById('ps-standby-secs').value)||60,printer_ip:document.getElementById('ps-printer').value.trim()};fetch('/set_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).then(()=>{Object.assign(serverSettings,s);_askAlert('Saved!');});}
 // ── Dialpad phone-order text-back (multi-rule) ──
 let _dpRules=[], _dpDepts=[], _dpOnlineUrl='';
 const _DP_DEFMSG="Thanks for calling Bruno's! 🍗 Here's your link: {link} — see you soon.";
@@ -4569,7 +4610,7 @@ function rfxLoad(){fetch('/api/rfx_config').then(r=>r.json()).then(c=>{
   _rfxMap=c.map||{};
 }).catch(()=>{});}
 function rfxSave(){const body={source:document.getElementById('rfx-source').value,tx_mode:(document.getElementById('rfx-txmode')||{}).value||'fast',poll_secs:parseInt(document.getElementById('rfx-poll').value)||20,email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,map:_rfxMap};
-  fetch('/api/rfx_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{document.getElementById('rfx-pass').value='';alert(d.ok?'RFX settings saved.':'Save failed');});}
+  fetch('/api/rfx_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{document.getElementById('rfx-pass').value='';_askAlert(d.ok?'RFX settings saved.':'Save failed');});}
 function _rfxAgeMin(ls){
   // minutes since this probe last transmitted (RFX timestamps are UTC); null if unknown
   if(!ls)return null;
@@ -4655,8 +4696,8 @@ function renderRotPrompts(){const el=document.getElementById('rc-prompts');if(!e
 function toggleRotPrompt(key){const row=document.getElementById('rcrow-'+key);if(!row)return;const body=row.querySelector('.rc-prompt-body');const chev=row.querySelector('.rc-chev');const open=(body.style.display==='none');body.style.display=open?'':'none';if(chev)chev.innerHTML=open?'&#9662;':'&#9656;';}
 function saveRotPrompt(key){const ta=document.getElementById('rcp-'+key);const st=document.getElementById('rcp-st-'+key);if(st){st.textContent='Saving…';st.style.color='var(--muted)';}
   fetch('/api/rotcam_prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,text:ta.value})}).then(r=>r.json()).then(function(d){if(st){st.textContent=d.ok?'Saved ✓ — applies to every read now':'Error';st.style.color=d.ok?'var(--green)':'var(--red)';}loadRotPrompts();}).catch(()=>{if(st){st.textContent='Save failed';st.style.color='var(--red)';}});}
-function resetRotPrompt(key){if(!confirm('Reset this prompt back to the built-in default? Your edits will be lost.'))return;
-  fetch('/api/rotcam_prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,text:''})}).then(r=>r.json()).then(function(){loadRotPrompts();}).catch(()=>{});}
+function resetRotPrompt(key){_askConfirm('Reset this prompt?','Goes back to the built-in default — your edits will be lost.',function(){
+  fetch('/api/rotcam_prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,text:''})}).then(r=>r.json()).then(function(){loadRotPrompts();}).catch(()=>{});},'Reset');}
 function setRotStockMode(m){
   m=(m==='probe')?'probe':'camera';appData.rot_stock_mode=m;
   document.querySelectorAll('#rot-mode-seg .pt-seg').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
@@ -4729,7 +4770,7 @@ function saveNoWait(){const items=document.getElementById('nw-items').value.spli
 function _logTime(it){if(it.ts)return new Date(it.ts).toLocaleString('en-AU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});if(/^\d{2}:\d{2}/.test(it.time||''))return it.time;const d=new Date(it.time);return isNaN(d)?(it.time||''):d.toLocaleString('en-AU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});}
 function renderPhotoLog(){const box=document.getElementById('photo-log');if(!box)return;const items=[];(appData.packdown_log||[]).forEach(e=>{if(e.photo&&e.done)items.push({photo:e.photo,name:e.taskName||'Task',time:e.time,ts:e.ts});});Object.entries(appData.jobs_done||{}).forEach(([jid,v])=>{if(v&&v.photo){const job=(appData.quiet_jobs||[]).find(j=>j.id===jid);items.push({photo:v.photo,name:job?job.text:'Job',time:v.time,ts:v.ts});}});items.sort((a,b)=>(b.ts||0)-(a.ts||0));const recent=items.slice(0,48);if(!recent.length){box.innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm);">No task photos yet. They appear here once the camera is on and staff complete tasks.</div>';return;}box.innerHTML=recent.map(it=>`<div style="width:92px;text-align:center;"><img src="/photos/${it.photo}" onclick="enlargePhoto('${it.photo}')" style="width:92px;height:92px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--border2);cursor:pointer;"><div style="font-size:var(--fs-xs);color:var(--text);margin-top:3px;line-height:1.2;max-height:24px;overflow:hidden;">${it.name}</div><div style="font-size:var(--fs-xs);color:var(--muted);">${_logTime(it)}</div></div>`).join('');}
 function saveCameraConfig(which){const P=which==='cl'?'cam2-':'cam-';const g=id=>document.getElementById(P+id);const body={ip:g('ip').value.trim(),port:g('port').value.trim(),channel:g('channel').value.trim(),url_override:g('url').value.trim(),enabled:g('enabled').checked};if(which==='cl')body.which='cl';const u=g('user').value;if(u)body.user=u;const p=g('pass').value;if(p)body.pass=p;camStatus('Saving…','muted',which);fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){camStatus(d.enabled?('Saved — '+(which==='cl'?'checklist ':'')+'camera ON.'):('Saved (off'+(which==='cl'?' — checklist falls back to the main camera).':' — tasks use PIN).')),'green',which);loadAppData();}else camStatus('Error saving.','red',which);});}
-function copyMainCamera(){const ch=prompt('Copy the prep/routines camera login into the checklist camera.\nWhich channel is the checklist camera on this recorder? (e.g. 3)','3');if(ch===null)return;const chn=parseInt(ch,10);if(isNaN(chn)){camStatus('Enter a channel number (e.g. 3).','red','cl');return;}camStatus('Copying main camera login…','muted','cl');fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({which:'cl',copy_from_main:true,channel:chn,enabled:true})}).then(r=>r.json()).then(d=>{if(d.ok){camStatus('Copied — checklist camera ON (channel '+chn+'). Testing…','green','cl');loadAppData();setTimeout(()=>testCamera('cl'),700);}else camStatus('Could not copy.','red','cl');}).catch(()=>camStatus('Could not reach server.','red','cl'));}
+function copyMainCamera(){_askPrompt('Which channel is the checklist camera on?','3',function(ch){if(ch===null||ch===undefined)return;const chn=parseInt(ch,10);if(isNaN(chn)){camStatus('Enter a channel number (e.g. 3).','red','cl');return;}camStatus('Copying main camera login…','muted','cl');fetch('/api/camera_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({which:'cl',copy_from_main:true,channel:chn,enabled:true})}).then(r=>r.json()).then(d=>{if(d.ok){camStatus('Copied — checklist camera ON (channel '+chn+'). Testing…','green','cl');loadAppData();setTimeout(()=>testCamera('cl'),700);}else camStatus('Could not copy.','red','cl');}).catch(()=>camStatus('Could not reach server.','red','cl'));},{body:'Copies the prep/routines camera login into the checklist camera.',numeric:true,yesLabel:'Copy login'});}
 function testCamera(which){const P=which==='cl'?'cam2-':'cam-';camStatus('Contacting camera…','muted',which);const pv=document.getElementById(P+'preview');if(pv)pv.innerHTML='';saveCameraConfig(which);setTimeout(()=>{fetch('/api/camera_test'+(which==='cl'?'?cam=cl':''),{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok&&d.preview){camStatus('Camera works! &#10003;','green',which);if(pv)pv.innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:var(--r-sm);border:1px solid var(--border2);">';}else camStatus('Could not get a photo: '+(d.error||'unknown'),'red',which);});},600);}
 
 function _uiBusy(){const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable))return true;return !!document.querySelector('.modal-overlay.open');}
@@ -5513,11 +5554,12 @@ function _orunPastLoad(i){
 function _orunClearCounts(){
   const sup=_orunSup; if(!sup){_toast&&_toast('Pick a supplier first.');return;}
   const prods=(appData.products||[]).filter(p=>p.supplier_id===sup.id);
-  if(!confirm('Clear ALL typed stock counts for '+sup.name+'? Every item goes back to uncounted (their counts on the stock cards clear too).'))return;
-  prods.forEach(p=>{delete _orunHave[p.id];delete _orunAdj[p.id];if(appData.stock_on_hand)delete appData.stock_on_hand[p.id];});
-  saveKeys(['stock_on_hand']);
-  renderOrderRun();
-  _toast&&_toast('Counts cleared for '+sup.name+' — recount fresh.');
+  _askConfirm('Clear ALL typed stock counts for '+sup.name+'?','Every item goes back to uncounted (their counts on the stock cards clear too).',function(){
+    prods.forEach(p=>{delete _orunHave[p.id];delete _orunAdj[p.id];if(appData.stock_on_hand)delete appData.stock_on_hand[p.id];});
+    saveKeys(['stock_on_hand']);
+    renderOrderRun();
+    _toast&&_toast('Counts cleared for '+sup.name+' — recount fresh.');
+  },'Clear counts');
 }
 function openOrderModal(){
   navTo('stock');return;   // one screen now — the Stock page IS the order screen
@@ -5643,7 +5685,7 @@ function renderProductAdmin(){
   group('No supplier',products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id)));
   document.getElementById('product-list-admin').innerHTML=html;
 }
-function addSupplier(){const name=document.getElementById('new-supplier-name').value.trim();const email=document.getElementById('new-supplier-email').value.trim();if(!name){alert('Enter a supplier name.');return;}const category=document.getElementById('new-supplier-category').value.trim()||'Uncategorised';const remind_time=document.getElementById('new-sup-remind-time').value.trim();const remind_email=document.getElementById('new-sup-remind-email').value.trim();const remind_sms=document.getElementById('new-sup-remind-sms').value.trim();const remind_days=[];document.querySelectorAll('#new-sup-days .day-pill.on').forEach(p=>remind_days.push(parseInt(p.dataset.d)));const order_days=[];document.querySelectorAll('#new-sup-order-days .day-pill.on').forEach(p=>order_days.push(parseInt(p.dataset.d)));const delivery_days=[];document.querySelectorAll('#new-sup-delivery-days .day-pill.on').forEach(p=>delivery_days.push(parseInt(p.dataset.d)));const delivery_time=document.getElementById('new-sup-delivery-time').value.trim();const lead_days=(function(){const v=parseInt((document.getElementById('new-sup-lead')||{}).value);return (isFinite(v)&&v>=0)?v:1;})();appData.suppliers=appData.suppliers||[];if(editingSupplier){const ex=appData.suppliers.find(s=>s.id===editingSupplier);if(ex)Object.assign(ex,{name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days,delivery_days,delivery_time,lead_days});editingSupplier=null;setBtn('btn-add-supplier','+ Add Supplier');}else{appData.suppliers.push({id:'sup_'+Date.now(),name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days,delivery_days,delivery_time,lead_days});}saveKeys(['suppliers']);renderSupplierAdmin();renderProductAdmin();['new-supplier-name','new-supplier-email','new-supplier-category','new-sup-remind-time','new-sup-remind-email','new-sup-remind-sms','new-sup-delivery-time','new-sup-lead'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.querySelectorAll('#new-sup-days .day-pill, #new-sup-order-days .day-pill, #new-sup-delivery-days .day-pill').forEach(p=>p.classList.remove('on'));setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);}
+function addSupplier(){const name=document.getElementById('new-supplier-name').value.trim();const email=document.getElementById('new-supplier-email').value.trim();if(!name){_askAlert('Enter a supplier name.');return;}const category=document.getElementById('new-supplier-category').value.trim()||'Uncategorised';const remind_time=document.getElementById('new-sup-remind-time').value.trim();const remind_email=document.getElementById('new-sup-remind-email').value.trim();const remind_sms=document.getElementById('new-sup-remind-sms').value.trim();const remind_days=[];document.querySelectorAll('#new-sup-days .day-pill.on').forEach(p=>remind_days.push(parseInt(p.dataset.d)));const order_days=[];document.querySelectorAll('#new-sup-order-days .day-pill.on').forEach(p=>order_days.push(parseInt(p.dataset.d)));const delivery_days=[];document.querySelectorAll('#new-sup-delivery-days .day-pill.on').forEach(p=>delivery_days.push(parseInt(p.dataset.d)));const delivery_time=document.getElementById('new-sup-delivery-time').value.trim();const lead_days=(function(){const v=parseInt((document.getElementById('new-sup-lead')||{}).value);return (isFinite(v)&&v>=0)?v:1;})();appData.suppliers=appData.suppliers||[];if(editingSupplier){const ex=appData.suppliers.find(s=>s.id===editingSupplier);if(ex)Object.assign(ex,{name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days,delivery_days,delivery_time,lead_days});editingSupplier=null;setBtn('btn-add-supplier','+ Add Supplier');}else{appData.suppliers.push({id:'sup_'+Date.now(),name,email,category,remind_time,remind_email,remind_sms,remind_days,order_days,delivery_days,delivery_time,lead_days});}saveKeys(['suppliers']);renderSupplierAdmin();renderProductAdmin();['new-supplier-name','new-supplier-email','new-supplier-category','new-sup-remind-time','new-sup-remind-email','new-sup-remind-sms','new-sup-delivery-time','new-sup-lead'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.querySelectorAll('#new-sup-days .day-pill, #new-sup-order-days .day-pill, #new-sup-delivery-days .day-pill').forEach(p=>p.classList.remove('on'));setBtn('btn-add-supplier','+ Add Supplier');toggleSupplierForm(false);}
 function testSupplierSms(){
   const el=document.getElementById('new-sup-remind-sms'),st=document.getElementById('sup-sms-test-status'),btn=document.getElementById('sup-sms-test-btn');
   const phone=(el.value||'').trim();
@@ -5852,13 +5894,14 @@ async function removeProduct(ref){
   const list=appData.products||[];
   const i=(typeof ref==='number')?ref:list.findIndex(x=>x.id===ref);
   const p=list[i]; if(!p){_toast&&_toast('Could not find that item — the list just refreshed. Try again.');return;}
-  if(!confirm('Delete "'+(p.name||'this product')+'" and all its settings?'))return;
-  list.splice(i,1);renderProductAdmin();
-  // verify the save actually landed — on this shop's WiFi a silent failure meant the row vanished
-  // on screen, the server kept it, and the 60s refresh "resurrected" it (owner hit this 9 Aug)
-  const ok=await saveKeys(['products']);
-  if(!ok){list.splice(i,0,p);renderProductAdmin();_toast&&_toast('Delete didn\'t reach the server — nothing was removed. Check the connection and try again.');}
-  else _toast&&_toast('"'+(p.name||'Product')+'" deleted.');
+  _askConfirm('Delete "'+(p.name||'this product')+'"?','All its settings go with it.',async function(){
+    list.splice(i,1);renderProductAdmin();
+    // verify the save actually landed — on this shop's WiFi a silent failure meant the row vanished
+    // on screen, the server kept it, and the 60s refresh "resurrected" it (owner hit this 9 Aug)
+    const ok=await saveKeys(['products']);
+    if(!ok){list.splice(i,0,p);renderProductAdmin();_toast&&_toast('Delete didn\'t reach the server — nothing was removed. Check the connection and try again.');}
+    else _toast&&_toast('"'+(p.name||'Product')+'" deleted.');
+  },'Delete');
 }
 
 // PACKDOWN
@@ -5915,7 +5958,7 @@ function toggleTask(taskId){
     saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
   },'cl');   // checklist → the separate checklist camera
 }
-function resetPackdown(){const shift=packdownShift==='auto'?autoShift():packdownShift;const lbl=shift==='day'?'Day':'Night';if(!confirm('Reset the '+lbl+' Shift checklist? Only '+lbl.toLowerCase()+'-shift tasks are cleared (the other shift and the daily log stay).'))return;appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();}
+function resetPackdown(){const shift=packdownShift==='auto'?autoShift():packdownShift;const lbl=shift==='day'?'Day':'Night';_askConfirm('Reset the '+lbl+' Shift checklist?','Only '+lbl.toLowerCase()+'-shift tasks are cleared (the other shift and the daily log stay).',function(){appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();},'Reset checklist');}
 function _packdownDailyReset(){const today=_prepToday();if(appData.packdown_reset_day===today)return;if(appData.packdown_reset_day){appData.packdown_checks={};(appData.packdown_tasks||[]).forEach(t=>packdownDueDismissed[t.id]=true);saveKeys(['packdown_checks']);}appData.packdown_reset_day=today;saveKeys(['packdown_reset_day']);const pg=document.getElementById('page-packdown');if(pg&&pg.classList.contains('active'))renderPackdownPage();}
 function _taskWkIdx(ds){const a=ds.split('-').map(Number);const x=new Date(a[0],a[1]-1,a[2]);const d=(x.getDay()+6)%7;const m=new Date(a[0],a[1]-1,a[2]-d);return Math.floor(Date.UTC(m.getFullYear(),m.getMonth(),m.getDate())/86400000/7);}
 function _taskActiveToday(t){
@@ -5953,12 +5996,12 @@ function addPackdownTask(){
   const recur=document.getElementById('new-task-recur').value;
   const alarm=document.getElementById('new-task-alarm').checked;
   const notbusy=document.getElementById('new-task-notbusy').checked;
-  if(!name){alert('Enter a task name.');return;}
+  if(!name){_askAlert('Enter a task name.');return;}
   const days=[];document.querySelectorAll('#new-task-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
   const start_date=document.getElementById('new-task-anchor').value||'';
   const dates=_taskDates.slice();
-  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){alert('Pick at least one day of the week.');return;}
-  if(recur==='dates'&&dates.length===0){alert('Add at least one date.');return;}
+  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){_askAlert('Pick at least one day of the week.');return;}
+  if(recur==='dates'&&dates.length===0){_askAlert('Add at least one date.');return;}
   const fields={name,remind_at,shift,recur,days,start_date,dates,alarm,notbusy};
   appData.packdown_tasks=appData.packdown_tasks||[];
   if(editingTask){const ex=appData.packdown_tasks.find(t=>t.id===editingTask);if(ex)Object.assign(ex,fields);editingTask=null;setBtn('btn-add-task','+ Add Task');}
@@ -6173,7 +6216,7 @@ function renderBenchcamCard(){
     bim.src='/api/benchcam_stream?t='+Date.now();
   }
 }
-function enlargeBenchcam(){let o=document.getElementById('benchcam-enlarge');if(!o){o=document.createElement('div');o.id='benchcam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:402;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;';o.onclick=function(){o.style.display='none';if(window._benchBigT){clearInterval(window._benchBigT);window._benchBigT=null;}};document.body.appendChild(o);}
+function enlargeBenchcam(){let o=document.getElementById('benchcam-enlarge');if(!o){o=document.createElement('div');o.id='benchcam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:16px;';o.onclick=function(){o.style.display='none';if(window._benchBigT){clearInterval(window._benchBigT);window._benchBigT=null;}};document.body.appendChild(o);}
   o.innerHTML='<img id="benchcam-big-img" style="max-width:96vw;max-height:92vh;border-radius:var(--radius);background:#000;display:block;"><div id="benchcam-big-msg" style="position:absolute;color:#cbd2dc;font-size:var(--fs-md);font-weight:600;pointer-events:none;">Loading bench camera…</div>';o.style.display='flex';
   const im=document.getElementById('benchcam-big-img');const msg=document.getElementById('benchcam-big-msg');
   im.onload=()=>{if(msg)msg.style.display='none';};im.onerror=()=>{if(msg){msg.style.display='';msg.textContent='Bench camera not responding…';}};
@@ -6713,21 +6756,33 @@ async function checkUiVersion(){
 // In-app confirm. NOT window.confirm(): kiosk browsers and installed PWAs (the big Android wall screen)
 // suppress native dialogs and return false silently, so the action just never happened — while the same
 // button worked on the iPad. This renders in the page, so it behaves identically on every device.
-function _askConfirm(title,body,onYes,yesLabel){
+function _dlg(opts){
   let o=document.getElementById('app-confirm');
   if(!o){o=document.createElement('div');o.id='app-confirm';document.body.appendChild(o);}
+  const hasInput=opts.input!==undefined&&opts.input!==null;
   o.innerHTML='<div class="acf-card"><div class="acf-title"></div><div class="acf-body"></div>'
-    +'<div class="acf-btns"><button class="btn acf-no" style="background:#dc2626;border-color:#dc2626;color:#fff;font-weight:700;">Cancel</button>'
-    +'<button class="btn acf-yes" style="background:#16a34a;border-color:#16a34a;color:#fff;font-weight:700;"></button></div></div>';
-  o.querySelector('.acf-title').textContent=title||'Are you sure?';
-  o.querySelector('.acf-body').textContent=body||'';
-  o.querySelector('.acf-yes').textContent=yesLabel||'Yes, do it';
+    +(hasInput?'<input class="input acf-input">':'')
+    +'<div class="acf-btns">'
+    +(opts.cancel===false?'':'<button class="btn acf-no">Cancel</button>')
+    +'<button class="btn '+(opts.danger?'btn-danger':'btn-primary')+' acf-yes"></button></div></div>';
+  o.querySelector('.acf-title').textContent=opts.title||'Are you sure?';
+  const bd=o.querySelector('.acf-body');bd.textContent=opts.body||'';bd.style.display=opts.body?'':'none';
+  o.querySelector('.acf-yes').textContent=opts.yesLabel||'Yes, do it';
+  const inp=o.querySelector('.acf-input');
+  if(inp){inp.value=(opts.input===true?'':String(opts.input));if(opts.placeholder)inp.placeholder=opts.placeholder;if(opts.numeric)inp.inputMode='decimal';}
   o.style.display='flex';
   const close=()=>{o.style.display='none';};
-  o.querySelector('.acf-no').onclick=close;
-  o.querySelector('.acf-yes').onclick=()=>{close();try{onYes&&onYes();}catch(e){}};
+  const no=o.querySelector('.acf-no');if(no)no.onclick=()=>{close();try{opts.onNo&&opts.onNo();}catch(e){}};
+  const yes=o.querySelector('.acf-yes');
+  yes.onclick=()=>{close();try{opts.onYes&&opts.onYes(inp?inp.value:undefined);}catch(e){}};
   o.onclick=e=>{if(e.target===o)close();};
+  if(inp){setTimeout(()=>{try{inp.focus();inp.select();}catch(e){}},60);inp.onkeydown=e=>{if(e.key==='Enter')yes.onclick();};}
 }
+// Confirm: Cancel stays neutral, the destructive action is the RED one (was inverted before — green "do it" / red cancel)
+function _askConfirm(title,body,onYes,yesLabel,danger){_dlg({title:title,body:body,onYes:onYes,yesLabel:yesLabel,danger:danger!==false});}
+// native alert/prompt are also suppressed in the kiosk PWA — same in-page replacements
+function _askAlert(title,body){_dlg({title:title,body:body,cancel:false,yesLabel:'OK'});}
+function _askPrompt(title,def,onSubmit,opts){opts=opts||{};_dlg({title:title,body:opts.body,input:(def==null?'':def),onYes:function(v){onSubmit&&onSubmit(v);},yesLabel:opts.yesLabel||'OK',placeholder:opts.placeholder,numeric:opts.numeric,danger:false});}
 function restartDashboard(){
   _askConfirm('Restart the dashboard?',
     'The screen goes offline for about 10–15 seconds and comes back on its own.',
@@ -6767,8 +6822,8 @@ function openAdjust(key){_adjKey=key;const bbq=key==='bbq';
   openModal('adjust-modal');
   fetch(bbq?'/api/rot_live':'/api/fry_live').then(r=>r.json()).then(s=>_adjShow(s.available)).catch(()=>{});}
 function adjustStep(delta){fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
-function adjustApplySet(){const n=parseFloat(document.getElementById('adjust-set').value);if(isNaN(n)||n<0){alert('Enter a number (0 or more).');return;}fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:n})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
-function resetDayCounts(){const bbq=_adjKey==='bbq';if(!confirm('Reset '+(bbq?'rotisserie':'fryer')+' counts to fresh?\n\nThis zeroes "sold today" and available. Already-counted Square orders won\'t recount.'))return;fetch(bbq?'/api/rot_reset':'/api/fry_reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(s=>{if(bbq)_rotSig='';else _frySig='';_adjShow(s.available);if(typeof _toast==='function')_toast('Counts reset.');}).catch(()=>alert('Reset failed — is the server updated? (needs a restart)'));}
+function adjustApplySet(){const n=parseFloat(document.getElementById('adjust-set').value);if(isNaN(n)||n<0){_askAlert('Enter a number (0 or more).');return;}fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:n})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
+function resetDayCounts(){const bbq=_adjKey==='bbq';_askConfirm('Reset '+(bbq?'rotisserie':'fryer')+' counts to fresh?','This zeroes "sold today" and available. Already-counted Square orders won\'t recount.',function(){fetch(bbq?'/api/rot_reset':'/api/fry_reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(s=>{if(bbq)_rotSig='';else _frySig='';_adjShow(s.available);if(typeof _toast==='function')_toast('Counts reset.');}).catch(()=>_askAlert('Reset failed — is the server updated? (needs a restart)'));},'Reset counts');}
 function renderServicePage(){const alerts=appData.service_alerts||[],container=document.getElementById('service-container'),empty=document.getElementById('service-empty');if(alerts.length===0){container.innerHTML='';empty.style.display='block';return;}empty.style.display='none';const hhmm=nowHHMM();const todayAlerts=alerts.filter(a=>_taskActiveToday(a));if(todayAlerts.length===0){container.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center;">No routines scheduled for today.</div>';return;}const sd=appData.service_done||{};const clk='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';container.innerHTML=todayAlerts.map(a=>{const st=sd[a.id]||{};const done=!!st.done;const overdue=!done&&hhmm>=a.time;const days=_recurLabel(a);return `<div class="alert-card ${overdue?'active-now':''} ${done?'rt-done':''}"><div class="task-check ${done?'done':''}" onclick="toggleRoutine('${a.id}')">${done?'&#10003;':''}</div><div class="alert-icon">${a.icon||clk}</div><div style="flex:1;"><div class="alert-title ${done?'rt-strike':''}">${a.name}</div><div class="alert-sub">${a.detail||''}</div><div class="alert-time-display">${a.time}${overdue?' · DUE NOW':''}</div><div class="alert-days">${days}</div>${proofHtml(Object.assign({done:done},st))}</div></div>`;}).join('');}
 function toggleRoutine(id){
   appData.service_done=appData.service_done||{};
@@ -6795,13 +6850,13 @@ function onAlertRecurChange(){const r=document.getElementById('new-alert-recur')
 function _resetAlertForm(){['new-alert-name','new-alert-time','new-alert-icon','new-alert-detail','new-alert-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-alert-recur').value='daily';document.querySelectorAll('#new-alert-days .day-pill').forEach(p=>p.classList.remove('on'));_alertDates=[];renderAlertDates();onAlertRecurChange();}
 function openServiceAdmin(){editingAlert=null;setBtn('btn-add-alert','+ Add Routine');_resetAlertForm();renderServiceAdminList();openModal('service-admin-modal');}
 function renderServiceAdminList(){document.getElementById('service-admin-list').innerHTML=(appData.service_alerts||[]).map((a,i)=>{const days=_recurLabel(a);return `<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:var(--fs-lg);">${a.icon||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>'}</span><span style="flex:1;margin:0 8px;font-size:var(--fs-md);">${a.name}</span><span style="font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--amber);">${a.time}</span><span style="font-size:var(--fs-xs);color:var(--muted);margin:0 6px;">${days}</span><span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editServiceAlert(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removeServiceAlert(${i})">&#10005;</button></span></div>`;}).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No routines yet.</div>';}
-function addServiceAlert(){const name=document.getElementById('new-alert-name').value.trim();const time=document.getElementById('new-alert-time').value.trim();const icon=document.getElementById('new-alert-icon').value.trim()||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';const detail=document.getElementById('new-alert-detail').value.trim();if(!name||!time){alert('Enter name and time.');return;}
+function addServiceAlert(){const name=document.getElementById('new-alert-name').value.trim();const time=document.getElementById('new-alert-time').value.trim();const icon=document.getElementById('new-alert-icon').value.trim()||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';const detail=document.getElementById('new-alert-detail').value.trim();if(!name||!time){_askAlert('Enter name and time.');return;}
   const recur=document.getElementById('new-alert-recur').value;
   const days=[];document.querySelectorAll('#new-alert-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
   const start_date=document.getElementById('new-alert-anchor').value||'';
   const dates=_alertDates.slice();
-  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){alert('Pick at least one day of the week.');return;}
-  if(recur==='dates'&&dates.length===0){alert('Add at least one date.');return;}
+  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){_askAlert('Pick at least one day of the week.');return;}
+  if(recur==='dates'&&dates.length===0){_askAlert('Add at least one date.');return;}
   const fields={name,time,icon,detail,recur,days,start_date,dates};
   appData.service_alerts=appData.service_alerts||[];
   if(editingAlert){const ex=appData.service_alerts.find(a=>a.id===editingAlert);if(ex)Object.assign(ex,fields);editingAlert=null;setBtn('btn-add-alert','+ Add Routine');}else{appData.service_alerts.push(Object.assign({id:'alert_'+Date.now()},fields));}
@@ -6839,8 +6894,8 @@ function closeRecipeView(){const o=document.getElementById('recipe-view-modal');
 function _fillRecipeCats(){const dl=document.getElementById('recipe-cat-list');if(!dl)return;const cats=[];(appData.recipes||[]).forEach(r=>{if(r.category&&!cats.includes(r.category))cats.push(r.category);});dl.innerHTML=cats.map(c=>'<option value="'+c.replace(/"/g,'')+'">').join('');}
 function openRecipeForm(){editingRecipe=null;setBtn('recipe-modal-title','ADD RECIPE');['recipe-name-input','recipe-cat-input','recipe-body-input'].forEach(id=>document.getElementById(id).value='');_fillRecipeCats();openModal('recipe-form-modal');}
 function editRecipe(i){const r=(appData.recipes||[])[i];if(!r)return;editingRecipe=r.id;setBtn('recipe-modal-title','EDIT RECIPE');document.getElementById('recipe-name-input').value=r.name||'';document.getElementById('recipe-cat-input').value=r.category||'';document.getElementById('recipe-body-input').value=r.body||'';_fillRecipeCats();openModal('recipe-form-modal');}
-function saveRecipe(){const name=document.getElementById('recipe-name-input').value.trim();const category=document.getElementById('recipe-cat-input').value.trim();const body=document.getElementById('recipe-body-input').value.trim();if(!name){alert('Enter a name.');return;}appData.recipes=appData.recipes||[];if(editingRecipe){const ex=appData.recipes.find(r=>r.id===editingRecipe);if(ex)Object.assign(ex,{name,category,body});editingRecipe=null;}else{appData.recipes.push({id:'rec_'+Date.now(),name,category,body});}saveKeys(['recipes']);recipeFilter='All';closeModal('recipe-form-modal');renderRecipesPage();}
-function deleteRecipe(i){const r=(appData.recipes||[])[i];requirePin('Manager Code','Deleting a recipe needs a Manager or Admin PIN',function(){if(!confirm('Delete “'+((r&&r.name)||'this recipe')+'”? This cannot be undone.'))return;appData.recipes.splice(i,1);saveKeys(['recipes']);renderRecipesPage();},SETTINGS_ROLES);}
+function saveRecipe(){const name=document.getElementById('recipe-name-input').value.trim();const category=document.getElementById('recipe-cat-input').value.trim();const body=document.getElementById('recipe-body-input').value.trim();if(!name){_askAlert('Enter a name.');return;}appData.recipes=appData.recipes||[];if(editingRecipe){const ex=appData.recipes.find(r=>r.id===editingRecipe);if(ex)Object.assign(ex,{name,category,body});editingRecipe=null;}else{appData.recipes.push({id:'rec_'+Date.now(),name,category,body});}saveKeys(['recipes']);recipeFilter='All';closeModal('recipe-form-modal');renderRecipesPage();}
+function deleteRecipe(i){const r=(appData.recipes||[])[i];requirePin('Manager Code','Deleting a recipe needs a Manager or Admin PIN',function(){_askConfirm('Delete “'+((r&&r.name)||'this recipe')+'”?','This cannot be undone.',function(){appData.recipes.splice(i,1);saveKeys(['recipes']);renderRecipesPage();},'Delete');},SETTINGS_ROLES);}
 
 // ===== TODAY'S PREP (preset items → morning picks → afternoon checklist w/ photo) =====
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
@@ -7054,12 +7109,12 @@ function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');
   if(!dates.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='flex';
   el.innerHTML='<span style="font-size:var(--fs-sm);color:var(--muted);">Scheduled ahead:</span>'+dates.map(d=>`<span class="filter-chip" style="cursor:pointer;" onclick="openPrepBuild('${d}')">${_prepDateLabel(d)} · ${(sch[d].items||[]).length} item${(sch[d].items||[]).length===1?'':'s'} <span onclick="event.stopPropagation();removeScheduledPrep('${d}')" style="margin-left:5px;color:var(--muted);font-weight:700;">&#10005;</span></span>`).join('');}
-function removeScheduledPrep(d){if(!confirm('Remove the scheduled prep list for '+_prepDateLabel(d)+'?'))return;if(appData.prep_scheduled)delete appData.prep_scheduled[d];saveKeys(['prep_scheduled']);renderPrepPage();}
-function resetPrepDone(){if(!confirm('Clear the whole prep list? All items are removed and the page goes back to empty.'))return;appData.prep_today={date:_prepToday(),items:[],done:{},pri:{}};saveKeys(['prep_today']);renderPrepPage();}
+function removeScheduledPrep(d){_askConfirm('Remove the scheduled prep list for '+_prepDateLabel(d)+'?','',function(){if(appData.prep_scheduled)delete appData.prep_scheduled[d];saveKeys(['prep_scheduled']);renderPrepPage();},'Remove');}
+function resetPrepDone(){_askConfirm('Clear the whole prep list?','All items are removed and the page goes back to empty.',function(){appData.prep_today={date:_prepToday(),items:[],done:{},pri:{}};saveKeys(['prep_today']);renderPrepPage();},'Clear list');}
 function renderPrepSavedSel(){const sel=document.getElementById('prep-saved-sel');if(!sel)return;const lists=appData.prep_saved_lists||[];sel.innerHTML='<option value="">Load a saved list…</option>'+lists.map(l=>'<option value="'+l.id+'">'+_mEsc(l.name)+' ('+(l.items||[]).length+')</option>').join('');}
 function loadPrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l)return;_prepPick=new Set(l.items||[]);_prepPickPri=Object.assign({},l.pri||{});renderPrepBuildGrid();}
-function savePrepSaved(){const ids=[..._prepPick];if(!ids.length){alert('Pick some items first, then save the list.');return;}const name=(prompt('Name this saved list (e.g. Weekday, Weekend):','')||'').trim();if(!name)return;const pri={};ids.forEach(id=>pri[id]=_prepPickPri[id]||'med');appData.prep_saved_lists=appData.prep_saved_lists||[];const ex=appData.prep_saved_lists.find(l=>l.name.toLowerCase()===name.toLowerCase());if(ex){ex.items=ids;ex.pri=pri;}else appData.prep_saved_lists.push({id:'pl'+Date.now().toString(36),name:name,items:ids,pri:pri});saveKeys(['prep_saved_lists']);renderPrepSavedSel();if(typeof _toast==='function')_toast('Saved list "'+name+'".');}
-function deletePrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l||!confirm('Delete saved list "'+l.name+'"?'))return;appData.prep_saved_lists=(appData.prep_saved_lists||[]).filter(x=>x.id!==sel.value);saveKeys(['prep_saved_lists']);renderPrepSavedSel();}
+function savePrepSaved(){const ids=[..._prepPick];if(!ids.length){_askAlert('Pick some items first, then save the list.');return;}_askPrompt('Name this saved list','',function(nm){const name=(nm||'').trim();if(!name)return;const pri={};ids.forEach(id=>pri[id]=_prepPickPri[id]||'med');appData.prep_saved_lists=appData.prep_saved_lists||[];const ex=appData.prep_saved_lists.find(l=>l.name.toLowerCase()===name.toLowerCase());if(ex){ex.items=ids;ex.pri=pri;}else appData.prep_saved_lists.push({id:'pl'+Date.now().toString(36),name:name,items:ids,pri:pri});saveKeys(['prep_saved_lists']);renderPrepSavedSel();if(typeof _toast==='function')_toast('Saved list "'+name+'".');},{placeholder:'e.g. Weekday, Weekend',yesLabel:'Save list'});}
+function deletePrepSaved(){const sel=document.getElementById('prep-saved-sel');if(!sel||!sel.value)return;const l=(appData.prep_saved_lists||[]).find(x=>x.id===sel.value);if(!l)return;_askConfirm('Delete saved list "'+l.name+'"?','',function(){appData.prep_saved_lists=(appData.prep_saved_lists||[]).filter(x=>x.id!==sel.value);saveKeys(['prep_saved_lists']);renderPrepSavedSel();},'Delete');}
 function setPrepPickPri(id,pri){_prepPickPri[id]=pri;_prepPick.add(id);renderPrepBuildGrid();}
 function renderPrepBuildGrid(){
   const grid=document.getElementById('prep-build-grid');if(!grid)return;const presets=appData.prep_presets||[];
@@ -7353,7 +7408,7 @@ function renderJobsPage(){const jd=appData.jobs_done||{};if(!document.getElement
 function completeJob(jobId){appData.jobs_done=appData.jobs_done||{};if(appData.jobs_done[jobId]){delete appData.jobs_done[jobId];saveKeys(['jobs_done']);renderJobsPage();return;}const job=(appData.quiet_jobs||[]).find(j=>j.id===jobId);completeWithProof('Complete Job',job?job.text:'',function(rec){appData.jobs_done[jobId]=rec;saveKeys(['jobs_done']);renderJobsPage();});}
 function openJobsAdmin(){editingJob=null;setBtn('btn-add-job','+ Add Job');renderJobsAdminList();openModal('jobs-admin-modal');}
 function renderJobsAdminList(){document.getElementById('jobs-admin-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:var(--fs-md);">${j.text}</span><span style="font-size:var(--fs-xs);color:var(--cyan);margin:0 6px;">${j.remind_time||''}</span><span class="tag ${j.priority==='high'?'tag-red':j.priority==='low'?'tag-green':'tag-amber'}">${j.priority||'med'}</span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-left:8px;" onclick="editJob(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);margin-left:4px;" onclick="removeJob(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No jobs yet.</div>';}
-function addJob(){const text=document.getElementById('new-job-text').value.trim();const area=document.getElementById('new-job-area').value.trim();const priority=document.getElementById('new-job-priority').value;const remind_time=document.getElementById('new-job-time').value.trim();const days=[];document.querySelectorAll('#new-job-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));if(!text){alert('Enter a job.');return;}appData.quiet_jobs=appData.quiet_jobs||[];if(editingJob){const ex=appData.quiet_jobs.find(j=>j.id===editingJob);if(ex)Object.assign(ex,{text,area,priority,remind_time,days});editingJob=null;setBtn('btn-add-job','+ Add Job');}else{appData.quiet_jobs.push({id:'job_'+Date.now(),text,area,priority,remind_time,days});}saveAppData();renderJobsAdminList();document.getElementById('new-job-text').value='';document.getElementById('new-job-area').value='';document.getElementById('new-job-time').value='';document.querySelectorAll('#new-job-days .day-pill').forEach(p=>p.classList.remove('on'));}
+function addJob(){const text=document.getElementById('new-job-text').value.trim();const area=document.getElementById('new-job-area').value.trim();const priority=document.getElementById('new-job-priority').value;const remind_time=document.getElementById('new-job-time').value.trim();const days=[];document.querySelectorAll('#new-job-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));if(!text){_askAlert('Enter a job.');return;}appData.quiet_jobs=appData.quiet_jobs||[];if(editingJob){const ex=appData.quiet_jobs.find(j=>j.id===editingJob);if(ex)Object.assign(ex,{text,area,priority,remind_time,days});editingJob=null;setBtn('btn-add-job','+ Add Job');}else{appData.quiet_jobs.push({id:'job_'+Date.now(),text,area,priority,remind_time,days});}saveAppData();renderJobsAdminList();document.getElementById('new-job-text').value='';document.getElementById('new-job-area').value='';document.getElementById('new-job-time').value='';document.querySelectorAll('#new-job-days .day-pill').forEach(p=>p.classList.remove('on'));}
 function editJob(i){const j=(appData.quiet_jobs||[])[i];if(!j)return;editingJob=j.id;document.getElementById('new-job-text').value=j.text||'';document.getElementById('new-job-area').value=j.area||'';document.getElementById('new-job-priority').value=j.priority||'med';document.getElementById('new-job-time').value=j.remind_time||'';setDayPills('#new-job-days',j.days);setBtn('btn-add-job','Save Changes');document.getElementById('new-job-text').scrollIntoView({behavior:'smooth',block:'center'});}
 function removeJob(i){appData.quiet_jobs.splice(i,1);saveAppData();renderJobsAdminList();}
 async function checkSquareActivity(){if(!document.getElementById('busy-indicator'))return;try{const r=await fetch('/api/square_activity'),d=await r.json();const ind=document.getElementById('busy-indicator');if(!d.configured){document.getElementById('busy-label').textContent='Square not connected';ind.className='busy-indicator quiet';document.getElementById('busy-sub').textContent='Add your Square token in Settings.';document.getElementById('jobs-badge').className='nav-badge';return;}document.getElementById('busy-label').textContent=d.busy?'BUSY — Keep serving!':'QUIET — Complete a job!';ind.className='busy-indicator '+(d.busy?'busy':'quiet');document.getElementById('busy-sub').textContent=d.error?('Square error: '+d.error):(d.sales_last_30min+' sale(s) in last 30 min');document.getElementById('jobs-badge').className='nav-badge'+(d.busy?'':' show');}catch(e){}}
@@ -7514,7 +7569,7 @@ function alarmTest(key){
   _acTest.key=key;_acTest.t0=Date.now();
   const chip=document.createElement('button');chip.id='ac-test-chip';
   chip.innerHTML='&#128276; Testing &ldquo;'+_mEsc(label)+'&rdquo; &mdash; tap to stop';
-  chip.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:9999;background:var(--red,#ef4444);color:#fff;border:none;border-radius:var(--radius);padding:13px 20px;font-size:var(--fs-md);font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);cursor:pointer;';
+  chip.style.cssText='position:fixed;left:50%;bottom:calc(var(--nav-h) + 74px);transform:translateX(-50%);z-index:620;background:var(--red,#ef4444);color:#fff;border:none;border-radius:var(--radius);padding:13px 20px;font-size:var(--fs-md);font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5);cursor:pointer;';
   chip.onclick=_acStopTest;document.body.appendChild(chip);
   (function loop(){if(_acTest.key!==key)return;const c=_acfg(key);
     if(c.autostop&&(Date.now()-_acTest.t0)>c.autostop*60000){_acStopTest();return;}   // honours the Stop-after setting
@@ -7562,13 +7617,13 @@ function addStaff(){
   const name=document.getElementById('new-staff-name').value.trim();
   const pin=String(document.getElementById('new-staff-pin').value||'').replace(/\s/g,'');
   const role=document.getElementById('new-staff-role').value;
-  if(!name){alert('Enter a name.');return;}
-  if(pin && !/^\d{4,8}$/.test(pin)){alert('PIN must be 4 to 8 digits — or leave it blank.');return;}   // PIN is now OPTIONAL
+  if(!name){_askAlert('Enter a name.');return;}
+  if(pin && !/^\d{4,8}$/.test(pin)){_askAlert('PIN must be 4 to 8 digits — or leave it blank.');return;}   // PIN is now OPTIONAL
   appData.staff=appData.staff||[];
   // editingStaff holds a STABLE id (not a list position), so a reorder/reload mid-edit can't make the save
   // miss the row and push a duplicate — the exact failure that created the double-ups before.
   const ei=(editingStaff!=null)?appData.staff.findIndex(s=>s.id===editingStaff):-1;
-  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==ei)){alert('That PIN is already used by another staff member.');return;}
+  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==ei)){_askAlert('That PIN is already used by another staff member.');return;}
   if(ei>=0){
     const ex=appData.staff[ei];ex.name=name;ex.pin=pin;ex.role=role;if(!ex.id)ex.id='staff_'+Date.now();
   }else{
@@ -7619,7 +7674,7 @@ function rsSend(isTest){if(!_rsData)return;
     }).catch(e=>{res.innerHTML='Error: '+e;});};
   if(isTest)go();
   else _askConfirm('Text '+tmids.length+' staff?','Each person gets ONE text with their own '+( _rsData.week==='next'?'next week':'this week')+' shifts. Sends as “Brunos”.',go,'Send texts');}
-function removeStaff(i){if(!confirm('Remove this staff member?'))return;const rem=(appData.staff||[])[i];appData.staff.splice(i,1);if(rem&&editingStaff===rem.id)_staffFormClear();saveAppData();renderStaffAdmin();}
+function removeStaff(i){_askConfirm('Remove this staff member?','',function(){const rem=(appData.staff||[])[i];appData.staff.splice(i,1);if(rem&&editingStaff===rem.id)_staffFormClear();saveAppData();renderStaffAdmin();},'Remove');}
 
 // ── KITCHEN TIMERS (Prep page) — 4 labelled countdowns. State lives in localStorage (device-local) so they
 //    keep running across pages and survive a refresh; a finished timer rings the "Batch timer" alarm. ──
@@ -7926,8 +7981,8 @@ function renderTeamRoster(){
   }).join(''):'<div style="color:var(--muted);font-size:var(--fs-md);padding:6px 0;">No staff yet — Import from Square, or add them in Settings → Staff.</div>';
 }
 function _roleFromTitle(t){t=(t||'').toLowerCase();if(t.indexOf('owner')>=0||t.indexOf('admin')>=0)return 'admin';if(t.indexOf('manager')>=0||t.indexOf('supervis')>=0)return 'manager';if(t.indexOf('cashier')>=0||t.indexOf('front')>=0||t.indexOf('counter')>=0)return 'cashier';return 'kitchen';}
-function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Set a 4-digit dashboard PIN for '+s.name+':',s.pin||'');if(v===null)return;const p=(v||'').replace(/\D/g,'').slice(0,8);if(p.length<4||p.length>8){_toast('PIN must be 4 to 8 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();}
-function setStaffRate(i){const s=(appData.staff||[])[i];if(!s)return;const v=prompt('Hourly rate ($) for '+s.name+':',s.hourly_rate||'');if(v===null)return;s.hourly_rate=Math.max(0,parseFloat(v)||0);saveKeys(['staff']);renderTeamPage();}
+function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;_askPrompt('Set a dashboard PIN for '+s.name,s.pin||'',function(v){if(v===undefined)return;const p=(v||'').replace(/\D/g,'').slice(0,8);if(p.length<4||p.length>8){_toast('PIN must be 4 to 8 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();},{body:'4 to 8 digits.',numeric:true,yesLabel:'Set PIN'});}
+function setStaffRate(i){const s=(appData.staff||[])[i];if(!s)return;_askPrompt('Hourly rate ($) for '+s.name,s.hourly_rate||'',function(v){if(v===undefined)return;s.hourly_rate=Math.max(0,parseFloat(v)||0);saveKeys(['staff']);renderTeamPage();},{numeric:true,yesLabel:'Save rate'});}
 function importSquareTeam(){
   const st=document.getElementById('team-import-status');if(st){st.textContent='Importing from Square…';st.style.color='var(--muted)';}
   fetch('/api/import_square_team',{method:'POST'}).then(r=>r.json()).then(function(d){
@@ -7954,9 +8009,9 @@ function assignStation(i){
   o.classList.add('open');
 }
 function setStation(i,oi){const L=_labour(),st=L.stations[i];if(st){if(oi<0)delete L.assign[st];else{const nm=L.on[oi];if(nm)L.assign[st]=nm;}}appData.labour=L;saveKeys(['labour']);const o=document.getElementById('station-pick');if(o)o.classList.remove('open');renderTeamPage();}
-function addStation(){const nm=prompt('New station name:');if(!nm||!nm.trim())return;const L=_labour();L.stations.push(nm.trim().slice(0,30));appData.labour=L;saveKeys(['labour']);renderTeamPage();}
-function removeStation(i){const L=_labour(),st=L.stations[i];if(!st)return;if(!confirm('Remove station "'+st+'"?'))return;L.stations.splice(i,1);delete L.assign[st];appData.labour=L;saveKeys(['labour']);renderTeamPage();}
-function resetTeam(){if(!confirm("Clear today's shift — who's on AND all station assignments?"))return;const L=_labour();L.on=[];L.assign={};appData.labour=L;saveKeys(['labour']);renderTeamPage();}
+function addStation(){_askPrompt('New station name','',function(nm){if(!nm||!nm.trim())return;const L=_labour();L.stations.push(nm.trim().slice(0,30));appData.labour=L;saveKeys(['labour']);renderTeamPage();},{placeholder:'e.g. Fryer, Counter',yesLabel:'Add station'});}
+function removeStation(i){const L=_labour(),st=L.stations[i];if(!st)return;_askConfirm('Remove station "'+st+'"?','',function(){L.stations.splice(i,1);delete L.assign[st];appData.labour=L;saveKeys(['labour']);renderTeamPage();},'Remove');}
+function resetTeam(){_askConfirm("Clear today's shift?","Who's on AND all station assignments are cleared.",function(){const L=_labour();L.on=[];L.assign={};appData.labour=L;saveKeys(['labour']);renderTeamPage();},'Clear shift');}
 // ===== Sales & service board (Square KPIs + speed of service + cook plan) =====
 let _salesTimer=null;
 function renderSalesPage(){
@@ -7970,7 +8025,7 @@ function renderSalesPage(){
   if(_salesTimer)clearInterval(_salesTimer);
   _salesTimer=setInterval(()=>{const pg=document.getElementById('page-sales');if(pg&&pg.classList.contains('active'))renderSalesPage();else{clearInterval(_salesTimer);_salesTimer=null;}},15000);
 }
-function setSalesTarget(){const cur=(appData.sales_target||0);const v=prompt('Daily sales target ($):',cur||'');if(v===null)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();}
+function setSalesTarget(){const cur=(appData.sales_target||0);_askPrompt('Daily sales target ($)',cur||'',function(v){if(v===undefined)return;appData.sales_target=Math.max(0,parseFloat(v)||0);saveKeys(['sales_target']);renderSalesPage();},{numeric:true,yesLabel:'Set target'});}
 function _money(n){return '$'+(Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
 let _salesHidden=true;   // daily + weekly total sales hidden every time you enter; tap the eye to reveal; auto-hides again on leaving the page
 function toggleSalesHidden(){_salesHidden=!_salesHidden;if(window._lastSales){const el=document.getElementById('sales-body');if(el){el.innerHTML=_salesHTML(window._lastSales);el.insertAdjacentHTML('afterbegin','<div id="books-pl"></div>');_renderBooksPL();const lc=document.getElementById('labour-cost');if(lc&&window._lastLabour)lc.innerHTML=_labourHTML(window._lastLabour);else if(lc)loadLabourCost();}}}
@@ -8070,7 +8125,7 @@ function openNotesModal(){document.getElementById('note-text').value='';document
 function renderNotes(){const notes=(appData.handover_notes||[]).slice().reverse();document.getElementById('notes-list').innerHTML=notes.map(n=>`<div class="note-card"><div class="note-text">${esc(n.text)}<div class="note-meta">${n.who?esc(n.who)+' · ':''}${n.time?fmtNoteTime(n.time):''}</div></div><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="deleteNote('${n.id}')">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-md);text-align:center;padding:14px;">No notes right now.</div>';}
 function addNote(){const text=document.getElementById('note-text').value.trim();if(!text)return;const who=document.getElementById('note-who').value.trim();appData.handover_notes=appData.handover_notes||[];appData.handover_notes.push({id:'note_'+Date.now(),text,who,time:new Date().toISOString()});appData.handover_notes=appData.handover_notes.slice(-50);saveAppData();document.getElementById('note-text').value='';document.getElementById('note-who').value='';renderNotes();updateNotesBadge();}
 function deleteNote(id){appData.handover_notes=(appData.handover_notes||[]).filter(n=>n.id!==id);saveAppData();renderNotes();updateNotesBadge();}
-function clearNotes(){if(!confirm('Clear all shift notes?'))return;appData.handover_notes=[];saveAppData();renderNotes();updateNotesBadge();}
+function clearNotes(){_askConfirm('Clear all shift notes?','',function(){appData.handover_notes=[];saveAppData();renderNotes();updateNotesBadge();},'Clear notes');}
 
 // ── DAILY REPORT + COOK LOG ──
 function saveReportConfig(){appData.report_config={enabled:document.getElementById('rep-enabled').checked,time:document.getElementById('rep-time').value.trim()||'22:30',to:document.getElementById('rep-to').value.trim()};const s=document.getElementById('report-status');saveAppData().then(()=>{s.textContent='Saved.';s.style.color='var(--green)';});}
