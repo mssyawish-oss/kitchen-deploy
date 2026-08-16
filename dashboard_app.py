@@ -1460,10 +1460,21 @@ def _sq_offline_products():
                 if _off:
                     out.append({"id":obj.get("id"),"version":obj.get("version"),"item":name,"variation":"add-on","kind":"modifier"})
                     _SQ_OBJ_CACHE[obj.get("id")]=obj
-        for bid,b in (db.get("mod_86_bin") or {}).items():   # dash-86'd add-ons (deleted, archived here)
-            out.append({"id":bid,"version":0,"item":b.get("name") or "?","variation":"add-on","kind":"modifier","dash86":True})
+            # THESE TWO LINES BELONG TO THE PAGE LOOP. They were accidentally indented into the
+            # mod_86_bin loop below when it was added, so `cursor` never advanced: the scan re-read
+            # page ONE 25 times and appended every sold-out add-on 25 times over. That is what made
+            # SLAW show "54 off" from 3 real add-ons (16 Aug).
             cursor=data.get("cursor")
             if not cursor: break
+        for bid,b in (db.get("mod_86_bin") or {}).items():   # dash-86'd add-ons (deleted, archived here)
+            out.append({"id":bid,"version":0,"item":b.get("name") or "?","variation":"add-on","kind":"modifier","dash86":True})
+        # belt and braces: never report the same catalog object twice, whatever the scan does
+        _seen=set(); _uniq=[]
+        for row in out:
+            rid=row.get("id")
+            if rid in _seen: continue
+            _seen.add(rid); _uniq.append(row)
+        out=_uniq
         return out,None
     except Exception as e:
         rd=getattr(e,"read",None)
