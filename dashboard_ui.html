@@ -6562,10 +6562,21 @@ function _pdOffNever(name){return (appData.prodoff_never||[]).some(n=>String(n).
 function prodOffNeverToggle(i){
   const g=_pdOffGroupCache[i];if(!g)return;
   appData.prodoff_never=appData.prodoff_never||[];
-  const u=String(g.name).toUpperCase();
+  const nm=g.name, u=String(nm).toUpperCase();
   const ix=appData.prodoff_never.findIndex(n=>String(n).toUpperCase()===u);
-  if(ix>=0)appData.prodoff_never.splice(ix,1);else appData.prodoff_never.push(g.name);
-  saveKeys(['prodoff_never']);_prodOffRenderModal();
+  const apply=()=>{const list=appData.prodoff_never||[];
+    const j=list.findIndex(n=>String(n).toUpperCase()===u);
+    if(j>=0)list.splice(j,1);else list.push(nm);
+    saveKeys(['prodoff_never']);_prodOffRenderModal();};
+  if(ix>=0){apply();return;}          // REMOVING an exclusion is the safe direction — no gate
+  // ADDING one stops this product ever switching back on by itself. Only right for retail stock that
+  // isn't redelivered until the following week — food is remade every morning. A stray tap here is
+  // how MAC & CHEESE stayed off the menu for a week (found 16 Aug): now confirm + manager PIN.
+  _prodOffRenderModal();              // snap the checkbox back until it is actually approved
+  _askConfirm('Never auto-on: '+nm+'?',
+    'This stops '+nm+' ever switching back on by itself \u2014 it stays off until somebody turns it on by hand. Only for retail stock that is not redelivered until next week. Food items are remade every morning and should never be set this way.',
+    ()=>requirePin('Manager PIN','Excluding '+nm+' from the morning switch-on',apply,SETTINGS_ROLES),
+    'Yes, exclude it');
 }
 function _poStatus(msg,col,busy){const s=document.getElementById('po-status');if(!s)return;
   if(!msg){s.innerHTML='';return;}
@@ -6668,9 +6679,15 @@ function prodOffTurnOnOne(id){
 }
 function prodOffSilenceAll(mode){_prodOffMuteAll(mode==='hour'?3600000:undefined);if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');_prodOffRenderModal();}
 function _poNeverChips(){
+  // Excluded products never come back on their own, so make the list impossible to miss rather than a
+  // grey footnote — an accidental exclusion must be obvious next time anyone opens the panel.
   const list=appData.prodoff_never||[];if(!list.length)return '';
-  return '<div style="margin-top:11px;font-size:var(--fs-sm);color:var(--muted);">Never auto-on: '
-    +list.map((n,i)=>'<button class="po-btn" style="padding:3px 8px;font-size:var(--fs-sm);margin:3px 3px 0 0;" onclick="poNeverRemove('+i+')">'+_mEsc(n)+' &#10005;</button>').join('')+'</div>';
+  return '<div style="margin-top:12px;padding:9px 12px;border:1px solid var(--amber);border-radius:10px;'
+    +'background:color-mix(in srgb,var(--amber) 12%,transparent);font-size:var(--fs-sm);">'
+    +'<b>&#9888; Never switches back on by itself</b>'
+    +'<div style="color:var(--muted);font-size:var(--fs-sm);margin:2px 0 6px;">Stays off until someone turns it on by hand. Should only ever be retail stock \u2014 tap to remove.</div>'
+    +list.map((n,i)=>'<button class="po-btn" style="padding:3px 8px;font-size:var(--fs-sm);margin:3px 3px 0 0;" onclick="poNeverRemove('+i+')">'+_mEsc(n)+' &#10005;</button>').join('')
+    +'</div>';
 }
 function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);_prodOffRenderModal();}
 let _poQT=null,_poHits=[];
