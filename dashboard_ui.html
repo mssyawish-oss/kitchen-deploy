@@ -3834,13 +3834,18 @@ function waitDone(oid){fetch('/api/wait_done',{method:'POST',headers:{'Content-T
 function toggleFullscreen(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});else document.exitFullscreen();}
 
 let pinBuf='';
-function _pinMatches(buf){const staff=appData.staff||[];return (staff.length===0&&buf==='0000')||staff.some(s=>s.pin===buf);}   // PINs may be 4–8 digits
-function pinPress(d){if(pinBuf.length>=8)return;pinBuf+=d;updatePinDots();if(pinBuf.length>=4&&(_pinMatches(pinBuf)||pinBuf.length>=8))setTimeout(checkPin,80);}
+// PINs never reach the browser any more (they were shipped to every screen in /api/data — anyone on
+// the shop WiFi could read the lot). All checks go to the server, which holds only salted hashes.
+function _pinVerify(pin,roles){return fetch('/api/pin_verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:pin,roles:roles||null})}).then(r=>r.json()).catch(()=>({ok:false,error:'Server not reachable'}));}
+let _pinAutoT=null;   // auto-submit ~600ms after the last digit once 4+ are in (the screen can no longer 'see' a match to submit instantly)
+function pinPress(d){if(pinBuf.length>=8)return;pinBuf+=d;updatePinDots();clearTimeout(_pinAutoT);if(pinBuf.length>=8)setTimeout(checkPin,80);else if(pinBuf.length>=4)_pinAutoT=setTimeout(checkPin,600);}
 function pinBack(){pinBuf=pinBuf.slice(0,-1);updatePinDots();}
 function pinClear(){pinBuf='';updatePinDots();}
 function _renderDots(elId,len){const el=document.getElementById(elId);if(!el)return;const n=Math.max(4,len);let h='';for(let i=0;i<n;i++)h+='<span class="pin-dot'+(i<len?' filled':'')+'"></span>';el.innerHTML=h;}
 function updatePinDots(){_renderDots('pin-dots',pinBuf.length);}
-function checkPin(){const staff=appData.staff||[];if((staff.length===0&&pinBuf==='0000')||staff.some(s=>s.pin===pinBuf)){openDashboard();return;}document.getElementById('pin-error').textContent='Incorrect PIN';pinBuf='';updatePinDots();setTimeout(()=>document.getElementById('pin-error').textContent='',2000);}
+function checkPin(){clearTimeout(_pinAutoT);const buf=pinBuf;if(buf.length<4)return;
+  _pinVerify(buf).then(d=>{if(d&&d.ok){pinBuf='';updatePinDots();openDashboard();return;}
+    document.getElementById('pin-error').textContent=(d&&d.error)||'Incorrect PIN';pinBuf='';updatePinDots();setTimeout(()=>document.getElementById('pin-error').textContent='',2000);});}
 // ── DEVICE VIEWS: one codebase, three layouts. Bookmark ?view=wall (21" kitchen screen),
 // ?view=pad (iPad — probes + checklist) or ?view=phone (checking in). The choice sticks on that
 // device, so the bookmark keeps working. No param = pick from screen size. Same data everywhere.
@@ -3949,11 +3954,17 @@ function hideCaptureOverlay(){const c=document.getElementById('capture-chip');if
 function enlargePhoto(name){requirePin('Enter PIN','A PIN is needed to view task photos',function(){_enlargePhotoShow(name);},null);}
 function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:var(--radius);">';o.style.display='flex';}
 function proofHtml(state){if(!state||!state.done)return '';if(state.photo)return '<div class="task-who">&#10003; <img src="/photos/'+state.photo+'" onclick="enlargePhoto(\''+state.photo+'\')" style="width:26px;height:26px;border-radius:var(--r-sm);object-fit:cover;vertical-align:middle;cursor:pointer;border:1px solid var(--border2);"> '+(state.time||'')+'</div>';if(state.who)return '<div class="task-who">&#10003; '+state.who+' at '+(state.time||'')+'</div>';return '';}
-function cPinPress(d){if(cPinBuf.length>=8)return;cPinBuf+=d;updateCPinDots();if(cPinBuf.length>=4&&(_pinMatches(cPinBuf)||cPinBuf.length>=8))setTimeout(checkCPin,80);}
+function cPinPress(d){if(cPinBuf.length>=8)return;cPinBuf+=d;updateCPinDots();clearTimeout(_pinAutoT);if(cPinBuf.length>=8)setTimeout(checkCPin,80);else if(cPinBuf.length>=4)_pinAutoT=setTimeout(checkCPin,600);}
 function cPinBack(){cPinBuf=cPinBuf.slice(0,-1);updateCPinDots();}
 function cPinClear(){cPinBuf='';updateCPinDots();}
 function updateCPinDots(){_renderDots('cpin-dots',cPinBuf.length);}
-function checkCPin(){const staff=appData.staff||[];let found=staff.find(s=>s.pin===cPinBuf);if(!found&&cPinBuf==='0000'&&staff.length===0)found={name:'Admin',role:'admin'};if(found&&cPinRoles&&!cPinRoles.includes(found.role)){document.getElementById('pin-confirm-error').textContent='Needs '+cPinRoles.join(' / ')+' access';cPinBuf='';updateCPinDots();return;}if(found){closeModal('pin-confirm-modal');cPinBuf='';if(cPinCB)cPinCB(found);}else{document.getElementById('pin-confirm-error').textContent='Incorrect PIN';cPinBuf='';updateCPinDots();}}
+function checkCPin(){clearTimeout(_pinAutoT);const buf=cPinBuf;if(buf.length<4)return;
+  _pinVerify(buf,cPinRoles).then(d=>{
+    if(d&&d.ok){closeModal('pin-confirm-modal');cPinBuf='';updateCPinDots();
+      // hand the caller what it used to get from the staff row — plus the PIN itself for endpoints that
+      // re-verify server-side (comp vouchers). It is never stored, only forwarded once.
+      if(cPinCB)cPinCB({name:d.name,role:d.role,id:d.id,pin:buf});return;}
+    document.getElementById('pin-confirm-error').textContent=(d&&d.error)||'Incorrect PIN';cPinBuf='';updateCPinDots();});}
 
 const SIDE_ICONS={
   probes:'<path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/>',
@@ -7629,14 +7640,14 @@ function _dedupeStaff(){
     if(!k){out.push(s);return;}
     if(seen[k]===undefined){seen[k]=out.length;out.push(s);}
     else{const keep=out[seen[k]];
-      if(String(s.pin||''))keep.pin=s.pin;               // latest non-blank PIN wins = the edit you meant
+      if(String(s.pin||''))keep.pin=s.pin;               // a NEW pin typed this session (server hashes it on save)
       keep.role=keep.role||s.role;keep.square_id=keep.square_id||s.square_id;
       keep.hourly_rate=keep.hourly_rate||s.hourly_rate;keep.email=keep.email||s.email;}
   });
   if(out.length===arr.length)return false;
   appData.staff=out;return true;
 }
-function renderStaffAdmin(){if(_dedupeStaff())saveKeys(['staff']);document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="staff-row"><span class="staff-name">${_mEsc(s.name||'')}</span><span class="tag tag-amber staff-role">${_mEsc(s.role||'')}</span><span class="staff-pin">PIN ${_mEsc(s.pin||'')}</span><button class="btn staff-edit" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger staff-del" onclick="removeStaff(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
+function renderStaffAdmin(){if(_dedupeStaff())saveKeys(['staff']);document.getElementById('staff-list-admin').innerHTML=(appData.staff||[]).map((s,i)=>`<div class="staff-row"><span class="staff-name">${_mEsc(s.name||'')}</span><span class="tag tag-amber staff-role">${_mEsc(s.role||'')}</span><span class="staff-pin">${(s.has_pin||s.pin)?'PIN &#9679;&#9679;&#9679;&#9679; set':'<span style="color:var(--amber);">no PIN</span>'}</span><button class="btn staff-edit" onclick="editStaff(${i})">Edit</button><button class="btn btn-danger staff-del" onclick="removeStaff(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">Default PIN: 0000 (Admin)</div>';}
 function _staffFormClear(){editingStaff=null;setBtn('btn-add-staff','+ Add Staff');const g=id=>document.getElementById(id);if(g('new-staff-name'))g('new-staff-name').value='';if(g('new-staff-pin'))g('new-staff-pin').value='';if(g('new-staff-role'))g('new-staff-role').value='cashier';}
 function addStaff(){
   const name=document.getElementById('new-staff-name').value.trim();
@@ -7648,7 +7659,7 @@ function addStaff(){
   // editingStaff holds a STABLE id (not a list position), so a reorder/reload mid-edit can't make the save
   // miss the row and push a duplicate — the exact failure that created the double-ups before.
   const ei=(editingStaff!=null)?appData.staff.findIndex(s=>s.id===editingStaff):-1;
-  if(pin && appData.staff.some((s,idx)=>String(s.pin||'')===pin && idx!==ei)){_askAlert('That PIN is already used by another staff member.');return;}
+  // duplicate-PIN check is done server-side on save (browser no longer holds PINs)
   if(ei>=0){
     const ex=appData.staff[ei];ex.name=name;ex.pin=pin;ex.role=role;if(!ex.id)ex.id='staff_'+Date.now();
   }else{
@@ -7658,7 +7669,7 @@ function addStaff(){
 }
 function editStaff(i){const s=(appData.staff||[])[i];if(!s)return;if(!s.id)s.id='staff_'+Date.now();editingStaff=s.id;   // track by STABLE id
   document.getElementById('new-staff-name').value=s.name||'';
-  document.getElementById('new-staff-pin').value=s.pin||'';
+  document.getElementById('new-staff-pin').value='';document.getElementById('new-staff-pin').placeholder=(s.has_pin||s.pin)?'leave blank to keep current PIN':'optional';
   document.getElementById('new-staff-role').value=s.role||'cashier';
   setBtn('btn-add-staff','Save Changes');
   document.getElementById('new-staff-name').scrollIntoView({behavior:'smooth',block:'center'});}
@@ -7998,7 +8009,7 @@ function renderTeamRoster(){
   const el=document.getElementById('team-roster');if(!el)return;const staff=(appData.staff||[]);
   el.innerHTML=staff.length?staff.map(function(s,i){
     const rate=s.hourly_rate?('$'+(Math.round(s.hourly_rate*100)/100)+'/hr'):'<span style="color:var(--muted);font-weight:400;">set rate</span>';
-    const pin=s.pin?'<span style="color:#19e36b;">● PIN set</span>':'<span style="color:var(--amber);cursor:pointer;" onclick="setStaffPin('+i+')">✎ set PIN</span>';
+    const pin=(s.has_pin||s.pin)?'<span style="color:#19e36b;">● PIN set</span>':'<span style="color:var(--amber);cursor:pointer;" onclick="setStaffPin('+i+')">✎ set PIN</span>';
     return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);">'
       +'<div style="flex:1;min-width:0;"><div style="font-size:var(--fs-md);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(s.name||'?')+'</div><div style="font-size:var(--fs-sm);color:var(--muted);">'+esc(s.role||'')+(s.square_id?' · <span style="color:var(--cyan);">Square</span>':'')+'</div></div>'
       +'<div style="font-size:var(--fs-md);font-weight:700;cursor:pointer;min-width:64px;text-align:right;" onclick="setStaffRate('+i+')" title="tap to edit">'+rate+'</div>'
@@ -8006,7 +8017,7 @@ function renderTeamRoster(){
   }).join(''):'<div style="color:var(--muted);font-size:var(--fs-md);padding:6px 0;">No staff yet — Import from Square, or add them in Settings → Staff.</div>';
 }
 function _roleFromTitle(t){t=(t||'').toLowerCase();if(t.indexOf('owner')>=0||t.indexOf('admin')>=0)return 'admin';if(t.indexOf('manager')>=0||t.indexOf('supervis')>=0)return 'manager';if(t.indexOf('cashier')>=0||t.indexOf('front')>=0||t.indexOf('counter')>=0)return 'cashier';return 'kitchen';}
-function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;_askPrompt('Set a dashboard PIN for '+s.name,s.pin||'',function(v){if(v===undefined)return;const p=(v||'').replace(/\D/g,'').slice(0,8);if(p.length<4||p.length>8){_toast('PIN must be 4 to 8 digits.');return;}if((appData.staff||[]).some((x,j)=>j!==i&&x.pin===p)){_toast('That PIN is already used by someone else.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();},{body:'4 to 8 digits.',numeric:true,yesLabel:'Set PIN'});}
+function setStaffPin(i){const s=(appData.staff||[])[i];if(!s)return;_askPrompt('Set a dashboard PIN for '+s.name,s.pin||'',function(v){if(v===undefined)return;const p=(v||'').replace(/\D/g,'').slice(0,8);if(p.length<4||p.length>8){_toast('PIN must be 4 to 8 digits.');return;}s.pin=p;saveKeys(['staff']);renderTeamPage();},{body:'4 to 8 digits.',numeric:true,yesLabel:'Set PIN'});}
 function setStaffRate(i){const s=(appData.staff||[])[i];if(!s)return;_askPrompt('Hourly rate ($) for '+s.name,s.hourly_rate||'',function(v){if(v===undefined)return;s.hourly_rate=Math.max(0,parseFloat(v)||0);saveKeys(['staff']);renderTeamPage();},{numeric:true,yesLabel:'Save rate'});}
 function importSquareTeam(){
   const st=document.getElementById('team-import-status');if(st){st.textContent='Importing from Square…';st.style.color='var(--muted)';}
@@ -8019,7 +8030,7 @@ function importSquareTeam(){
       else{appData.staff.push({id:'staff_'+Date.now()+'_'+mi,name:m.name,pin:'',role:_roleFromTitle(m.title),hourly_rate:m.hourly_rate||0,square_id:m.square_id,email:m.email||''});added++;}
     });
     _dedupeStaff();saveKeys(['staff']);renderTeamPage();
-    const need=(appData.staff||[]).filter(s=>!s.pin).length;
+    const need=(appData.staff||[]).filter(s=>!(s.has_pin||s.pin)).length;
     if(st){st.innerHTML='Imported '+added+' new, updated '+updated+' &middot; '+(d.count||0)+' from Square. '+(need?('<b style="color:var(--amber);">'+need+' still need a PIN</b> — Square doesn\'t share its passcodes, so tap “set PIN”.'):'All have PINs ✓');st.style.color='var(--green)';}
   }).catch(()=>{if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }

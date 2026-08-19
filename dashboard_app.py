@@ -1839,10 +1839,51 @@ def api_comp_mms_test():
     ok,err=_clicksend_mms(to,"Test","Test MMS from the kitchen dashboard — the logo should appear above.",url)
     return jsonify({"ok":bool(ok),"error":err or ""})
 
-def _comp_staff(pin):
-    for s in (db.get("staff") or []):
-        if str(s.get("pin","")) == str(pin): return s.get("name") or "Staff"
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# STAFF PIN SECURITY (16 Aug 2026). Until now every staff PIN sat in db['staff'][i]['pin'] in plain
+# text AND was shipped to every screen in /api/data — any device on the shop WiFi could read the lot,
+# so the browser-side PIN prompts gated nothing. Now: PINs are stored as salted SHA-256 hashes
+# (`pin_hash`), never sent to the browser, and every check happens HERE via /api/pin_verify.
+# Legacy plaintext `pin` values are hashed on first sight (both at load and on save) — the shop keeps
+# working through the migration; nobody has to re-enter anything.
+def _pin_hash(pin):
+    pin=str(pin or "").strip()
+    if not pin: return ""
+    salt=(db.get("_pin_salt") or "")
+    if not salt:
+        salt=_secrets.token_hex(16); db["_pin_salt"]=salt
+    return hashlib.sha256((salt+":"+pin).encode()).hexdigest()
+
+def _migrate_pins():
+    """Replace any plaintext staff PIN with its hash. Idempotent, safe to call often."""
+    changed=False
+    for st in (db.get("staff") or []):
+        if not isinstance(st,dict): continue
+        raw=st.get("pin")
+        if raw not in (None,""):
+            st["pin_hash"]=_pin_hash(raw); st.pop("pin",None); changed=True
+        elif "pin" in st:
+            st.pop("pin",None); changed=True
+    return changed
+
+def _pin_owner(pin,roles=None):
+    """The staff record whose PIN this is (and whose role is in `roles`, if given), else None.
+    Empty staff list + '0000' = the built-in Admin, exactly as the browser used to allow."""
+    pin=str(pin or "").strip()
+    if not pin: return None
+    staff=[x for x in (db.get("staff") or []) if isinstance(x,dict)]
+    if not staff:
+        return {"name":"Admin","role":"admin"} if pin=="0000" and (not roles or "admin" in roles) else None
+    h=_pin_hash(pin)
+    for st in staff:
+        if st.get("pin_hash")==h or (st.get("pin") not in (None,"") and str(st.get("pin"))==pin):
+            if roles and str(st.get("role","")).lower() not in [r.lower() for r in roles]: return None
+            return st
     return None
+
+def _comp_staff(pin):
+    st=_pin_owner(pin)
+    return (st.get("name") or "Staff") if st else None
 
 def _comp_ok(code):
     # Comp gate: the old standalone access code still works, and so does any Manager/Admin staff PIN —
@@ -1850,9 +1891,7 @@ def _comp_ok(code):
     c=str(code or "").strip()
     if not c: return False
     if c==str(db.get("comp_code","1989")): return True
-    for s in (db.get("staff") or []):
-        if str(s.get("pin",""))==c and str(s.get("role","")).lower() in ("admin","manager"): return True
-    return False
+    return _pin_owner(c,("admin","manager")) is not None
 
 # ── DIALPAD phone-order text-back ────────────────────────────────────────────
 # Goal: when a caller presses "1 — place an order" on the Dialpad phone menu, we
@@ -2182,9 +2221,8 @@ def api_comp_refresh():
     return jsonify({"ok":True,"checked":checked,"vouchers":log[-200:]})
 
 def _is_admin_pin(pin):
-    for s in (db.get("staff") or []):
-        if str(s.get("pin",""))==str(pin) and str(s.get("role","")).lower()=="admin": return s.get("name") or "Admin"
-    return None
+    st=_pin_owner(pin,("admin",))
+    return (st.get("name") or "Admin") if st else None
 
 @app.route("/api/comp_remove",methods=["POST"])
 def api_comp_remove():
@@ -5640,7 +5678,10 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks","clicksend")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","_pin_salt","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks","clicksend")}
+    # staff PINs never leave the server — screens get a has_pin flag and verify via /api/pin_verify
+    safe["staff"]=[{k:v for k,v in st.items() if k not in ("pin","pin_hash")}|{"has_pin":bool(st.get("pin_hash") or st.get("pin"))}
+                   for st in (snap.get("staff") or []) if isinstance(st,dict)]
     _cs=snap.get("clicksend") or {}   # never ship the ClickSend API key to the browser (SMS settings load via /api/comp_settings instead)
     safe["clicksend_public"]={"sms_ready":bool(_cs.get("user") and _cs.get("key")),"sender":_cs.get("sender",""),"has_media":bool(_cs.get("media_url"))}
     _tw=snap.get("thermoworks") or {}   # never ship the ThermoWorks password to the browser
@@ -5687,6 +5728,28 @@ _SERVER_KEYS=("timers","rot_live","fry_live","cook_log","prodoff_since","prodoff
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
               # printer off relay mode and silently broke label printing mid-service.
               "label_printer")
+_PIN_TRIES={}   # ip -> [timestamps of recent failures]
+@app.route("/api/pin_verify",methods=["POST"])
+def api_pin_verify():
+    """The ONLY place a PIN is checked. Body {pin, roles?:[...]} → {ok, name, role}. Never returns
+    the PIN back. 5 wrong tries from one address = 30s lockout, so a 4-digit PIN can't be
+    brute-forced across the shop WiFi (10,000 combos would otherwise take under a minute)."""
+    d=request.get_json(silent=True) or {}
+    ip=request.remote_addr or "?"; now=time.time()
+    tries=[t for t in _PIN_TRIES.get(ip,[]) if now-t<30]
+    if len(tries)>=5:
+        return jsonify({"ok":False,"error":"Too many tries — wait 30 seconds","locked":True}),429
+    roles=d.get("roles") if isinstance(d.get("roles"),list) else None
+    st=_pin_owner(d.get("pin"),roles)
+    if not st:
+        tries.append(now); _PIN_TRIES[ip]=tries
+        # distinguish "wrong PIN" from "right PIN, wrong role" so the prompt can say so
+        anyrole=_pin_owner(d.get("pin")) if roles else None
+        if anyrole: return jsonify({"ok":False,"error":"Needs "+" / ".join(roles)+" access","role":anyrole.get("role")})
+        return jsonify({"ok":False,"error":"Incorrect PIN"})
+    _PIN_TRIES.pop(ip,None)
+    return jsonify({"ok":True,"name":st.get("name") or "Staff","role":str(st.get("role") or ""),"id":st.get("id")})
+
 @app.route("/api/data",methods=["POST"])
 def update_db():
     payload=request.get_json(silent=True) or {}
@@ -5694,6 +5757,28 @@ def update_db():
     for k in _SERVER_KEYS:
         if k in payload: payload.pop(k); dropped.append(k)   # server-owned: never take a client's copy
     with data_lock:
+        if isinstance(payload.get("staff"),list):
+            # merge PIN state: browser rows never carry hashes, so keep what we have; a plaintext 'pin'
+            # field on a row means "set a new PIN" → hash it now, never store or echo it raw
+            have={st.get("id"):st for st in (db.get("staff") or []) if isinstance(st,dict)}
+            merged=[]
+            for row in payload["staff"]:
+                if not isinstance(row,dict): continue
+                row=dict(row); row.pop("has_pin",None)
+                newpin=row.pop("pin",None)
+                prev=have.get(row.get("id")) or {}
+                if newpin not in (None,""): row["pin_hash"]=_pin_hash(newpin)
+                elif prev.get("pin_hash"): row["pin_hash"]=prev["pin_hash"]
+                merged.append(row)
+            # duplicate PIN guard (the browser can no longer see PINs to check this itself)
+            seen={}
+            for row in merged:
+                h=row.get("pin_hash")
+                if not h: continue
+                if h in seen:
+                    return jsonify({"ok":False,"error":"That PIN is already used by "+str(seen[h])+" — pick a different one for "+str(row.get("name") or "this person")}),409
+                seen[h]=row.get("name") or "another staff member"
+            payload["staff"]=merged
         for k in _PROTECT_KEYS:
             # guard: a tablet that loaded an empty list (mid-refresh / stale) must not clear a populated one.
             # A real one-by-one delete never jumps a 3+ list straight to empty in a single POST.
@@ -7769,6 +7854,9 @@ if __name__=="__main__":
     print("  Tablet: http://<YOUR-IP>:8080")
     print("  Ctrl+C to stop")
     print("="*55)
+    try:
+        if _migrate_pins(): save_data(db); print("staff PINs: migrated plaintext -> hashed")
+    except Exception as _e: print("pin migrate:",_e)
     threading.Thread(target=lambda:app.run(host="0.0.0.0",port=8080,debug=False,use_reloader=False,threaded=True),daemon=True).start()
     threading.Thread(target=square_poll_loop,daemon=True).start()
     threading.Thread(target=report_loop,daemon=True).start()
