@@ -291,12 +291,12 @@ body.style-v2 .probe-card.p2::before{height:4px;}
 .p2-names{min-width:0;flex:1;}
 .p2-kicker{font-size:var(--fs-xs);letter-spacing:.1em;color:var(--muted);font-weight:700;}
 .p2-name{width:100%;background:transparent;border:none;color:var(--text);font-size:var(--fs-lg);font-weight:700;outline:none;padding:0;}
-.p2-mid{display:flex;align-items:center;gap:14px;flex:0 0 auto;justify-content:center;position:relative;}
+.p2-mid{display:flex;align-items:center;gap:14px;flex:0 0 auto;justify-content:center;position:relative;min-height:64px;}   /* min-height: the icon is absolutely positioned, so a short '— — — —' row used to collapse and let it climb into the badge above */
 .p2-mid .p2-ic{position:absolute;left:0;}   /* icon stays left; the temperature owns the centre of the card */
 .p2-ic{width:54px;height:54px;border-radius:50%;flex-shrink:0;background:color-mix(in srgb,var(--accv,var(--acc)) 16%,transparent);display:flex;align-items:center;justify-content:center;}
 .p2-temp{margin:0;font-family:var(--font-mono);font-weight:800;font-size:clamp(40px,7vh,72px);color:var(--text);display:flex;align-items:baseline;gap:7px;line-height:1;}
 body.view-wall .p2-temp{font-size:clamp(50px,9.5vh,100px);}   /* readable from across the kitchen */
-.p2-dash{color:var(--muted);font-size:22px;letter-spacing:2px;}
+.p2-dash{color:var(--muted);font-size:26px;letter-spacing:2px;line-height:1;}
 /* the RFX probe's 4 internal sensors, side by side under the main temp; the coldest (= the displayed
    meat-centre reading) is highlighted so it's obvious where the big number comes from */
 .p2-sensors{display:flex;justify-content:center;gap:13px;font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:600;color:var(--muted);margin-top:-3px;}
@@ -2776,7 +2776,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 <script>
 const ROLE_PAGES={cashier:['packdown','service','jobs'],kitchen:['probes','stock','packdown','service','recipes','jobs'],manager:['probes','stock','packdown','service','recipes','jobs'],admin:['probes','stock','packdown','service','recipes','jobs']};
 const SETTINGS_ROLES=['manager','admin'];
-const GATED_PAGES=['stock','cameras','sales','team'];   // sections that prompt for a code on entry (Settings is gated via the gear)
+const GATED_PAGES=['cameras','sales','team'];   // sections that prompt for a code on entry (Settings is gated via the gear). Stock ungated 19 Aug — staff count stock all day; the PIN was friction, not protection.
 const GATE_GRACE_MS=300000;              // a section stays unlocked for 5 minutes after a correct code
 let sectionUnlockedAt={};
 function gateUnlocked(key){return sectionUnlockedAt[key]&&(Date.now()-sectionUnlockedAt[key]<GATE_GRACE_MS);}
@@ -4422,7 +4422,7 @@ function renderProbes(){
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
-      <div class="p2-actions"><button class="probe-btn" onclick="testPrint(${pidN})">Print</button><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
+      <div class="p2-actions"><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
     }
     return `<div class="probe-card pc${pidN} ${cardCls}">
@@ -4434,7 +4434,7 @@ function renderProbes(){
       <div class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</div>
       ${batHtml}${offHtml}${p._lost?`<div class="probe-lost">\u26A0 connection lost</div>`:''}
       ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
-      <div class="probe-actions"><button class="probe-btn" onclick="testPrint(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 0 1-1-1v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2"/><rect x="8" y="14" width="8" height="6" rx="1"/></svg> Print</button><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
+      <div class="probe-actions"><button class="probe-btn" onclick="resetProbe(${pidN})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v4h4"/></svg> Reset</button></div>
     </div>`;
   }).join('');
   // The string is built EVERY poll (the map drives the alarm/status-transition side effects), but the
