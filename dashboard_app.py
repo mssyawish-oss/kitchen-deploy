@@ -6027,6 +6027,7 @@ def _star_raster(img):
     out+=b"\x1b*rB"
     return bytes(out)
 
+_LAST_PRINT_ERR=""   # why the most recent label print failed — surfaced in the print response
 def _label_cfg(): return db.get("label_printer") or {}
 def _network_label_print(img,qty=1,ip=None,port=None,fmt=None):
     """Print the label to the 80mm NETWORK thermal printer. No Bluetooth involved: no pairing, no radio
@@ -6081,12 +6082,29 @@ def _relay_label_print(img,qty=1):
 def _print_label(img,qty=1):
     """Send a rendered label to whichever printer is selected. 'network' is the 80mm ESC/POS printer,
     'relay' hands it to another machine's Bluetooth NIIMBOT; anything else prints over BLE here."""
+    global _LAST_PRINT_ERR
+    _LAST_PRINT_ERR=""
     m=(_label_cfg().get("mode") or "niimbot")
     if m in ("network","relay"):
         ok,err=(_network_label_print if m=="network" else _relay_label_print)(img,qty)
         _niim_note(ok,err)          # same status light, so the dashboard reflects whichever is in use
+        if not ok: _LAST_PRINT_ERR=str(err or "")
         return ok
-    return _niimbot_print(img,qty)
+    ok=_niimbot_print(img,qty)
+    if not ok:
+        # SELF-HEAL (21 Aug): direct-Bluetooth mode on a machine with no Bluetooth stack stranded label
+        # printing twice — a LAN-and-back mode switch and stale tablet saves both landed here. If a
+        # relay is configured, print through it and flip the stored mode back so the next print
+        # doesn't limp through this fallback.
+        if (_label_cfg().get("relay_url") or "").strip():
+            ok,err=_relay_label_print(img,qty)
+            _niim_note(ok,err)
+            if ok:
+                try:
+                    with data_lock: db.setdefault("label_printer",{})["mode"]="relay"; save_data(db)
+                except Exception: pass
+            else: _LAST_PRINT_ERR=str(err or "")
+    return ok
 
 def _niimbot_print(img,qty=1):
     # Send `img` to the NIIMBOT B1 Pro over BLE. TWO protocol dialects:
@@ -6440,7 +6458,13 @@ def api_print_labels():
         base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True)
         if first_img is not None: first_img.save(os.path.join(base,"last_label.png"))
     except Exception: pass
-    if not printed and not note: note="NIIMBOT B1 not paired yet — label built & saved (labels/last_label.png)."
+    if not printed and not note:
+        # say what ACTUALLY failed — the old blanket "not paired" message pointed at Bluetooth even
+        # when the real fault was the relay machine being off (cost an hour on 21 Aug)
+        _m=(_label_cfg().get("mode") or "niimbot"); _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
+        if _m=="relay": note="Label relay didn't print%s. Is the relay machine (Surface) switched on? Label saved (labels/last_label.png)."%_why
+        elif _m=="network": note="Network printer didn't print%s. Label saved (labels/last_label.png)."%_why
+        else: note="Bluetooth print failed%s — NIIMBOT not paired on this machine. Label saved (labels/last_label.png)."%_why
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
 # ── LIVE ORDERS BOARD (KDS mirror) + catering/large-order popup ──
