@@ -1630,6 +1630,16 @@ body.style-v2:not(.light) .probe-card,body.style-v2:not(.light) .timer-card,body
 body.style-v2 .modal{border-radius:20px;}
 body.style-v2 .input,body.style-v2 select,body.style-v2 textarea{border-radius:10px;}
 body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
+/* Stock page supplier landing (21 Aug) — pick who you're ordering from before seeing an order run */
+.sup-land-lead{font-size:var(--fs-lg);font-weight:800;color:var(--text);margin:6px 2px 12px;}
+.sup-land-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
+.sup-land-card{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:20px 18px;text-align:left;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:7px;transition:border-color .15s,transform .08s;box-shadow:var(--shadow);}
+.sup-land-card:hover{border-color:var(--amber);}
+.sup-land-card:active{transform:translateY(1px);}
+.sup-land-card.due{border-color:color-mix(in srgb,var(--amber) 55%,var(--border2));}
+.sup-land-name{font-size:var(--fs-lg);font-weight:800;letter-spacing:-.01em;}
+.sup-land-due{align-self:flex-start;font-size:var(--fs-xs);font-weight:800;letter-spacing:.06em;background:var(--amber);color:#20150a;border-radius:999px;padding:3px 10px;}
+.sup-land-sub{font-size:var(--fs-sm);color:var(--muted);}
 </style>
 <style id="po-prog-css">
 .po-status-box{border:1.5px solid var(--amber);border-radius:var(--radius);padding:10px 14px;margin:2px 0 10px;display:flex;flex-direction:column;gap:8px;background:var(--surface2);}
@@ -1724,9 +1734,10 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="page" id="page-stock">
       <div class="page-header"><div class="page-title">Stock &amp; Ordering</div><div class="row" style="gap:6px;"><button class="btn" onclick="openStockAdmin()">Setup</button></div></div>
       <div id="orun-sups" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
+      <div id="orun-landing" style="display:none;"></div>
       <div id="orun-header"></div>
       <div class="orun-runs" id="orun-runs" style="display:none;"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunPastOpen()">Past orders</button><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
+      <div id="orun-hint" style="display:flex;align-items:center;gap:8px;margin:6px 2px 10px;"><div style="flex:1;font-size:var(--fs-sm);color:var(--muted);">Type what you <b>have</b> now &mdash; it works out what to order to reach your total needed.</div><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunPastOpen()">Past orders</button><button class="btn" style="padding:6px 12px;font-size:var(--fs-sm);flex-shrink:0;" onclick="_orunClearCounts()">Clear all counts</button></div>
       <div id="orun-list"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:12px;height:48px;" id="orun-send" onclick="sendOrderRun()">Confirm order</button>
       <div id="orun-status" style="font-size:var(--fs-sm);margin-top:8px;min-height:16px;text-align:center;"></div>
@@ -3987,7 +3998,7 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock')renderStockPage();if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
+function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock'){if(_orunSup&&!Object.keys(_orunHave).length&&!Object.keys(_orunSkip).length&&!Object.keys(_orunAdj).length)_orunSup=null;renderStockPage();}if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
 if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
@@ -4933,21 +4944,48 @@ function stepStock(id,delta){appData.stock_on_hand=appData.stock_on_hand||{};con
 function _refreshStockRow(id){const p=(appData.products||[]).find(x=>x.id===id);if(!p)return;const card=document.querySelector('.stk-card[data-id="'+id+'"]');if(!card)return;const st=stockStatusFor(p);card.className='stk-card '+st.cls;const pill=card.querySelector('.stk-pill');if(pill){pill.className='stk-pill '+st.cls;pill.textContent=st.label;}const sub=card.querySelector('.stk-sub');if(sub)sub.textContent=st.sub;}
 function updateStockSummary(){const el=document.getElementById('stock-summary');if(el)el.style.display='none';}   // retired: supplier order buttons replace this
 function renderStockPage(){
-  // The Stock page IS the order screen now (owner, 7 Aug: "no landing page — one screen").
-  // Pick the sensible default supplier: one with an order run TODAY, else keep the current one, else first.
+  // Landing first (owner, 21 Aug — reverses the 7 Aug "no landing page" call): opening the Stock
+  // page shows a pick-a-supplier screen; auto-dropping staff into UNITED FOODS read as "already
+  // mid-order" and confused people. Once a supplier is tapped, it's the one-screen order run.
   const products=appData.products||[],suppliers=appData.suppliers||[];
   const emptyEl=document.getElementById('stock-empty');
   if(!products.length||!suppliers.length){if(emptyEl)emptyEl.style.display='block';const l=document.getElementById('orun-list');if(l)l.innerHTML='';return;}
   if(emptyEl)emptyEl.style.display='none';
   const withProducts=suppliers.filter(s=>products.some(p=>p.supplier_id===s.id));
-  const today=_todayIdx();
   if(!_orunSup||!withProducts.some(s=>s.id===_orunSup.id)){
-    const due=withProducts.find(s=>(s.order_days||[]).includes(today));
-    openOrderRun((due||withProducts[0]).id);
+    _orunRenderLanding();
     return;
   }
   _orunRenderSups();
   renderOrderRun();
+}
+function _orunRenderLanding(){
+  _orunSup=null;
+  const L=document.getElementById('orun-landing'); if(!L)return;
+  ['orun-sups','orun-header','orun-runs','orun-list','orun-send','orun-status','orun-hint','orun-batches'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  const products=appData.products||[];
+  const sups=(appData.suppliers||[]).filter(s=>products.some(p=>p.supplier_id===s.id));
+  const today=_todayIdx();
+  const dayLbl=days=>{const d=(days||[]).slice().sort((a,b)=>a-b).map(i=>_WD[i]);return d.length?d.join(' · '):'no set days';};
+  L.innerHTML='<div class="sup-land-lead">Who are you ordering from?</div>'
+    +'<div class="sup-land-grid">'
+    +sups.map(s=>{
+      const due=(s.order_days||[]).includes(today);
+      const n=products.filter(p=>p.supplier_id===s.id).length;
+      return '<button class="sup-land-card'+(due?' due':'')+'" onclick="openOrderRun(\''+s.id+'\')">'
+        +'<div class="sup-land-name">'+_mEsc(s.name)+'</div>'
+        +(due?'<div class="sup-land-due">ORDER DUE TODAY</div>':'')
+        +'<div class="sup-land-sub">Orders: '+dayLbl(s.order_days)+' &middot; '+n+' item'+(n===1?'':'s')+'</div>'
+        +'</button>';
+    }).join('')
+    +'</div>';
+  L.style.display='block';
+}
+function _orunLandingHide(){
+  const L=document.getElementById('orun-landing'); if(L)L.style.display='none';
+  ['orun-header','orun-list','orun-send','orun-status','orun-batches'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='';});
+  const s=document.getElementById('orun-sups'); if(s)s.style.display='flex';
+  const h=document.getElementById('orun-hint'); if(h)h.style.display='flex';
 }
 function _renderStockPage_legacy(){
   const products=appData.products||[],suppliers=appData.suppliers||[];
@@ -5023,6 +5061,7 @@ function _orunNextDeliveryDay(days,fromOrderDay,sup){
 function openOrderRun(supId){
   // one screen now: selecting a supplier re-points the Stock page's order run (no modal)
   const sup=(appData.suppliers||[]).find(s=>s.id===supId); if(!sup)return;
+  _orunLandingHide();
   _orunSup=sup; _orunHave={}; _orunUnit={}; _orunAdj={}; _orunBatchOn={}; _orunBatch={}; _orunBatchRepl={}; _orunSkip={}; _orunOrdUnit={};
   const days=(sup.order_days||[]).slice().sort((a,b)=>a-b);
   const today=_todayIdx();
@@ -5034,7 +5073,7 @@ function _orunRenderSups(){
   const el=document.getElementById('orun-sups'); if(!el)return;
   const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
   const today=_todayIdx();
-  el.innerHTML=sups.map(s=>{
+  el.innerHTML='<button class="btn" style="height:44px;font-size:var(--fs-md);opacity:.85;" onclick="_orunRenderLanding()" title="Back to all suppliers">&#8249; Suppliers</button>'+sups.map(s=>{
     const on=_orunSup&&_orunSup.id===s.id;
     const todayRun=(s.order_days||[]).includes(today);
     return '<button class="btn'+(on?' btn-primary':'')+'" style="height:44px;font-size:var(--fs-md);'+(on?'':'opacity:.85;')+'" onclick="openOrderRun(\''+s.id+'\')">'
