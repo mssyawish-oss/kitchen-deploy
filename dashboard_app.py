@@ -6484,6 +6484,143 @@ def api_print_labels():
 @app.route("/api/orders")
 def api_orders():
     return jsonify(ORDERS_LIVE)
+
+# ── FRY STATION (26 Aug 2026) ─────────────────────────────────────────────────────────────────
+# Turns the live order queue into dispense advice for the Franke F3D3 (two lanes parked on fixed
+# frozen weights). Demand = unbumped chip items on the KDS board (sizes read from the item name,
+# pack sides from the CHIPS modifier), converted to frozen grams by a yield factor. Staff tap
+# DROPPED after pressing the machine; that batch counts as in-flight for cook_min minutes so the
+# screen doesn't re-ask. Numbers behind the defaults: 3 months of Square sales (analysis 26 Aug).
+FRY_W={"SML":230,"SIDE":230,"MED":370,"REGULAR":370,"LRG":680,"FAM":1000}
+FRY_INFLIGHT=[]          # [(epoch_dropped, frozen_grams)] — runtime only
+def _fry_cfg():
+    c=dict(db.get("fry_cfg") or {})
+    c.setdefault("laneA",480); c.setdefault("laneB",700)
+    c.setdefault("yield",1.10); c.setdefault("cook_min",4.0)
+    return c
+def _fry_combo(need,A,B):
+    """Fewest presses whose total covers `need`; least overshoot wins, then fewer presses."""
+    best=None
+    for a in range(0,5):
+        for b in range(0,5):
+            if not 0<a+b<=4: continue
+            tot=a*A+b*B
+            if tot>=need:
+                key=(tot-need,a+b)
+                if best is None or key<best[0]: best=(key,a,b,tot)
+    if best is None: return {"a":0,"b":4,"total":4*B,"partial":True}
+    _,a,b,tot=best
+    return {"a":a,"b":b,"total":tot,"partial":False}
+@app.route("/api/fry_status")
+def api_fry_status():
+    cfg=_fry_cfg(); now=time.time()
+    global FRY_INFLIGHT
+    FRY_INFLIGHT=[(t,g) for t,g in FRY_INFLIGHT if now-t<cfg["cook_min"]*60]
+    counts={}; served=0
+    for tk in (ORDERS_LIVE.get("board") or []):
+        if tk.get("fulfilled"): continue
+        if tk.get("sched"):                       # a scheduled order only counts when it is nearly due
+            try:
+                due=datetime.fromisoformat(str(tk.get("due")).replace("Z","+00:00")).timestamp()
+                if due-now>20*60: continue
+            except Exception: pass
+        for it in tk.get("items") or []:
+            n=(it.get("n") or "").upper(); q=int(it.get("q") or 1)
+            if "CHIP" in n and "SWEET" not in n and "CATER" not in n:
+                size=next((z for z in ("SML","MED","LRG","FAM","REGULAR") if n.endswith(z)),"MED")
+                size="MED" if size=="REGULAR" else size
+                counts[size]=counts.get(size,0)+q; served+=FRY_W[size]*q
+            for m in it.get("mods") or []:
+                mu=str(m).upper()
+                if "CHIP" in mu and "SWEET" not in mu:
+                    counts["SIDE"]=counts.get("SIDE",0)+q; served+=FRY_W["SIDE"]*q
+    frozen=served*float(cfg["yield"])
+    inflight=sum(g for _,g in FRY_INFLIGHT)
+    need=max(0.0,frozen-inflight)
+    rec=_fry_combo(need,cfg["laneA"],cfg["laneB"]) if need>=120 else None
+    return jsonify({"counts":counts,"served_g":round(served),"frozen_g":round(frozen),
+                    "inflight_g":round(inflight),"need_g":round(need),"rec":rec,"cfg":cfg,
+                    "ts":int(now*1000)})
+@app.route("/api/fry_dropped",methods=["POST"])
+def api_fry_dropped():
+    d=request.get_json(silent=True) or {}
+    try: g=float(d.get("grams") or 0)
+    except (TypeError,ValueError): g=0
+    if g>0: FRY_INFLIGHT.append((time.time(),min(g,6000.0)))
+    return jsonify({"ok":True,"inflight_g":round(sum(x for _,x in FRY_INFLIGHT))})
+@app.route("/api/fry_cfg",methods=["POST"])
+def api_fry_cfg():
+    d=request.get_json(silent=True) or {}
+    c=_fry_cfg()
+    for k,lo,hi in (("laneA",150,2000),("laneB",150,2000),("yield",1.0,1.4),("cook_min",1,15)):
+        if k in d:
+            try: c[k]=min(hi,max(lo,float(d[k])))
+            except (TypeError,ValueError): pass
+    with data_lock: db["fry_cfg"]=c; save_data(db)
+    return jsonify({"ok":True,"cfg":c})
+FRY_PAGE="""<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Fry Station</title><style>
+body{margin:0;background:#0a0d14;color:#e9edf5;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+display:flex;flex-direction:column;height:100vh;overflow:hidden}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;color:#8b93a3;
+font-weight:700;letter-spacing:.06em}
+#queue{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;padding:0 16px;min-height:56px}
+.qchip{background:#161b26;border:1px solid #252b38;border-radius:14px;padding:9px 16px;font-size:24px;font-weight:800}
+.qchip small{color:#8b93a3;font-weight:600}
+#mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+#big{font-size:min(11vw,84px);font-weight:900;line-height:1.05}
+#sub{font-size:22px;color:#8b93a3}
+.hold #big{color:#34d399}
+.go #big{color:#fb9b24}
+#drop{margin:0 16px 16px;padding:22px;border-radius:20px;border:0;background:#fb9b24;color:#111;
+font-size:30px;font-weight:900;letter-spacing:.04em;display:none}
+#drop:active{transform:scale(.98)}
+footer{display:flex;gap:14px;justify-content:center;padding:0 0 14px;color:#8b93a3;font-size:15px}
+footer b{color:#e9edf5}
+.lane{cursor:pointer;border-bottom:1px dashed #3a4152}
+</style></head><body>
+<header><span>FRY STATION</span><span id=clock></span></header>
+<div id=queue></div>
+<div id=mid><div id=big>&hellip;</div><div id=sub></div></div>
+<button id=drop onclick=dropped()>DROPPED IN THE OIL</button>
+<footer><span class=lane onclick=setLane('laneA')>Lane A <b id=la></b></span>
+<span class=lane onclick=setLane('laneB')>Lane B <b id=lb></b></span>
+<span>in-flight <b id=fl>0g</b></span></footer>
+<script>
+let ST=null;
+function fmt(g){return g>=1000?(g/1000).toFixed(2).replace(/[.]?0+$/,'')+'kg':Math.round(g)+'g'}
+function draw(d){ST=d;
+ document.getElementById('la').textContent=fmt(d.cfg.laneA);
+ document.getElementById('lb').textContent=fmt(d.cfg.laneB);
+ document.getElementById('fl').textContent=fmt(d.inflight_g);
+ const q=document.getElementById('queue');
+ const order=['FAM','LRG','MED','SML','SIDE'];
+ q.innerHTML=order.filter(k=>d.counts[k]).map(k=>'<div class=qchip>'+d.counts[k]+'&times; <small>'+k+'</small></div>').join('')
+   ||'<div class=qchip><small>no chips in the queue</small></div>';
+ const mid=document.getElementById('mid'),big=document.getElementById('big'),sub=document.getElementById('sub'),
+       btn=document.getElementById('drop');
+ if(!d.rec){mid.className='hold';big.textContent=d.inflight_g>0?'COOKING':'HOLD';
+   sub.textContent=d.need_g>0?fmt(d.need_g)+' short \u2014 not worth a press yet':'nothing owed';btn.style.display='none';return}
+ mid.className='go';
+ const parts=[];if(d.rec.b)parts.push('LANE B \u00d7'+d.rec.b);if(d.rec.a)parts.push('LANE A \u00d7'+d.rec.a);
+ big.textContent='PRESS '+parts.join('  +  ');
+ sub.textContent='queue needs '+fmt(d.need_g)+' \u2192 dispenses '+fmt(d.rec.total)
+   +(d.rec.total>d.need_g?' (+'+fmt(d.rec.total-d.need_g)+' over)':'')+(d.rec.partial?' \u2014 then more':'');
+ btn.style.display='block';}
+function dropped(){if(!ST||!ST.rec)return;
+ fetch('/api/fry_dropped',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({grams:ST.rec.total})}).then(()=>poll());}
+function setLane(k){const cur=ST?ST.cfg[k]:'';const v=prompt('Parked frozen grams for '+(k==='laneA'?'Lane A':'Lane B'),cur);
+ if(!v)return;fetch('/api/fry_cfg',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({[k]:parseFloat(v)})}).then(()=>poll());}
+function poll(){fetch('/api/fry_status').then(r=>r.json()).then(draw).catch(()=>{});}
+setInterval(poll,2500);poll();
+setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-AU',
+ {hour:'numeric',minute:'2-digit'});},1000);
+</script></body></html>"""
+@app.route("/fry")
+def fry_page():
+    return Response(FRY_PAGE,mimetype="text/html")
 @app.route("/api/orders_debug2")
 def api_orders_debug2():
     """Board triage: every order Square returned, with its fulfillment verdict and whether the board
