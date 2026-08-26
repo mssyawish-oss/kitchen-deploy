@@ -2029,10 +2029,15 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
             <span id="lbl-qty" style="font-family:var(--font-mono);font-size:28px;font-weight:700;min-width:42px;text-align:center;">1</span>
             <button class="btn" style="font-size:22px;padding:2px 16px;" onclick="lblQty(1)">+</button>
           </div>
-          <div class="row" style="gap:8px;align-items:center;margin-top:10px;">
+          <div class="row" id="lbl-useby-row" style="gap:8px;align-items:center;margin-top:10px;">
             <span style="font-size:var(--fs-sm);color:var(--muted);">Use-by:</span>
             <input class="input" id="lbl-shelf" type="number" step="0.5" min="0" style="width:70px;text-align:center;" oninput="renderLabelPreview()" title="shelf-life in days"><span style="font-size:var(--fs-sm);color:var(--muted);">days</span>
           </div>
+          <label class="row" style="gap:9px;align-items:flex-start;margin-top:12px;cursor:pointer;font-size:var(--fs-sm);">
+            <input type="checkbox" id="lbl-simple" onchange="lblSimpleToggle()" style="margin-top:2px;">
+            <span><b>Simple label</b> — <span style="color:var(--muted);">no use-by. Name, date &amp; who made it. Spice mixes, sauce bases…</span></span>
+          </label>
+          <input class="input" id="lbl-custom-name" placeholder="Type a name — e.g. MAC &amp; CHEESE SPICE MIX" style="display:none;margin-top:8px;" oninput="lblCustomName()">
         </div>
         <div><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
         <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:var(--fs-lg);padding:13px;" onclick="openStaffPick()">Print labels</button>
@@ -7286,6 +7291,15 @@ function _jsq(s){return "'"+String(s==null?'':s).replace(/\\/g,'\\\\').replace(/
 function _lblPickStaff(name){_lblStaff=name;renderLabelStaff();renderLabelPreview();}
 function lblQty(d){_lblQty=Math.max(1,Math.min(50,_lblQty+d));const q=document.getElementById('lbl-qty');if(q)q.textContent=_lblQty;}
 function _lblFmt(d,withTime){const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];let s=DAYS[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()];if(withTime)s+=' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});return s;}
+let _lblSimple=false;
+function lblSimpleToggle(){_lblSimple=!!(document.getElementById('lbl-simple')||{}).checked;
+  const ub=document.getElementById('lbl-useby-row'); if(ub)ub.style.display=_lblSimple?'none':'';
+  const cn=document.getElementById('lbl-custom-name'); if(cn)cn.style.display=_lblSimple?'':'none';
+  renderLabelPreview();}
+function lblCustomName(){const v=((document.getElementById('lbl-custom-name')||{}).value||'').trim();
+  if(v){_lblItem='custom';_lblItemName=v;}
+  else if(_lblItem==='custom'){_lblItem=null;_lblItemName='';}
+  if(typeof renderLabelItems==='function')renderLabelItems();renderLabelPreview();}
 function renderLabelPreview(){
   const el=document.getElementById('lbl-preview');if(!el)return;
   if(!_lblItem){el.innerHTML='<div class="lp-empty">Pick an item to preview the label</div>';return;}
@@ -7295,7 +7309,7 @@ function renderLabelPreview(){
   el.innerHTML='<div class="lp-item">'+_mEsc(_lblItemName)+'</div>'+
     '<div class="lp-row"><b>By:</b> '+(_lblStaff?_mEsc(_lblStaff):'—')+'</div>'+
     '<div class="lp-row"><b>Prep:</b> '+_lblFmt(now,true)+'</div>'+
-    '<div class="lp-useby">USE BY  '+useby+'</div>';
+    (_lblSimple?'':'<div class="lp-useby">USE BY  '+useby+'</div>');
 }
 // On "Print labels" → pop up the staff picker showing only who's CLOCKED ON (Square open timecard), then print.
 function _kitchenStaff(){return (appData.staff||[]).filter(s=>s.name&&(s.role||'').toLowerCase()==='kitchen').map(s=>s.name);}   // prep/labels are a kitchen job → don't list cashiers/admin
@@ -7327,7 +7341,7 @@ function _doPrintLabels(){
   const shelf=parseFloat((document.getElementById('lbl-shelf')||{}).value)||0;
   const btn=document.getElementById('lbl-print-btn');if(btn)btn.disabled=true;
   if(st){st.textContent='Sending '+_lblQty+' label'+(_lblQty>1?'s':'')+' for '+_lblStaff+'…';st.style.color='var(--muted)';}
-  fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item:_lblItemName,staff:_lblStaff,shelf_days:shelf,qty:_lblQty})}).then(r=>r.json()).then(d=>{
+  fetch('/api/print_labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item:_lblItemName,staff:_lblStaff,shelf_days:shelf,qty:_lblQty,simple:_lblSimple})}).then(r=>r.json()).then(d=>{
     if(btn)btn.disabled=false;
     if(d.ok&&d.printed){
       if(st){st.textContent='✓ Printed '+_lblQty+' label'+(_lblQty>1?'s':'')+' — '+_lblStaff;st.style.color='var(--green)';}
@@ -7340,6 +7354,7 @@ function _doPrintLabels(){
         const q=document.getElementById('lbl-qty');if(q)q.textContent='1';
         const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';
         const se=document.getElementById('lbl-search');if(se)se.value='';
+        const cn=document.getElementById('lbl-custom-name');if(cn)cn.value='';
         if(st){st.textContent='';}
         renderLabelItems();renderLabelPreview();
       },1400);

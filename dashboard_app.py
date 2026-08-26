@@ -5836,7 +5836,7 @@ _LBL_DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; _LBL_MON=['Jan','Feb','Mar
 def _lbl_date(dt,withtime=False):
     s="%s %d %s"%(_LBL_DOW[dt.weekday()],dt.day,_LBL_MON[dt.month-1])
     return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
-def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
+def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     from PIL import Image,ImageDraw,ImageFont
     W,H=NIIM_W,591          # 50 x 50 mm at ~300 dpi (NIIMBOT B1 Pro printhead = 567 dots wide)
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
@@ -5877,10 +5877,15 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1):
     # printable limit. On a healthy roll the full 591 dots print, so just a small bottom margin.
     BOTTOM_SAFE=16
     box_h=106; box_y0=H-BOTTOM_SAFE-box_h
-    dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=6)
-    box="USE BY  "+useby_s; fu=fnt(56,True)
-    while dr.textlength(box,font=fu)>W-46 and fu.size>26: fu=fnt(fu.size-2,True)
-    dr.text(((W-dr.textlength(box,font=fu))//2, box_y0+(box_h-fu.size)//2-6), box, font=fu, fill=0)
+    if simple:
+        # SIMPLE label (spice mixes, sauce bases — no discard deadline): skip the USE BY box entirely
+        # and let the by/prepped block anchor to the bottom; the name zone grows to fill the space.
+        box_y0=H-BOTTOM_SAFE-4
+    else:
+        dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=6)
+        box="USE BY  "+useby_s; fu=fnt(56,True)
+        while dr.textlength(box,font=fu)>W-46 and fu.size>26: fu=fnt(fu.size-2,True)
+        dr.text(((W-dr.textlength(box,font=fu))//2, box_y0+(box_h-fu.size)//2-6), box, font=fu, fill=0)
     # 3) PREPPED date + BY name, stacked just above the box (name big + bold)
     fsb=fnt(30,True); fs=fnt(30,False); fname=fnt(46,True)
     by_y=box_y0-20-50; pr_y=by_y-46
@@ -5962,7 +5967,7 @@ def _tspl_raster(img):
     head+=("BITMAP 0,0,%d,%d,0,"%(stride,H)).encode()
     return head+bytes(data)+b"\r\nPRINT 1\r\n"
 
-def _render_label_thermal(item,staff,prepped_s,useby_s,seq=0,total=1):
+def _render_label_thermal(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     """The prep label re-laid-out for the 80mm STAR sticky printer: landscape, 576 x 300 dots
     (80 x ~37mm at 203 dpi) — a short wide sticker, not the NIIMBOT's 50x50 square. Same info,
     same visual language (day band / big name / prepped-by / boxed USE BY), different shape."""
@@ -5995,10 +6000,11 @@ def _render_label_thermal(item,staff,prepped_s,useby_s,seq=0,total=1):
         dr.text((W-10-bw,band//2-21),badge,font=fh,fill=255)
     # bottom row: PREPPED/BY on the left, boxed USE BY on the right
     box_w=252; box_h=66; box_y=H-8-box_h
-    dr.rectangle([W-8-box_w,box_y,W-8,box_y+box_h],outline=0,width=4)
-    ub="USE BY "+useby_s; fu=fnt(30,True)
-    while dr.textlength(ub,font=fu)>box_w-16 and fu.size>16: fu=fnt(fu.size-2,True)
-    dr.text((W-8-box_w+(box_w-dr.textlength(ub,font=fu))//2, box_y+(box_h-fu.size)//2-3), ub, font=fu, fill=0)
+    if not simple:
+        dr.rectangle([W-8-box_w,box_y,W-8,box_y+box_h],outline=0,width=4)
+        ub="USE BY "+useby_s; fu=fnt(30,True)
+        while dr.textlength(ub,font=fu)>box_w-16 and fu.size>16: fu=fnt(fu.size-2,True)
+        dr.text((W-8-box_w+(box_w-dr.textlength(ub,font=fu))//2, box_y+(box_h-fu.size)//2-3), ub, font=fu, fill=0)
     fsb=fnt(20,True); fs=fnt(20,False); fname=fnt(28,True)
     dr.text((10,box_y+2),"PREPPED",font=fsb,fill=0); dr.text((116,box_y+2),prepped_s,font=fs,fill=0)
     dr.text((10,box_y+34),"BY",font=fsb,fill=0); dr.text((116,box_y+30),(staff or "-"),font=fname,fill=0)
@@ -6375,7 +6381,7 @@ def api_label_preview():
     except (TypeError,ValueError): qty=1
     if not item: return ("no item",400)
     now=datetime.now()
-    useby_s=_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-"
+    useby_s="" if simple else (_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-")
     img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s,1 if qty>1 else 0,qty)
     if img is None: return ("Pillow not installed on the server",500)
     import io as _io
@@ -6445,6 +6451,7 @@ def api_print_labels():
     except (TypeError,ValueError): shelf=0.0
     try: qty=max(1,min(50,int(d.get("qty",1))))
     except (TypeError,ValueError): qty=1
+    simple=bool(d.get("simple"))
     if not item: return jsonify({"ok":False,"error":"no item chosen"})
     now=datetime.now()
     useby_s=_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-"
@@ -6454,7 +6461,7 @@ def api_print_labels():
         for i in range(qty):
             # each copy in a batch gets its own "1/4", "2/4"… so staff can see none went missing
             _render=(_render_label_thermal if (_label_cfg().get("mode") or "niimbot")=="network" else _render_label_png)
-            img=_render(item,staff,prepped_s,useby_s,seq=i+1,total=qty)
+            img=_render(item,staff,prepped_s,useby_s,seq=i+1,total=qty,simple=simple)
             if first_img is None: first_img=img
             try:
                 if _print_label(img,1): printed+=1      # routes to NIIMBOT or the 80mm network printer
