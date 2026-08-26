@@ -5602,8 +5602,14 @@ def set_settings():
 @app.route("/ack_probe",methods=["POST"])
 def ack_probe():
     d=request.get_json(silent=True) or {};pid=int(d.get("probe_id",0))
+    try: mins=float(d.get("mins") or 0)
+    except (TypeError,ValueError): mins=0
     if 1<=pid<=4:
-        with state_lock: probe_state[pid]["alerted"]=True
+        with state_lock:
+            probe_state[pid]["alerted"]=True
+            # server-side snooze (26 Aug): carried to every screen via /temps states, so a silence
+            # pressed on one device holds shop-wide for the chosen minutes (was per-device only)
+            probe_state[pid]["snooze_until"]=time.time()+max(1.0,mins)*60
     return Response('{"ok":true}',mimetype="application/json")
 
 @app.route("/reset_probe",methods=["POST"])

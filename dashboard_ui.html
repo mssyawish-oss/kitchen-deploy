@@ -4505,7 +4505,7 @@ function dismissProbeAlert(pid){
   else _probePopDismissed[pid]=sSt;                    // 'almost' has no persistent alarm — just hide it
   renderProbeAlerts();
 }
-function ackProbe(pid,mins){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid,(typeof mins==='number'&&mins>0)?mins:undefined);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();_broadcastSilence(_k);}
+function ackProbe(pid,mins){const _k=_probeAlarms[pid]==='overdone'?'probeOverdone':'probeReady';probeStates[pid].alerted=true;stopProbeAlarm(pid,(typeof mins==='number'&&mins>0)?mins:undefined);fetch('/ack_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,mins:(typeof mins==='number'&&mins>0)?mins:_PROBE_SNOOZE_MIN})});renderProbes();_broadcastSilence(_k);}
 function snoozeProbe(pid,mins){
   // the 3 buttons on the probe popup / card. 10 min is a long time for a cooked bird to sit —
   // that one asks first (owner's request, 7 Aug).
@@ -4818,7 +4818,14 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
-_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(Array.isArray(d.reminder_acks))window._remAcks=d.reminder_acks;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
+_recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;
+      // SERVER-SIDE SNOOZE (26 Aug): a 10-min silence pressed on ONE screen used to live only in that
+      // screen's localStorage — every other screen re-rang ~80s later (staff silenced the same bird 5×
+      // in 6 min on the silence log). The server now carries snooze_until per probe; every screen
+      // adopts it, so one tap silences the whole shop for the chosen time.
+      if(st.snooze_until){const su=st.snooze_until*1000,m=_psnMap();
+        if(su>Date.now()&&su>((m[p]||0)+1500)){m[p]=su;_psnSet(m);
+          if(_probeAlarms[p]){probeToken[p]++;delete _probeAlarms[p];_updateFlash();if(typeof renderProbeAlerts==='function')renderProbeAlerts();}}}});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(Array.isArray(d.reminder_acks))window._remAcks=d.reminder_acks;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
 let _spark=[],_lsSig='';
 function renderLiveStatus(rot,fry,bleConn){
   const el=document.getElementById('rl-live');if(!el)return;
