@@ -2033,11 +2033,12 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
             <span style="font-size:var(--fs-sm);color:var(--muted);">Use-by:</span>
             <input class="input" id="lbl-shelf" type="number" step="0.5" min="0" style="width:70px;text-align:center;" oninput="renderLabelPreview()" title="shelf-life in days"><span style="font-size:var(--fs-sm);color:var(--muted);">days</span>
           </div>
-          <label class="row" style="gap:9px;align-items:flex-start;margin-top:12px;cursor:pointer;font-size:var(--fs-sm);">
-            <input type="checkbox" id="lbl-simple" onchange="lblSimpleToggle()" style="margin-top:2px;">
-            <span><b>Simple label</b> — <span style="color:var(--muted);">no use-by. Name, date &amp; who made it. Spice mixes, sauce bases…</span></span>
+          <label class="row" style="gap:12px;align-items:center;margin-top:16px;cursor:pointer;">
+            <input type="checkbox" id="lbl-simple" onchange="lblSimpleToggle()" style="width:26px;height:26px;flex:0 0 26px;margin:0;accent-color:var(--amber);cursor:pointer;">
+            <span style="line-height:1.35;"><b style="font-size:var(--fs-md);">Simple label</b><br>
+            <span style="color:var(--muted);font-size:var(--fs-sm);">No use-by — name, date &amp; who made it</span></span>
           </label>
-          <input class="input" id="lbl-custom-name" placeholder="Type a name — e.g. MAC &amp; CHEESE SPICE MIX" style="display:none;margin-top:8px;" oninput="lblCustomName()">
+          <input class="input" id="lbl-custom-name" placeholder="Type the name — e.g. MAC &amp; CHEESE SPICE MIX" style="display:none;margin-top:12px;width:100%;font-size:var(--fs-md);padding:12px 14px;" oninput="lblCustomName()">
         </div>
         <div><div class="lbl-step-h">Preview</div><div id="lbl-preview-wrap"><div id="lbl-preview" class="lbl-preview"></div></div></div>
         <button class="btn btn-primary" id="lbl-print-btn" style="width:100%;font-size:var(--fs-lg);padding:13px;" onclick="openStaffPick()">Print labels</button>
@@ -7354,7 +7355,12 @@ function _doPrintLabels(){
         const q=document.getElementById('lbl-qty');if(q)q.textContent='1';
         const sh=document.getElementById('lbl-shelf');if(sh)sh.value='';
         const se=document.getElementById('lbl-search');if(se)se.value='';
-        const cn=document.getElementById('lbl-custom-name');if(cn)cn.value='';
+        // full clean slate (owner, 26 Aug): simple mode unticks, the type box empties and hides,
+        // the use-by field returns — the next label always starts from a fresh form
+        const cn=document.getElementById('lbl-custom-name');if(cn){cn.value='';cn.style.display='none';}
+        const sb=document.getElementById('lbl-simple');if(sb)sb.checked=false;
+        _lblSimple=false;
+        const ub=document.getElementById('lbl-useby-row');if(ub)ub.style.display='';
         if(st){st.textContent='';}
         renderLabelItems();renderLabelPreview();
       },1400);
