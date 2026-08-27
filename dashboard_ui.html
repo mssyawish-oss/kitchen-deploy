@@ -2968,7 +2968,9 @@ function _devMuted(key){
   if(e.mute&&key in e.mute)return e.mute[key]===true;
   return _devMutes()[key]===true;
 }
-function _devMutedFor(name,key){const e=((appData.device_prefs||{})[name])||{};return !!(e.mute&&e.mute[key]);}
+function _devMutedFor(name,key){
+  if(name===_ALLDEV)return _devAllNames().every(n=>{const e=((appData.device_prefs||{})[n])||{};return !!(e.mute&&e.mute[key]);});
+  const e=((appData.device_prefs||{})[name])||{};return !!(e.mute&&e.mute[key]);}
 // Per-screen POPUP routing (owner, 7 Aug: kitchen kiosk needs prep reminders, the FOH iPad doesn't).
 // Stored on the device like the sound mute; hides popup+banner+sound for that alarm on THIS screen only.
 function _devPopMutes(){try{return JSON.parse(localStorage.getItem('alarmPopMutes')||'{}')||{};}catch(e){return {};}}
@@ -3010,10 +3012,15 @@ function _devPopMuted(key){
   if(e.pop&&key in e.pop)return e.pop[key]===true;
   return _devPopMutes()[key]===true;                       // legacy local fallback
 }
-function _devPopMutedFor(name,key){const e=_devEntry(name);return !!(e.pop&&e.pop[key]);}
+function _devPopMutedFor(name,key){
+  if(name===_ALLDEV)return _devAllNames().every(n=>{const e=_devEntry(n);return !!(e.pop&&e.pop[key]);});
+  const e=_devEntry(name);return !!(e.pop&&e.pop[key]);}
 function _devPopSet(key,on){_devPrefSet(_acDevTarget(),'pop',key,on);
-  if(_acDevTarget()===devName()){const m=_devPopMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmPopMutes',JSON.stringify(m));}catch(e){}}}
+  if(_acDevTarget()===devName()||_acDevTarget()===_ALLDEV){const m=_devPopMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmPopMutes',JSON.stringify(m));}catch(e){}}}
+const _ALLDEV='\u{1F310} All screens';
+function _devAllNames(){const names=Object.keys(appData.device_prefs||{});const my=devName();if(!names.includes(my))names.push(my);return names;}
 function _devPrefSet(name,kind,key,on){
+  if(name===_ALLDEV){_devAllNames().forEach(n=>_devPrefSet(n,kind,key,on));return;}
   appData.device_prefs=appData.device_prefs||{};
   const e=appData.device_prefs[name]=appData.device_prefs[name]||{};
   const m=e[kind]=e[kind]||{};
@@ -3022,7 +3029,7 @@ function _devPrefSet(name,kind,key,on){
 }
 function _devMuteSet(key,on){
   _devPrefSet(_acDevTarget(),'mute',key,on);
-  if(_acDevTarget()===devName()){const m=_devMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}}
+  if(_acDevTarget()===devName()||_acDevTarget()===_ALLDEV){const m=_devMutes();if(on)m[key]=true;else delete m[key];try{localStorage.setItem('alarmMutes',JSON.stringify(m));}catch(e){}}
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 function _alarmHit(key){if(_devPopMuted(key))return;const c=_acfg(key);const v=c.volume;
   _audioWake();
@@ -7613,7 +7620,7 @@ function _acStyleSet(key,v){
   renderAlarmCenter();}
 function renderAlarmCenter(){const host=document.getElementById('alarm-center');if(!host)return;
   const my=devName();const tgt=_acDevTarget();
-  const names=Object.keys(appData.device_prefs||{});if(!names.includes(my))names.unshift(my);
+  const names=Object.keys(appData.device_prefs||{});if(!names.includes(my))names.unshift(my);names.unshift(_ALLDEV);
   const picker='<div class="ac-card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;">'
     +'<span style="font-size:var(--fs-sm);color:var(--muted);">This screen is</span>'
     +'<input class="input" style="width:130px;height:34px;font-size:var(--fs-md);" value="'+_mEsc(my)+'" onchange="devNameSet(this.value)" onclick="event.stopPropagation();">'
@@ -7621,8 +7628,8 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +'<select class="input" style="height:34px;font-size:var(--fs-md);" onclick="event.stopPropagation();" onchange="_acPickDev(this.value)">'
     +names.map(n=>'<option value="'+_mEsc(n)+'"'+(n===tgt?' selected':'')+'>'+_mEsc(n)+(n===my?' (this screen)':_devSeenLabel(n))+'</option>').join('')
     +'</select>'
-    +(tgt!==my?'<button class="btn" style="height:34px;font-size:var(--fs-sm);" onclick="event.stopPropagation();_acForgetDev()">Forget this screen</button>':'')
-    +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s</span>':'')
+    +(tgt!==my&&tgt!==_ALLDEV?'<button class="btn" style="height:34px;font-size:var(--fs-sm);" onclick="event.stopPropagation();_acForgetDev()">Forget this screen</button>':'')
+    +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">'+(tgt===_ALLDEV?'The per-screen toggles below now change EVERY registered screen at once':'The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s')+'</span>':'')
     +'<label style="flex-basis:100%;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox"'+(_audioWarnOn()?' checked':'')+' onclick="event.stopPropagation();" onchange="_audioWarnSet(this.checked)" style="width:16px;height:16px;">Warn me on <b>this screen</b> if alarm sound is blocked <span style="color:var(--muted);">(on by default; untick only on a visual-only screen like the iPad)</span></label>'
     +'</div>';
   host.innerHTML=picker+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
@@ -7647,9 +7654,9 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
       +'<div class="ac-row"><span style="min-width:48px;">Flash</span><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.flash?'checked':'')+' onchange="alarmSet(\''+key+'\',\'flash\',this.checked)" style="width:16px;height:16px;"> screen</label><input type="color" value="'+c.color+'" onchange="alarmSet(\''+key+'\',\'color\',this.value)" title="flash colour"></div>'
       +(oneShot?'':'<div class="ac-row"><span style="min-width:48px;">Stop after</span><select class="input" style="padding:4px 6px;font-size:var(--fs-sm);" onchange="alarmSet(\''+key+'\',\'autostop\',parseInt(this.value))">'+asSel+'</select></div>')
       +'<div class="ac-row"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(c.vibrate?'checked':'')+' onchange="alarmSet(\''+key+'\',\'vibrate\',this.checked)" style="width:16px;height:16px;"> Vibrate (phone)</label></div>'
-      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMutedFor(tgt,key)||(tgt===my&&_devMuted(key))?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>'+_mEsc(tgt===my?'this screen':tgt)+'</b> only</label>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devMutedFor(tgt,key)||(tgt===my&&_devMuted(key))?'checked':'')+' onchange="_devMuteSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Silent on <b>'+_mEsc(tgt===my?'this screen':(tgt===_ALLDEV?'ALL screens':tgt))+'</b>'+(tgt===_ALLDEV?'':' only')+'</label>'
       +'<span style="font-size:var(--fs-sm);color:var(--muted);">no sound here &mdash; still flashes, and still sounds on the other screens</span></div>'
-      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devPopMutedFor(tgt,key)||(tgt===my&&_devPopMuted(key))?'checked':'')+' onchange="_devPopSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Hidden on <b>'+_mEsc(tgt===my?'this screen':tgt)+'</b> only</label>'
+      +'<div class="ac-row ac-devrow"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;"><input type="checkbox" '+(_devPopMutedFor(tgt,key)||(tgt===my&&_devPopMuted(key))?'checked':'')+' onchange="_devPopSet(\''+key+'\',this.checked);renderAlarmCenter();" style="width:16px;height:16px;"> Hidden on <b>'+_mEsc(tgt===my?'this screen':(tgt===_ALLDEV?'ALL screens':tgt))+'</b>'+(tgt===_ALLDEV?'':' only')+'</label>'
       +'<span style="font-size:var(--fs-sm);color:var(--muted);">no popup, banner or sound HERE at all &mdash; other screens unaffected (e.g. keep prep reminders off the front-of-house iPad)</span></div>'
       +'</div>'
       +'<div class="ac-sound"><span>Tone:</span><select class="input" style="padding:5px 7px;font-size:var(--fs-sm);flex:1;min-width:130px;" onchange="alarmSetTone(\''+key+'\',this.value)"'+(c.has_custom?' disabled':'')+'><option value="">Built-in: '+(_DEF_TONE_NAME[key]||'default')+'</option>'+_TONE_ORDER.map(tk=>'<option value="'+tk+'"'+(c.sound_preset===tk?' selected':'')+'>'+_mEsc(_TONES[tk].name)+'</option>').join('')+'</select><button class="btn" style="padding:5px 10px;font-size:var(--fs-sm);" onclick="alarmPreviewTone(\''+key+'\')">&#9654;</button></div>'
