@@ -5728,7 +5728,7 @@ _PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/bl
 # Keys the SERVER owns. They are shipped in GET /api/data (so clients hold them) but nothing in the UI
 # ever saves them back — and a client posting e.g. {"timers":[]} would kill every countdown and make
 # trigger_timer_start raise inside a Timer thread, silently breaking the use-by clock after a probe pull.
-_SERVER_KEYS=("timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
+_SERVER_KEYS=("device_seen","timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
               "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state",
               # label_printer has its own endpoint (/api/label_printer). Tablets doing a bulk
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
@@ -5760,6 +5760,15 @@ def api_pin_verify():
 def update_db():
     payload=request.get_json(silent=True) or {}
     dropped=[]
+    # device_prefs arrives as the WHOLE dict from whichever screen saved last; replacing wholesale let
+    # a stale copy wipe every other screen's per-screen settings (found 27 Aug: all 11 entries empty).
+    # Merge per screen-name instead; names absent from the payload are KEPT (delete via /api/dev_forget).
+    if isinstance(payload.get("device_prefs"),dict):
+        with data_lock:
+            cur=dict(db.get("device_prefs") or {})
+            for name,entry in payload["device_prefs"].items():
+                if isinstance(entry,dict): cur[name]=entry
+            payload["device_prefs"]=cur
     for k in _SERVER_KEYS:
         if k in payload: payload.pop(k); dropped.append(k)   # server-owned: never take a client's copy
     with data_lock:
@@ -6514,6 +6523,29 @@ def _fry_combo(need,A,B):
     if best is None: return {"a":0,"b":4,"total":4*B,"partial":True}
     _,a,b,tot=best
     return {"a":a,"b":b,"total":tot,"partial":False}
+@app.route("/api/dev_seen",methods=["POST"])
+def api_dev_seen():
+    # screens announce their devName every ~60s so the Alarm Center can say which entry is which
+    d=request.get_json(silent=True) or {}
+    name=str(d.get("name") or "").strip()[:24]
+    if name:
+        with data_lock:
+            seen=db.setdefault("device_seen",{})
+            seen[name]={"at":int(time.time()*1000),"ip":request.remote_addr or "",
+                        "ua":(request.headers.get("User-Agent") or "")[:90]}
+            if len(seen)>40:                      # oldest ghosts fall off
+                for k,_ in sorted(seen.items(),key=lambda x:x[1].get("at",0))[:len(seen)-40]: seen.pop(k,None)
+            save_data(db)
+    return jsonify({"ok":True})
+@app.route("/api/dev_forget",methods=["POST"])
+def api_dev_forget():
+    d=request.get_json(silent=True) or {}
+    name=str(d.get("name") or "").strip()
+    with data_lock:
+        (db.get("device_prefs") or {}).pop(name,None)
+        (db.get("device_seen") or {}).pop(name,None)
+        save_data(db)
+    return jsonify({"ok":True})
 @app.route("/api/fry_status")
 def api_fry_status():
     cfg=_f3d3_cfg(); now=time.time()

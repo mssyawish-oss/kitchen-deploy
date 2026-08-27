@@ -2980,6 +2980,21 @@ function devName(){
   if(!n){n='Screen-'+Math.random().toString(36).slice(2,6).toUpperCase();try{localStorage.setItem('devName',n);}catch(e){}}
   return n;
 }
+function _devSeenPing(){try{fetch('/api/dev_seen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:devName()})});}catch(e){}}
+setInterval(_devSeenPing,60000);setTimeout(_devSeenPing,4000);
+function _devSeenLabel(n){
+  const s=((appData.device_seen||{})[n]);
+  if(!s||!s.at)return ' — never seen';
+  const m=(Date.now()-s.at)/60000;
+  if(m<3)return ' — online';
+  if(m<90)return ' — '+Math.round(m)+' min ago';
+  if(m<48*60)return ' — '+Math.round(m/60)+' h ago';
+  return ' — '+Math.round(m/1440)+' d ago';
+}
+function _acForgetDev(){const t=_acDevTarget();if(t===devName())return;
+  _askConfirm('Forget '+t+'?','Removes it from this list and clears its per-screen settings. If that device opens the dash again it simply re-registers.',()=>{
+    fetch('/api/dev_forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:t})})
+      .then(()=>{if(appData.device_prefs)delete appData.device_prefs[t];if(appData.device_seen)delete appData.device_seen[t];window._acEditDev=null;renderAlarmCenter();});},'Forget it');}
 function devNameSet(n){n=(n||'').trim().slice(0,24);if(!n)return;
   const prefs=appData.device_prefs||{};const oldN=devName();
   if(prefs[oldN]&&!prefs[n]){prefs[n]=prefs[oldN];delete prefs[oldN];appData.device_prefs=prefs;saveKeys(['device_prefs']);}
@@ -7604,8 +7619,9 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +'<input class="input" style="width:130px;height:34px;font-size:var(--fs-md);" value="'+_mEsc(my)+'" onchange="devNameSet(this.value)" onclick="event.stopPropagation();">'
     +'<span style="font-size:var(--fs-sm);color:var(--muted);margin-left:10px;">Editing settings for</span>'
     +'<select class="input" style="height:34px;font-size:var(--fs-md);" onclick="event.stopPropagation();" onchange="_acPickDev(this.value)">'
-    +names.map(n=>'<option value="'+_mEsc(n)+'"'+(n===tgt?' selected':'')+'>'+_mEsc(n)+(n===my?' (this screen)':'')+'</option>').join('')
+    +names.map(n=>'<option value="'+_mEsc(n)+'"'+(n===tgt?' selected':'')+'>'+_mEsc(n)+(n===my?' (this screen)':_devSeenLabel(n))+'</option>').join('')
     +'</select>'
+    +(tgt!==my?'<button class="btn" style="height:34px;font-size:var(--fs-sm);" onclick="event.stopPropagation();_acForgetDev()">Forget this screen</button>':'')
     +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s</span>':'')
     +'<label style="flex-basis:100%;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox"'+(_audioWarnOn()?' checked':'')+' onclick="event.stopPropagation();" onchange="_audioWarnSet(this.checked)" style="width:16px;height:16px;">Warn me on <b>this screen</b> if alarm sound is blocked <span style="color:var(--muted);">(on by default; untick only on a visual-only screen like the iPad)</span></label>'
     +'</div>';
