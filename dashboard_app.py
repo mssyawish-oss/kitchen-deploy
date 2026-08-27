@@ -6493,7 +6493,10 @@ def api_orders():
 # screen doesn't re-ask. Numbers behind the defaults: 3 months of Square sales (analysis 26 Aug).
 FRY_W={"SML":230,"SIDE":230,"MED":370,"REGULAR":370,"LRG":680,"FAM":1000}
 FRY_INFLIGHT=[]          # [(epoch_dropped, frozen_grams)] — runtime only
-def _fry_cfg():
+def _f3d3_cfg():
+    # RENAMED from _fry_cfg (27 Aug): this shadowed the ORIGINAL _fry_cfg (line ~765, the fried-chicken
+    # warmer counter, keys batch/open/low_at) — every /temps call then died with KeyError 'open' and
+    # took every kitchen screen down. Two fry systems, two names.
     c=dict(db.get("fry_cfg") or {})
     c.setdefault("laneA",480); c.setdefault("laneB",700)
     c.setdefault("yield",1.10); c.setdefault("cook_min",4.0)
@@ -6513,7 +6516,7 @@ def _fry_combo(need,A,B):
     return {"a":a,"b":b,"total":tot,"partial":False}
 @app.route("/api/fry_status")
 def api_fry_status():
-    cfg=_fry_cfg(); now=time.time()
+    cfg=_f3d3_cfg(); now=time.time()
     global FRY_INFLIGHT
     FRY_INFLIGHT=[(t,g) for t,g in FRY_INFLIGHT if now-t<cfg["cook_min"]*60]
     counts={}; served=0
@@ -6551,7 +6554,7 @@ def api_fry_dropped():
 @app.route("/api/fry_cfg",methods=["POST"])
 def api_fry_cfg():
     d=request.get_json(silent=True) or {}
-    c=_fry_cfg()
+    c=_f3d3_cfg()
     for k,lo,hi in (("laneA",150,2000),("laneB",150,2000),("yield",1.0,1.4),("cook_min",1,15)):
         if k in d:
             try: c[k]=min(hi,max(lo,float(d[k])))
