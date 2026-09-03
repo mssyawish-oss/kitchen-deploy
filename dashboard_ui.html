@@ -3004,6 +3004,23 @@ function devNameSet(n){n=(n||'').trim().slice(0,24);if(!n)return;
   if(typeof renderAlarmCenter==='function')renderAlarmCenter();
 }
 function _devEntry(name){return ((appData.device_prefs||{})[name])||{};}
+// PER-SCREEN SECTION HIDE (owner, 1 Sep: prep tasks must show on the kitchen kiosks but NOT the FOH
+// iPad). Stored per device in db.device_prefs[name].hide = {jobs:true,...}; editable for any screen
+// from any screen (incl. the Mac) via the Alarm Center device picker. Hiding a section only affects
+// THAT screen — the task keeps running everywhere else. 'probes' (Temp/home) is never hideable so a
+// screen always has somewhere safe to land.
+const _HIDEABLE=[['jobs','Prep / Tasks'],['packdown','Checklist'],['service','Routines'],['recipes','Recipes'],['stock','Stock'],['orders','Orders'],['comp','Comp'],['sales','Sales'],['team','Team'],['cameras','Cameras']];
+function _devHiddenPages(name){const e=_devEntry(name||devName());return (e&&e.hide)||{};}
+function _isPageHidden(page){return !!_devHiddenPages()[page];}
+function _applyHiddenNav(){try{
+  const h=_devHiddenPages();
+  document.querySelectorAll('.nav-btn[data-page]').forEach(b=>{b.style.display=h[b.getAttribute('data-page')]?'none':'';});
+  document.querySelectorAll('#side-nav .side-item[data-page]').forEach(b=>{b.style.display=h[b.dataset.page]?'none':'';});
+  if(!document.body.classList.contains('kiosk')){                      // never yank a kiosk off its locked page
+    const act=document.querySelector('.page.active'); if(act){const id=act.id.replace('page-','');if(h[id])navTo(_viewHome());}
+  }
+}catch(e){}}
+function _devHideSet(page,on){_devPrefSet(_acDevTarget(),'hide',page,on);if(_acDevTarget()===devName())_applyHiddenNav();if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
 window._acEditDev=null;   // which screen the Alarm Center is editing (null = this one)
 function _acPickDev(v){window._acEditDev=(v===devName())?null:v;renderAlarmCenter();}
 function _acDevTarget(){return window._acEditDev||devName();}
@@ -4030,7 +4047,7 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
-function navTo(page,btn){closeSidebar();if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock'){if(_orunSup&&!Object.keys(_orunHave).length&&!Object.keys(_orunSkip).length&&!Object.keys(_orunAdj).length)_orunSup=null;renderStockPage();}if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
+function navTo(page,btn){closeSidebar();if(_isPageHidden(page)){navTo(_viewHome());return;}if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock'){if(_orunSup&&!Object.keys(_orunHave).length&&!Object.keys(_orunSkip).length&&!Object.keys(_orunAdj).length)_orunSup=null;renderStockPage();}if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
 if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
@@ -4091,6 +4108,7 @@ let _stockSaveT=null;function saveStockSoon(){clearTimeout(_stockSaveT);_stockSa
 async function refreshShared(){
   const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'))return;   // don't yank data out from under someone typing
   await loadAppData();   // ALWAYS pull the latest — never get stuck on stale data behind an open popup on another screen
+  _applyHiddenNav();   // a hide set from another screen (e.g. the Mac) takes effect here on the next refresh
   if(appData.ui&&appData.ui.theme&&((appData.ui.theme==='light')!==document.body.classList.contains('light')))applyTheme(appData.ui.theme,false);
   if([...document.querySelectorAll('.modal-overlay')].some(m=>getComputedStyle(m).display!=='none'))return;   // a popup is open here → data's now fresh, just don't repaint behind it (it'll show when closed)
   const active=document.querySelector('.page.active');if(!active)return;
@@ -7618,6 +7636,16 @@ function _acStyleSet(key,v){
   if(key==='service'){alarmSet(key,'enabled',v==='sp'||v==='s');alarmSet(key,'popup',v==='sp'||v==='p');}
   else alarmSet(key,'enabled',v==='on');
   renderAlarmCenter();}
+function _hideCard(){
+  const tgt=_acDevTarget();
+  const chips=_HIDEABLE.map(([pg,lbl])=>{
+    const on=(tgt===_ALLDEV)?_devAllNames().every(n=>_devHiddenPages(n)[pg]):!!_devHiddenPages(tgt)[pg];
+    return '<button class="btn'+(on?' btn-danger':'')+'" style="font-size:var(--fs-sm);margin:3px;padding:6px 10px;" onclick="event.stopPropagation();_devHideSet(\''+pg+'\','+(!on)+')">'+(on?'\u2715 ':'')+_mEsc(lbl)+'</button>';
+  }).join('');
+  return '<div class="ac-card" style="padding:12px 14px;">'
+    +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Hide sections on <b>'+_mEsc(tgt)+'</b> — tap to hide (red = hidden here). The task still runs on every other screen.</div>'
+    +'<div style="display:flex;flex-wrap:wrap;">'+chips+'</div></div>';
+}
 function renderAlarmCenter(){const host=document.getElementById('alarm-center');if(!host)return;
   const my=devName();const tgt=_acDevTarget();
   const names=Object.keys(appData.device_prefs||{});if(!names.includes(my))names.unshift(my);names.unshift(_ALLDEV);
@@ -7632,7 +7660,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">'+(tgt===_ALLDEV?'The per-screen toggles below now change EVERY registered screen at once':'The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s')+'</span>':'')
     +'<label style="flex-basis:100%;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox"'+(_audioWarnOn()?' checked':'')+' onclick="event.stopPropagation();" onchange="_audioWarnSet(this.checked)" style="width:16px;height:16px;">Warn me on <b>this screen</b> if alarm sound is blocked <span style="color:var(--muted);">(on by default; untick only on a visual-only screen like the iPad)</span></label>'
     +'</div>';
-  host.innerHTML=picker+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
+  host.innerHTML=picker+_hideCard()+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
     const open=!!_acOpen[key];const style=_acStyleOf(key,c);
     const opts=(['service','checklist','preptasks','prepcarry'].includes(key))?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
                                 :[['on','Sound on'],['off','Sound off']];
@@ -8287,6 +8315,7 @@ async function init(){
   await loadAppData();
   if(appData.ui&&appData.ui.theme)applyTheme(appData.ui.theme);   // shared theme wins once data loads
   openDashboard();
+  _applyHiddenNav();
   const _kp=_kioskPage();if(_kp){document.body.classList.add('kiosk');navTo(_kp);}   // dedicated single-page tablet
   renderProbes();renderTimers();
   _ktLoad();renderKTimers();setInterval(ktTick,1000);
