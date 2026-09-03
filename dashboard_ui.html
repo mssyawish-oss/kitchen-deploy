@@ -2963,7 +2963,12 @@ function _audioWarnSet(on){
   try{appData.device_prefs=appData.device_prefs||{};const e=appData.device_prefs[devName()]=appData.device_prefs[devName()]||{};
       if(on)delete e.noAudioWarn; else e.noAudioWarn=true; saveKeys(['device_prefs']);}catch(e){}
   if(!on){try{_audioBanner(false);}catch(e){}} if(typeof renderAlarmCenter==='function')renderAlarmCenter();}
+// A section hidden on THIS screen also silences its reminders here — hiding and muting were two
+// separate controls and that was confusing (owner, 1 Sep). Now hide implies silent.
+const _ALARM_PAGE={preptasks:'jobs',checklist:'packdown',service:'service',orders:'orders',stock:'stock'};
+function _keyPageHidden(key){const pg=_ALARM_PAGE[key];return !!pg&&_isPageHidden(pg);}
 function _devMuted(key){
+  if(_keyPageHidden(key))return true;
   const e=((appData.device_prefs||{})[ (function(){try{return localStorage.getItem('devName')||''}catch(x){return ''}})() ])||{};
   if(e.mute&&key in e.mute)return e.mute[key]===true;
   return _devMutes()[key]===true;
@@ -3031,6 +3036,7 @@ window._acEditDev=null;   // which screen the Alarm Center is editing (null = th
 function _acPickDev(v){window._acEditDev=(v===devName())?null:v;renderAlarmCenter();}
 function _acDevTarget(){return window._acEditDev||devName();}
 function _devPopMuted(key){
+  if(_keyPageHidden(key))return true;
   const e=_devEntry(devName());
   if(e.pop&&key in e.pop)return e.pop[key]===true;
   return _devPopMutes()[key]===true;                       // legacy local fallback
