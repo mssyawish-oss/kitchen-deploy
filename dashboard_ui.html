@@ -2982,6 +2982,12 @@ function devName(){
   if(!n){n='Screen-'+Math.random().toString(36).slice(2,6).toUpperCase();try{localStorage.setItem('devName',n);}catch(e){}}
   return n;
 }
+function _storageBroken(){
+  // a screen that cannot persist localStorage forgets its name every reload — per-screen settings can
+  // never stick to it (the iPad-in-a-Private-tab saga, 2 Sep). Detect honestly and say so in the UI.
+  try{const k='__st_'+Date.now();localStorage.setItem(k,'1');const ok=localStorage.getItem(k)==='1';localStorage.removeItem(k);
+      return !ok || !localStorage.getItem('devName');}catch(e){return true;}
+}
 function _devSeenPing(){try{fetch('/api/dev_seen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:devName()})});}catch(e){}}
 setInterval(_devSeenPing,60000);setTimeout(_devSeenPing,4000);
 function _devSeenLabel(n){
@@ -7657,6 +7663,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +names.map(n=>'<option value="'+_mEsc(n)+'"'+(n===tgt?' selected':'')+'>'+_mEsc(n)+(n===my?' (this screen)':_devSeenLabel(n))+'</option>').join('')
     +'</select>'
     +(tgt!==my&&tgt!==_ALLDEV?'<button class="btn" style="height:34px;font-size:var(--fs-sm);" onclick="event.stopPropagation();_acForgetDev()">Forget this screen</button>':'')
+    +(_storageBroken()?'<div style="flex-basis:100%;font-size:var(--fs-sm);color:var(--red,#f87171);font-weight:700;">&#9888; This screen cannot save its identity — it forgets its name on every reload, so per-screen settings will NEVER stick here. Usual cause: the dash is open in a Private/Incognito tab. Open it in a normal tab (or the home-screen icon) and set the name again.</div>':'')
     +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">'+(tgt===_ALLDEV?'The per-screen toggles below now change EVERY registered screen at once':'The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s')+'</span>':'')
     +'<label style="flex-basis:100%;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox"'+(_audioWarnOn()?' checked':'')+' onclick="event.stopPropagation();" onchange="_audioWarnSet(this.checked)" style="width:16px;height:16px;">Warn me on <b>this screen</b> if alarm sound is blocked <span style="color:var(--muted);">(on by default; untick only on a visual-only screen like the iPad)</span></label>'
     +'</div>';

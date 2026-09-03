@@ -6535,6 +6535,17 @@ def api_dev_seen():
                         "ua":(request.headers.get("User-Agent") or "")[:90]}
             if len(seen)>40:                      # oldest ghosts fall off
                 for k,_ in sorted(seen.items(),key=lambda x:x[1].get("at",0))[:len(seen)-40]: seen.pop(k,None)
+            # auto-prune identity-roulette ghosts: a device whose storage does not persist (e.g. an
+            # iPad in a Private tab) mints a fresh Screen-XXXX every reload and something registers an
+            # empty prefs entry for each (14 of 18 entries were empty, 2 Sep). Empty auto-named
+            # entries not seen for 48h can go; named or configured screens are never touched.
+            import re as _re
+            prefs=db.get("device_prefs") or {}
+            cutoff=int(time.time()*1000)-48*3600*1000
+            for k in [k for k,v in prefs.items()
+                      if _re.fullmatch(r"Screen-[A-Z0-9]{4}",k) and not v
+                      and (seen.get(k,{}).get("at",0))<cutoff]:
+                prefs.pop(k,None); seen.pop(k,None)
             save_data(db)
     return jsonify({"ok":True})
 @app.route("/api/dev_forget",methods=["POST"])
