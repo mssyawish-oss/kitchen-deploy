@@ -59,7 +59,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60,"shadow_band":74.0,"shadow_drop":8.0,"shadow_climb":6.0,"shadow_floor":45.0}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -459,6 +459,10 @@ def check_probe_status(pid,temp):
             ps["last_val"]=temp; ps["last_change_at"]=_now
         if ps.get("cycle_start") is None: ps["cycle_start"]=_now   # first reading of a fresh cook = "row went on"
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
+        try:                                  # TRIAL pull-detector runs on every reading, shadow-only
+            _shr=_shadow_step(ps.setdefault("sh",{}),temp,_now,_shadow_cfg())
+            if _shr: threading.Thread(target=_shadow_credit,args=(pid,probe_names.get(pid,"Probe %d"%pid),_shr),daemon=True).start()
+        except Exception: pass
         # ETA: keep a short rolling trail of (time,temp) per probe and measure how fast THIS row is
         # actually climbing, then project to the Cooked temp. Beats a historical average because every
         # row heats differently (position, load, how cold the birds went on).
@@ -659,12 +663,12 @@ def query_square_recent(cfg,minutes=30):
     return len(good)
 
 # ── LIVE ROTISSERIE STOCK ── available birds = (loaded & finished) − (sold via Square)
-ROT_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[]}
+ROT_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[],"shadow":0.0}
 rot_lock=threading.Lock()
 _gem_lock=threading.Lock()                                # guards the Gemini usage counter + auto-trace id allocation (parallel reads)
 _rl0=db.get("rot_live")                                   # restore across restarts so the count is NOT lost
 if isinstance(_rl0,dict):
-    for _k in ("day","available","sold_today","seen"):
+    for _k in ("day","available","sold_today","seen","shadow"):
         if _k in _rl0: ROT_LIVE[_k]=_rl0[_k]
 _first_sweep=False   # on startup, sweep all of TODAY's sales once to catch up; then poll a short window
 def _rot_cfg():
@@ -676,7 +680,7 @@ def _rot_cook_secs():   # average full cook time → ONLY drives the rough "how 
     try: return max(60,int((db.get("rotisserie") or {}).get("cook_min",65)))*60
     except Exception: return 65*60
 def _rot_save():       # persist live counts so a server restart doesn't reset them
-    with rot_lock: snap={k:ROT_LIVE[k] for k in ("day","available","sold_today","seen")}
+    with rot_lock: snap={k:ROT_LIVE.get(k) for k in ("day","available","sold_today","seen","shadow")}
     try:    # also persist the camera's per-shelf cook timers so a restart doesn't reset crediting progress
         snap["shelf_loaded_at"]=list(ROTCAM.get("shelf_loaded_at") or [])
         snap["shelf_off_at"]=list(ROTCAM.get("shelf_off_at") or [])
@@ -693,7 +697,7 @@ def _rot_reset_if_needed():
         # NEW DAY only → zero the counters (the camera/bench-watcher rebuilds 'available'). A restart mid-day keeps the saved count.
         # IMPORTANT: keep 'seen' (capped) across the rollover — clearing it let yesterday's still-in-window Square
         # orders get RE-counted after midnight (phantom 'sold_today'). Dedup memory must survive the daily reset.
-        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0})
+        ROT_LIVE.update({"day":today,"available":0.0,"sold_today":0.0,"shadow":0.0})
         ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
 def rot_reset_counts():   # manual "start fresh" — zero today's tallies but KEEP 'seen' so the same orders can't recount
     with rot_lock:
@@ -708,7 +712,7 @@ def rot_state():
         # rows cook TOP-DOWN (row 1 loaded first) → a lower shelf can NEVER read more cooked than the shelf above it
         for i in range(1,6):
             if prog[i]>=0 and prog[i-1]>=0 and prog[i]>prog[i-1]: prog[i]=prog[i-1]
-        return {"available":round(ROT_LIVE["available"],2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
+        return {"available":round(ROT_LIVE["available"],2),"shadow":round(ROT_LIVE.get("shadow",0.0),2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
                 "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
                 "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
@@ -718,22 +722,65 @@ def rot_put_on(rows,batch=True):   # a finished row went into the warmer → add
     # batch=False when the caller's event ALREADY started a use-by timer (a probe pull calls both
     # _record_pull and _probe_credit_stock, and both used to auto-start → 2 timers per real row).
     c=_rot_cfg()
-    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"]
+    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]+=rows*c["bpr"];ROT_LIVE["shadow"]=ROT_LIVE.get("shadow",0.0)+rows*c["bpr"]
     _rot_save()
     if rows>0 and batch:
         try: _batch_auto_start(_recent_pull_temp())   # unprobed batches ride on the button staff already press
         except Exception as e: print("cookedrow batch:",e)
 def rot_adjust(delta):
-    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]+delta   # may go negative (oversold)
+    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]+delta;ROT_LIVE["shadow"]=ROT_LIVE.get("shadow",0.0)+delta   # may go negative (oversold)
     _rot_save()
 def rot_set(v):
-    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,float(v))
+    with rot_lock: _rot_reset_if_needed();ROT_LIVE["available"]=max(0.0,float(v));ROT_LIVE["shadow"]=max(0.0,float(v))
     _rot_save()
 def rot_deduct(birds,oids):
     with rot_lock:
-        _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]-birds   # go NEGATIVE if oversold; cooking (rot_put_on/probe credit) brings it back up
+        _rot_reset_if_needed();ROT_LIVE["available"]=ROT_LIVE["available"]-birds;ROT_LIVE["shadow"]=ROT_LIVE.get("shadow",0.0)-birds   # sales hit BOTH counts identically
         ROT_LIVE["sold_today"]+=birds;ROT_LIVE["seen"].extend(oids);ROT_LIVE["seen"]=ROT_LIVE["seen"][-3000:]
     _rot_save()
+def _shadow_cfg():
+    return {"band":float(settings.get("shadow_band",74.0) or 74.0),
+            "drop":float(settings.get("shadow_drop",8.0) or 8.0),
+            "climb":float(settings.get("shadow_climb",6.0) or 6.0),
+            "floor":float(settings.get("shadow_floor",45.0) or 45.0),
+            "timeout":600}
+def _shadow_step(sh,temp,now,cfg):
+    """TRIAL pull-detector (1 Sep). 'new'=probe moved into a new cooking bird (peaked, sharp STEP down,
+    then climbed); 'aside'=pulled & set down (dropped below floor); None otherwise. A rotisserie merely
+    turned DOWN drifts (small per-reading change) so it never trips the step, and a probe re-seated in the
+    SAME bird climbs straight back without a real drop -> neither false-counts. Shadow only; never touches
+    real stock until promoted."""
+    band=cfg["band"];drop=cfg["drop"];climb=cfg["climb"];floor=cfg["floor"];tmo=cfg["timeout"]
+    if not sh:
+        sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now}); return None
+    prev=sh.get("last"); sh["last"]=temp
+    if temp>sh["peak"]: sh["peak"]=temp
+    if sh["peak"]>=band: sh["cooked"]=True
+    step=(prev-temp) if prev is not None else 0.0
+    res=None
+    if sh["phase"]=="watch":
+        if sh["cooked"] and step>=drop: sh["phase"]="dropped"; sh["dlow"]=temp; sh["since"]=now
+    elif sh["phase"]=="dropped":
+        sh["dlow"]=min(sh["dlow"],temp)
+        if temp<=floor:
+            res="aside"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now})
+        elif temp>=sh["dlow"]+climb:
+            res="new"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now})
+        elif (now-sh["since"])>tmo:
+            sh["phase"]="watch"; sh["dlow"]=None
+    return res
+def _shadow_credit(pid,name,kind):
+    """TRIAL credit — bumps ONLY the shadow tally + its own log. Never affects 'available'."""
+    bpr=_rot_cfg().get("bpr",4) or 4
+    with rot_lock: _rot_reset_if_needed(); ROT_LIVE["shadow"]=ROT_LIVE.get("shadow",0.0)+bpr
+    _rot_save()
+    try:
+        with data_lock:
+            log=list(db.get("shadow_credit_log",[]) or [])
+            log.append({"ts":int(time.time()),"pid":pid,"name":name,"kind":kind,"birds":bpr,
+                        "shadow_after":round(ROT_LIVE.get("shadow",0.0),2)})
+            db["shadow_credit_log"]=log[-120:]; save_data(db)
+    except Exception: pass
 def _probe_credit_stock(pid,name,temp):
     # Experimental probe-counting: called (in a thread) when a probe was detected pulled after cooking.
     # Adds one row (birds_per_row) of cooked chickens to available and logs it in the same credit trail
@@ -5586,7 +5633,7 @@ def set_name():
 @app.route("/set_settings",methods=["POST"])
 def set_settings():
     d=request.get_json(silent=True) or {}
-    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins","probe_pull_drop","probe_pull_rate"]:
+    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins","probe_pull_drop","probe_pull_rate","shadow_band","shadow_drop","shadow_climb","shadow_floor"]:
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
