@@ -743,17 +743,25 @@ def _shadow_cfg():
             "drop":float(settings.get("shadow_drop",8.0) or 8.0),
             "climb":float(settings.get("shadow_climb",6.0) or 6.0),
             "floor":float(settings.get("shadow_floor",45.0) or 45.0),
+            "rejump":float(settings.get("shadow_rejump",20.0) or 20.0),
             "timeout":600}
 def _shadow_step(sh,temp,now,cfg):
-    """TRIAL pull-detector (1 Sep). 'new'=probe moved into a new cooking bird (peaked, sharp STEP down,
-    then climbed); 'aside'=pulled & set down (dropped below floor); None otherwise. A rotisserie merely
-    turned DOWN drifts (small per-reading change) so it never trips the step, and a probe re-seated in the
-    SAME bird climbs straight back without a real drop -> neither false-counts. Shadow only; never touches
-    real stock until promoted."""
+    """TRIAL pull-detector. 'new'=probe moved into a new cooking bird (peaked, sharp STEP down, then
+    climbed); 'aside'=pulled & set down (dropped below floor); None otherwise. Turned-DOWN rotisserie
+    drifts so never trips the step. SAME-BIRD RE-SEAT GUARD (5 Sep): pulling the probe out and pushing it
+    back into the SAME (still-hot) bird made the reading JUMP from air (~30) straight to ~80 in one
+    reading, which re-armed a fresh cook and double-counted that one bird (owner saw trial 12.5 vs real
+    8.5). A real cook climbs a couple of degrees per reading; only a re-insert into an already-cooked bird
+    leaps >= rejump in one step. So a big up-jump into the cooked band marks the cycle 'reseated' and its
+    pull is NOT credited again. Shadow only; never touches real stock."""
     band=cfg["band"];drop=cfg["drop"];climb=cfg["climb"];floor=cfg["floor"];tmo=cfg["timeout"]
+    rejump=cfg.get("rejump",20.0)
     if not sh:
-        sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now}); return None
+        sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now,"reseated":False}); return None
     prev=sh.get("last"); sh["last"]=temp
+    rise=(temp-prev) if prev is not None else 0.0
+    # a one-reading leap up into the cooked band = probe pushed back into an already-hot bird, not a cook
+    if rise>=rejump and temp>=band: sh["reseated"]=True
     if temp>sh["peak"]: sh["peak"]=temp
     if sh["peak"]>=band: sh["cooked"]=True
     step=(prev-temp) if prev is not None else 0.0
@@ -762,10 +770,11 @@ def _shadow_step(sh,temp,now,cfg):
         if sh["cooked"] and step>=drop: sh["phase"]="dropped"; sh["dlow"]=temp; sh["since"]=now
     elif sh["phase"]=="dropped":
         sh["dlow"]=min(sh["dlow"],temp)
+        _reseated=sh.get("reseated")
         if temp<=floor:
-            res="aside"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now})
+            res=None if _reseated else "aside"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now,"reseated":False})
         elif temp>=sh["dlow"]+climb:
-            res="new"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now})
+            res=None if _reseated else "new"; sh.clear(); sh.update({"peak":temp,"cooked":False,"phase":"watch","dlow":None,"last":temp,"since":now,"reseated":False})
         elif (now-sh["since"])>tmo:
             sh["phase"]="watch"; sh["dlow"]=None
     return res
@@ -6537,6 +6546,16 @@ def api_print_labels():
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
 # ── LIVE ORDERS BOARD (KDS mirror) + catering/large-order popup ──
+@app.route("/api/shadow_reset",methods=["POST"])
+def api_shadow_reset():
+    # re-baseline the TRIAL counter to match the real 'available', and clear its log — used after a
+    # detector tweak so the shadow-vs-real comparison starts clean.
+    with rot_lock: _rot_reset_if_needed(); ROT_LIVE["shadow"]=round(ROT_LIVE.get("available",0.0),2)
+    _rot_save()
+    try:
+        with data_lock: db["shadow_credit_log"]=[]; save_data(db)
+    except Exception: pass
+    return jsonify({"ok":True,"shadow":ROT_LIVE.get("shadow"),"available":ROT_LIVE.get("available")})
 @app.route("/api/orders")
 def api_orders():
     return jsonify(ORDERS_LIVE)
