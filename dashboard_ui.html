@@ -2238,6 +2238,20 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div id="report-status" style="font-size:var(--fs-sm);min-height:16px;margin:8px 0;"></div>
     <div class="row"><button class="btn btn-primary" style="flex:1;" onclick="saveReportConfig()">Save</button><button class="btn" onclick="sendReportNow()">Send Now</button><button class="btn" onclick="viewReportPreview()">Preview</button></div>
     <div class="divider"></div>
+    <div class="section-title">Profit Reports — daily / weekly / monthly</div>
+    <div class="note-blue">Emails you a <b>profit breakdown</b>: total sales (card, cash, Uber Eats, DoorDash), cost of goods (supplier invoices), bills &amp; overheads, wages — and <b>what's left</b>. Computed on the server from Square, your payout emails and the Drive invoices; no Books page needs to be open. Sent from info@brunoschickenshop.com.au.</div>
+    <div class="grid-2">
+      <div><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="pl-daily-on" style="width:18px;height:18px;"> <span><b>Daily</b> — that day</span></label></div>
+      <div><div class="label">Send at</div><input class="input" id="pl-daily-time" placeholder="23:30"></div>
+      <div><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="pl-weekly-on" style="width:18px;height:18px;"> <span><b>Weekly</b> — last Mon–Sun</span></label></div>
+      <div class="row" style="gap:6px;"><select class="input" id="pl-weekly-day" style="flex:1;"><option value="mon">Monday</option><option value="tue">Tuesday</option><option value="wed">Wednesday</option><option value="thu">Thursday</option><option value="fri">Friday</option><option value="sat">Saturday</option><option value="sun">Sunday</option></select><input class="input" id="pl-weekly-time" placeholder="07:00" style="flex:1;"></div>
+      <div><label class="row" style="gap:8px;cursor:pointer;"><input type="checkbox" id="pl-monthly-on" style="width:18px;height:18px;"> <span><b>Monthly</b> — last month, on the 1st</span></label></div>
+      <div><div class="label">Send at</div><input class="input" id="pl-monthly-time" placeholder="07:00"></div>
+    </div>
+    <div class="form-row" style="margin-top:8px;"><div class="label">Send to (comma-separate for more than one; blank = the shop email)</div><input class="input" id="pl-to" placeholder="you@gmail.com"></div>
+    <div id="pl-status" style="font-size:var(--fs-sm);min-height:16px;margin:8px 0;color:var(--muted);"></div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;" onclick="plSave()">Save</button><button class="btn" onclick="plSend('daily')">Send today now</button><button class="btn" onclick="plSend('weekly')">Send last week now</button><button class="btn" onclick="plSend('monthly')">Send last month now</button><button class="btn" onclick="plPreview('daily')">Preview</button></div>
+    <div class="divider"></div>
     <div class="section-title">Cook Log (today)</div>
     <div id="cook-log-view" style="max-height:200px;overflow-y:auto;font-family:var(--font-mono);font-size:var(--fs-sm);line-height:1.7;color:var(--muted);">Loading…</div>
     <div class="row mt-8"><button class="btn" onclick="loadCookLog()">Refresh</button></div>
@@ -2444,14 +2458,15 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="section-title">Prep label printer</div>
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Where prep labels print. Switch back and forth any time &mdash; takes effect on the next label. <b>NIIMBOT</b> is the Bluetooth label printer; <b>LAN</b> is a networked thermal printer by IP.</div>
     <div class="grid-2">
-      <div><div class="label">Print labels on</div><select class="input" id="lp-mode" style="background:var(--surface2);"><option value="niimbot">NIIMBOT (Bluetooth)</option><option value="network">LAN thermal printer</option></select></div>
+      <div><div class="label">Print labels on</div><select class="input" id="lp-mode" style="background:var(--surface2);"><option value="niimbot">NIIMBOT (Bluetooth)</option><option value="network">LAN thermal printer</option><option value="brother">Brother QL-810W (WiFi, 62mm roll)</option></select></div>
       <div><div class="label">LAN printer language <span style="color:var(--muted);font-weight:400;">(garbled text = wrong one, try the other)</span></div><select class="input" id="lp-format" style="background:var(--surface2);"><option value="star">Star TSP100 (raster)</option><option value="escpos">Receipt printer (ESC/POS)</option><option value="tspl">Label printer (TSPL)</option></select></div>
     </div>
     <div class="grid-2 mt-8">
       <div><div class="label">LAN printer IP</div><input class="input" id="lp-ip" placeholder="192.168.0.66"></div>
       <div><div class="label">Port</div><input class="input" id="lp-port" type="number" placeholder="9100"></div>
+      <div><div class="label">Brother printer IP <span style="color:var(--muted);font-weight:400;">(on the shop WiFi — tap Find)</span></div><input class="input" id="lp-brother-ip" placeholder="192.168.0.xx"></div>
     </div>
-    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="lpSave()">Save</button><button class="btn" onclick="lpTest()">Test LAN print</button></div>
+    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="lpSave()">Save</button><button class="btn" onclick="lpTest()">Test LAN print</button><button class="btn" onclick="lpBrotherFind()">Find Brother</button><button class="btn" onclick="lpBrotherTest()">Test Brother</button></div>
     <div id="lp-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
     <div class="divider"></div>
     <div class="section-title">Customer waiting, nobody serving (camera + AI)</div>
@@ -3231,16 +3246,17 @@ function lpLoad(){
   fetch('/api/label_printer').then(r=>r.json()).then(d=>{
     const g=id=>document.getElementById(id); if(!g('lp-mode'))return;
     g('lp-mode').value=d.mode||'niimbot'; g('lp-format').value=d.format||'escpos';
-    g('lp-ip').value=d.ip||''; g('lp-port').value=d.port||9100;
+    g('lp-ip').value=d.ip||''; g('lp-port').value=d.port||9100; if(g('lp-brother-ip'))g('lp-brother-ip').value=d.brother_ip||'';
   }).catch(()=>{});
 }
 function lpSave(){
   const g=id=>document.getElementById(id),st=g('lp-status');
-  const body={mode:g('lp-mode').value,format:g('lp-format').value,ip:g('lp-ip').value.trim(),port:parseInt(g('lp-port').value)||9100};
+  const body={mode:g('lp-mode').value,format:g('lp-format').value,ip:g('lp-ip').value.trim(),port:parseInt(g('lp-port').value)||9100,brother_ip:(g('lp-brother-ip')?g('lp-brother-ip').value.trim():'')};
+  if(body.mode==='brother'&&!body.brother_ip){st.textContent='Enter the Brother printer IP first (tap Find Brother).';st.style.color='var(--amber)';return;}
   if(body.mode==='network'&&!body.ip){st.textContent='Enter the LAN printer IP first.';st.style.color='var(--amber)';return;}
   st.textContent='Saving…';st.style.color='var(--muted)';
   fetch('/api/label_printer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    .then(r=>r.json()).then(d=>{st.textContent=d.ok?('Saved ✓ — labels now print on '+(d.mode==='network'?('the LAN printer '+d.ip):'the NIIMBOT')):'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?('Saved ✓ — labels now print on '+(d.mode==='network'?('the LAN printer '+d.ip):d.mode==='brother'?('the Brother QL-810W at '+d.brother_ip):'the NIIMBOT')):'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';})
     .catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
 function lpTest(){
@@ -3252,6 +3268,26 @@ function lpTest(){
     body:JSON.stringify({ip:ip,port:parseInt(g('lp-port').value)||9100,format:g('lp-format').value})})
     .then(r=>r.json()).then(d=>{
       st.textContent=d.ok?'Sent ✓ — check the printer. Garbled text? Switch the language and test again.':(d.error||'Failed');
+      st.style.color=d.ok?'var(--green)':'var(--red)';
+    }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function lpBrotherFind(){
+  const g=id=>document.getElementById(id),st=g('lp-status');
+  st.textContent='Scanning the shop WiFi for a Brother printer (port 9100)…';st.style.color='var(--muted)';
+  fetch('/api/brother_find',{method:'POST'}).then(r=>r.json()).then(d=>{
+    const f=(d&&d.found)||[];
+    if(f.length){g('lp-brother-ip').value=f[0];st.textContent='Found '+f.length+' printer'+(f.length>1?'s':'')+': '+f.join(', ')+' — filled in the first. Save, then Test Brother.';st.style.color='var(--green)';}
+    else{st.textContent='No Brother printer answered. Is it powered on and joined to the shop WiFi (bruno011)? Print its network sheet (hold the cutter button) to read its IP.';st.style.color='var(--amber)';}
+  }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function lpBrotherTest(){
+  const g=id=>document.getElementById(id),st=g('lp-status');
+  const ip=(g('lp-brother-ip').value||'').trim();
+  if(!ip){st.textContent='Enter the Brother printer IP first (tap Find Brother).';st.style.color='var(--amber)';return;}
+  st.textContent='Printing a sample on the Brother at '+ip+'…';st.style.color='var(--muted)';
+  fetch('/api/brother_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip:ip})})
+    .then(r=>r.json()).then(d=>{
+      st.textContent=d.ok?('Sent ✓ — a test label should be coming out.'+(d.status?' Printer says: '+d.status:'')):(d.error||'Failed');
       st.style.color=d.ok?'var(--green)':'var(--red)';
     }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
@@ -7764,7 +7800,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();displayLoad();lpLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}
@@ -8311,6 +8347,10 @@ function clearNotes(){_askConfirm('Clear all shift notes?','',function(){appData
 
 // ── DAILY REPORT + COOK LOG ──
 function saveReportConfig(){appData.report_config={enabled:document.getElementById('rep-enabled').checked,time:document.getElementById('rep-time').value.trim()||'22:30',to:document.getElementById('rep-to').value.trim()};const s=document.getElementById('report-status');saveAppData().then(()=>{s.textContent='Saved.';s.style.color='var(--green)';});}
+function plLoad(){fetch('/api/pl_config').then(r=>r.json()).then(d=>{const g=id=>document.getElementById(id);if(!g('pl-daily-on'))return;g('pl-daily-on').checked=!!d.daily_enabled;g('pl-daily-time').value=d.daily_time||'23:30';g('pl-weekly-on').checked=!!d.weekly_enabled;g('pl-weekly-day').value=d.weekly_day||'mon';g('pl-weekly-time').value=d.weekly_time||'07:00';g('pl-monthly-on').checked=!!d.monthly_enabled;g('pl-monthly-time').value=d.monthly_time||'07:00';g('pl-to').value=d.to||'';const s=g('pl-status');if(d.last_note){s.textContent=d.last_note;s.style.color='var(--muted)';}}).catch(()=>{});}
+function plSave(){const g=id=>document.getElementById(id),s=g('pl-status');const body={daily_enabled:g('pl-daily-on').checked,daily_time:g('pl-daily-time').value.trim()||'23:30',weekly_enabled:g('pl-weekly-on').checked,weekly_day:g('pl-weekly-day').value,weekly_time:g('pl-weekly-time').value.trim()||'07:00',monthly_enabled:g('pl-monthly-on').checked,monthly_time:g('pl-monthly-time').value.trim()||'07:00',to:g('pl-to').value.trim()};s.textContent='Saving…';s.style.color='var(--muted)';fetch('/api/pl_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Saved ✓':'Failed';s.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{s.textContent='Could not reach the server.';s.style.color='var(--red)';});}
+function plSend(kind){const g=id=>document.getElementById(id),s=g('pl-status');s.textContent='Building the '+kind+' profit report and emailing it (can take a minute — it reads Square, your payout emails and the invoices)…';s.style.color='var(--muted)';fetch('/api/pl_send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:kind,to:g('pl-to').value.trim()})}).then(r=>r.json()).then(d=>{s.textContent=d.ok?('Sent ✓ to '+d.to+(d.summary?' — '+d.summary:'')):('Error: '+(d.error||'unknown'));s.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{s.textContent='Error contacting server.';s.style.color='var(--red)';});}
+function plPreview(kind){window.open('/api/pl_send?kind='+encodeURIComponent(kind)+'&preview=1','_blank');}
 function sendReportNow(){const s=document.getElementById('report-status');s.textContent='Sending…';s.style.color='var(--muted)';fetch('/api/send_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:document.getElementById('rep-to').value.trim()})}).then(r=>r.json()).then(d=>{s.textContent=d.ok?'Report sent!':'Error: '+(d.error||'unknown');s.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{s.textContent='Error contacting server.';s.style.color='var(--red)';});}
 function viewReportPreview(){window.open('/api/daily_report','_blank');}
 let _salesFeedTimer=null;

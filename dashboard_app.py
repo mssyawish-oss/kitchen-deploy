@@ -3253,6 +3253,526 @@ def api_rotcam_prompts():
         cfg["prompts"]=pr; db["rotcam_config"]=cfg; save_data(db)
     return jsonify({"ok":True,"custom":bool(text and text.strip())})
 
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# PROFIT REPORTS — daily / weekly / monthly P&L computed ON THE SERVER and emailed (9 Sep).
+# A port of the Weekly Books page's sync + totals (syncWeek / regexCogs / parseInvDate /
+# renderTotals) so the numbers exist with no browser open. Sources: Square payments (card net of
+# fees + cash), Square orders (Uber/DoorDash gross → 70% estimate), the payout emails in Gmail
+# (real Uber/DoorDash net, weekly), the Drive invoices folder (cost of goods, cached per file),
+# Square timecards (wages + 12% super), books_fin.fixed_oh (weekly overheads, prorated) and
+# books_fin.mark_weekly (owner draw). profit = sales - cogs - wages - super - owner - overheads.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+_PL_UBER_Q='from:uber.com subject:summary newer_than:150d'
+_PL_UBER_AMT=re.compile(r'(?:Total Payment|Net Payout)[\s\S]{0,600}?\$([0-9,]+\.[0-9]{2})',re.I)
+_PL_DD_Q='(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"'
+_PL_BRAND=re.compile(r'bruno',re.I)
+_PL_BILLS_FOLDER='1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'
+_PL_JUNK=re.compile(r'statement|strateg|resume|parking|certificate|balance|direct debit|\bddr\b|credit application|annual|signing|\bica\b|quote|booking|cashflow|my-receipt',re.I)
+_PL_BILLCACHE_VER='s1'
+_PL_MON={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
+_PL_DEFAULTS={"daily_enabled":True,"daily_time":"23:30","weekly_enabled":True,"weekly_day":"mon","weekly_time":"07:00",
+              "monthly_enabled":True,"monthly_time":"07:00","to":""}
+_pl_lock=threading.Lock()
+
+def _pl_local_midnight(d):
+    # date -> aware datetime at local 00:00. The server clock is Melbourne local, and .astimezone() on a
+    # naive value attaches the OS offset for THAT date, so daylight saving is handled (no hard-coded +10).
+    return datetime(d.year,d.month,d.day).astimezone()
+def _pl_utc_z(a): return a.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+def _pl_parse_iso(sv):
+    sv=str(sv or '').strip()
+    if sv.endswith('Z'): sv=sv[:-1]+'+00:00'
+    try: return datetime.fromisoformat(sv)
+    except Exception: return None
+def _pl_hhmm(v,dflt):
+    m=re.match(r'^\s*(\d{1,2}):(\d{2})\s*$',str(v or ''))
+    if not m: return dflt
+    h,mi=int(m.group(1)),int(m.group(2))
+    return '%02d:%02d'%(h,mi) if 0<=h<24 and 0<=mi<60 else dflt
+
+def _pl_square_sales(d0,d1):
+    # Card = COMPLETED CARD payments net of refunds, processing fees and app fees (what hits the bank);
+    # gift cards excluded; EXTERNAL (delivery platforms) excluded. Cash separate. Mirrors square_week_test.
+    hdr=_sq_headers()
+    if not hdr: return {"ok":False,"error":"Square not configured"}
+    loc=((db.get("square_config") or {}).get("location_id") or "").strip()
+    begin=_pl_utc_z(_pl_local_midnight(d0)); end=_pl_utc_z(_pl_local_midnight(d1+timedelta(days=1)))
+    dep=cash=0.0; ncard=ncash=0; cur=None; pages=0
+    while True:
+        params={"begin_time":begin,"end_time":end,"limit":100,"sort_order":"ASC"}
+        if loc: params["location_id"]=loc
+        if cur: params["cursor"]=cur
+        req=urllib.request.Request(SQUARE_BASE+"/v2/payments?"+urllib.parse.urlencode(params),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        for p in data.get("payments") or []:
+            amt=((p.get("amount_money") or {}).get("amount") or 0); rf=((p.get("refunded_money") or {}).get("amount") or 0)
+            st=p.get("source_type")
+            if st=="CASH": cash+=(amt-rf)/100.0; ncash+=1; continue
+            if st!="CARD" or p.get("status")!="COMPLETED": continue
+            if (((p.get("card_details") or {}).get("card") or {}).get("card_brand"))=="SQUARE_GIFT_CARD": continue
+            fees=sum((((f or {}).get("amount_money") or {}).get("amount") or 0) for f in (p.get("processing_fee") or []))
+            appf=((p.get("app_fee_money") or {}).get("amount") or 0)
+            dep+=(amt-rf-fees-appf)/100.0; ncard+=1
+        cur=data.get("cursor"); pages+=1
+        if not cur or pages>=60: break
+    return {"ok":True,"card":round(dep,2),"cash":round(cash,2),"card_count":ncard,"cash_count":ncash}
+
+def _pl_delivery_gross(d0,d1):
+    # Uber Eats / DoorDash GROSS from Square orders (source.name). Mirrors delivery_gross.
+    hdr=_sq_headers(); loc=((db.get("square_config") or {}).get("location_id") or "").strip()
+    if not hdr or not loc: return {"ok":False,"error":"Square token/location not set","uber":0.0,"doordash":0.0,"uber_orders":0,"doordash_orders":0}
+    start=_pl_utc_z(_pl_local_midnight(d0)); end=_pl_utc_z(_pl_local_midnight(d1+timedelta(days=1)))
+    out={"ok":True,"uber":0.0,"doordash":0.0,"uber_orders":0,"doordash_orders":0}; cur=None
+    for _ in range(20):
+        body={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":start,"end_at":end}},
+              "state_filter":{"states":["OPEN","COMPLETED"]}}},"limit":500}
+        if cur: body["cursor"]=cur
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(body).encode(),headers=hdr,method="POST")
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        for od in data.get("orders") or []:
+            src=(((od.get("source") or {}).get("name")) or "").lower(); amt=((od.get("total_money") or {}).get("amount") or 0)/100.0
+            if "uber" in src: out["uber"]+=amt; out["uber_orders"]+=1
+            elif "door" in src: out["doordash"]+=amt; out["doordash_orders"]+=1
+        cur=data.get("cursor")
+        if not cur: break
+    out["uber"]=round(out["uber"],2); out["doordash"]=round(out["doordash"],2)
+    return out
+
+def _pl_week_payouts(mon):
+    # REAL net payouts for the Mon-Sun week starting `mon`, from the payout emails (arrive Mon/Tue after).
+    # None when no matching email yet. Same subject/body rules as the Books page.
+    sun=mon+timedelta(days=6); res={"uber":None,"doordash":None}
+    M3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    us=lambda d:"%d/%d/%s"%(d.month,d.day,str(d.year)[2:])
+    un=lambda d,pad:"%s %s, %d"%(M3[d.month-1],("%02d"%d.day) if pad else str(d.day),d.year)
+    tags=[us(mon)+" - "+us(sun),un(mon,True)+" - "+un(sun,True),un(mon,False)+" - "+un(sun,False)]
+    try:
+        sr=_gmail_search({"query":_PL_UBER_Q,"pageSize":25}); tot=0.0; found=0
+        for th in sr.get("threads") or []:
+            subj=((th.get("messages") or [{}])[0].get("subject") or "")
+            if not _PL_BRAND.search(subj) or not any(t in subj for t in tags): continue
+            t=_gmail_thread({"threadId":th.get("id")})
+            body=" ".join((m.get("htmlBody") or m.get("plaintext_body") or "") for m in (t.get("messages") or []))
+            m=_PL_UBER_AMT.search(body)
+            if m: tot+=float(m.group(1).replace(",","")); found+=1
+        if found: res["uber"]=round(tot,2)
+    except Exception as e: res["uber_err"]=str(e)[:120]
+    try:
+        ddstr="%02d/%02d/%d"%(mon.month,mon.day,mon.year)
+        ds=_gmail_search({"query":_PL_DD_Q,"pageSize":20}); by={}
+        for th in ds.get("threads") or []:
+            subj0=((th.get("messages") or [{}])[0].get("subject") or "")
+            if ddstr not in subj0 or not _PL_BRAND.search(subj0): continue
+            t=_gmail_thread({"threadId":th.get("id")}); msgs=t.get("messages") or []
+            subj=(msgs[0].get("subject") if msgs else subj0) or subj0
+            mb=re.search(r'payment (?:to|for) (.+?)\s*\(?\d{2}/\d{2}/\d{4}',subj,re.I); brand=(mb.group(1) if mb else subj).strip()
+            body=" ".join((m.get("htmlBody") or m.get("plaintext_body") or "") for m in msgs)
+            mm=re.search(r'payment of \$([0-9,]+\.[0-9]{2})',body,re.I)
+            if mm: by[brand]=float(mm.group(1).replace(",",""))
+        if by: res["doordash"]=round(sum(by.values()),2)
+    except Exception as e: res["dd_err"]=str(e)[:120]
+    return res
+
+def _pl_staff_names(hdr):
+    names={}
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/team-members/search",data=json.dumps({"query":{"filter":{"status":"ACTIVE"}},"limit":200}).encode(),headers=hdr,method="POST")
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        for mb in data.get("team_members") or []:
+            names[mb.get("id")]=((mb.get("given_name") or "")+" "+(mb.get("family_name") or "")).strip() or mb.get("id")
+    except Exception: pass
+    return names
+
+def _pl_wages(d0,d1):
+    # Square timecards for the local dates d0..d1: (hours - unpaid breaks) x hourly rate, per staff member.
+    # Rate: the timecard's own wage -> team-member-wages map -> the dashboard staff list. Super = 12%.
+    hdr=_sq_headers()
+    if not hdr: return {"ok":False,"error":"Square not configured","wages":0.0,"super":0.0,"rows":[],"open_shifts":0}
+    lo=_pl_local_midnight(d0); hi=_pl_local_midnight(d1+timedelta(days=1))
+    by={}; hrs={}; seen=set(); cur=None; pages=0; wmap=None; open_shifts=0
+    while True:
+        req={"query":{"filter":{"workday":{"date_range":{"start_date":d0.isoformat(),"end_date":d1.isoformat()},
+             "match_timecards_by":"START_AT","default_timezone":"Australia/Melbourne"}}},"limit":200}
+        if cur: req["cursor"]=cur
+        rq=urllib.request.Request(SQUARE_BASE+"/v2/labor/timecards/search",data=json.dumps(req).encode(),headers=hdr,method="POST")
+        with urllib.request.urlopen(rq,timeout=25,context=SSL_CTX) as rr: data=json.loads(rr.read().decode())
+        for tc in data.get("timecards") or []:
+            tid=tc.get("id")
+            if tid in seen: continue
+            seen.add(tid)
+            sa=tc.get("start_at"); ea=tc.get("end_at")
+            if sa and not ea: open_shifts+=1; continue
+            sd=_pl_parse_iso(sa); ed=_pl_parse_iso(ea)
+            if not sd or not ed or sd<lo or sd>=hi: continue
+            secs=(ed-sd).total_seconds()
+            for b in tc.get("breaks") or []:
+                if b.get("is_paid") is False and b.get("start_at") and b.get("end_at"):
+                    bs=_pl_parse_iso(b["start_at"]); be=_pl_parse_iso(b["end_at"])
+                    if bs and be: secs-=(be-bs).total_seconds()
+            rate=(((tc.get("wage") or {}).get("hourly_rate") or {}).get("amount") or 0)/100.0
+            mid=tc.get("team_member_id") or "?"
+            if rate<=0:
+                if wmap is None:
+                    try: wmap=_sq_team_wage_map(hdr) or {}
+                    except Exception: wmap={}
+                try: rate=float(wmap.get(mid) or 0)
+                except Exception: rate=0.0
+            if rate<=0:
+                for st_ in (db.get("staff") or []):
+                    if mid in (st_.get("square_id"),st_.get("sq_id"),st_.get("team_member_id")):
+                        try: rate=float(st_.get("hourly_rate") or 0)
+                        except Exception: rate=0.0
+                        break
+            if secs>0 and rate>0:
+                by[mid]=by.get(mid,0.0)+secs/3600.0*rate; hrs[mid]=hrs.get(mid,0.0)+secs/3600.0
+        cur=data.get("cursor"); pages+=1
+        if not cur or pages>=40: break
+    names=_pl_staff_names(hdr) if by else {}
+    rows=sorted([{"name":names.get(k) or str(k)[:10],"hours":round(hrs.get(k,0),2),"amt":round(v,2)} for k,v in by.items()],key=lambda x:-x["amt"])
+    wages=round(sum(by.values()),2)
+    return {"ok":True,"wages":wages,"super":round(wages*0.12,2),"rows":rows,"open_shifts":open_shifts}
+
+def _pl_inv_date(T):
+    # Best-labelled date in the invoice text (scores 'Invoice Date' up, 'Due Date' down) — port of parseInvDate.
+    def mk(d,mo,y):
+        d=int(d);mo=int(mo);y=int(y)
+        if y<100: y+=2000
+        return "%04d-%02d-%02d"%(y,mo,d) if (1<=mo<=12 and 1<=d<=31) else ""
+    def to_iso(x):
+        m=re.match(r'(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})',x)
+        if m: return mk(m.group(1),m.group(2),m.group(3))
+        m=re.match(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(\d{4})',x,re.I)
+        if m: return mk(m.group(1),_PL_MON[m.group(2).lower()[:3]],m.group(3))
+        return ""
+    best=("",-99)
+    for m in re.finditer(r'(\d{1,2}[/.]\d{1,2}[/.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})',T or "",re.I):
+        iso=to_iso(m.group(1))
+        if not iso: continue
+        before=re.sub(r'\s+',' ',(T[max(0,m.start()-40):m.start()]).lower())
+        sc=0
+        if re.search(r'(invoice|document|issued?|tax invoice)\s*date\s*[:\-]?\s*$',before): sc+=5
+        elif re.search(r'date of issue\s*[:\-]?\s*$',before): sc+=5
+        elif re.search(r'(^|[^a-z])date\s*[:\-]\s*$',before): sc+=2
+        if re.search(r'due\s*(date)?\s*[:\-]?\s*$',before): sc-=6
+        if re.search(r'payment advice|amount due|remittance',before): sc-=3
+        if sc>best[1]: best=(iso,sc)
+    return best[0]
+
+def _pl_regex_cogs(text,title):
+    # Deterministic supplier invoice parse — port of regexCogs (known vendor + real total, traps avoided).
+    T=(text or "")+" "+(title or "")
+    if re.search(r'customer statement|account summary|balance brought forward|opening balance|\baged\b|remittance advice|credit application|direct debit request|credit note|cradj',T,re.I): return None
+    vendor=None
+    for pat,name in ((r'baiada','Baiada Poultry'),(r'fruit talk|fruittalk','Fruit Talk produce'),(r'fresho','Fresho produce'),
+                     (r'asahi','Asahi drinks'),(r'united food|unitedfoodservice|zoghaib','United Foodservice'),
+                     (r'g\s*&\s*w|gnwpackaging','G & W Packaging'),(r'cfm','CFM cooking oil'),(r'fiesta food','Fiesta Foods'),
+                     (r'feel good foods','Feel Good Foods'),(r'melbourne chilli|hot honey','Melbourne Chilli'),(r'russel',"Russel's Poultry")):
+        if re.search(pat,T,re.I): vendor=name; break
+    if not vendor: return None
+    amt=0.0
+    um=re.search(r'Total\s+AUD\s+Incl\.?\s*GST\s*([\d,]+\.\d{2})\s*([\d,]+\.\d{2})\s*([\d,]+\.\d{2})',T,re.I)
+    if um: amt=float(um.group(3).replace(",",""))
+    rm=re.search(r'Invoice\s+total\s*([\d,]+\.\d{2})',T,re.I)
+    if rm: amt=float(rm.group(1).replace(",",""))
+    am=re.search(r'AUD\s+Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})',T,re.I)
+    if am: amt=float(am.group(5).replace(",",""))
+    if not amt>0:
+        for pat in (r'TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})',r'Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})',
+                    r'Total\s*incl\.?\s*GST\s*\$?\s*([\d,]+\.\d{2})',r'Invoice Total\s*\$?\s*([\d,]+\.\d{2})',r'Total Amount Due\s*\$?\s*([\d,]+\.\d{2})',
+                    r'Amount Due\s*(?:AUD)?\s*\$?\s*([\d,]+\.\d{2})',r'Balance Due\s*\$?\s*([\d,]+\.\d{2})',r'TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})',
+                    r'TOTAL\s*AUD\s*\$?\s*([\d,]+\.\d{2})'):
+            m=re.search(pat,T,re.I)
+            if m: amt=float(m.group(1).replace(",","")); break
+    if not amt>0: return None
+    im=re.search(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6}|72\d{4})(?![0-9])',T)
+    return {"type":"cogs","vendor":vendor,"amt":round(amt,2),"invoiceNo":(im.group(1) if im else ""),"invoiceDate":_pl_inv_date(text or "")}
+
+def _pl_scan_bills(max_seconds=420):
+    # Every PDF in the Drive invoices folder -> verdict cached by fileId in db['books_billcache'] (a file's
+    # content never changes, so each file is read ONCE; skips are cached too, read errors are not).
+    cache=dict(db.get("books_billcache") or {})
+    if cache.get("ver")!=_PL_BILLCACHE_VER: cache={"ver":_PL_BILLCACHE_VER,"v":{}}
+    verdicts=dict(cache.get("v") or {})
+    files=[]; tok=None
+    for _ in range(15):
+        a={"query":"parentId = '%s'"%_PL_BILLS_FOLDER,"pageSize":100}
+        if tok: a["pageToken"]=tok
+        r=_drive_search(a); files+=(r.get("files") or []); tok=r.get("nextPageToken")
+        if not tok: break
+    pdfs=[f for f in files if "pdf" in (f.get("mimeType") or "").lower() or re.search(r'\.pdf$',f.get("title") or "",re.I)]
+    todo=[f for f in pdfs if f.get("id") and f.get("id") not in verdicts and not _PL_JUNK.search(f.get("title") or "")]
+    stats={"files":len(files),"pdfs":len(pdfs),"cached":len(pdfs)-len(todo),"read":0,"unreadable":0,"errors":0,"skipped_time":0}
+    t0=time.time(); lk=threading.Lock()
+    def work(f):
+        if time.time()-t0>max_seconds:
+            with lk: stats["skipped_time"]+=1
+            return
+        try:
+            txt=(_drive_read({"fileId":f["id"]}) or {}).get("fileContent") or ""
+            v=_pl_regex_cogs(txt,f.get("title") or "")
+            if not txt.strip(): v={"type":"unreadable"}
+            with lk:
+                verdicts[f["id"]]=v or {"type":"skip"}; stats["read"]+=1
+                if v and v.get("type")=="unreadable": stats["unreadable"]+=1
+        except Exception:
+            with lk: stats["errors"]+=1
+    if todo:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex: list(ex.map(work,todo))
+        cache["v"]=verdicts
+        try:
+            with data_lock: db["books_billcache"]=cache; save_data(db)
+        except Exception: pass
+    booked=[]
+    for f in pdfs:
+        v=verdicts.get(f.get("id"))
+        if not v or v.get("type")!="cogs": continue
+        booked.append({"date":(v.get("invoiceDate") or (f.get("createdTime") or "")[:10]),"vendor":v["vendor"],"amt":float(v["amt"]),
+                       "inv":v.get("invoiceNo",""),"title":f.get("title",""),"dated":bool(v.get("invoiceDate"))})
+    stats["booked"]=len(booked)
+    return booked,stats
+
+def _pl_compute(kind,ref=None):
+    # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
+    today=datetime.now().date()
+    if kind=="weekly":
+        mon=ref or (today-timedelta(days=today.weekday()+7)); d0=mon; d1=mon+timedelta(days=6)
+        label="Week %s – %s"%(d0.strftime("%a %d %b"),d1.strftime("%a %d %b %Y"))
+    elif kind=="monthly":
+        first=ref or (today.replace(day=1)-timedelta(days=1)).replace(day=1); d0=first
+        d1=(first.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)
+        label=d0.strftime("%B %Y")
+    else:
+        kind="daily"; d0=d1=(ref or today); label=d0.strftime("%A %d %B %Y")
+        if d0==today: label+=" (so far, to %s)"%datetime.now().strftime("%H:%M")
+    days=(d1-d0).days+1
+    R={"kind":kind,"label":label,"start":d0.isoformat(),"end":d1.isoformat(),"days":days,
+       "generated":datetime.now().strftime("%a %d %b %Y %H:%M"),"notes":[],"errors":[]}
+    # ── SALES ──
+    try: sq=_pl_square_sales(d0,d1)
+    except Exception as e: sq={"ok":False,"error":str(e)[:150]}
+    if not sq.get("ok"): R["errors"].append("Square sales: "+str(sq.get("error")))
+    try: dg=_pl_delivery_gross(d0,d1)
+    except Exception as e: dg={"ok":False,"error":str(e)[:150],"uber":0.0,"doordash":0.0,"uber_orders":0,"doordash_orders":0}
+    if not dg.get("ok"): R["errors"].append("Delivery orders: "+str(dg.get("error")))
+    uber_est=round(dg["uber"]*0.70,2); dd_est=round(dg["doordash"]*0.70,2)
+    uber_real=dd_real=None
+    if kind=="weekly":
+        po=_pl_week_payouts(d0); uber_real=po.get("uber"); dd_real=po.get("doordash")
+        for k in ("uber_err","dd_err"):
+            if po.get(k): R["errors"].append("Payout emails: "+po[k])
+    elif kind=="monthly":
+        mons=[]; m=d0-timedelta(days=d0.weekday())
+        while m<=d1:
+            if m>=d0 and m+timedelta(days=6)<=d1: mons.append(m)
+            m+=timedelta(days=7)
+        ru=rd=0.0; fu=fd=0
+        for m in mons:
+            po=_pl_week_payouts(m)
+            if po.get("uber") is not None: ru+=po["uber"]; fu+=1
+            if po.get("doordash") is not None: rd+=po["doordash"]; fd+=1
+        if mons and fu==len(mons): uber_real=round(ru,2)
+        if mons and fd==len(mons): dd_real=round(rd,2)
+        R["notes"].append("Delivery payouts: real Uber emails for %d of %d full weeks, DoorDash %d of %d — weeks without an email use the 70%% estimate."%(fu,len(mons),fd,len(mons)))
+    else:
+        R["notes"].append("Uber Eats / DoorDash are shown as 70% of gross (their payout emails are weekly, so a daily real figure doesn't exist).")
+    uber=uber_real if uber_real is not None else uber_est; dd=dd_real if dd_real is not None else dd_est
+    R["sales"]={"card":sq.get("card",0.0),"card_count":sq.get("card_count",0),"cash":sq.get("cash",0.0),"cash_count":sq.get("cash_count",0),
+                "uber":uber,"uber_real":uber_real is not None,"uber_gross":dg["uber"],"uber_orders":dg["uber_orders"],
+                "doordash":dd,"doordash_real":dd_real is not None,"doordash_gross":dg["doordash"],"doordash_orders":dg["doordash_orders"]}
+    R["sales"]["total"]=round(R["sales"]["card"]+R["sales"]["cash"]+uber+dd,2)
+    # ── COST OF GOODS (invoices dated in the period) ──
+    try:
+        booked,bst=_pl_scan_bills()
+        inp=[b for b in booked if R["start"]<=b["date"]<=R["end"]]
+        byv={}
+        for b in inp: byv[b["vendor"]]=byv.get(b["vendor"],0.0)+b["amt"]
+        R["cogs"]={"total":round(sum(byv.values()),2),"rows":sorted([{"vendor":k,"amt":round(v,2)} for k,v in byv.items()],key=lambda x:-x["amt"]),
+                   "count":len(inp),"scan":bst}
+        if bst.get("unreadable"): R["notes"].append("%d invoice PDF(s) in Drive have no readable text (scanned photos) and can't be totalled."%bst["unreadable"])
+        if bst.get("skipped_time"): R["notes"].append("Invoice scan ran out of time — %d new file(s) will be read next run."%bst["skipped_time"])
+        if kind=="daily": R["notes"].append("Cost of goods = supplier invoices DATED this day (lumpy day to day — judge it over the week).")
+    except Exception as e:
+        R["cogs"]={"total":0.0,"rows":[],"count":0,"scan":{}}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
+    # ── LABOUR ──
+    try: w=_pl_wages(d0,d1)
+    except Exception as e: w={"ok":False,"error":str(e)[:150],"wages":0.0,"super":0.0,"rows":[],"open_shifts":0}
+    if not w.get("ok"): R["errors"].append("Wages (Square timecards): "+str(w.get("error")))
+    mark_w=float(((db.get("books_fin") or {}).get("mark_weekly") or 0) or 0); mark=round(mark_w*days/7.0,2)
+    R["labour"]={"wages":w.get("wages",0.0),"super":w.get("super",0.0),"owner":mark,"rows":w.get("rows",[]),"open_shifts":w.get("open_shifts",0)}
+    R["labour"]["total"]=round(R["labour"]["wages"]+R["labour"]["super"]+mark,2)
+    if w.get("open_shifts"): R["notes"].append("%d shift(s) still clocked in (not counted until clocked out)."%w["open_shifts"])
+    # ── OVERHEADS (weekly figures, prorated by days) ──
+    fo=((db.get("books_fin") or {}).get("fixed_oh") or [])
+    rows=[]
+    for it in fo:
+        try: rows.append({"name":str(it[0]),"amt":round(float(it[1])*days/7.0,2)})
+        except Exception: pass
+    R["overheads"]={"total":round(sum(r["amt"] for r in rows),2),"rows":rows}
+    # ── PROFIT ──
+    S=R["sales"]["total"]; C=R["cogs"]["total"]; L=R["labour"]["total"]; O=R["overheads"]["total"]
+    R["profit"]={"gross":round(S-C,2),"net":round(S-C-L-O,2),"margin":(round((S-C-L-O)/S*100,1) if S else 0.0)}
+    return R
+
+def _pl_money(v):
+    try: v=float(v)
+    except Exception: v=0.0
+    return ("-$%s" if v<0 else "$%s")%("{:,.2f}".format(abs(v)))
+def _pl_pct(v,S):
+    try: return "%.0f%%"%(float(v)/float(S)*100) if S else ""
+    except Exception: return ""
+
+def _pl_html(R):
+    S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]; tot=S["total"]
+    esc=lambda x:str(x).replace("&","&amp;").replace("<","&lt;")
+    row=lambda a,b,c="",bold=False,ind=False: ('<tr><td style="padding:5px 8px;%s%s">%s</td><td style="padding:5px 8px;text-align:right;white-space:nowrap;%s">%s</td><td style="padding:5px 8px;text-align:right;color:#888;white-space:nowrap;">%s</td></tr>'
+        %("font-weight:700;" if bold else "","padding-left:22px;color:#555;" if ind else "",esc(a),"font-weight:700;" if bold else "",esc(b),esc(c)))
+    head=lambda t:'<tr><td colspan="3" style="padding:10px 8px 4px;font-size:12px;letter-spacing:.08em;color:#b45309;font-weight:800;border-bottom:2px solid #f59e0b;">%s</td></tr>'%esc(t)
+    netcol="#15803d" if P["net"]>=0 else "#b91c1c"
+    H=['<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;margin:0 auto;color:#111;">',
+       '<div style="background:#f59e0b;color:#111;padding:16px 18px;border-radius:10px 10px 0 0;"><div style="font-size:13px;letter-spacing:.1em;font-weight:800;">BRUNO\'S CHICKEN SHOP · %s PROFIT REPORT</div><div style="font-size:20px;font-weight:800;margin-top:4px;">%s</div></div>'%(R["kind"].upper(),esc(R["label"])),
+       '<div style="border:1px solid #e5e7eb;border-top:0;padding:14px 18px;border-radius:0 0 10px 10px;background:#fff;">',
+       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">',
+       '<div style="flex:1;min-width:140px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:11px;color:#92400e;letter-spacing:.08em;">TOTAL SALES</div><div style="font-size:22px;font-weight:800;">%s</div></div>'%_pl_money(tot),
+       '<div style="flex:1;min-width:140px;background:%s;border:1px solid %s;border-radius:8px;padding:10px;"><div style="font-size:11px;color:%s;letter-spacing:.08em;">NET PROFIT (what\'s left)</div><div style="font-size:22px;font-weight:800;color:%s;">%s</div><div style="font-size:11px;color:#666;">%s margin</div></div>'%("#f0fdf4" if P["net"]>=0 else "#fef2f2","#bbf7d0" if P["net"]>=0 else "#fecaca",netcol,netcol,_pl_money(P["net"]),("%.1f%%"%P["margin"])),
+       '</div><table style="width:100%;border-collapse:collapse;font-size:14px;">',
+       head("SALES"),
+       row("Card (net in bank, after Square fees)",_pl_money(S["card"]),"%d txns"%S["card_count"],ind=True),
+       row("Cash",_pl_money(S["cash"]),"%d txns"%S["cash_count"],ind=True),
+       row("Uber Eats "+("(real payout)" if S["uber_real"] else "(est. 70%% of $%s gross)"%("{:,.0f}".format(S["uber_gross"]))),_pl_money(S["uber"]),"%d orders"%S["uber_orders"],ind=True),
+       row("DoorDash "+("(real payout)" if S["doordash_real"] else "(est. 70%% of $%s gross)"%("{:,.0f}".format(S["doordash_gross"]))),_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True),
+       row("Total sales",_pl_money(tot),"",bold=True),
+       head("COST OF GOODS (supplier invoices)")]
+    for r in C["rows"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),_pl_pct(r["amt"],tot),ind=True))
+    if not C["rows"]: H.append(row("No invoices dated in this period","$0.00","",ind=True))
+    H.append(row("Total cost of goods",_pl_money(C["total"]),_pl_pct(C["total"],tot),bold=True))
+    H.append(head("WAGES & LABOUR"))
+    for r in L["rows"][:14]: H.append(row(r["name"],_pl_money(r["amt"]),"%.1f h"%r["hours"],ind=True))
+    H.append(row("Staff wages",_pl_money(L["wages"]),_pl_pct(L["wages"],tot),ind=True))
+    H.append(row("Super (12%)",_pl_money(L["super"]),"",ind=True))
+    if L["owner"]: H.append(row("Owner drawings (Mark)",_pl_money(L["owner"]),"",ind=True))
+    H.append(row("Total labour",_pl_money(L["total"]),_pl_pct(L["total"],tot),bold=True))
+    H.append(head("BILLS & OVERHEADS (prorated %d day%s)"%(R["days"],"" if R["days"]==1 else "s")))
+    for r in O["rows"]: H.append(row(r["name"],_pl_money(r["amt"]),"",ind=True))
+    H.append(row("Total bills & overheads",_pl_money(O["total"]),_pl_pct(O["total"],tot),bold=True))
+    H.append(head("PROFIT"))
+    H.append(row("Gross profit (sales − cost of goods)",_pl_money(P["gross"]),_pl_pct(P["gross"],tot)))
+    H.append('<tr><td style="padding:8px;font-weight:800;font-size:16px;">NET PROFIT — what\'s left</td><td style="padding:8px;text-align:right;font-weight:800;font-size:16px;color:%s;">%s</td><td style="padding:8px;text-align:right;color:#888;">%.1f%%</td></tr>'%(netcol,_pl_money(P["net"]),P["margin"]))
+    H.append('</table>')
+    if R["notes"] or R["errors"]:
+        H.append('<div style="margin-top:12px;font-size:12px;color:#555;line-height:1.5;">')
+        for n in R["errors"]: H.append('<div style="color:#b91c1c;">⚠ %s</div>'%esc(n))
+        for n in R["notes"]: H.append('<div>· %s</div>'%esc(n))
+        H.append('</div>')
+    sc=(C.get("scan") or {})
+    if sc: H.append('<div style="margin-top:8px;font-size:11px;color:#999;">Invoice scan: %s PDFs in Drive, %s totalled, %s new read this run%s. Generated %s.</div>'%(sc.get("pdfs",0),sc.get("booked",0),sc.get("read",0),(", %d unreadable"%sc["unreadable"]) if sc.get("unreadable") else "",esc(R["generated"])))
+    H.append('</div></div>')
+    return "".join(H)
+
+def _pl_text(R):
+    S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]
+    Ls=["BRUNO'S — %s PROFIT REPORT — %s"%(R["kind"].upper(),R["label"]),"",
+        "SALES            %s"%_pl_money(S["total"]),"  card %s · cash %s · uber %s%s · doordash %s%s"%(_pl_money(S["card"]),_pl_money(S["cash"]),_pl_money(S["uber"])," (real)" if S["uber_real"] else " (est)",_pl_money(S["doordash"])," (real)" if S["doordash_real"] else " (est)"),
+        "COST OF GOODS    %s  (%d invoices)"%(_pl_money(C["total"]),C["count"]),
+        "LABOUR           %s  (wages %s + super %s + owner %s)"%(_pl_money(L["total"]),_pl_money(L["wages"]),_pl_money(L["super"]),_pl_money(L["owner"])),
+        "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
+        "GROSS PROFIT     %s"%_pl_money(P["gross"]),
+        "NET PROFIT       %s  (%.1f%% margin)"%(_pl_money(P["net"]),P["margin"]),""]
+    for n in R["errors"]: Ls.append("WARNING: "+n)
+    for n in R["notes"]: Ls.append("- "+n)
+    return "\n".join(Ls)
+
+def send_email_html(to,subject,html,text=""):
+    from email.mime.multipart import MIMEMultipart
+    cfg=db.get("email_config",{}) or {}
+    if not cfg.get("smtp_user"): raise Exception("Email not configured")
+    sender=cfg.get("from_addr") or cfg["smtp_user"]
+    tos=[t for t in re.split(r'[,;\s]+',(to or "")) if t] or [cfg["smtp_user"]]
+    msg=MIMEMultipart("alternative"); msg["Subject"]=subject; msg["From"]=sender; msg["To"]=", ".join(tos)
+    msg.attach(MIMEText(text or re.sub(r'<[^>]+>',' ',html),"plain","utf-8")); msg.attach(MIMEText(html,"html","utf-8"))
+    with smtplib.SMTP(cfg.get("smtp_host","smtp.gmail.com"),cfg.get("smtp_port",587)) as sm:
+        sm.ehlo();sm.starttls(context=SSL_CTX);sm.login(cfg["smtp_user"],cfg["smtp_pass"]);sm.sendmail(sender,tos,msg.as_string())
+    return tos
+
+def _pl_send(kind,to=None,ref=None):
+    with _pl_lock:
+        try:
+            R=_pl_compute(kind,ref)
+        except Exception as e:
+            return {"ok":False,"error":"compute failed: %s"%str(e)[:200]}
+        subj="Bruno's — %s profit · %s · Net %s"%({"daily":"Daily","weekly":"Weekly","monthly":"Monthly"}[R["kind"]],R["label"].split(" (")[0],_pl_money(R["profit"]["net"]))
+        try: tos=send_email_html(to or ((db.get("pl_config") or {}).get("to") or ""),subj,_pl_html(R),_pl_text(R))
+        except Exception as e:
+            return {"ok":False,"error":"email failed: %s"%str(e)[:200],"summary":_pl_text(R)[:300]}
+        try:
+            with data_lock:
+                pr=dict(db.get("pl_reports") or {}); last=dict(pr.get("last") or {})
+                last[R["kind"]]={"period":R["start"],"label":R["label"],"at":datetime.now().strftime("%d/%m %H:%M"),"to":", ".join(tos),"net":R["profit"]["net"]}
+                hist=list(pr.get("history") or []); hist.append({"kind":R["kind"],"label":R["label"],"start":R["start"],"end":R["end"],"sales":R["sales"]["total"],"cogs":R["cogs"]["total"],"labour":R["labour"]["total"],"overheads":R["overheads"]["total"],"net":R["profit"]["net"],"at":datetime.now().strftime("%Y-%m-%d %H:%M")})
+                pr["last"]=last; pr["history"]=hist[-120:]; db["pl_reports"]=pr; save_data(db)
+        except Exception: pass
+        summ="sales %s · cogs %s · labour %s · bills %s → NET %s"%(_pl_money(R["sales"]["total"]),_pl_money(R["cogs"]["total"]),_pl_money(R["labour"]["total"]),_pl_money(R["overheads"]["total"]),_pl_money(R["profit"]["net"]))
+        print("Profit report (%s) sent to %s — %s"%(R["kind"],tos,summ))
+        return {"ok":True,"to":", ".join(tos),"summary":summ,"net":R["profit"]["net"],"label":R["label"]}
+
+def pl_report_loop():
+    # Daily at daily_time (that day), weekly on weekly_day at weekly_time (last Mon-Sun), monthly on the 1st
+    # (last month). A persisted per-kind 'period' marker means a restart can never double-send.
+    while True:
+        try:
+            cfg=dict(_PL_DEFAULTS); cfg.update(db.get("pl_config") or {})
+            if (db.get("email_config",{}) or {}).get("smtp_user"):
+                now=datetime.now(); hhmm=now.strftime("%H:%M"); today=now.date()
+                last=(db.get("pl_reports") or {}).get("last") or {}
+                def due(t): return t<=hhmm<_add_min(t,3)
+                if cfg.get("daily_enabled") and due(cfg.get("daily_time") or "23:30") and (last.get("daily") or {}).get("period")!=today.isoformat():
+                    _pl_send("daily",cfg.get("to"))
+                wd=["mon","tue","wed","thu","fri","sat","sun"]; wdi=wd.index(cfg.get("weekly_day")) if cfg.get("weekly_day") in wd else 0
+                lastmon=(today-timedelta(days=today.weekday()+7)).isoformat()
+                if cfg.get("weekly_enabled") and now.weekday()==wdi and due(cfg.get("weekly_time") or "07:00") and (last.get("weekly") or {}).get("period")!=lastmon:
+                    _pl_send("weekly",cfg.get("to"))
+                lastfirst=(today.replace(day=1)-timedelta(days=1)).replace(day=1).isoformat()
+                if cfg.get("monthly_enabled") and now.day==1 and due(cfg.get("monthly_time") or "07:00") and (last.get("monthly") or {}).get("period")!=lastfirst:
+                    _pl_send("monthly",cfg.get("to"))
+        except Exception as e: print("pl_report_loop:",e)
+        time.sleep(60)
+
+@app.route("/api/pl_config",methods=["GET","POST"])
+def api_pl_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            c=dict(db.get("pl_config") or {})
+            for k in ("daily_enabled","weekly_enabled","monthly_enabled"):
+                if k in d: c[k]=bool(d.get(k))
+            for k,df in (("daily_time","23:30"),("weekly_time","07:00"),("monthly_time","07:00")):
+                if k in d: c[k]=_pl_hhmm(d.get(k),df)
+            if "weekly_day" in d: c["weekly_day"]=d.get("weekly_day") if d.get("weekly_day") in ("mon","tue","wed","thu","fri","sat","sun") else "mon"
+            if "to" in d: c["to"]=re.sub(r'[^A-Za-z0-9@._+\-, ;]','',str(d.get("to") or ""))[:300].strip()
+            db["pl_config"]=c; save_data(db)
+    c=dict(_PL_DEFAULTS); c.update(db.get("pl_config") or {})
+    last=(db.get("pl_reports") or {}).get("last") or {}
+    bits=["%s → %s (%s)"%(k,v.get("at"),_pl_money(v.get("net",0))) for k,v in last.items()]
+    c["last_note"]=("Last sent: "+" · ".join(bits)) if bits else "Nothing sent yet — use a Send button to try one now."
+    return jsonify(c)
+
+@app.route("/api/pl_send",methods=["GET","POST"])
+def api_pl_send():
+    kind=(request.args.get("kind") if request.method=="GET" else (request.get_json(silent=True) or {}).get("kind")) or "daily"
+    if kind not in ("daily","weekly","monthly"): kind="daily"
+    if request.method=="GET":
+        if not request.args.get("preview"): return jsonify({"ok":False,"error":"POST to send; add ?preview=1 to view"})
+        with _pl_lock: R=_pl_compute(kind)
+        return Response(_pl_html(R),mimetype="text/html")
+    d=request.get_json(silent=True) or {}
+    return jsonify(_pl_send(kind,(d.get("to") or "").strip() or None))
+
+@app.route("/api/pl_last")
+def api_pl_last():
+    pr=db.get("pl_reports") or {}
+    return jsonify({"last":pr.get("last") or {},"history":(pr.get("history") or [])[-30:]})
+
 @app.route("/api/square_week_test")
 def api_square_week_test():
     # Diagnostic: replicate Weekly Books' card+cash deposit tally for a week, server-side, to see what
@@ -6162,8 +6682,8 @@ def _print_label(img,qty=1):
     global _LAST_PRINT_ERR
     _LAST_PRINT_ERR=""
     m=(_label_cfg().get("mode") or "niimbot")
-    if m in ("network","relay"):
-        ok,err=(_network_label_print if m=="network" else _relay_label_print)(img,qty)
+    if m in ("network","relay","brother"):
+        ok,err=(_network_label_print if m=="network" else (_brother_label_print if m=="brother" else _relay_label_print))(img,qty)
         _niim_note(ok,err)          # same status light, so the dashboard reflects whichever is in use
         if not ok: _LAST_PRINT_ERR=str(err or "")
         return ok
@@ -6453,6 +6973,75 @@ def api_label_preview():
     buf=_io.BytesIO(); img.save(buf,format="PNG")
     return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
 
+
+# ── BROTHER QL-810W (WiFi, 62mm continuous roll) — 9 Sep. Raster job built by brother_ql.py (pure
+#    Python + Pillow, self-tested) and sent to the printer's raw port 9100. Retires the Surface from the
+#    label path: no Bluetooth, no relay machine. The label PNG (567 wide, NIIMBOT size) is scaled to the
+#    696-dot printable width, so it comes out ~62 x 61 mm. Lazy import: the module arrives with the same
+#    self-update, and a missing module is a clear note, not a crash. ──
+def _brother_mod():
+    try:
+        import brother_ql as _bq
+        return _bq
+    except Exception as e:
+        raise RuntimeError("brother_ql module not available on this server yet (%s)"%str(e)[:80])
+def _brother_prep(img):
+    from PIL import Image
+    im=img.convert("L") if img.mode!="L" else img
+    W=696; H=max(1,int(round(im.height*W/float(im.width))))
+    return im.resize((W,H),Image.LANCZOS)
+def _brother_label_print(img,qty=1,ip=None,port=None):
+    cfg=_label_cfg(); ip=(ip or cfg.get("brother_ip") or "").strip(); port=int(port or 9100)
+    if not ip: return False,"No Brother printer IP set (Settings → Find Brother)"
+    try: bq=_brother_mod()
+    except Exception as e: return False,str(e)
+    try: job=bq.encode_label(_brother_prep(img),label="62",printer="QL-810W",cut=True,compress=True)
+    except Exception as e: return False,"encode failed: %s"%str(e)[:120]
+    last=None
+    for _ in range(max(1,int(qty))):
+        r=bq.send_to_printer(ip,job,port=port,timeout=15)
+        if not r.get("ok"): last=r.get("error") or "send failed"; break
+    return (last is None),(last or "")
+
+@app.route("/api/brother_find",methods=["POST"])
+def api_brother_find():
+    """Scan the shop LAN for anything answering on port 9100 (the QL-810W's raw print port)."""
+    try: bq=_brother_mod()
+    except Exception as e: return jsonify({"ok":False,"error":str(e),"found":[]})
+    prefix=(request.get_json(silent=True) or {}).get("prefix") or "192.168.0."
+    try: found=bq.find_printers(prefix=prefix,ports=(9100,),timeout=0.5)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)[:120],"found":[]})
+    # tell the known LAN receipt printer apart from a new Brother by asking each for a status block
+    out=[]
+    for ipx in found:
+        st={}
+        try: st=bq.printer_status(ipx,timeout=3) or {}
+        except Exception: pass
+        out.append({"ip":ipx,"brother":bool(st.get("ok")),"model":st.get("model",""),"media":st.get("media_type","")})
+    order=sorted(out,key=lambda x:(not x["brother"],x["ip"]))
+    return jsonify({"ok":True,"found":[x["ip"] for x in order],"detail":order})
+
+@app.route("/api/brother_test",methods=["POST"])
+def api_brother_test():
+    """Print a real sample label on the Brother, and report what the printer says about itself."""
+    d=request.get_json(silent=True) or {}
+    ip=(d.get("ip") or _label_cfg().get("brother_ip") or "").strip()
+    if not ip: return jsonify({"ok":False,"error":"Enter the Brother printer IP first (tap Find Brother)."})
+    now=datetime.now()
+    try: img=_render_label_png("Test Label","Dashboard",_lbl_date(now,withtime=True),_lbl_date(now+timedelta(days=2)))
+    except Exception as e: return jsonify({"ok":False,"error":"render failed: %s"%str(e)[:120]})
+    status=""
+    try:
+        st=_brother_mod().printer_status(ip,timeout=4) or {}
+        if st.get("ok"): status="%s · %s %s"%(st.get("model") or "Brother",st.get("media_type") or "",("%smm"%st.get("media_width")) if st.get("media_width") else "")
+        elif st.get("error"): status="no status reply (%s)"%st["error"]
+    except Exception: pass
+    ok,err=_brother_label_print(img,1,ip=ip)
+    try:
+        with data_lock: db.setdefault("label_printer",{})["brother_ip"]=ip; save_data(db)
+    except Exception: pass
+    return jsonify({"ok":bool(ok),"error":err,"ip":ip,"status":status.strip()})
+
 @app.route("/api/label_printer",methods=["GET","POST"])
 def api_label_printer():
     """Which printer prep labels go to: the NIIMBOT over Bluetooth, or the 80mm network thermal printer."""
@@ -6460,7 +7049,8 @@ def api_label_printer():
         d=request.get_json(silent=True) or {}
         with data_lock:
             c=dict(db.get("label_printer") or {})
-            if "mode" in d: c["mode"]=d.get("mode") if d.get("mode") in ("network","relay","niimbot") else "niimbot"
+            if "mode" in d: c["mode"]=d.get("mode") if d.get("mode") in ("network","relay","niimbot","brother") else "niimbot"
+            if "brother_ip" in d: c["brother_ip"]=re.sub(r"[^0-9a-zA-Z.\-:]","",str(d.get("brother_ip") or ""))[:60]
             if "relay_url" in d: c["relay_url"]=str(d.get("relay_url") or "").strip()[:200]
             if "relay_key" in d: c["relay_key"]=str(d.get("relay_key") or "").strip()[:80]
             if "ip" in d: c["ip"]=re.sub(r"[^0-9a-zA-Z.\-:]","",str(d.get("ip") or ""))[:60]
@@ -6472,7 +7062,7 @@ def api_label_printer():
     c=_label_cfg()
     return jsonify({"ok":True,"mode":c.get("mode") or "niimbot","ip":c.get("ip",""),
                     "port":c.get("port") or PRINTER_PORT,"format":c.get("format") or "escpos",
-                    "relay_url":c.get("relay_url",""),"relay_key":c.get("relay_key","")})
+                    "relay_url":c.get("relay_url",""),"relay_key":c.get("relay_key",""),"brother_ip":c.get("brother_ip","")})
 
 @app.route("/api/label_relay",methods=["POST"])
 def api_label_relay():
@@ -6542,6 +7132,7 @@ def api_print_labels():
         _m=(_label_cfg().get("mode") or "niimbot"); _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
         if _m=="relay": note="Label relay didn't print%s. Is the relay machine (Surface) switched on? Label saved (labels/last_label.png)."%_why
         elif _m=="network": note="Network printer didn't print%s. Label saved (labels/last_label.png)."%_why
+        elif _m=="brother": note="Brother QL-810W didn't print%s. Is it on and joined to the shop WiFi (Settings → Find Brother)? Label saved (labels/last_label.png)."%_why
         else: note="Bluetooth print failed%s — NIIMBOT not paired on this machine. Label saved (labels/last_label.png)."%_why
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
@@ -8146,6 +8737,7 @@ if __name__=="__main__":
     threading.Thread(target=lambda:app.run(host="0.0.0.0",port=8080,debug=False,use_reloader=False,threaded=True),daemon=True).start()
     threading.Thread(target=square_poll_loop,daemon=True).start()
     threading.Thread(target=report_loop,daemon=True).start()
+    threading.Thread(target=pl_report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
     # morning auto-switch-on writes to LIVE Square — server only, never a dev copy
