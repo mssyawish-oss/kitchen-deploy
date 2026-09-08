@@ -1,6 +1,6 @@
 """Kitchen Operations Dashboard v2"""
 import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
 try:
@@ -3054,7 +3054,7 @@ def _b64url(s):
 _GMAIL="https://gmail.googleapis.com/gmail/v1/users/me"
 def _gmail_search(args):
     q=args.get("query",""); n=int(args.get("pageSize",20) or 20)
-    j=_g_get_json(_GMAIL+"/threads?"+urllib.parse.urlencode({"q":q,"maxResults":n}))
+    j=_g_get_json(_GMAIL+"/threads?"+urllib.parse.urlencode({"q":q,"includeSpamTrash=true&maxResults":n}))
     threads=[]
     for th in (j.get("threads") or [])[:n]:
         try: meta=_g_get_json(_GMAIL+"/threads/"+th["id"]+"?format=metadata&metadataHeaders=Subject")
@@ -3263,9 +3263,9 @@ def api_rotcam_prompts():
 # Square timecards (wages + 12% super), books_fin.fixed_oh (weekly overheads, prorated) and
 # books_fin.mark_weekly (owner draw). profit = sales - cogs - wages - super - owner - overheads.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-_PL_UBER_Q='from:uber.com subject:summary newer_than:150d'
+_PL_UBER_Q='in:anywhere from:uber.com subject:summary newer_than:200d'
 _PL_UBER_AMT=re.compile(r'(?:Total Payment|Net Payout)[\s\S]{0,600}?\$([0-9,]+\.[0-9]{2})',re.I)
-_PL_DD_Q='(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"'
+_PL_DD_Q='in:anywhere (from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment" newer_than:200d'
 _PL_BRAND=re.compile(r'bruno',re.I)
 _PL_BILLS_FOLDER='1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'
 _PL_JUNK=re.compile(r'statement|strateg|resume|parking|certificate|balance|direct debit|\bddr\b|credit application|annual|signing|\bica\b|quote|booking|cashflow|my-receipt',re.I)
@@ -3373,6 +3373,90 @@ def _pl_week_payouts(mon):
         if by: res["doordash"]=round(sum(by.values()),2)
     except Exception as e: res["dd_err"]=str(e)[:120]
     return res
+
+
+def _pl_subj_period(subj):
+    # ("2026-08-31","2026-09-06") from either Uber subject style; None if absent
+    M3={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
+    m=re.search(r'([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\s*-\s*([A-Z][a-z]{2}) (\d{1,2}), (\d{4})',subj)
+    if m:
+        try: return (date(int(m.group(3)),M3[m.group(1).lower()],int(m.group(2))),date(int(m.group(6)),M3[m.group(4).lower()],int(m.group(5))))
+        except Exception: return None
+    m=re.search(r'(\d{1,2})/(\d{1,2})/(\d{2})\s*-\s*(\d{1,2})/(\d{1,2})/(\d{2})',subj)
+    if m:
+        try: return (date(2000+int(m.group(3)),int(m.group(1)),int(m.group(2))),date(2000+int(m.group(6)),int(m.group(4)),int(m.group(5))))
+        except Exception: return None
+    return None
+
+def _pl_uber_month_statement(first):
+    # Uber puts "Last month consolidated summary - <Month YYYY>" (earnings, fees, amendments) in the first
+    # weekly payout email after the month ends. Exact calendar-month net, straight from Uber.
+    last=(first.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1); label=first.strftime("%B %Y")
+    try: sr=_gmail_search({"query":_PL_UBER_Q,"pageSize":30})
+    except Exception: return None
+    for th in sr.get("threads") or []:
+        subj=((th.get("messages") or [{}])[0].get("subject") or "")
+        if not _PL_BRAND.search(subj): continue
+        per=_pl_subj_period(subj)
+        if per and not (last<=per[1]<=last+timedelta(days=12)): continue
+        try: t=_gmail_thread({"threadId":th.get("id")})
+        except Exception: continue
+        body=" ".join((m.get("plaintext_body") or re.sub(r'<[^>]+>',' ',m.get("htmlBody") or "")) for m in (t.get("messages") or []))
+        body=re.sub(r'\s+',' ',body)
+        mm=re.search(r'Last month consolidated summary\s*[–—\-]\s*'+re.escape(label),body,re.I)
+        if not mm: continue
+        seg=body[mm.end():mm.end()+3000]
+        def grab(lbl):
+            g=re.search(re.escape(lbl)+r'\s*\|?\s*(-?)\s*\$\s*([\d,]+\.\d{2})',seg,re.I)
+            return None if not g else (-1.0 if g.group(1)=='-' else 1.0)*float(g.group(2).replace(',',''))
+        earn=grab("Total Earnings")
+        if earn is None: continue
+        fees=grab("Total Uber Fees") or 0.0; amend=grab("Total Amendments") or 0.0; mk=grab("Total Marketing Spends") or 0.0
+        return {"net":round(earn+fees+amend+mk,2),"earnings":earn,"fees":fees,"amendments":amend,"marketing":mk,"subject":subj}
+    return None
+
+def _pl_delivery_weeks(d0,d1):
+    # Every Mon-Sun week overlapping d0..d1: real payout from the email when it exists, else 70% of that
+    # week's Square gross; prorated by the days that fall inside the period (edge weeks of a month).
+    rows=[]; ut=dt=0.0; ureal=dreal=0; n=0
+    m=d0-timedelta(days=d0.weekday())
+    while m<=d1:
+        we=m+timedelta(days=6); n+=1
+        inside=(min(we,d1)-max(m,d0)).days+1; share=max(0.0,min(1.0,inside/7.0))
+        po=_pl_week_payouts(m); ur=po.get("uber"); dr=po.get("doordash"); g=None
+        if ur is None or dr is None:
+            try: g=_pl_delivery_gross(m,we)
+            except Exception: g={"uber":0.0,"doordash":0.0}
+        uv=ur if ur is not None else round((g or {}).get("uber",0.0)*0.70,2)
+        dv=dr if dr is not None else round((g or {}).get("doordash",0.0)*0.70,2)
+        ut+=uv*share; dt+=dv*share; ureal+=(ur is not None); dreal+=(dr is not None)
+        rows.append({"week":m.strftime("%d %b")+"-"+we.strftime("%d %b"),"uber":uv,"uber_real":ur is not None,"dd":dv,"dd_real":dr is not None,"share":round(share,2)})
+        m+=timedelta(days=7)
+    return {"uber":round(ut,2),"dd":round(dt,2),"rows":rows,"weeks":n,"uber_real":ureal,"dd_real":dreal}
+
+def _pl_manual(d0,d1,days,kind):
+    # Rows Marcel typed straight into the Books page (no src) that fall in the period; recurring ones are
+    # normalised to a weekly value and prorated. Keeps the emails in step with what he keyed by hand.
+    out={"income":0.0,"cogs":0.0,"wage":0.0,"other":0.0,"rows":[]}
+    try:
+        for t in ((db.get("books_store") or {}).get("tx") or []):
+            if t.get("src"): continue
+            d=str(t.get("date") or "")
+            if not (d0.isoformat()<=d<=d1.isoformat()): continue
+            try: amt=float(t.get("amt") or 0)
+            except Exception: continue
+            rec=(t.get("recur") or "")
+            wk=amt/(52/12.0) if rec=="monthly" else (amt/2.0 if rec=="fortnightly" else amt)
+            v=(wk*days/7.0) if rec else amt
+            if t.get("type")=="income": b="income"
+            else:
+                try: b=_bk_bucket(t) or "other"
+                except Exception: b="other"
+            out[b]=out.get(b,0.0)+v
+            out["rows"].append({"cat":str(t.get("cat") or "")[:40],"amt":round(v,2),"bucket":b})
+    except Exception: pass
+    for k in ("income","cogs","wage","other"): out[k]=round(out[k],2)
+    return out
 
 def _pl_staff_names(hdr):
     names={}
@@ -3557,51 +3641,59 @@ def _pl_compute(kind,ref=None):
     except Exception as e: dg={"ok":False,"error":str(e)[:150],"uber":0.0,"doordash":0.0,"uber_orders":0,"doordash_orders":0}
     if not dg.get("ok"): R["errors"].append("Delivery orders: "+str(dg.get("error")))
     uber_est=round(dg["uber"]*0.70,2); dd_est=round(dg["doordash"]*0.70,2)
-    uber_real=dd_real=None
+    uber=uber_est; dd=dd_est; ulab="est. 70%% of $%s gross"%("{:,.0f}".format(dg["uber"])); dlab="est. 70%% of $%s gross"%("{:,.0f}".format(dg["doordash"]))
+    ureal=dreal=False; audit=[]; stmt=None
     if kind=="weekly":
-        po=_pl_week_payouts(d0); uber_real=po.get("uber"); dd_real=po.get("doordash")
+        po=_pl_week_payouts(d0)
+        if po.get("uber") is not None: uber=po["uber"]; ureal=True; ulab="real payout email"
+        else: R["notes"].append("No Uber Eats payout email found for this week (checked inbox, spam and trash) - using 70% of Square gross.")
+        if po.get("doordash") is not None: dd=po["doordash"]; dreal=True; dlab="real payout email"
+        else: R["notes"].append("No DoorDash payment email found for this week - using 70% of Square gross.")
         for k in ("uber_err","dd_err"):
             if po.get(k): R["errors"].append("Payout emails: "+po[k])
+        audit=[{"week":d0.strftime("%d %b")+"-"+d1.strftime("%d %b"),"uber":uber,"uber_real":ureal,"dd":dd,"dd_real":dreal,"share":1.0}]
     elif kind=="monthly":
-        mons=[]; m=d0-timedelta(days=d0.weekday())
-        while m<=d1:
-            if m>=d0 and m+timedelta(days=6)<=d1: mons.append(m)
-            m+=timedelta(days=7)
-        ru=rd=0.0; fu=fd=0
-        for m in mons:
-            po=_pl_week_payouts(m)
-            if po.get("uber") is not None: ru+=po["uber"]; fu+=1
-            if po.get("doordash") is not None: rd+=po["doordash"]; fd+=1
-        if mons and fu==len(mons): uber_real=round(ru,2)
-        if mons and fd==len(mons): dd_real=round(rd,2)
-        R["notes"].append("Delivery payouts: real Uber emails for %d of %d full weeks, DoorDash %d of %d — weeks without an email use the 70%% estimate."%(fu,len(mons),fd,len(mons)))
+        wk=_pl_delivery_weeks(d0,d1); audit=wk["rows"]
+        stmt=_pl_uber_month_statement(d0)
+        if stmt:
+            uber=stmt["net"]; ureal=True; ulab="Uber's own %s statement"%d0.strftime("%B")
+            R["notes"].append("Uber Eats %s = Uber's consolidated monthly statement: sales %s, fees %s, chargebacks/adjustments %s%s -> net %s."%(d0.strftime("%B"),_pl_money(stmt["earnings"]),_pl_money(stmt["fees"]),_pl_money(stmt["amendments"]),(", marketing %s"%_pl_money(stmt["marketing"])) if stmt.get("marketing") else "",_pl_money(stmt["net"])))
+        else:
+            uber=wk["uber"]; ureal=(wk["uber_real"]==wk["weeks"]); ulab=("real payout emails, %d of %d weeks%s"%(wk["uber_real"],wk["weeks"],"" if ureal else " (rest estimated)"))
+            if not ureal: R["notes"].append("Uber Eats: no monthly statement email yet and %d of %d weeks have no payout email - those weeks use 70%% of Square gross."%(wk["weeks"]-wk["uber_real"],wk["weeks"]))
+        dd=wk["dd"]; dreal=(wk["dd_real"]==wk["weeks"]); dlab=("real payment emails, %d of %d weeks%s"%(wk["dd_real"],wk["weeks"],"" if dreal else " (rest estimated)"))
+        if not dreal: R["notes"].append("DoorDash: %d of %d weeks have no payment email - those weeks use 70%% of Square gross."%(wk["weeks"]-wk["dd_real"],wk["weeks"]))
+        R["notes"].append("Weeks that straddle the month edges are counted by the days inside the month.")
     else:
         R["notes"].append("Uber Eats / DoorDash are shown as 70% of gross (their payout emails are weekly, so a daily real figure doesn't exist).")
-    uber=uber_real if uber_real is not None else uber_est; dd=dd_real if dd_real is not None else dd_est
     R["sales"]={"card":sq.get("card",0.0),"card_count":sq.get("card_count",0),"cash":sq.get("cash",0.0),"cash_count":sq.get("cash_count",0),
-                "uber":uber,"uber_real":uber_real is not None,"uber_gross":dg["uber"],"uber_orders":dg["uber_orders"],
-                "doordash":dd,"doordash_real":dd_real is not None,"doordash_gross":dg["doordash"],"doordash_orders":dg["doordash_orders"]}
+                "uber":round(uber,2),"uber_real":ureal,"uber_label":ulab,"uber_gross":dg["uber"],"uber_orders":dg["uber_orders"],
+                "doordash":round(dd,2),"doordash_real":dreal,"doordash_label":dlab,"doordash_gross":dg["doordash"],"doordash_orders":dg["doordash_orders"],
+                "audit":audit,"statement":stmt}
     R["sales"]["total"]=round(R["sales"]["card"]+R["sales"]["cash"]+uber+dd,2)
+    man=_pl_manual(d0,d1,days,kind); R["manual"]=man
+    R["sales"]["manual"]=man["income"]; R["sales"]["total"]=round(R["sales"]["total"]+man["income"],2)
     # ── COST OF GOODS (invoices dated in the period) ──
     try:
         booked,bst=_pl_scan_bills()
         inp=[b for b in booked if R["start"]<=b["date"]<=R["end"]]
         byv={}
         for b in inp: byv[b["vendor"]]=byv.get(b["vendor"],0.0)+b["amt"]
-        R["cogs"]={"total":round(sum(byv.values()),2),"rows":sorted([{"vendor":k,"amt":round(v,2)} for k,v in byv.items()],key=lambda x:-x["amt"]),
-                   "count":len(inp),"scan":bst}
+        rows_c=sorted([{"vendor":k,"amt":round(v,2)} for k,v in byv.items()],key=lambda x:-x["amt"])
+        if man["cogs"]: rows_c.append({"vendor":"Manual entries (Books page)","amt":man["cogs"]})
+        R["cogs"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
         if bst.get("unreadable"): R["notes"].append("%d invoice PDF(s) in Drive have no readable text (scanned photos) and can't be totalled."%bst["unreadable"])
         if bst.get("skipped_time"): R["notes"].append("Invoice scan ran out of time — %d new file(s) will be read next run."%bst["skipped_time"])
         if kind=="daily": R["notes"].append("Cost of goods = supplier invoices DATED this day (lumpy day to day — judge it over the week).")
     except Exception as e:
-        R["cogs"]={"total":0.0,"rows":[],"count":0,"scan":{}}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
+        R["cogs"]={"total":man["cogs"],"rows":([{"vendor":"Manual entries (Books page)","amt":man["cogs"]}] if man["cogs"] else []),"count":0,"scan":{}}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
     # ── LABOUR ──
     try: w=_pl_wages(d0,d1)
     except Exception as e: w={"ok":False,"error":str(e)[:150],"wages":0.0,"super":0.0,"rows":[],"open_shifts":0}
     if not w.get("ok"): R["errors"].append("Wages (Square timecards): "+str(w.get("error")))
     mark_w=float(((db.get("books_fin") or {}).get("mark_weekly") or 0) or 0); mark=round(mark_w*days/7.0,2)
-    R["labour"]={"wages":w.get("wages",0.0),"super":w.get("super",0.0),"owner":mark,"rows":w.get("rows",[]),"open_shifts":w.get("open_shifts",0)}
-    R["labour"]["total"]=round(R["labour"]["wages"]+R["labour"]["super"]+mark,2)
+    R["labour"]={"wages":w.get("wages",0.0),"super":w.get("super",0.0),"owner":mark,"manual":man["wage"],"rows":w.get("rows",[]),"open_shifts":w.get("open_shifts",0)}
+    R["labour"]["total"]=round(R["labour"]["wages"]+R["labour"]["super"]+mark+man["wage"],2)
     if w.get("open_shifts"): R["notes"].append("%d shift(s) still clocked in (not counted until clocked out)."%w["open_shifts"])
     # ── OVERHEADS (weekly figures, prorated by days) ──
     fo=((db.get("books_fin") or {}).get("fixed_oh") or [])
@@ -3609,6 +3701,7 @@ def _pl_compute(kind,ref=None):
     for it in fo:
         try: rows.append({"name":str(it[0]),"amt":round(float(it[1])*days/7.0,2)})
         except Exception: pass
+    if man["other"]: rows.append({"name":"Manual entries (Books page)","amt":man["other"]})
     R["overheads"]={"total":round(sum(r["amt"] for r in rows),2),"rows":rows}
     # ── PROFIT ──
     S=R["sales"]["total"]; C=R["cogs"]["total"]; L=R["labour"]["total"]; O=R["overheads"]["total"]
@@ -3640,9 +3733,10 @@ def _pl_html(R):
        head("SALES"),
        row("Card (net in bank, after Square fees)",_pl_money(S["card"]),"%d txns"%S["card_count"],ind=True),
        row("Cash",_pl_money(S["cash"]),"%d txns"%S["cash_count"],ind=True),
-       row("Uber Eats "+("(real payout)" if S["uber_real"] else "(est. 70%% of $%s gross)"%("{:,.0f}".format(S["uber_gross"]))),_pl_money(S["uber"]),"%d orders"%S["uber_orders"],ind=True),
-       row("DoorDash "+("(real payout)" if S["doordash_real"] else "(est. 70%% of $%s gross)"%("{:,.0f}".format(S["doordash_gross"]))),_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True),
-       row("Total sales",_pl_money(tot),"",bold=True),
+       row("Uber Eats ("+S.get("uber_label","")+")",_pl_money(S["uber"]),"%d orders"%S["uber_orders"],ind=True),
+       row("DoorDash ("+S.get("doordash_label","")+")",_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True)]
+    if S.get("manual"): H.append(row("Manual income entries (Books page)",_pl_money(S["manual"]),"",ind=True))
+    H+=[row("Total sales",_pl_money(tot),"",bold=True),
        head("COST OF GOODS (supplier invoices)")]
     for r in C["rows"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),_pl_pct(r["amt"],tot),ind=True))
     if not C["rows"]: H.append(row("No invoices dated in this period","$0.00","",ind=True))
@@ -3652,10 +3746,18 @@ def _pl_html(R):
     H.append(row("Staff wages",_pl_money(L["wages"]),_pl_pct(L["wages"],tot),ind=True))
     H.append(row("Super (12%)",_pl_money(L["super"]),"",ind=True))
     if L["owner"]: H.append(row("Owner drawings (Mark)",_pl_money(L["owner"]),"",ind=True))
+    if L.get("manual"): H.append(row("Manual wage entries (Books page)",_pl_money(L["manual"]),"",ind=True))
     H.append(row("Total labour",_pl_money(L["total"]),_pl_pct(L["total"],tot),bold=True))
     H.append(head("BILLS & OVERHEADS (prorated %d day%s)"%(R["days"],"" if R["days"]==1 else "s")))
     for r in O["rows"]: H.append(row(r["name"],_pl_money(r["amt"]),"",ind=True))
     H.append(row("Total bills & overheads",_pl_money(O["total"]),_pl_pct(O["total"],tot),bold=True))
+    if S.get("audit"):
+        H.append(head("PAYOUT EMAILS USED (Uber Eats / DoorDash)"))
+        for r in S["audit"]:
+            H.append(row("Week "+r["week"]+(" (%d%% in period)"%int(r["share"]*100) if r["share"]<1 else ""),
+                         "Uber "+_pl_money(r["uber"])+(" real" if r["uber_real"] else " EST"),
+                         "DoorDash "+_pl_money(r["dd"])+(" real" if r["dd_real"] else " EST"),ind=True))
+        if S.get("statement"): H.append(row("Uber monthly statement used for the Uber total",_pl_money(S["statement"]["net"]),"",ind=True))
     H.append(head("PROFIT"))
     H.append(row("Gross profit (sales − cost of goods)",_pl_money(P["gross"]),_pl_pct(P["gross"],tot)))
     H.append('<tr><td style="padding:8px;font-weight:800;font-size:16px;">NET PROFIT — what\'s left</td><td style="padding:8px;text-align:right;font-weight:800;font-size:16px;color:%s;">%s</td><td style="padding:8px;text-align:right;color:#888;">%.1f%%</td></tr>'%(netcol,_pl_money(P["net"]),P["margin"]))
@@ -3679,6 +3781,7 @@ def _pl_text(R):
         "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
         "GROSS PROFIT     %s"%_pl_money(P["gross"]),
         "NET PROFIT       %s  (%.1f%% margin)"%(_pl_money(P["net"]),P["margin"]),""]
+    for r in (S.get("audit") or []): Ls.append("  week %s: uber %s%s | doordash %s%s"%(r["week"],_pl_money(r["uber"])," (real)" if r["uber_real"] else " (est)",_pl_money(r["dd"])," (real)" if r["dd_real"] else " (est)"))
     for n in R["errors"]: Ls.append("WARNING: "+n)
     for n in R["notes"]: Ls.append("- "+n)
     return "\n".join(Ls)
