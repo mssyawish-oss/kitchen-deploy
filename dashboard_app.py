@@ -3712,8 +3712,11 @@ def _pl_send(kind,to=None,ref=None):
                 hist=list(pr.get("history") or []); hist.append({"kind":R["kind"],"label":R["label"],"start":R["start"],"end":R["end"],"sales":R["sales"]["total"],"cogs":R["cogs"]["total"],"labour":R["labour"]["total"],"overheads":R["overheads"]["total"],"net":R["profit"]["net"],"at":datetime.now().strftime("%Y-%m-%d %H:%M")})
                 pr["last"]=last; pr["history"]=hist[-120:]; db["pl_reports"]=pr; save_data(db)
         except Exception: pass
-        summ="sales %s · cogs %s · labour %s · bills %s → NET %s"%(_pl_money(R["sales"]["total"]),_pl_money(R["cogs"]["total"]),_pl_money(R["labour"]["total"]),_pl_money(R["overheads"]["total"]),_pl_money(R["profit"]["net"]))
-        print("Profit report (%s) sent to %s — %s"%(R["kind"],tos,summ))
+        summ="sales %s, cogs %s, labour %s, bills %s -> NET %s"%(_pl_money(R["sales"]["total"]),_pl_money(R["cogs"]["total"]),_pl_money(R["labour"]["total"]),_pl_money(R["overheads"]["total"]),_pl_money(R["profit"]["net"]))
+        # ASCII only: the Windows console can't encode arrows and a print() UnicodeEncodeError here turned a
+        # successfully sent report into an HTTP 500 (9 Sep, first live run)
+        try: print("Profit report (%s) sent to %s - %s"%(R["kind"],tos,summ))
+        except Exception: pass
         return {"ok":True,"to":", ".join(tos),"summary":summ,"net":R["profit"]["net"],"label":R["label"]}
 
 def pl_report_loop():
