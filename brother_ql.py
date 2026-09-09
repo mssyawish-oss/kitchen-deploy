@@ -8,7 +8,7 @@ no attrs.  Python 3.8+.  Works on Windows (no OS specific tricks).
 Public API
 ----------
     encode_label(img, label="62", printer="QL-810W", cut=True, compress=True,
-                 threshold=70, rotate="auto", zero_lines=True) -> bytes
+                 threshold=70, rotate="auto", zero_lines=False) -> bytes
     prepare_image(img, label="62", printer="QL-810W", threshold=70,
                   rotate="auto") -> PIL.Image (mode "1", 720 px wide, 0 = black)
     decode_job(job) -> dict            (parse a job back; used by the self-test)
@@ -89,9 +89,12 @@ Design decisions
   `image.convert("1").tobytes("raw")` (Pillow packs mode "1" MSB first) on an
   image it had already inverted with ImageOps.invert, so 1 bits = printed
   (black) dots -- which is Brother's documented convention ("1: print").
-* 'Z' zero-line command: valid on the QL-800 series per Brother's raster
-  reference; used for blank rows when compressing (saves 3 bytes/row).  Set
-  zero_lines=False to always send 'g' lines instead.
+* 'Z' zero-line command: although documented for the QL-800 series, the
+  QL-810W REJECTS it in raster mode (the printer latches a red "other-error"
+  and prints nothing).  The field-proven brother_ql library never emits 'Z' --
+  it always sends a 'g' line, and a blank row PackBits-compresses to just
+  `g 00 02 A7 00` (5 bytes).  So zero_lines DEFAULTS TO FALSE here to match it.
+  Leave it False for the QL-810W; True is kept only for other models/testing.
 """
 
 import queue
@@ -318,7 +321,7 @@ def _print_information(spec: Dict[str, int], raster_lines: int, page: int = 0,
 
 def encode_label(img: Image.Image, label: str = "62", printer: str = "QL-810W",
                  cut: bool = True, compress: bool = True, threshold: int = 70,
-                 rotate: Union[str, int] = "auto", zero_lines: bool = True) -> bytes:
+                 rotate: Union[str, int] = "auto", zero_lines: bool = False) -> bytes:
     """Encode a PIL image into a complete Brother raster print job (bytes).
     See the module docstring for the byte layout."""
     spec = _label_spec(label)
@@ -680,8 +683,11 @@ def _self_test() -> None:
     assert px[12 + 4, 100] == 0, "expected border pixel to be black"
 
     summary = {}
+    # zero_lines defaults to False (QL-810W rejects the 'Z' command); we still
+    # exercise the legacy zero_lines=True path here to keep decode_job covered.
     for compress in (True, False):
-        job = encode_label(label_img, compress=compress)
+        zl = compress  # True case also tests the 'Z' path; False stays all-'g'
+        job = encode_label(label_img, compress=compress, zero_lines=zl)
         # Preamble byte layout (mirrors the proven brother_ql library):
         #   [0:4]     ESC i a 01   switch to raster mode  (FIRST)
         #   [4:204]   200 x 00     invalidate
