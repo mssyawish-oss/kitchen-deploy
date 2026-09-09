@@ -22,10 +22,14 @@ Byte layout emitted by encode_label() for QL-810W, label "62" (62 mm continuous
 tape DK-22205), mono, N raster lines  -- this mirrors what the well known
 `brother_ql` library's convert() produces for model QL-810W / label "62":
 
-    400 x 00                     invalidate  (flush any half-received command)
-    1B 40                        ESC @        initialize
-    1B 69 53                     ESC i S      status information request
     1B 69 61 01                  ESC i a 01   switch dynamic command mode -> raster
+                                              (sent FIRST so a printer whose static
+                                              command mode is "P-touch Template" is
+                                              forced into raster before it reads data)
+    200 x 00                     invalidate  (flush any half-received command)
+    1B 40                        ESC @        initialize
+    1B 69 61 01                  ESC i a 01   switch to raster mode again (post-init)
+    1B 69 53                     ESC i S      status information request
     1B 69 7A CE 0A 3E 00         ESC i z      print information (media & quality)
           <N as uint32 LE> 00 00
         CE = valid flags:  0x80 PI_RECOVER  (always set by brother_ql -
@@ -51,8 +55,9 @@ tape DK-22205), mono, N raster lines  -- this mirrors what the well known
                                               (set when cut=True), bit 0 = 0 mono,
                                               bit 6 = 0 (300 dpi, no 600 dpi)
     1B 69 64 23 00               ESC i d      feed margin = 35 dots (uint16 LE)
-    4D 02 | 4D 00                M            compression: 02 = TIFF/PackBits,
-                                              00 = none
+    4D 02                        M            compression: 02 = TIFF/PackBits
+                                              (omitted entirely when not compressing;
+                                              brother_ql never sends "M 00")
     N raster lines, one per image row (top row first):
         67 00 <n> <n bytes>      'g' 00 n     raster line; n = 90 uncompressed
                                               (720 pins / 8) or the PackBits
@@ -141,7 +146,7 @@ PI_QUALITY = 0x40
 PI_RECOVER = 0x80
 
 ESC = b"\x1b"
-CMD_INVALIDATE = b"\x00" * 400
+CMD_INVALIDATE = b"\x00" * 200
 CMD_INITIALIZE = ESC + b"@"
 CMD_STATUS = ESC + b"iS"
 CMD_RASTER_MODE = ESC + b"ia\x01"
@@ -326,17 +331,28 @@ def encode_label(img: Image.Image, label: str = "62", printer: str = "QL-810W",
     row_len = pins // 8
 
     out = bytearray()
-    out += CMD_INVALIDATE
-    out += CMD_INITIALIZE
-    out += CMD_STATUS
-    out += CMD_RASTER_MODE
+    # Command order mirrors the field-proven `brother_ql` library exactly.
+    # The raster-mode switch (ESC i a 01) MUST come FIRST -- before the
+    # invalidate -- so a printer whose static command mode is "P-touch
+    # Template" is forced into raster mode before it interprets any data.
+    # Sending it late (after the invalidate) makes such a printer reject the
+    # job and latch a red "other-error" that only a power cycle clears.
+    out += CMD_RASTER_MODE          # ESC i a 01  -- switch to raster FIRST
+    out += CMD_INVALIDATE           # 200 x 00    -- flush any half-received cmd
+    out += CMD_INITIALIZE           # ESC @       -- initialize
+    out += CMD_RASTER_MODE          # ESC i a 01  -- again, after init (brother_ql)
+    out += CMD_STATUS               # ESC i S     -- status information request
     out += _print_information(spec, len(rows))
     if cut:
         out += ESC + b"iM" + b"\x40"        # auto cut on
         out += ESC + b"iA" + b"\x01"        # cut every label
     out += ESC + b"iK" + bytes((0x08 if cut else 0x00,))   # expanded mode
     out += ESC + b"id" + struct.pack("<H", spec["feed_margin"])
-    out += b"M" + (b"\x02" if compress else b"\x00")
+    if compress:
+        out += b"M\x02"             # compression mode: TIFF/PackBits
+        # NB: when NOT compressing, brother_ql omits the 'M' command entirely
+        # (it does not send "M 00").  We match that -- an extra "M 00" is one
+        # of the bytes the proven library never emits.
 
     blank = b"\x00" * row_len
     for row in rows:
@@ -362,11 +378,7 @@ def decode_job(job: bytes, pins: int = 720) -> Dict[str, Any]:
     row_len = pins // 8
     i = 0
     n = len(job)
-    leading_zeros = 0
-    while i < n and job[i] == 0:
-        i += 1
-        leading_zeros += 1
-    cmds: List[Tuple[str, Any]] = [("invalidate", leading_zeros)]
+    cmds: List[Tuple[str, Any]] = []
     info: Dict[str, Any] = {}
     compressed = False
     rows: List[bytes] = []
@@ -377,6 +389,14 @@ def decode_job(job: bytes, pins: int = 720) -> Dict[str, Any]:
 
     while i < n:
         b = job[i]
+        if b == 0x00:  # invalidate: a run of NUL bytes (may appear after the
+                       # leading switch-mode command, not only at offset 0)
+            j = i
+            while j < n and job[j] == 0:
+                j += 1
+            cmds.append(("invalidate", j - i))
+            i = j
+            continue
         if b == 0x1B:
             if job[i + 1:i + 2] == b"@":
                 cmds.append(("initialize", None))
@@ -662,17 +682,34 @@ def _self_test() -> None:
     summary = {}
     for compress in (True, False):
         job = encode_label(label_img, compress=compress)
-        assert job[:400] == b"\x00" * 400, "job must start with 400 zero bytes"
-        assert job[400:402] == b"\x1b\x40", "ESC @ must follow the invalidate"
-        assert job[402:405] == b"\x1b\x69\x53"
-        assert job[405:409] == b"\x1b\x69\x61\x01"
+        # Preamble byte layout (mirrors the proven brother_ql library):
+        #   [0:4]     ESC i a 01   switch to raster mode  (FIRST)
+        #   [4:204]   200 x 00     invalidate
+        #   [204:206] ESC @        initialize
+        #   [206:210] ESC i a 01   switch to raster mode  (again, post-init)
+        #   [210:213] ESC i S      status information request
+        #   [213:226] ESC i z ...  print-information (13 bytes)
+        #   [226:230] ESC i M 40   various mode (auto cut)
+        #   [230:234] ESC i A 01   cut every 1
+        #   [234:238] ESC i K 08   expanded mode
+        #   [238:243] ESC i d 23 00 margin = 35
+        #   [243:245] M 02         compression mode  -- ONLY when compress=True
+        assert job[0:4] == b"\x1b\x69\x61\x01", "job must start with the raster switch"
+        assert job[4:204] == b"\x00" * 200, "200 zero invalidate must follow the switch"
+        assert job[204:206] == b"\x1b\x40", "ESC @ must follow the invalidate"
+        assert job[206:210] == b"\x1b\x69\x61\x01", "second raster switch after init"
+        assert job[210:213] == b"\x1b\x69\x53"
         pi = b"\x1b\x69\x7a" + bytes((0xCE, 0x0A, 62, 0)) + struct.pack("<L", 320) + b"\x00\x00"
-        assert job[409:422] == pi, "print-information block mismatch: %s" % job[409:422].hex()
-        assert job[422:426] == b"\x1b\x69\x4d\x40"
-        assert job[426:430] == b"\x1b\x69\x41\x01"
-        assert job[430:434] == b"\x1b\x69\x4b\x08"
-        assert job[434:439] == b"\x1b\x69\x64\x23\x00"
-        assert job[439:441] == (b"M\x02" if compress else b"M\x00")
+        assert job[213:226] == pi, "print-information block mismatch: %s" % job[213:226].hex()
+        assert job[226:230] == b"\x1b\x69\x4d\x40"
+        assert job[230:234] == b"\x1b\x69\x41\x01"
+        assert job[234:238] == b"\x1b\x69\x4b\x08"
+        assert job[238:243] == b"\x1b\x69\x64\x23\x00"
+        if compress:
+            assert job[243:245] == b"M\x02", "compression mode must be M 02 when on"
+        else:
+            # no 'M' command at all -- raster starts immediately after margin
+            assert job[243:244] == b"g", "no 'M' command expected when compress is off"
         assert job[-1:] == b"\x1a", "job must end with 0x1A"
 
         dec = decode_job(job)
@@ -682,9 +719,13 @@ def _self_test() -> None:
         assert dec["info"]["valid_flags"] == 0xCE and dec["info"]["media_type"] == 0x0A
         assert dec["info"]["media_width"] == 62 and dec["info"]["media_length"] == 0
         names = [c[0] for c in dec["commands"]]
-        assert names == ["invalidate", "initialize", "status_request", "switch_mode",
-                         "print_information", "various_mode", "cut_every",
-                         "expanded_mode", "margin", "compression", "print"], names
+        expect = ["switch_mode", "invalidate", "initialize", "switch_mode",
+                  "status_request", "print_information", "various_mode", "cut_every",
+                  "expanded_mode", "margin"]
+        if compress:
+            expect.append("compression")
+        expect.append("print")
+        assert names == expect, names
         assert dict(dec["commands"])["margin"] == 35
 
         # every raster line well formed (decode_job raises otherwise); check sizes.
@@ -693,7 +734,7 @@ def _self_test() -> None:
         g_lines, z_lines = dec["g_lines"], dec["zero_lines"]
         if not compress:
             assert g_lines == 320, g_lines
-            body = job[441:-1]
+            body = job[243:-1]
             assert len(body) == 320 * 93, "each uncompressed line must be g 00 5A + 90 bytes"
             for k in range(320):
                 assert body[k * 93:k * 93 + 3] == b"g\x00\x5a"
@@ -739,8 +780,8 @@ def _self_test() -> None:
         print("compress=%-5s job=%6d bytes  g-lines=%3d  Z-lines=%3d  -> %s"
               % (compress, size, g, z, fname))
     with open(summary[True][3], "rb") as fh:
-        head = fh.read()[400:441]
-    print("Header after the 400 zero bytes (hex): %s"
+        head = fh.read()[204:245]
+    print("Preamble after the 200 zero bytes (hex): %s"
           % " ".join("%02x" % b for b in head))
     dec_img = decode_job(open(summary[True][3], "rb").read())["image"]
     dec_img.convert("L").save(os.path.join(here, "brother_test_decoded.png"))
