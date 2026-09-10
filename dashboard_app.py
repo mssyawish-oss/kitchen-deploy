@@ -6555,10 +6555,11 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     M=16
     # 1) top black day band (drives FIFO rotation) + batch badge on the right
     band_h=82; dr.rectangle([0,0,W,band_h],fill=0)
-    fh=fnt(50,True); dr.text((M,band_h//2-31),dayname,font=fh,fill=255)
+    fh=fnt(50,True); dw=dr.textlength(dayname,font=fh)
+    dr.text(((W-dw)//2,band_h//2-31),dayname,font=fh,fill=255)   # day name centred in the band
     if total>1 and seq>0:
         badge="%d/%d"%(seq,total); fb=fnt(50,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-M-bw,band_h//2-31),badge,font=fb,fill=255)
+        dr.text((W-M-bw,band_h//2-31),badge,font=fb,fill=255)     # batch badge stays top-right
     # 2) USE BY box — the discard deadline, most important line: bold + boxed, anchored near the bottom.
     # BOTTOM_SAFE keeps it clear of the physical edge: the B1's printable area is a little shorter than
     # the 50mm label, so a box sitting at the very bottom came out half-cut. This is the one line that
@@ -7098,11 +7099,14 @@ def _brother_prep(img):
     # 696-dot (printable) image prints shifted with a white strip down one side.
     # Pad to the FULL 62mm media width (732 dots @300dpi) with the content centred
     # so it comes out centred on the tape.  696 content + 18-dot margins = 732.
-    CW=696; FW=732
+    # Also pad the FEED direction (top+bottom): the QL-810W has a ~3mm unprintable
+    # leading/trailing margin, so content at y=0 gets its top clipped.  FEED dots
+    # of white clear of both edges keeps the day band + USE BY box fully printed.
+    CW=696; FW=732; FEED=40
     H=max(1,int(round(im.height*CW/float(im.width))))
     content=im.resize((CW,H),Image.LANCZOS)
-    canvas=Image.new("L",(FW,H),255)
-    canvas.paste(content,((FW-CW)//2,0))
+    canvas=Image.new("L",(FW,H+2*FEED),255)
+    canvas.paste(content,((FW-CW)//2,FEED))
     return canvas
 def _brother_label_print(img,qty=1,ip=None,port=None):
     cfg=_label_cfg(); ip=(ip or cfg.get("brother_ip") or "").strip()
