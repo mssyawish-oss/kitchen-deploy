@@ -249,7 +249,7 @@ body.style-v2.view-wall #rot-live .rl-hero-num{font-size:clamp(30px,4.6vh,42px);
 body.style-v2.view-wall #rot-live .rl-foot{flex-direction:row;align-items:center;gap:12px;width:auto;}
 body.style-v2.view-wall #rot-live .rl-actions{flex:1 0 100%;flex-direction:row;width:100%;gap:10px;margin:0;}
 body.style-v2.view-wall #rot-live .rl-actions button{height:42px;min-width:0;width:auto;flex:1 1 0;}
-body.style-v2.view-wall #timers-grid.brows{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:10px;max-height:none;}
+body.style-v2.view-wall #timers-grid.brows{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;max-height:none;}   /* EXACTLY 4 cols + gap 14px = identical to the probes grid above, so batch cards sit directly under the 4 probe cards. auto-fill was width-counting and dropped to 3 on narrower windows. */
 /* out-rank the older wall flex-fill rule (grid-auto-rows:1fr) that stretched every batch row to an
    equal share of the section — right for the old full-width rows, wrong for cards */
 body.style-v2.view-wall #page-probes .pb-sec #timers-grid.brows{grid-auto-rows:min-content;align-items:start;align-content:start;}
