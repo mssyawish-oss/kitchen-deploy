@@ -249,12 +249,19 @@ body.style-v2.view-wall #rot-live .rl-hero-num{font-size:clamp(30px,4.6vh,42px);
 body.style-v2.view-wall #rot-live .rl-foot{flex-direction:row;align-items:center;gap:12px;width:auto;}
 body.style-v2.view-wall #rot-live .rl-actions{flex:1 0 100%;flex-direction:row;width:100%;gap:10px;margin:0;}
 body.style-v2.view-wall #rot-live .rl-actions button{height:42px;min-width:0;width:auto;flex:1 1 0;}
-body.style-v2.view-wall #timers-grid.brows{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;max-height:none;}   /* EXACTLY 4 cols + gap 14px = identical to the probes grid above, so batch cards sit directly under the 4 probe cards. auto-fill was width-counting and dropped to 3 on narrower windows. */
-/* out-rank the older wall flex-fill rule (grid-auto-rows:1fr) that stretched every batch row to an
-   equal share of the section — right for the old full-width rows, wrong for cards */
-body.style-v2.view-wall #page-probes .pb-sec #timers-grid.brows{grid-auto-rows:min-content;align-items:start;align-content:start;}
-body.style-v2.view-wall #timers-grid .brow{margin:0;}
-body.style-v2.view-wall #timers-grid .brow.startrow{grid-column:1/-1;}
+/* WALL BATCH GRID (10 Sep, owner): 4 rows tall, columns grow as batches pile in (4->5->6...), every
+   card the SAME SIZE whatever its state. grid-auto-flow:column fills 4 down then starts a new column;
+   --batch-cols (renderTimers = max(4, ceil(count/4))) shares the width so cards shrink to fit rather
+   than scroll. repeat(4,1fr) rows on the bounded pb-sec keep every cell identical. Default 4 cols line
+   up under the 4 probe cards (same gap 14px). The "Start a batch" bar is a sibling ABOVE the grid. */
+body.style-v2.view-wall #page-probes .pb-sec #timers-grid.brows{
+  display:grid;   /* row flow (default): fill ACROSS the top first, then wrap down */
+  grid-template-rows:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(var(--batch-cols,4),minmax(0,1fr));
+  gap:14px;max-height:none;align-items:stretch;align-content:stretch;overflow:hidden;}
+body.style-v2.view-wall #timers-grid .brow{margin:0;height:auto;min-height:0;overflow:hidden;align-items:center;}
+body.style-v2.view-wall #batch-start{margin-bottom:10px;}
+body.style-v2.view-wall #batch-start .brow{margin:0;}
 
 body.style-v2 #rot-live .rl-actions button{flex:0 0 auto;height:50px;min-width:158px;width:100%;padding:0 18px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
@@ -1750,7 +1757,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
-        <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div class="timers-grid" id="timers-grid"></div></div>
+        <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
       </div>
     </div>
     <div class="page" id="page-stock">
@@ -4667,10 +4674,13 @@ function renderTimers(){
   const _tm=ms=>{if(!ms)return '';const d=new Date(ms*1000);return d.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ','');};
   const active=timers.filter(t=>t.running||t.expired||(t.remaining<t.total&&t.remaining>0));
   const idle=timers.find(t=>!t.running&&!t.expired&&t.remaining>=t.total);
-  const rows=[];
-  rows.push(`<div class="brow startrow"><span style="color:var(--muted);font-size:var(--fs-lg);line-height:1;">+</span>
+  // the "Start a batch" bar lives ABOVE the grid (its own element) so the grid can be a pure
+  // 4-rows-tall, columns-grow-as-needed layout of equal batch cards (owner, 10 Sep).
+  const sb=document.getElementById('batch-start');
+  if(sb)sb.innerHTML=`<div class="brow startrow"><span style="color:var(--muted);font-size:var(--fs-lg);line-height:1;">+</span>
     <div class="binfo"><span>Start a batch — takes the next free number</span></div>
-    ${idle?`<button class="bbtn go" onclick="startT(${timers.indexOf(idle)})">&#9658; Start</button>`:`<span style="font-size:var(--fs-sm);color:var(--muted);">all ${timers.length} running</span>`}</div>`);
+    ${idle?`<button class="bbtn go" onclick="startT(${timers.indexOf(idle)})">&#9658; Start</button>`:`<span style="font-size:var(--fs-sm);color:var(--muted);">all ${timers.length} running</span>`}</div>`;
+  const rows=[];
   active.sort((a,b)=>(b.started_at||0)-(a.started_at||0)).forEach(t=>{
     const id=timers.indexOf(t);
     const meta=[t.started_at?('Started '+_tm(t.started_at)):null,
@@ -4694,6 +4704,8 @@ function renderTimers(){
       <span class="bclock">done</span></div>`);
   });
   grid.innerHTML=rows.join('');
+  // 4 rows tall by default; every 4 more cards adds a column (5th, 6th…). Cards shrink to fit.
+  grid.style.setProperty('--batch-cols', Math.max(4, Math.ceil(rows.length/4)));
   _fitPad();   // batch count changed the content height → re-balance the vertical fit
 }
 function startT(id){const t=timers[id];if(t.remaining<=0&&!t.expired)return;t.running=true;t.expired=false;renderTimers();postTimer(id,'start');}
