@@ -239,6 +239,23 @@ body.style-v2 #rot-live .rl-step{width:36px;height:36px;font-size:var(--fs-lg);}
 body.style-v2 #rot-live .rl-foot{margin:0;flex-direction:column;align-items:flex-start;gap:2px;}
 body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:14px;}
 /* flex:0 0 auto is the fix: in a COLUMN the inherited flex:1 was shrinking the buttons to ~16px */
+/* 21.5" WALL TABLETS (10 Sep, owner): the rot box was 266px of mostly air — a 4-button COLUMN set
+   its height. Half it: count centred on one line, the four actions in a ROW beneath. The freed space
+   flows to the batches, whose full-width rows become probe-card-width grid cells so several fit
+   side-by-side with no scrolling. Scoped to view-wall — iPad/phone layouts untouched. */
+body.style-v2.view-wall #rl-bbq .rl-card{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 26px;padding:8px 18px;}
+body.style-v2.view-wall #rot-live .rl-hero{flex-direction:row;align-items:center;justify-content:center;gap:14px;width:auto;}
+body.style-v2.view-wall #rot-live .rl-hero-num{font-size:clamp(30px,4.6vh,42px);}
+body.style-v2.view-wall #rot-live .rl-foot{flex-direction:row;align-items:center;gap:12px;width:auto;}
+body.style-v2.view-wall #rot-live .rl-actions{flex:1 0 100%;flex-direction:row;width:100%;gap:10px;margin:0;}
+body.style-v2.view-wall #rot-live .rl-actions button{height:42px;min-width:0;width:auto;flex:1 1 0;}
+body.style-v2.view-wall #timers-grid.brows{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:10px;max-height:none;}
+/* out-rank the older wall flex-fill rule (grid-auto-rows:1fr) that stretched every batch row to an
+   equal share of the section — right for the old full-width rows, wrong for cards */
+body.style-v2.view-wall #page-probes .pb-sec #timers-grid.brows{grid-auto-rows:min-content;align-items:start;align-content:start;}
+body.style-v2.view-wall #timers-grid .brow{margin:0;}
+body.style-v2.view-wall #timers-grid .brow.startrow{grid-column:1/-1;}
+
 body.style-v2 #rot-live .rl-actions button{flex:0 0 auto;height:50px;min-width:158px;width:100%;padding:0 18px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;}
 body.style-v2 #rot-live .rl-pulls{flex:1 0 100%;margin-top:0;border-top:none;padding-top:0;}
 /* PHONE: the row/wrap layout crammed the big number, the "Square live" line and the 4 buttons
