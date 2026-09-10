@@ -653,6 +653,120 @@ def _make_test_label(width: int = 696, height: int = 320) -> Image.Image:
     return im
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# AirPrint / IPP (URF) path.  9 Sep 2026: the raw-raster port-9100 path is
+# REJECTED by this QL-810W's firmware (it latches a red "other-error" even for a
+# job byte-identical to the proven brother_ql library, in Raster command mode,
+# with correct 62mm continuous media).  The printer's NATIVE network path —
+# AirPrint/IPP with an image/urf document — works cleanly (verified: the printer
+# reports job-completed-successfully and a label feeds).  So QL-810W labels go
+# out via encode_urf()+ipp_print() instead of encode_label()+send_to_printer().
+#
+# URF (Apple Raster) format, verified against apple/cups raster-stream.c and
+# mbevand/urf2image:  "UNIRAST\0" + page_count(uint32 BE), then per page a
+# 32-byte header [bpp, colorspace_idx, duplex, quality, mediatype, mediapos,
+# 0*6, width(BE), height(BE), dpi(BE), 0*8], then per output line a 1-byte
+# line-repeat (count-1) followed by URF-PackBits until `width` px are produced
+# (0x00..0x7F n => repeat next pixel n+1 times; 0x00=black..0xFF=white).
+# This printer advertises only "W8" (8-bit grey) => bpp=8, colorspace_idx=0
+# (CUPS_CSPACE_SW).  We emit repeat-runs only (always valid; mono rows are runs).
+# ─────────────────────────────────────────────────────────────────────────────
+def _urf_packbits_line(row: bytes) -> bytes:
+    out = bytearray()
+    i = 0; n = len(row)
+    while i < n:
+        px = row[i]; j = i + 1
+        while j < n and row[j] == px and (j - i) < 128:
+            j += 1
+        out.append((j - i) - 1)     # 0x00..0x7F: repeat next pixel (run) times
+        out.append(px)
+        i = j
+    return bytes(out)
+
+
+def encode_urf(img: Image.Image, dpi: int = 300) -> bytes:
+    """Encode a PIL image as a single-page URF (image/urf) document for the
+    QL-810W's AirPrint path.  8-bit greyscale, 0=black..255=white."""
+    g = img.convert("L")
+    W, H = g.size
+    px = g.load()
+    hdr = bytearray(32)
+    hdr[0] = 8                       # bpp
+    hdr[1] = 0                       # colorspace idx -> CUPS_CSPACE_SW ("W8")
+    hdr[3] = 4                       # quality: normal
+    struct.pack_into(">I", hdr, 12, W)
+    struct.pack_into(">I", hdr, 16, H)
+    struct.pack_into(">I", hdr, 20, dpi)
+    body = bytearray(b"UNIRAST\x00" + struct.pack(">I", 1))
+    body += hdr
+    for y in range(H):
+        body += b"\x00"              # line-repeat 0 -> this line once
+        body += _urf_packbits_line(bytes(px[x, y] for x in range(W)))
+    return bytes(body)
+
+
+def decode_urf(doc: bytes):
+    """Minimal decoder for round-trip validation; returns (W, H, rows)."""
+    assert doc[:8] == b"UNIRAST\x00", "bad URF magic"
+    hdr = doc[12:44]
+    W = struct.unpack(">I", hdr[12:16])[0]; H = struct.unpack(">I", hdr[16:20])[0]
+    i = 44; rows = []
+    while len(rows) < H and i < len(doc):
+        rep = doc[i] + 1; i += 1
+        line = bytearray()
+        while len(line) < W:
+            code = doc[i]; i += 1
+            if code == 0x80:
+                line += b"\xff" * (W - len(line)); break
+            if code <= 0x7f:
+                line += bytes([doc[i]]) * (code + 1); i += 1
+            else:
+                m = (256 - code) + 1
+                line += doc[i:i + m]; i += m
+        line = bytes(line[:W])
+        rows.extend([line] * rep)
+    return W, H, rows
+
+
+def _ipp_attr(tag: int, name: str, value: str) -> bytes:
+    nb = name.encode(); vb = value.encode()
+    return bytes([tag]) + struct.pack(">H", len(nb)) + nb + struct.pack(">H", len(vb)) + vb
+
+
+def ipp_print(ip: str, doc: bytes, fmt: str = "image/urf", user: str = "dashboard",
+              jobname: str = "label", path: str = "/ipp/print", port: int = 631,
+              timeout: float = 30) -> Dict[str, Any]:
+    """Send an IPP Print-Job carrying `doc` to the printer.  Returns
+    {'ok': bool, 'status': int}. status 0x0000..0x00ff == successful."""
+    import urllib.request
+    uri = "ipp://%s%s" % (ip, path)
+    body = bytearray()
+    body += struct.pack(">H", 0x0200)              # IPP 2.0
+    body += struct.pack(">H", 0x0002)              # Print-Job
+    body += struct.pack(">I", 1)                   # request-id
+    body += b"\x01"                                # operation-attributes-tag
+    body += _ipp_attr(0x47, "attributes-charset", "utf-8")
+    body += _ipp_attr(0x48, "attributes-natural-language", "en")
+    body += _ipp_attr(0x45, "printer-uri", uri)
+    body += _ipp_attr(0x42, "requesting-user-name", user)
+    body += _ipp_attr(0x42, "job-name", jobname)
+    body += _ipp_attr(0x49, "document-format", fmt)
+    body += b"\x03"                                # end-of-attributes-tag
+    body += doc
+    req = urllib.request.Request("http://%s:%d%s" % (ip, port, path), data=bytes(body),
+                                 headers={"Content-Type": "application/ipp"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        resp = r.read()
+    status = struct.unpack(">H", resp[2:4])[0] if len(resp) >= 4 else -1
+    return {"ok": (0 <= status <= 0x00ff), "status": status}
+
+
+def print_label_airprint(ip: str, img: Image.Image, dpi: int = 300,
+                         timeout: float = 30) -> Dict[str, Any]:
+    """Encode `img` as URF and print it via IPP/AirPrint on the QL-810W."""
+    return ipp_print(ip, encode_urf(img, dpi=dpi), timeout=timeout)
+
+
 def _self_test() -> None:
     import os
     import random

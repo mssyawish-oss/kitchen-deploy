@@ -7097,16 +7097,22 @@ def _brother_prep(img):
     W=696; H=max(1,int(round(im.height*W/float(im.width))))
     return im.resize((W,H),Image.LANCZOS)
 def _brother_label_print(img,qty=1,ip=None,port=None):
-    cfg=_label_cfg(); ip=(ip or cfg.get("brother_ip") or "").strip(); port=int(port or 9100)
+    cfg=_label_cfg(); ip=(ip or cfg.get("brother_ip") or "").strip()
     if not ip: return False,"No Brother printer IP set (Settings → Find Brother)"
     try: bq=_brother_mod()
     except Exception as e: return False,str(e)
-    try: job=bq.encode_label(_brother_prep(img),label="62",printer="QL-810W",cut=True,compress=True)
+    # QL-810W: the raw-raster port-9100 path is REJECTED by this printer's
+    # firmware (red "other-error" latch even for a job byte-identical to the
+    # proven brother_ql library, in Raster command mode, correct media). Its
+    # NATIVE AirPrint/IPP path (image/urf) prints cleanly — verified 9 Sep 2026
+    # (printer reports job-completed-successfully). See brother_ql.py.
+    try: doc=bq.encode_urf(_brother_prep(img),dpi=300)
     except Exception as e: return False,"encode failed: %s"%str(e)[:120]
     last=None
     for _ in range(max(1,int(qty))):
-        r=bq.send_to_printer(ip,job,port=port,timeout=15)
-        if not r.get("ok"): last=r.get("error") or "send failed"; break
+        try: r=bq.ipp_print(ip,doc,timeout=30)
+        except Exception as e: last="print failed: %s"%str(e)[:120]; break
+        if not r.get("ok"): last="printer rejected job (IPP status 0x%04x)"%int(r.get("status",-1)); break
     return (last is None),(last or "")
 
 @app.route("/api/brother_find",methods=["POST"])
