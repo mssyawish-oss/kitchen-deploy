@@ -6596,6 +6596,59 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     for ln in lines:
         dr.text(((W-dr.textlength(ln,font=f))//2, y), ln, font=f, fill=0); y+=lh
     return img
+def _render_drygoods_png(item,staff,packed_s,seq=0,total=1):
+    """Dry-goods PACKAGING label — a compact tag (~25% shorter than the prep label):
+    a DRY GOODS header, the contents big + centred (auto-sized to fit inside the
+    border, wraps up to 3 lines), then PACKED date + BY name.  No use-by."""
+    from PIL import Image,ImageDraw,ImageFont
+    W,H=NIIM_W,430
+    img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
+    def fnt(sz,bold=True):
+        names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
+        for c in names:
+            for p in (c,os.path.join("C:\\Windows\\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    def wrap(text,font,maxw,maxlines):
+        lines=[];cur=""
+        for w in text.split():
+            t=(cur+" "+w).strip()
+            if dr.textlength(t,font=font)<=maxw: cur=t
+            else:
+                if cur: lines.append(cur)
+                cur=w
+        if cur: lines.append(cur)
+        return lines[:maxlines]
+    M=18; CM=40                                  # CM = side padding for the contents (never touch the border)
+    dr.rectangle([5,5,W-6,H-6],outline=0,width=4)                 # tag border
+    hb=64; dr.rectangle([5,5,W-6,hb],fill=0)                      # DRY GOODS header strip
+    fhd=fnt(40,True); hw=dr.textlength("DRY GOODS",font=fhd)
+    dr.text(((W-hw)//2,5+(hb-5-40)//2-2),"DRY GOODS",font=fhd,fill=255)
+    if total>1 and seq>0:
+        badge="%d/%d"%(seq,total); fb=fnt(26,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-M-bw,5+(hb-5-26)//2-1),badge,font=fb,fill=255)
+    # contents — biggest bold font whose EVERY line fits the padded width AND the height zone
+    top=hb+18; bottom=H-118; zone=bottom-top; maxw=W-2*CM
+    up=(item or "").upper(); nwords=len(up.split())
+    chosen=None
+    for sz in (72,66,60,54,48,44,40,36,32,28,24):
+        f=fnt(sz,True); lines=wrap(up,f,maxw,3); lh=int(sz*1.14)
+        if not lines: continue
+        widest=max(dr.textlength(l,font=f) for l in lines)
+        if widest<=maxw and len(lines)*lh<=zone and sum(len(l.split()) for l in lines)>=nwords:
+            chosen=(f,lines,lh); break
+    if not chosen:
+        f=fnt(24,True); lines=wrap(up,f,maxw,3); chosen=(f,lines,int(24*1.14))
+    f,lines,lh=chosen
+    y=top+max(0,(zone-len(lines)*lh)//2)
+    for ln in lines:
+        dr.text(((W-dr.textlength(ln,font=f))//2,y),ln,font=f,fill=0); y+=lh
+    dy=H-108; dr.line([M,dy,W-M,dy],fill=0,width=3)              # divider
+    fsb=fnt(30,True); fs=fnt(30,False); fname=fnt(40,True)
+    dr.text((M,dy+16),"PACKED",font=fsb,fill=0); dr.text((M+180,dy+16),packed_s,font=fs,fill=0)
+    dr.text((M,dy+56),"BY",font=fsb,fill=0); dr.text((M+180,dy+50),(staff or "-"),font=fname,fill=0)
+    return img
 _NIIM_CHR="bef8d6c9-9c21-4c9e-b632-bd58c1009f9f"   # NOTIFY + WRITE_NO_RESPONSE
 NIIM_W=567                                         # B1 Pro printhead width in dots (300 dpi)
 def _niim_pkt(cmd,data=b""):
@@ -7262,6 +7315,69 @@ def api_print_labels():
         elif _m=="brother": note="Brother QL-810W didn't print%s. Is it on and joined to the shop WiFi (Settings → Find Brother)? Label saved (labels/last_label.png)."%_why
         else: note="Bluetooth print failed%s — NIIMBOT not paired on this machine. Label saved (labels/last_label.png)."%_why
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
+
+# ── DRY GOODS PACKAGING LABELS — compact tag (contents / packed date / by), saved for easy re-print ──
+@app.route("/api/drygoods",methods=["GET"])
+def api_drygoods():
+    """The saved list of dry-goods packs (most-recent first) for one-tap re-print."""
+    return jsonify({"ok":True,"items":(db.get("drygoods_items") or [])})
+
+@app.route("/api/drygoods_preview")
+def api_drygoods_preview():
+    contents=str(request.args.get("contents","")).strip()[:80] or "Contents"
+    staff=str(request.args.get("staff","")).strip()[:30]
+    try: qty=max(1,min(50,int(request.args.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    now=datetime.now()
+    img=_render_drygoods_png(contents,staff,_lbl_date(now),1 if qty>1 else 0,qty)
+    if img is None: return ("Pillow not installed on the server",500)
+    import io as _io
+    buf=_io.BytesIO(); img.convert("L").save(buf,format="PNG")
+    return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
+
+@app.route("/api/drygoods_print",methods=["POST"])
+def api_drygoods_print():
+    d=request.get_json(silent=True) or {}
+    contents=str(d.get("contents","")).strip()[:80]
+    staff=str(d.get("staff","")).strip()[:30]
+    try: qty=max(1,min(50,int(d.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    save=d.get("save",True)
+    if not contents: return jsonify({"ok":False,"error":"Type what's in the pack first"})
+    now=datetime.now(); packed_s=_lbl_date(now)          # PACKED = today's date (re-prints stamp today)
+    printed=0; note=""; first_img=None
+    try:
+        for i in range(qty):
+            img=_render_drygoods_png(contents,staff,packed_s,seq=i+1,total=qty)
+            if first_img is None: first_img=img
+            try:
+                if _print_label(img,1): printed+=1
+            except Exception as e: note="printer error: %s"%e; break
+    except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
+    if save and contents:
+        # keep a reusable list (dedup by contents, newest first) so the same pack re-prints in one tap
+        try:
+            with data_lock:
+                items=[x for x in (db.get("drygoods_items") or []) if x.get("contents","").strip().lower()!=contents.lower()]
+                items.insert(0,{"id":"dg%d"%int(time.time()*1000),"contents":contents,"by":staff,"ts":int(time.time())})
+                db["drygoods_items"]=items[:80]; save_data(db)
+        except Exception: pass
+    try:
+        base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True)
+        if first_img is not None: first_img.save(os.path.join(base,"last_drygoods.png"))
+    except Exception: pass
+    if not printed and not note:
+        _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
+        note="Label didn't print%s. Is the Brother on + joined to the shop WiFi? Label saved (labels/last_drygoods.png)."%_why
+    return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
+
+@app.route("/api/drygoods_delete",methods=["POST"])
+def api_drygoods_delete():
+    rid=str((request.get_json(silent=True) or {}).get("id",""))
+    with data_lock:
+        db["drygoods_items"]=[x for x in (db.get("drygoods_items") or []) if x.get("id")!=rid]
+        save_data(db)
+    return jsonify({"ok":True})
 
 # ── LIVE ORDERS BOARD (KDS mirror) + catering/large-order popup ──
 @app.route("/api/shadow_reset",methods=["POST"])
