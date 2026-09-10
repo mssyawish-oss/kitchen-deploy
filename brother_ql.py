@@ -761,10 +761,85 @@ def ipp_print(ip: str, doc: bytes, fmt: str = "image/urf", user: str = "dashboar
     return {"ok": (0 <= status <= 0x00ff), "status": status}
 
 
+IPP_BUSY = 0x0507   # server-error-busy: the QL-810W rejects a new job while it is
+                    # still printing one (multiple-document-jobs-supported=false),
+                    # so batch copies MUST be serialised, not fired back-to-back.
+
+
+def ipp_get_state(ip: str, path: str = "/ipp/print", port: int = 631,
+                  timeout: float = 8) -> str:
+    """Return the printer-state keyword: 'idle' | 'processing' | 'stopped' | ''."""
+    import urllib.request
+    uri = "ipp://%s%s" % (ip, path)
+    body = bytearray()
+    body += struct.pack(">H", 0x0200)              # IPP 2.0
+    body += struct.pack(">H", 0x000b)              # Get-Printer-Attributes
+    body += struct.pack(">I", 1)
+    body += b"\x01"                                # operation-attributes-tag
+    body += _ipp_attr(0x47, "attributes-charset", "utf-8")
+    body += _ipp_attr(0x48, "attributes-natural-language", "en")
+    body += _ipp_attr(0x45, "printer-uri", uri)
+    body += _ipp_attr(0x44, "requested-attributes", "printer-state")  # 0x44 keyword
+    body += b"\x03"                                # end-of-attributes-tag
+    req = urllib.request.Request("http://%s:%d%s" % (ip, port, path), data=bytes(body),
+                                 headers={"Content-Type": "application/ipp"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = r.read()
+    except Exception:
+        return ""
+    # walk the IPP attribute stream for the printer-state enum (value-tag 0x23)
+    i = 8; n = len(resp)
+    while i < n:
+        tag = resp[i]
+        if tag in (0x01, 0x02, 0x04, 0x05):        # attribute-group tags
+            i += 1; continue
+        if tag == 0x03:                            # end-of-attributes
+            break
+        i += 1
+        if i + 2 > n: break
+        nl = struct.unpack(">H", resp[i:i + 2])[0]; i += 2
+        name = resp[i:i + nl]; i += nl
+        if i + 2 > n: break
+        vl = struct.unpack(">H", resp[i:i + 2])[0]; i += 2
+        val = resp[i:i + vl]; i += vl
+        if name == b"printer-state" and tag == 0x23 and vl == 4:
+            return {3: "idle", 4: "processing", 5: "stopped"}.get(struct.unpack(">i", val)[0], "")
+    return ""
+
+
+def ipp_wait_idle(ip: str, timeout: float = 25, poll: float = 1.0) -> bool:
+    """Block until the printer is idle (or state is unreadable). True if free."""
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        st = ipp_get_state(ip)
+        if st in ("idle", ""):     # idle, or can't tell -> don't block forever
+            return True
+        time.sleep(poll)
+    return False
+
+
+def ipp_print_wait(ip: str, doc: bytes, fmt: str = "image/urf", timeout: float = 30,
+                   busy_retries: int = 12) -> Dict[str, Any]:
+    """Print one job, but wait for the printer to be free first and retry while it
+    reports BUSY — so batches of copies come out one after another, none dropped."""
+    import time
+    ipp_wait_idle(ip, timeout=25)
+    r = ipp_print(ip, doc, fmt=fmt, timeout=timeout)
+    tries = 0
+    while (not r.get("ok")) and int(r.get("status", -1)) == IPP_BUSY and tries < busy_retries:
+        time.sleep(1.5)
+        ipp_wait_idle(ip, timeout=25)
+        r = ipp_print(ip, doc, fmt=fmt, timeout=timeout)
+        tries += 1
+    return r
+
+
 def print_label_airprint(ip: str, img: Image.Image, dpi: int = 300,
                          timeout: float = 30) -> Dict[str, Any]:
     """Encode `img` as URF and print it via IPP/AirPrint on the QL-810W."""
-    return ipp_print(ip, encode_urf(img, dpi=dpi), timeout=timeout)
+    return ipp_print_wait(ip, encode_urf(img, dpi=dpi), timeout=timeout)
 
 
 def _self_test() -> None:

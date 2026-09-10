@@ -7122,7 +7122,10 @@ def _brother_label_print(img,qty=1,ip=None,port=None):
     except Exception as e: return False,"encode failed: %s"%str(e)[:120]
     last=None
     for _ in range(max(1,int(qty))):
-        try: r=bq.ipp_print(ip,doc,timeout=30)
+        # ipp_print_wait waits for the printer to be free + retries on BUSY, so batch
+        # copies (api_print_labels calls this once per copy) serialise instead of the
+        # printer dropping every job after the first (it rejects a 2nd job while busy).
+        try: r=bq.ipp_print_wait(ip,doc,timeout=30)
         except Exception as e: last="print failed: %s"%str(e)[:120]; break
         if not r.get("ok"): last="printer rejected job (IPP status 0x%04x)"%int(r.get("status",-1)); break
     return (last is None),(last or "")
