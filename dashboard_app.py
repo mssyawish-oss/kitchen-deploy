@@ -7094,8 +7094,16 @@ def _brother_mod():
 def _brother_prep(img):
     from PIL import Image
     im=img.convert("L") if img.mode!="L" else img
-    W=696; H=max(1,int(round(im.height*W/float(im.width))))
-    return im.resize((W,H),Image.LANCZOS)
+    # The QL-810W places a raster at one edge of the tape, not centred, so a bare
+    # 696-dot (printable) image prints shifted with a white strip down one side.
+    # Pad to the FULL 62mm media width (732 dots @300dpi) with the content centred
+    # so it comes out centred on the tape.  696 content + 18-dot margins = 732.
+    CW=696; FW=732
+    H=max(1,int(round(im.height*CW/float(im.width))))
+    content=im.resize((CW,H),Image.LANCZOS)
+    canvas=Image.new("L",(FW,H),255)
+    canvas.paste(content,((FW-CW)//2,0))
+    return canvas
 def _brother_label_print(img,qty=1,ip=None,port=None):
     cfg=_label_cfg(); ip=(ip or cfg.get("brother_ip") or "").strip()
     if not ip: return False,"No Brother printer IP set (Settings → Find Brother)"
