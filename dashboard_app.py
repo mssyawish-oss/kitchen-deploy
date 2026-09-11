@@ -3680,11 +3680,27 @@ def _pl_compute(kind,ref=None):
         byv={}
         for b in inp: byv[b["vendor"]]=byv.get(b["vendor"],0.0)+b["amt"]
         rows_c=sorted([{"vendor":k,"amt":round(v,2)} for k,v in byv.items()],key=lambda x:-x["amt"])
-        if man["cogs"]: rows_c.append({"vendor":"Manual entries (Books page)","amt":man["cogs"]})
-        R["cogs"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
+        if kind=="daily":
+            # A delivery covers several days of sales (a 20-carton Baiada drop is not one Thursday's cost), so
+            # the DAILY figure is cost of goods SOLD: today's sales x the trailing 4-week cost ratio
+            # (invoices / sales). The invoices that physically arrived today are listed for reference only.
+            w0=d0-timedelta(days=28); w1=d0-timedelta(days=1)
+            inv28=sum(b["amt"] for b in booked if w0.isoformat()<=b["date"]<=w1.isoformat())
+            sales28=0.0
+            try:
+                s28=_pl_square_sales(w0,w1); g28=_pl_delivery_gross(w0,w1)
+                sales28=float(s28.get("card",0) or 0)+float(s28.get("cash",0) or 0)+0.70*(float(g28.get("uber",0) or 0)+float(g28.get("doordash",0) or 0))
+            except Exception as e: R["errors"].append("Cost-ratio window: "+str(e)[:100])
+            ratio=(inv28/sales28) if (sales28>0 and inv28>0) else 0.0
+            cogs_today=round(ratio*R["sales"]["total"],2)
+            R["cogs"]={"total":cogs_today,"count":len(inp),"scan":bst,"ratio":ratio,"received":rows_c,
+                       "rows":[{"vendor":"Cost of goods sold - est. %.0f%% of today's sales (last 4 weeks: invoices $%s / sales $%s)"%(ratio*100,"{:,.0f}".format(inv28),"{:,.0f}".format(sales28)),"amt":cogs_today}]}
+            R["notes"].append("Daily cost of goods is estimated from your 4-week cost ratio, because a delivery covers several days of sales. Invoices that arrived today are listed for reference only. The weekly and monthly reports charge the actual invoices.")
+        else:
+            if man["cogs"]: rows_c.append({"vendor":"Manual entries (Books page)","amt":man["cogs"]})
+            R["cogs"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
         if bst.get("unreadable"): R["notes"].append("%d invoice PDF(s) in Drive have no readable text (scanned photos) and can't be totalled."%bst["unreadable"])
         if bst.get("skipped_time"): R["notes"].append("Invoice scan ran out of time — %d new file(s) will be read next run."%bst["skipped_time"])
-        if kind=="daily": R["notes"].append("Cost of goods = supplier invoices DATED this day (lumpy day to day — judge it over the week).")
     except Exception as e:
         R["cogs"]={"total":man["cogs"],"rows":([{"vendor":"Manual entries (Books page)","amt":man["cogs"]}] if man["cogs"] else []),"count":0,"scan":{}}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
     # ── LABOUR ──
@@ -3738,9 +3754,12 @@ def _pl_html(R):
     if S.get("manual"): H.append(row("Manual income entries (Books page)",_pl_money(S["manual"]),"",ind=True))
     H+=[row("Total sales",_pl_money(tot),"",bold=True),
        head("COST OF GOODS (supplier invoices)")]
-    for r in C["rows"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),_pl_pct(r["amt"],tot),ind=True))
+    for r in C["rows"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
     if not C["rows"]: H.append(row("No invoices dated in this period","$0.00","",ind=True))
-    H.append(row("Total cost of goods",_pl_money(C["total"]),_pl_pct(C["total"],tot),bold=True))
+    H.append(row("Total cost of goods",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
+    if C.get("received"):
+        H.append(head("INVOICES RECEIVED TODAY (reference only - not charged to today)"))
+        for r in C["received"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
     H.append(head("WAGES & LABOUR"))
     for r in L["rows"][:14]: H.append(row(r["name"],_pl_money(r["amt"]),"%.1f h"%r["hours"],ind=True))
     H.append(row("Staff wages",_pl_money(L["wages"]),_pl_pct(L["wages"],tot),ind=True))
@@ -3776,7 +3795,7 @@ def _pl_text(R):
     S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]
     Ls=["BRUNO'S — %s PROFIT REPORT — %s"%(R["kind"].upper(),R["label"]),"",
         "SALES            %s"%_pl_money(S["total"]),"  card %s · cash %s · uber %s%s · doordash %s%s"%(_pl_money(S["card"]),_pl_money(S["cash"]),_pl_money(S["uber"])," (real)" if S["uber_real"] else " (est)",_pl_money(S["doordash"])," (real)" if S["doordash_real"] else " (est)"),
-        "COST OF GOODS    %s  (%d invoices)"%(_pl_money(C["total"]),C["count"]),
+        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),("est. %.0f%% cost ratio"%(C.get("ratio",0)*100)) if R["kind"]=="daily" else "%d invoices"%C["count"]),
         "LABOUR           %s  (wages %s + super %s + owner %s)"%(_pl_money(L["total"]),_pl_money(L["wages"]),_pl_money(L["super"]),_pl_money(L["owner"])),
         "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
         "GROSS PROFIT     %s"%_pl_money(P["gross"]),
