@@ -6910,11 +6910,29 @@ function poSaveAuto(){
   _poStatus(appData.prodoff_auto_on?('Switches everything on at '+v):'Auto switch-on is off');
 }
 function poRunAll(){
-  _poStatus('Switching everything on… this can take a moment',null,true);   // busy=true shows the progress bar so it doesn't look frozen
-  fetch('/api/prodoff_auto_run',{method:'POST'}).then(r=>r.json()).then(d=>{
-    if(!d||!d.ok){_poStatus('Failed'+((d&&d.error)?(' — '+_mEsc(d.error)):''),'var(--red)');return;}
-    appData.prodoff_autolog=d;_poSummary(d);checkProductsOff();
-    if(typeof poSearch==='function')poSearch();   // refresh any open search rows (were showing stale "already off")
+  // client-side loop (like Switch OFF all) so it shows a real 'done / total' counter instead of one
+  // opaque server call. Skips the never-auto-on names, exactly as the server run does.
+  _poStatus('Loading products&hellip;',null,true);
+  fetch('/api/products_offline',{cache:'no-store'}).then(r=>r.json()).then(async d=>{
+    const list=(d&&d.ok&&d.off)?d.off:[];
+    const never=new Set((appData.prodoff_never||[]).map(n=>String(n).toUpperCase()));
+    const todo=list.filter(o=>!never.has(String(o.item||'').toUpperCase()));
+    const total=todo.length;
+    if(!total){_poStatus('Nothing to switch on','var(--green)');checkProductsOff();return;}
+    let done=0,on=0,addon=0,fail=0,lastErr='';
+    _poProgress(0,total,'Switching on','var(--green)');
+    for(const o of todo){
+      try{const r=await fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:o.id})}).then(x=>x.json());
+        if(r&&r.ok)on++;else if(r&&/add-on/i.test(r.error||''))addon++;else{fail++;if(r&&r.error)lastErr=r.error;}}
+      catch(e){fail++;lastErr='network error';}
+      done++;_poProgress(done,total,'Switching on','var(--green)');
+    }
+    const bits=[];
+    if(on)bits.push('<span style="color:var(--green);">'+on+' switched on</span>');
+    if(addon)bits.push('<span style="color:var(--amber);">'+addon+' add-on'+(addon>1?'s':'')+' need the Square app</span>');
+    if(fail)bits.push('<span style="color:var(--red);">'+fail+' failed'+(lastErr?(' &mdash; '+_mEsc(lastErr)):'')+'</span>');
+    _poStatus(bits.join(' &middot; ')||'All switched on ✓',(addon||fail)?'var(--amber)':'var(--green)');
+    checkProductsOff();poSearch();
   }).catch(()=>_poStatus('Failed — could not reach the server','var(--red)'));
 }
 function prodOffTurnOnG(i){
