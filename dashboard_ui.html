@@ -4250,7 +4250,9 @@ function deleteCamera(id,name){_askConfirm('Delete camera "'+name+'"?','',functi
 function tick(){const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const el=document.getElementById('clock');if(el)el.textContent=t;const sc=document.getElementById('side-clock');if(sc)sc.textContent=new Date().toLocaleDateString('en-AU',{weekday:'short',day:'2-digit',month:'short'})+'  '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 setInterval(tick,1000);tick();
 function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='settings-modal')_stopCalLive();}
+function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='settings-modal')_stopCalLive();
+  // a new build was deployed while a modal was open → apply it now that nothing is being interacted with
+  if(_uiUpdatePending&&!document.querySelector('.modal-overlay.open')){setTimeout(()=>{if(_uiUpdatePending&&!_uiBusy())location.reload();},150);}}
 function toggleDayPill(el){el.classList.toggle('on');}
 function toggleOrderDay(el){el.classList.toggle('on');_orderAdj={};updateOrderPreview();}
 let _localSavedAt={};   // keys this device just saved → don't let a stale background GET revert them
@@ -7098,15 +7100,26 @@ function renderDeployHealth(){const el=document.getElementById('deploy-health');
     html+='<div style="color:var(--muted);margin-top:4px;">Auto-update health reporting isn’t active yet. Re-run <b>setup-autodeploy.bat</b> as administrator once on the server PC to switch it on.</div>';
   }
   el.innerHTML=html;}
-let _uiVer=null;   // self-update: reload the app on its own when a new screen build is deployed, so nobody has to manually refresh
+let _uiVer=null,_uiUpdatePending=false;   // self-update: reload the app on its own when a new screen build is deployed, so nobody has to manually refresh
 async function checkUiVersion(){
   try{const r=await fetch('/api/version',{cache:'no-store'});const d=await r.json();if(!d||!d.ui)return;
     if(_uiVer===null){_uiVer=d.ui;return;}                 // first read = the version we loaded with
     if(d.ui!==_uiVer){                                      // a newer screen was deployed
-      if(document.querySelector('.modal-overlay.open'))return;   // don't interrupt a tap-sequence; catch it next check
+      _uiUpdatePending=true;
+      if(_uiBusy()){_showUpdateNudge();return;}            // mid-tap or a modal is open: don't yank it — offer a visible Reload button instead, and reload the moment they close it
       location.reload();
     }
   }catch(e){}
+}
+// A high-z banner with a Reload button, shown when a new build is ready but the user is mid-interaction
+// (so the silent auto-reload was deferred). Sits ABOVE modals so it's never hidden behind the open panel.
+function _showUpdateNudge(){
+  let n=document.getElementById('ui-update-nudge');
+  if(!n){n=document.createElement('div');n.id='ui-update-nudge';
+    n.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#10261c;border-bottom:1px solid #1f7a4d;color:#d6f5e4;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 14px;font-weight:800;font-size:var(--fs-md);box-shadow:0 6px 22px rgba(0,0,0,.55);';
+    n.innerHTML='<span>✨ New version ready</span><button class="po-btn go" style="padding:6px 16px;" onclick="location.reload()">Reload now</button>';
+    document.body.appendChild(n);}
+  n.style.display='flex';
 }
 // In-app confirm. NOT window.confirm(): kiosk browsers and installed PWAs (the big Android wall screen)
 // suppress native dialogs and return false silently, so the action just never happened — while the same
