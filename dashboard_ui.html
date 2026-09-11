@@ -6767,6 +6767,9 @@ function _pdOffPrune(){const m=appData.prodoff_mutes||{};const now=Date.now();le
 // One product (e.g. SWEET POTATO CHIPS) is SEVERAL Square objects — one per size variation plus any add-on
 // modifiers. Silencing must cover the whole NAME, else the other variations keep re-sounding the alarm.
 let _pdOffGroupCache=[];
+let _pdOffRowNames=[];   // group NAMES in the exact order the modal last rendered them — the click
+                         // handlers resolve by name, never by a raw array index (a background poll
+                         // rebuilds _pdOffGroupCache on a timer, so an index goes stale under the finger)
 function _pdOffGroups(){
   const m=new Map();
   _prodOffList.forEach(p=>{
@@ -6777,9 +6780,12 @@ function _pdOffGroups(){
     if(t&&g.tags.indexOf(t)<0)g.tags.push(t);
     if(p.off_since&&(!g.off_since||p.off_since<g.off_since))g.off_since=p.off_since;   // earliest switch-off drives the alarm
   });
-  _pdOffGroupCache=Array.from(m.values());
+  // stable, deterministic order so rows never reorder between renders (server list order isn't guaranteed)
+  _pdOffGroupCache=Array.from(m.values()).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   return _pdOffGroupCache;
 }
+// Resolve the group a row points at BY NAME (from the last render snapshot), immune to cache rebuilds.
+function _pdOffGrpAt(i){const nm=_pdOffRowNames[i];if(nm==null)return null;_pdOffGroups();return _pdOffGroupCache.find(g=>g.name===nm)||null;}
 function _pdOffGroupMutedUntil(g){                 // group counts as silenced only when EVERY id is silenced
   const m=appData.prodoff_mutes||{};const now=Date.now();
   let min=Infinity;
@@ -6791,7 +6797,7 @@ function _prodOffAfterMute(){
   _prodOffRenderModal();
 }
 function prodOffMuteG(i,mode){
-  const g=_pdOffGroupCache[i];if(!g)return;
+  const g=_pdOffGrpAt(i);if(!g)return;
   appData.prodoff_mutes=appData.prodoff_mutes||{};
   const until=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
   g.ids.forEach(id=>{appData.prodoff_mutes[id]=until;});   // silence EVERY variation/add-on of this product
@@ -6799,16 +6805,17 @@ function prodOffMuteG(i,mode){
   _prodOffAfterMute();
 }
 function prodOffUnmuteG(i){
-  const g=_pdOffGroupCache[i];if(!g)return;
+  const g=_pdOffGrpAt(i);if(!g)return;
   if(appData.prodoff_mutes)g.ids.forEach(id=>{delete appData.prodoff_mutes[id];});
   saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();
 }
 function prodOffMute(id,mode){                     // legacy single-id entry point — widen it to the whole product
   const p=_prodOffList.find(x=>x.id===id);
-  const idx=p?_pdOffGroups().findIndex(g=>g.name===p.item):-1;
-  if(idx>=0)return prodOffMuteG(idx,mode);
+  const g=p?_pdOffGroups().find(x=>x.name===p.item):null;   // resolve by NAME, not a stale index
   appData.prodoff_mutes=appData.prodoff_mutes||{};
-  appData.prodoff_mutes[id]=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
+  const until=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
+  if(g){g.ids.forEach(x=>{appData.prodoff_mutes[x]=until;});}   // silence the whole product
+  else{appData.prodoff_mutes[id]=until;}
   saveKeys(['prodoff_mutes']);_prodOffAfterMute();
 }
 function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
@@ -6847,7 +6854,7 @@ function checkProductsOff(){
 // Never auto-on list (product NAMES the morning switch-on leaves alone)
 function _pdOffNever(name){return (appData.prodoff_never||[]).some(n=>String(n).toUpperCase()===String(name).toUpperCase());}
 function prodOffNeverToggle(i){
-  const g=_pdOffGroupCache[i];if(!g)return;
+  const g=_pdOffGrpAt(i);if(!g)return;
   appData.prodoff_never=appData.prodoff_never||[];
   const nm=g.name, u=String(nm).toUpperCase();
   const ix=appData.prodoff_never.findIndex(n=>String(n).toUpperCase()===u);
@@ -6899,7 +6906,7 @@ function poRunAll(){
   }).catch(()=>_poStatus('Failed','var(--red)'));
 }
 function prodOffTurnOnG(i){
-  const g=_pdOffGroupCache[i];if(!g)return;
+  const g=_pdOffGrpAt(i);if(!g)return;
   _poStatus('Switching on '+_mEsc(g.name)+'…');
   let on=0,addon=0,fail=0;
   // one at a time — firing all sizes of the SAME item in parallel made Square reject one with a
@@ -6927,7 +6934,8 @@ function _prodOffRenderModal(){
     +'<b style="font-size:var(--fs-md);">&#128276; Alarm ringing</b><span style="flex:1;"></span>'
     +'<button class="po-btn" onclick="prodOffSilenceAll(\'hour\')">Silence all &mdash; 1 hr</button>'
     +'<button class="po-btn" onclick="prodOffSilenceAll(\'day\')">Silence all &mdash; today</button></div>'):'';
-  el.innerHTML=banner+_pdOffGroups().map((g,i)=>{
+  const _grps=_pdOffGroups();_pdOffRowNames=_grps.map(g=>g.name);   // snapshot: row index -> name, for the click handlers
+  el.innerHTML=banner+_grps.map((g,i)=>{
     // header row per PRODUCT with a "turn on ALL sizes", then one row per SIZE so any single size
     // can go back on its own (owner, 8 Aug: sizes were lumped together, couldn't revive just one)
     const until=_pdOffGroupMutedUntil(g);
@@ -6988,12 +6996,30 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
     _poHits=d.items||[];
     if(!_poHits.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">No match.</div>';return;}
     const allBtn=(_poHits.length>1)?('<div style="display:flex;justify-content:flex-end;margin:4px 0;"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOffAll()">Switch OFF all '+_poHits.length+' results</button></div>'):'';
-    box.innerHTML=allBtn+_poHits.map((it,i)=>'<div class="prodoff-row">'
-      +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
-      +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+'</div>'
-      +(it.off?'<div style="font-size:var(--fs-sm);color:var(--amber);">already has something switched off</div>':'')+'</div>'
-      +'<div class="po-ctl"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOff('+i+')">Switch OFF</button></div>'
-      +'</div>').join('');
+    const RED='background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;';
+    box.innerHTML=allBtn+_poHits.map((it,i)=>{
+      const vs=(it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:'',off:it.off}));
+      const multi=vs.length>1;
+      let head='<div class="prodoff-row">'
+        +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
+        +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+'</div>'
+        +(it.off?'<div style="font-size:var(--fs-sm);color:var(--amber);">already has something switched off</div>':'')+'</div>'
+        +'<div class="po-ctl"><button class="po-btn" style="'+RED+'" onclick="poSwitchOff('+i+')">Switch OFF'+(multi?' all':'')+'</button></div>'
+        +'</div>';
+      if(multi){
+        head+=vs.map((v,j)=>{
+          const nm=(!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name;
+          const ctl=v.off
+            ?'<span style="font-size:var(--fs-sm);color:var(--amber);align-self:center;">already off</span>'
+            :'<button class="po-btn" style="'+RED+'" onclick="poSwitchOffOne('+i+','+j+')">Switch OFF</button>';
+          return '<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;">'
+            +'<div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+_mEsc(nm)+'</div>'
+            +'<div class="po-ctl">'+ctl+'</div>'
+          +'</div>';
+        }).join('');
+      }
+      return head;
+    }).join('');
   }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">search failed</div>';});
 },350);}
 async function _poDoSwitchOff(it){
@@ -7017,6 +7043,16 @@ function poSwitchOff(i){const it=_poHits[i];if(!it)return;
     _poStatus('Switching off '+_mEsc(it.name)+'&hellip;',null,true);
     const r=await _poDoSwitchOff(it);
     _poStatus(_mEsc(it.name)+': '+r.ok+' switched off'+(r.fail?(' &middot; <span style="color:var(--red);">'+r.fail+' failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>'):''),r.fail?'var(--red)':'var(--green)');
+    checkProductsOff();poSearch();
+  },'Switch off');}
+function poSwitchOffOne(i,j){const it=_poHits[i];if(!it)return;
+  const vs=(it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:''}));
+  const v=vs[j];if(!v)return;
+  const nm=it.name+' — '+((!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name);
+  _askConfirm('Switch off '+nm+'?','Marks just this one SOLD OUT in Square — on the POS and online too.',async()=>{
+    _poStatus('Switching off '+_mEsc(nm)+'&hellip;',null,true);
+    const r=await _poDoSwitchOff({name:nm,ids:[v.id],kind:it.kind||''});
+    _poStatus(_mEsc(nm)+': '+(r.ok?'switched off ✓':('<span style="color:var(--red);">failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>')),r.fail?'var(--red)':'var(--green)');
     checkProductsOff();poSearch();
   },'Switch off');}
 function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}

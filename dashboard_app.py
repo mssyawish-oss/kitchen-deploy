@@ -2601,11 +2601,12 @@ def api_product_search():
                     vs=[];off=False
                     for v in idata.get("variations",[]) or []:
                         vd=v.get("item_variation_data") or {}
-                        vs.append({"id":v.get("id"),"name":vd.get("name") or ""})
-                        for ov in vd.get("location_overrides") or []:
-                            if ov.get("location_id")==loc and ov.get("sold_out"): off=True
+                        voff=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (vd.get("location_overrides") or []))
+                        vs.append({"id":v.get("id"),"name":vd.get("name") or "","off":voff})
+                        if voff: off=True
                     if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
-                                         "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],"off":off})
+                                         "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],
+                                         "vars":vs,"off":off})
                 cursor=data.get("cursor")
                 if not cursor: break
             cursor=None
