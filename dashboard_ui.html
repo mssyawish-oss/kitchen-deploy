@@ -7090,7 +7090,11 @@ function poSwitchOffOne(i,j){const it=_poHits[i];if(!it)return;
     _poStatus(_mEsc(nm)+': '+(r.ok?'switched off ✓':('<span style="color:var(--red);">failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>')),r.fail?'var(--red)':'var(--green)');
     checkProductsOff();poSearch();
   },'Switch off');}
-function prodOffOpen(){_prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
+function prodOffOpen(){
+  const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
+  const box=document.getElementById('po-search-results');if(box)box.innerHTML='';        // and no stale results from last time
+  _poHits=[];clearTimeout(_poQT);
+  _prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
 function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
 // ── Remote restart (apply backend updates from the dash) ──
