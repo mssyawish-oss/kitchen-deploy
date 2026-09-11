@@ -1452,11 +1452,11 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 /* Cameras / Sales / Team live in the left menu now, not the bottom bar */
 .bottom-nav .nav-hidden{display:none;}
 /* floating "products switched off" pill — flashes at the bottom; tap opens the list + silences the alarm for 1h */
-.prodoff-fab{display:none!important;position:fixed;right:16px;bottom:calc(var(--nav-h) + 14px);z-index:150;display:flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;color:#fff;border-radius:999px;padding:9px 15px 9px 13px;font-size:var(--fs-md);font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.prodoff-fab{display:none!important;position:fixed;right:16px;top:66px;z-index:150;display:flex;align-items:center;gap:8px;background:#3a0f14;border:1px solid #ef4444;color:#fff;border-radius:999px;padding:9px 15px 9px 13px;font-size:var(--fs-md);font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5);}
 .prodoff-fab svg{width:20px;height:20px;color:#fca5a5;flex-shrink:0;}
 .prodoff-fab .pf-num{background:#ef4444;color:#fff;border-radius:999px;min-width:22px;text-align:center;padding:1px 7px;font-size:var(--fs-md);font-weight:800;}
 .prodoff-fab.flashing{animation:prodoff-pulse 1.1s ease-in-out infinite;}
-@media(max-width:600px){.prodoff-fab{right:12px;bottom:calc(var(--nav-h) + 10px);}}
+@media(max-width:600px){.prodoff-fab{right:12px;top:62px;}}
 #alarm-flash{position:fixed;inset:0;pointer-events:none;z-index:540;opacity:0;box-shadow:inset 0 0 0 7px var(--af-col,#ef4444),inset 0 0 44px 10px var(--af-col,#ef4444);will-change:opacity;}   /* will-change promotes to its own layer → the pulse is GPU-composited (painted once) instead of repainting the whole blurred shadow every frame */
 #alarm-flash.on{animation:af-pulse 1.1s ease-in-out infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -2009,11 +2009,11 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <input type="time" id="po-time" onchange="poSaveAuto()">
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
+    <div id="po-status" style="margin-top:8px;clear:both;"></div>
     <div class="row" style="gap:8px;margin-top:10px;">
       <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
     </div>
     <div id="po-search-results" style="margin-top:6px;"></div>
-    <div id="po-status" style="margin-top:8px;clear:both;"></div>
     <div id="prodoff-list"></div>
   </div>
 </div>
@@ -6899,11 +6899,12 @@ function poSaveAuto(){
   _poStatus(appData.prodoff_auto_on?('Switches everything on at '+v):'Auto switch-on is off');
 }
 function poRunAll(){
-  _poStatus('Switching on…');
+  _poStatus('Switching everything on… this can take a moment',null,true);   // busy=true shows the progress bar so it doesn't look frozen
   fetch('/api/prodoff_auto_run',{method:'POST'}).then(r=>r.json()).then(d=>{
-    if(!d||!d.ok){_poStatus('Failed','var(--red)');return;}
+    if(!d||!d.ok){_poStatus('Failed'+((d&&d.error)?(' — '+_mEsc(d.error)):''),'var(--red)');return;}
     appData.prodoff_autolog=d;_poSummary(d);checkProductsOff();
-  }).catch(()=>_poStatus('Failed','var(--red)'));
+    if(typeof poSearch==='function')poSearch();   // refresh any open search rows (were showing stale "already off")
+  }).catch(()=>_poStatus('Failed — could not reach the server','var(--red)'));
 }
 function prodOffTurnOnG(i){
   const g=_pdOffGrpAt(i);if(!g)return;

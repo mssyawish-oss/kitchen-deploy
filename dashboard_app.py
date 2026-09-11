@@ -2937,6 +2937,8 @@ def _prodoff_auto_enable(manual=False):
         return out
     # one product = many Square objects, so the same name can land in several buckets. Report it once,
     # under the most actionable outcome, or the summary reads as a contradiction.
+    try: _PSRCH_CACHE["at"]=0     # products changed state → force the search index to rebuild so "already off" labels aren't stale
+    except Exception: pass
     fl=uniq(failed); ad=[x for x in uniq(addons) if x not in fl]
     sc=[x for x in uniq(scheduled) if x not in fl and x not in ad]
     en=[x for x in uniq(enabled) if x not in fl and x not in ad and x not in sc]
