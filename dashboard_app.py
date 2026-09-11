@@ -3865,14 +3865,24 @@ def api_pl_config():
 
 @app.route("/api/pl_send",methods=["GET","POST"])
 def api_pl_send():
-    kind=(request.args.get("kind") if request.method=="GET" else (request.get_json(silent=True) or {}).get("kind")) or "daily"
+    d=(request.get_json(silent=True) or {}) if request.method=="POST" else {}
+    kind=(request.args.get("kind") if request.method=="GET" else d.get("kind")) or "daily"
     if kind not in ("daily","weekly","monthly"): kind="daily"
+    # optional ?date=YYYY-MM-DD (or "date" in the POST body) re-runs a PAST period: that day, the Mon-Sun
+    # week containing it, or that calendar month — for auditing an email after the fact
+    ref=None; ds=(request.args.get("date") if request.method=="GET" else d.get("date")) or ""
+    m=re.match(r'^(\d{4})-(\d{2})-(\d{2})$',str(ds).strip())
+    if m:
+        try:
+            ref=date(int(m.group(1)),int(m.group(2)),int(m.group(3)))
+            if kind=="weekly": ref=ref-timedelta(days=ref.weekday())
+            elif kind=="monthly": ref=ref.replace(day=1)
+        except Exception: ref=None
     if request.method=="GET":
         if not request.args.get("preview"): return jsonify({"ok":False,"error":"POST to send; add ?preview=1 to view"})
-        with _pl_lock: R=_pl_compute(kind)
+        with _pl_lock: R=_pl_compute(kind,ref)
         return Response(_pl_html(R),mimetype="text/html")
-    d=request.get_json(silent=True) or {}
-    return jsonify(_pl_send(kind,(d.get("to") or "").strip() or None))
+    return jsonify(_pl_send(kind,(d.get("to") or "").strip() or None,ref))
 
 @app.route("/api/pl_last")
 def api_pl_last():
