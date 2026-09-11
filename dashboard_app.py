@@ -3617,6 +3617,118 @@ def _pl_scan_bills(max_seconds=420):
     stats["booked"]=len(booked)
     return booked,stats
 
+
+# ── COST OF GOODS SOLD FROM RECIPES (11 Sep). Per-item unit costs (ex GST) from Marcel's Food Cost Calc
+#    sheet (square_unit_costs.json + Menu Change Calculator) live in db["item_costs"] as
+#    {"ITEM|VARIATION": {"cost","recipe","cat"}}. A report pulls the ACTUAL Square line items sold in the
+#    period and costs them: sum(qty x unit cost) + costed modifiers (sauces / pack sides). Items with no
+#    cost are listed so gaps are visible, and coverage (% of item sales that were costed) is reported.
+def _pl_norm(x): return re.sub(r'\s+',' ',str(x or '').strip().upper())
+def _pl_loose(x): return re.sub(r'[^A-Z0-9]+','',_pl_norm(x))
+_PL_SIZES=("MINI","SML","MED","LRG","FAM")
+def _pl_cost_lookup(costs,name,var):
+    n=_pl_norm(name); v=_pl_norm(var)
+    if not costs or not n: return None,None
+    for k in (n+"|"+v, n+"|REGULAR", n+"|"):
+        if k in costs: return costs[k],k
+    if v in _PL_SIZES:
+        for k in (n+" ("+v+")|REGULAR", n+" "+v+"|REGULAR", n+" ("+v+")|"):
+            if k in costs: return costs[k],k
+    ln=_pl_loose(n); lv=_pl_loose(v)
+    idx=costs.get("__loose__")
+    if idx is None:
+        idx={}
+        for k in costs:
+            if k.startswith("__"): continue
+            kn,_,kv=k.partition("|"); idx.setdefault(_pl_loose(kn)+"|"+_pl_loose(kv),k)
+        costs["__loose__"]=idx
+    for k in (ln+"|"+lv, ln+"|REGULAR", ln+"|", ln+lv+"|REGULAR", ln+lv+"|"):
+        if k in idx: return costs[idx[k]],idx[k]
+    cands=[k for k in costs if not k.startswith("__") and k.split("|")[0]==n]
+    if len(cands)==1: return costs[cands[0]],cands[0]
+    return None,None
+
+def _pl_item_sales(d0,d1):
+    hdr=_sq_headers(); loc=((db.get("square_config") or {}).get("location_id") or "").strip()
+    if not hdr or not loc: return {"ok":False,"error":"Square token/location not set","items":{},"mods":{},"orders":0}
+    start=_pl_utc_z(_pl_local_midnight(d0)); end=_pl_utc_z(_pl_local_midnight(d1+timedelta(days=1)))
+    items={}; mods={}; cur=None; orders=0
+    for _ in range(60):
+        body={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":start,"end_at":end}},
+              "state_filter":{"states":["OPEN","COMPLETED"]}}},"limit":500}
+        if cur: body["cursor"]=cur
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(body).encode(),headers=hdr,method="POST")
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        for od in data.get("orders") or []:
+            orders+=1
+            for li in od.get("line_items") or []:
+                nm=(li.get("name") or "").strip(); var=(li.get("variation_name") or "").strip()
+                if not nm: continue
+                try: q=float(li.get("quantity") or 0)
+                except Exception: q=0.0
+                gross=((li.get("total_money") or {}).get("amount") or 0)/100.0
+                e=items.setdefault(nm+"|"+var,{"name":nm,"var":var,"qty":0.0,"sales":0.0}); e["qty"]+=q; e["sales"]+=gross
+                for m in li.get("modifiers") or []:
+                    mn=(m.get("name") or "").strip()
+                    if not mn: continue
+                    try: mq=float(m.get("quantity") or 1)*q
+                    except Exception: mq=q
+                    me=mods.setdefault(mn,{"name":mn,"qty":0.0,"sales":0.0}); me["qty"]+=mq
+                    me["sales"]+=((m.get("total_price_money") or {}).get("amount") or 0)/100.0
+        cur=data.get("cursor")
+        if not cur: break
+    return {"ok":True,"items":items,"mods":mods,"orders":orders}
+
+def _pl_recipe_cogs(d0,d1):
+    costs=dict(db.get("item_costs") or {})
+    if not costs: return {"ok":False,"error":"No recipe costs loaded yet (POST /api/item_costs)"}
+    s=_pl_item_sales(d0,d1)
+    if not s.get("ok"): return {"ok":False,"error":s.get("error")}
+    rows=[]; total=0.0; costed_sales=0.0; all_sales=0.0; un=[]
+    for k,e in s["items"].items():
+        all_sales+=e["sales"]
+        disp=e["name"]+((" "+e["var"]) if e["var"] and e["var"].upper()!="REGULAR" else "")
+        c,ck=_pl_cost_lookup(costs,e["name"],e["var"])
+        if c is None: un.append({"item":disp,"qty":e["qty"],"sales":round(e["sales"],2)}); continue
+        uc=float(c.get("cost") or 0); line=round(uc*e["qty"],2); total+=line; costed_sales+=e["sales"]
+        rows.append({"item":disp,"qty":e["qty"],"unit":uc,"cost":line,"sales":round(e["sales"],2)})
+    small=[float(v.get("cost") or 0) for k,v in costs.items() if not k.startswith("__") and k.endswith("|SML") and float(v.get("cost") or 0)>0]
+    avg_small=(sum(small)/len(small)) if small else 0.0
+    mrows=[]; mtotal=0.0; mun=[]
+    for mn,e in s["mods"].items():
+        c,ck=_pl_cost_lookup(costs,mn,"")
+        if c is None:
+            base=re.sub(r'^[+\-]\s*|\s*\(.*?\)\s*$','',mn).strip()
+            c,ck=_pl_cost_lookup(costs,base,"SML")
+        uc=float(c.get("cost") or 0) if c else 0.0
+        if c is None and re.search(r'\bSIDE\b|\bCHIPS\b|\bSLAW\b|\bSALAD\b|\bPOTATO\b|\bMAC\b|\bRINGS\b|\bCORN\b|\bGRAVY\b',mn.upper()) and avg_small>0:
+            uc=avg_small; ck="avg small side"
+        if uc<=0: mun.append({"item":mn,"qty":e["qty"],"sales":round(e["sales"],2)}); continue
+        line=round(uc*e["qty"],2); mtotal+=line; mrows.append({"item":mn,"qty":e["qty"],"unit":round(uc,4),"cost":line,"sales":round(e["sales"],2)})
+    cov=(costed_sales/all_sales) if all_sales>0 else 0.0
+    return {"ok":True,"total":round(total+mtotal,2),"items_total":round(total,2),"mods_total":round(mtotal,2),
+            "rows":sorted(rows,key=lambda r:-r["cost"]),"mods":sorted(mrows,key=lambda r:-r["cost"]),
+            "unmatched":sorted(un,key=lambda r:-r["sales"]),"unmatched_mods":sorted(mun,key=lambda r:-r["qty"]),
+            "coverage":cov,"orders":s["orders"],"sales_seen":round(all_sales,2),"costed_sales":round(costed_sales,2)}
+
+@app.route("/api/item_costs",methods=["GET","POST"])
+def api_item_costs():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}; inc=d.get("costs") or {}; n=0
+        with data_lock:
+            cur={} if d.get("replace") else {k:v for k,v in (db.get("item_costs") or {}).items() if not k.startswith("__")}
+            for k,v in inc.items():
+                nm,_,var=str(k).partition("|")
+                try: c=float((v.get("cost") if isinstance(v,dict) else v) or 0)
+                except Exception: continue
+                cur[_pl_norm(nm)+"|"+(_pl_norm(var) or "REGULAR")]={"cost":round(c,4),"recipe":((v.get("recipe") if isinstance(v,dict) else "") or "")[:80],"cat":((v.get("cat") if isinstance(v,dict) else "") or "")[:40]}; n+=1
+            db["item_costs"]=cur
+            db["item_costs_meta"]={"updated":datetime.now().strftime("%Y-%m-%d %H:%M"),"count":len(cur),"source":str(d.get("source") or "")[:120]}
+            save_data(db)
+        return jsonify({"ok":True,"loaded":n,"total":len(cur)})
+    return jsonify({"costs":{k:v for k,v in (db.get("item_costs") or {}).items() if not k.startswith("__")},"meta":db.get("item_costs_meta") or {}})
+
+
 def _pl_compute(kind,ref=None):
     # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
     today=datetime.now().date()
@@ -3673,36 +3785,43 @@ def _pl_compute(kind,ref=None):
     R["sales"]["total"]=round(R["sales"]["card"]+R["sales"]["cash"]+uber+dd,2)
     man=_pl_manual(d0,d1,days,kind); R["manual"]=man
     R["sales"]["manual"]=man["income"]; R["sales"]["total"]=round(R["sales"]["total"]+man["income"],2)
-    # ── COST OF GOODS (invoices dated in the period) ──
+    # ── COST OF GOODS: (1) SOLD, from recipes x actual Square line items — the profit line;
+    #                   (2) supplier invoices received in the period — shown as purchases, for reference ──
+    booked=[]
     try:
         booked,bst=_pl_scan_bills()
         inp=[b for b in booked if R["start"]<=b["date"]<=R["end"]]
         byv={}
         for b in inp: byv[b["vendor"]]=byv.get(b["vendor"],0.0)+b["amt"]
         rows_c=sorted([{"vendor":k,"amt":round(v,2)} for k,v in byv.items()],key=lambda x:-x["amt"])
+        if bst.get("unreadable"): R["notes"].append("%d invoice PDF(s) in Drive have no readable text (scanned photos) and can't be totalled."%bst["unreadable"])
+        if bst.get("skipped_time"): R["notes"].append("Invoice scan ran out of time — %d new file(s) will be read next run."%bst["skipped_time"])
+    except Exception as e:
+        rows_c=[]; byv={}; inp=[]; bst={}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
+    if man["cogs"]: rows_c.append({"vendor":"Manual entries (Books page)","amt":man["cogs"]})
+    R["purchases"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
+    try: rc=_pl_recipe_cogs(d0,d1)
+    except Exception as e: rc={"ok":False,"error":str(e)[:150]}
+    if rc.get("ok") and rc.get("coverage",0)>=0.5:
+        R["cogs"]={"total":rc["total"],"method":"recipes","recipe":rc,"count":len(rc["rows"]),"scan":bst,
+                   "rows":[{"vendor":"%g x %s @ %s"%(r["qty"],r["item"],_pl_money(r["unit"])),"amt":r["cost"]} for r in rc["rows"][:14]]}
+        if rc["mods_total"]: R["cogs"]["rows"].append({"vendor":"Sauces / pack sides / add-ons (%d kinds)"%len(rc["mods"]),"amt":rc["mods_total"]})
+        R["notes"].append("Cost of goods sold = every item Square sold in the period x its recipe cost (ex GST, from your Food Cost Calc sheet): %d orders, %.0f%% of item sales costed.%s"%(rc["orders"],rc["coverage"]*100,(" %d item(s) have no recipe cost yet - see NOT COSTED."%len(rc["unmatched"])) if rc["unmatched"] else ""))
+    else:
+        why=rc.get("error") or ("only %.0f%% of item sales have a recipe cost"%(rc.get("coverage",0)*100))
+        R["errors"].append("Recipe costing unavailable (%s) - cost of goods shown from supplier invoices instead."%why)
         if kind=="daily":
-            # A delivery covers several days of sales (a 20-carton Baiada drop is not one Thursday's cost), so
-            # the DAILY figure is cost of goods SOLD: today's sales x the trailing 4-week cost ratio
-            # (invoices / sales). The invoices that physically arrived today are listed for reference only.
             w0=d0-timedelta(days=28); w1=d0-timedelta(days=1)
             inv28=sum(b["amt"] for b in booked if w0.isoformat()<=b["date"]<=w1.isoformat())
             sales28=0.0
             try:
                 s28=_pl_square_sales(w0,w1); g28=_pl_delivery_gross(w0,w1)
                 sales28=float(s28.get("card",0) or 0)+float(s28.get("cash",0) or 0)+0.70*(float(g28.get("uber",0) or 0)+float(g28.get("doordash",0) or 0))
-            except Exception as e: R["errors"].append("Cost-ratio window: "+str(e)[:100])
+            except Exception: pass
             ratio=(inv28/sales28) if (sales28>0 and inv28>0) else 0.0
-            cogs_today=round(ratio*R["sales"]["total"],2)
-            R["cogs"]={"total":cogs_today,"count":len(inp),"scan":bst,"ratio":ratio,"received":rows_c,
-                       "rows":[{"vendor":"Cost of goods sold - est. %.0f%% of today's sales (last 4 weeks: invoices $%s / sales $%s)"%(ratio*100,"{:,.0f}".format(inv28),"{:,.0f}".format(sales28)),"amt":cogs_today}]}
-            R["notes"].append("Daily cost of goods is estimated from your 4-week cost ratio, because a delivery covers several days of sales. Invoices that arrived today are listed for reference only. The weekly and monthly reports charge the actual invoices.")
+            R["cogs"]={"total":round(ratio*R["sales"]["total"],2),"method":"ratio","count":len(inp),"scan":bst,"rows":[{"vendor":"Cost of goods sold - est. %.0f%% of today's sales (4-week invoice/sales ratio)"%(ratio*100),"amt":round(ratio*R["sales"]["total"],2)}]}
         else:
-            if man["cogs"]: rows_c.append({"vendor":"Manual entries (Books page)","amt":man["cogs"]})
-            R["cogs"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
-        if bst.get("unreadable"): R["notes"].append("%d invoice PDF(s) in Drive have no readable text (scanned photos) and can't be totalled."%bst["unreadable"])
-        if bst.get("skipped_time"): R["notes"].append("Invoice scan ran out of time — %d new file(s) will be read next run."%bst["skipped_time"])
-    except Exception as e:
-        R["cogs"]={"total":man["cogs"],"rows":([{"vendor":"Manual entries (Books page)","amt":man["cogs"]}] if man["cogs"] else []),"count":0,"scan":{}}; R["errors"].append("Invoices (Drive): "+str(e)[:150])
+            R["cogs"]={"total":R["purchases"]["total"],"method":"invoices","count":len(inp),"scan":bst,"rows":rows_c}
     # ── LABOUR ──
     try: w=_pl_wages(d0,d1)
     except Exception as e: w={"ok":False,"error":str(e)[:150],"wages":0.0,"super":0.0,"rows":[],"open_shifts":0}
@@ -3753,13 +3872,21 @@ def _pl_html(R):
        row("DoorDash ("+S.get("doordash_label","")+")",_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True)]
     if S.get("manual"): H.append(row("Manual income entries (Books page)",_pl_money(S["manual"]),"",ind=True))
     H+=[row("Total sales",_pl_money(tot),"",bold=True),
-       head("COST OF GOODS (supplier invoices)")]
-    for r in C["rows"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
-    if not C["rows"]: H.append(row("No invoices dated in this period","$0.00","",ind=True))
-    H.append(row("Total cost of goods",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
-    if C.get("received"):
-        H.append(head("INVOICES RECEIVED TODAY (reference only - not charged to today)"))
-        for r in C["received"][:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
+       head("COST OF GOODS SOLD"+(" (from your recipes)" if C.get("method")=="recipes" else " (from supplier invoices)" if C.get("method")=="invoices" else " (estimate)"))]
+    for r in C["rows"][:16]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
+    if not C["rows"]: H.append(row("Nothing sold / no costs in this period","$0.00","",ind=True))
+    H.append(row("Total cost of goods sold",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
+    rc=C.get("recipe") or {}
+    if rc.get("unmatched"):
+        H.append(head("NOT COSTED - sold but no recipe cost yet (add these to the cost list)"))
+        for r in rc["unmatched"][:14]: H.append(row("%g x %s"%(r["qty"],r["item"]),_pl_money(r["sales"])+" sales","",ind=True))
+        if len(rc["unmatched"])>14: H.append(row("... and %d more"%(len(rc["unmatched"])-14),"","",ind=True))
+    if rc: H.append('<tr><td colspan="3" style="padding:4px 8px;font-size:11px;color:#888;">Recipe coverage: %.0f%% of item sales costed (%s of %s) - %d orders.</td></tr>'%(rc.get("coverage",0)*100,_pl_money(rc.get("costed_sales",0)),_pl_money(rc.get("sales_seen",0)),rc.get("orders",0)))
+    P_=R.get("purchases") or {}
+    if P_.get("rows") or P_.get("total"):
+        H.append(head("SUPPLIER INVOICES RECEIVED (what you bought this period - reference, not the profit line)"))
+        for r in (P_.get("rows") or [])[:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
+        H.append(row("Total invoices received",_pl_money(P_.get("total",0)),"",bold=True))
     H.append(head("WAGES & LABOUR"))
     for r in L["rows"][:14]: H.append(row(r["name"],_pl_money(r["amt"]),"%.1f h"%r["hours"],ind=True))
     H.append(row("Staff wages",_pl_money(L["wages"]),_pl_pct(L["wages"],tot),ind=True))
@@ -3795,7 +3922,8 @@ def _pl_text(R):
     S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]
     Ls=["BRUNO'S — %s PROFIT REPORT — %s"%(R["kind"].upper(),R["label"]),"",
         "SALES            %s"%_pl_money(S["total"]),"  card %s · cash %s · uber %s%s · doordash %s%s"%(_pl_money(S["card"]),_pl_money(S["cash"]),_pl_money(S["uber"])," (real)" if S["uber_real"] else " (est)",_pl_money(S["doordash"])," (real)" if S["doordash_real"] else " (est)"),
-        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),("est. %.0f%% cost ratio"%(C.get("ratio",0)*100)) if R["kind"]=="daily" else "%d invoices"%C["count"]),
+        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),{"recipes":"from recipes x items sold","invoices":"supplier invoices","ratio":"4-week ratio estimate"}.get(C.get("method"),"")),
+        "INVOICES RECV'D  %s"%_pl_money((R.get("purchases") or {}).get("total",0)),
         "LABOUR           %s  (wages %s + super %s + owner %s)"%(_pl_money(L["total"]),_pl_money(L["wages"]),_pl_money(L["super"]),_pl_money(L["owner"])),
         "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
         "GROSS PROFIT     %s"%_pl_money(P["gross"]),
