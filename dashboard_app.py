@@ -3688,6 +3688,7 @@ def _pl_recipe_cogs(d0,d1):
     for k,e in s["items"].items():
         all_sales+=e["sales"]
         disp=e["name"]+((" "+e["var"]) if e["var"] and e["var"].upper()!="REGULAR" else "")
+        if re.search(r'gift\s*card|voucher|surcharge|delivery fee|tip\b',e["name"],re.I): continue   # not goods
         c,ck=_pl_cost_lookup(costs,e["name"],e["var"])
         if c is None: un.append({"item":disp,"qty":e["qty"],"sales":round(e["sales"],2)}); continue
         uc=float(c.get("cost") or 0); line=round(uc*e["qty"],2); total+=line; costed_sales+=e["sales"]
