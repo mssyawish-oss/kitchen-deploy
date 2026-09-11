@@ -260,6 +260,9 @@ body.style-v2.view-wall #page-probes .pb-sec #timers-grid.brows{
   grid-template-columns:repeat(var(--batch-cols,4),minmax(0,1fr));
   gap:14px;max-height:none;align-items:stretch;align-content:stretch;overflow:hidden;}
 body.style-v2.view-wall #timers-grid .brow{margin:0;height:auto;min-height:0;overflow:hidden;align-items:center;}
+body.style-v2.view-wall #timers-grid .brow .binfo{min-width:0;}
+body.style-v2.view-wall #timers-grid .brow .binfo b,
+body.style-v2.view-wall #timers-grid .brow .binfo span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
 body.style-v2.view-wall #batch-start{margin-bottom:10px;}
 body.style-v2.view-wall #batch-start .brow{margin:0;}
 
@@ -1888,57 +1891,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="orders-grid" class="orders-grid"></div>
       <div id="orders-empty" class="empty-state" style="display:none;padding:40px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;">No open orders</div><div style="font-size:var(--fs-md);color:var(--muted);margin-top:6px;">Tickets appear here as they come in and clear when your staff bump them on the KDS.</div></div>
     </div>
-    <div class="page" id="page-catering">
-      <div class="page-header"><div class="page-title">Catering Guides</div></div>
-      <style>
-        #page-catering .cg-wrap{padding:2px 2px 46px;max-width:840px;}
-        #page-catering h3{font-size:var(--fs-lg);color:var(--amber);margin:20px 0 8px;font-weight:700;}
-        #page-catering p.note{font-size:var(--fs-md);color:var(--muted);margin:0 0 12px;line-height:1.4;}
-        #page-catering table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:6px;}
-        #page-catering th,#page-catering td{padding:9px 12px;font-size:var(--fs-md);border-bottom:1px solid var(--border);}
-        #page-catering th{background:var(--surface2);color:var(--muted);font-weight:600;text-align:left;}
-        #page-catering th.n,#page-catering td.n{text-align:right;font-variant-numeric:tabular-nums;}
-        #page-catering td.n{color:var(--text);}
-        #page-catering td.item{color:var(--text);font-weight:600;}
-        #page-catering tr:last-child td{border-bottom:none;}
-      </style>
-      <div class="cg-wrap">
-        <p class="note">Fill salad/baked trays to <b>60&nbsp;mm</b> (~15&nbsp;mm proud of the rim, sits under the dome). Tray feeds: <b>Small ~12 · Medium ~17 · Large ~30</b> people.</p>
-        <h3>Salads &amp; Baked — grams per tray</h3>
-        <table>
-          <tr><th>Item</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Greek Salad</td><td class="n">1,578 g</td><td class="n">2,348 g</td><td class="n">3,979 g</td></tr>
-          <tr><td class="item">Slaw</td><td class="n">1,951 g</td><td class="n">2,903 g</td><td class="n">4,919 g</td></tr>
-          <tr><td class="item">Ancient Grain</td><td class="n">2,094 g</td><td class="n">3,117 g</td><td class="n">5,281 g</td></tr>
-          <tr><td class="item">Broccoli &amp; Greens</td><td class="n">1,951 g</td><td class="n">2,903 g</td><td class="n">4,919 g</td></tr>
-          <tr><td class="item">Chicken Avocado</td><td class="n">1,693 g</td><td class="n">2,519 g</td><td class="n">4,268 g</td></tr>
-          <tr><td class="item">Pumpkin &amp; Beetroot</td><td class="n">2,467 g</td><td class="n">3,672 g</td><td class="n">6,221 g</td></tr>
-          <tr><td class="item">Roast Potato &amp; Pumpkin</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-          <tr><td class="item">Mac &amp; Cheese</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-          <tr><td class="item">Scalloped Potatoes</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-        </table>
-        <h3>Dressing — served on the side</h3>
-        <table>
-          <tr><th>Salad</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Greek <span style="color:var(--muted);font-weight:400">(lemon oil)</span></td><td class="n">200 mL</td><td class="n">298 mL</td><td class="n">505 mL</td></tr>
-          <tr><td class="item">Ancient Grain <span style="color:var(--muted);font-weight:400">(honey yoghurt)</span></td><td class="n">201 g</td><td class="n">299 g</td><td class="n">507 g</td></tr>
-          <tr><td class="item">Broccoli &amp; Greens <span style="color:var(--muted);font-weight:400">(honey mustard)</span></td><td class="n">201 mL</td><td class="n">299 mL</td><td class="n">507 mL</td></tr>
-          <tr><td class="item">Pumpkin &amp; Beetroot <span style="color:var(--muted);font-weight:400">(honey mustard)</span></td><td class="n">200 mL</td><td class="n">297 mL</td><td class="n">504 mL</td></tr>
-        </table>
-        <h3>Fried — fixed weight per tray</h3>
-        <table>
-          <tr><th>Item</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Chips</td><td class="n">1.5 kg</td><td class="n">2.0 kg</td><td class="n">4.0 kg</td></tr>
-          <tr><td class="item">Sweet Potato Chips</td><td class="n">1.5 kg</td><td class="n">2.5 kg</td><td class="n">3.5 kg</td></tr>
-          <tr><td class="item">Onion Rings</td><td class="n">1.5 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-          <tr><td class="item">Chicken Nuggets</td><td class="n">1.0 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-          <tr><td class="item">Popcorn Chicken</td><td class="n">1.0 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-        </table>
-        <p class="note">Chips travel in open family boxes (not domed) so they don't steam.</p>
-        <h3>Function packs</h3>
-        <p class="note"><b>The Feed</b> = 2 sides · <b>The Spread</b> = 3 sides · <b>The Works</b> = 3 sides + a slider per guest, all + gravy + dinner rolls. Chicken: <b>1 whole bird per 4 guests</b> (round up). Side quantity scales with headcount — use the tray weights above, sized to the number of guests.</p>
-      </div>
-    </div>
   </div>
   <div id="order-alert"><div class="oa-inner"><div id="order-alert-cards"></div></div></div>
   <nav class="bottom-nav" id="bottom-nav">
@@ -1953,7 +1905,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
-    <button class="nav-btn" data-page="catering" onclick="navTo('catering',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Catering</span></div></button>
   </nav>
   </div>
 </div>
@@ -4192,8 +4143,7 @@ const SIDE_ICONS={
   jobs:'<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/>',
   cameras:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/>',
   sales:'<path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/>',
-  team:'<path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>',
-  catering:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'
+  team:'<path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>'
 };
 function _sideSvg(p){return `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${SIDE_ICONS[p]||''}</svg>`;}
 function _setSidebar(show){const s=document.getElementById('app-shell');if(window.matchMedia('(max-width:820px)').matches){s.classList.toggle('drawer-open',show);return;}s.classList.toggle('nosidebar',!show);try{localStorage.setItem('nosidebar',show?'0':'1');}catch(e){}}
@@ -4300,15 +4250,21 @@ function syncTimers(serverTimers,batchLog){
         remaining:0,total:DEFAULT_USE_BY*60,running:false,expired:false,interval:null});
       t=timers[st.id];structural=true;
     }
-    if(t.running!==st.running||t.expired!==st.expired||t.total!==st.total)structural=true;
+    // race guard (11 Sep): tapping Stop alarm / End clears expired locally + posts to the server, but a
+    // /temps poll already IN FLIGHT returns the still-expired state and used to slam the flash back on.
+    // Ignore a server "expired" for ~7s after the user acknowledged, until the server agrees it's clear.
+    const _ackStale = st.expired && t._ackAt && (Date.now()-t._ackAt < 7000);
+    const _effExpired = _ackStale ? false : st.expired;
+    if(!st.expired) t._ackAt=0;                     // server has caught up → drop the guard
+    if(t.running!==st.running||t.expired!==_effExpired||t.total!==st.total)structural=true;
     // don't stomp a label the user is currently typing
     const lblInput=document.querySelector('#tc'+st.id+' .batch-input');
     const editingLabel=lblInput&&document.activeElement===lblInput;
     if(!editingLabel&&t.batch!==st.label){t.batch=st.label;structural=true;}
     if(t.started_at!==st.started_at||t.start_temp!==st.start_temp){t.started_at=st.started_at;t.start_temp=st.start_temp;structural=true;}
-    t.remaining=st.remaining;t.total=st.total;t.running=st.running;t.expired=st.expired;
-    if(st.expired&&!t._alarmed){t._alarmed=true;if(!_devPopMuted('timer')){playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}}
-    if(!st.expired){t._alarmed=false;if(typeof alarms!=='undefined'&&alarms[st.id]&&typeof stopAlarm==='function')stopAlarm(st.id);}   // ended/confirmed/reset on ANY dash → stop this batch timer's alarm here too
+    t.remaining=st.remaining;t.total=st.total;t.running=st.running;t.expired=_effExpired;
+    if(_effExpired&&!t._alarmed){t._alarmed=true;if(!_devPopMuted('timer')){playAlarm(st.id);showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> TIMER EXPIRED',st.label);}}
+    if(!_effExpired){t._alarmed=false;if(typeof alarms!=='undefined'&&alarms[st.id]&&typeof stopAlarm==='function')stopAlarm(st.id);}   // ended/confirmed/reset on ANY dash → stop this batch timer's alarm here too
   });
   // server collapsed grown slots again → drop ours too, clearing their tickers
   while(timers.length>serverTimers.length&&serverTimers.length>=4){
@@ -4736,9 +4692,9 @@ function renderTimers(){
   const rows=[];
   active.sort((a,b)=>(b.started_at||0)-(a.started_at||0)).forEach(t=>{
     const id=timers.indexOf(t);
-    const meta=[t.started_at?('Started '+_tm(t.started_at)):null,
-                (t.start_temp!=null)?(t.start_temp.toFixed(1)+'&deg; at pull'):null,
-                t.expired?'<b style="color:var(--red);">TIME UP</b>':(t.running?null:'paused')].filter(Boolean).join(' &middot; ');
+    const meta=[t.expired?'<b style="color:var(--red);">TIME UP</b>':(t.running?null:'paused'),
+                t.started_at?('Started '+_tm(t.started_at)):null,
+                (t.start_temp!=null)?(t.start_temp.toFixed(1)+'&deg; at pull'):null].filter(Boolean).join(' &middot; ');
     rows.push(`<div class="brow ${t.expired?'alarm':''}" id="tc${id}" style="--bacc:${AC[id%4]};">
       <span class="bnum">${id+1}</span>
       <div class="binfo"><b>${_mEsc(t.batch||('Batch '+(id+1)))}</b><span>${meta}</span></div>
@@ -4763,8 +4719,8 @@ function renderTimers(){
 }
 function startT(id){const t=timers[id];if(t.remaining<=0&&!t.expired)return;t.running=true;t.expired=false;renderTimers();postTimer(id,'start');}
 function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause');}
-function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;renderTimers();postTimer(id,'end');}
-function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;renderTimers();postTimer(id,'confirm');}
+function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;t._ackAt=Date.now();renderTimers();postTimer(id,'end');}
+function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;timers[id]._ackAt=Date.now();renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
 function updateT(id){const t=timers[id],pct=t.total>0?Math.max(0,Math.min(100,(t.remaining/t.total)*100)):0,warn=pct<15;const d=document.getElementById('td'+id),g=document.getElementById('tg'+id);if(d){const ft=fmt(t.remaining);d.textContent=ft;d.className='timer-display '+(t.expired?'expired':warn?'warning':'')+(ft.length>6?' tlong':'');}const bar=document.getElementById('tb'+id);if(bar){bar.style.width=pct.toFixed(1)+'%';bar.style.background=t.expired?'var(--red)':'var(--acc)';}const _rg=document.getElementById('tr'+id);if(_rg){_rg.style.strokeDashoffset=(402.12*(1-pct/100)).toFixed(1);_rg.style.stroke=t.expired?'var(--red)':'';}}
 function syncProbeSettingsUI(s){const map={almost_temp:'ps-almost',cooked_temp:'ps-cooked',overdone_temp:'ps-overdone',probe_count_temp:'ps-count',probe_pull_temp:'ps-pull',probe_confirm_secs:'ps-confirm',use_by_minutes:'ps-useby',bbq_drop_minutes:'ps-bbqdrop',fried_drop_minutes:'ps-frieddrop',standby_after_secs:'ps-standby-secs',printer_ip:'ps-printer',shadow_band:'ps-sh-band',shadow_drop:'ps-sh-drop',shadow_climb:'ps-sh-climb',shadow_floor:'ps-sh-floor'};Object.entries(map).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&s[k]!==undefined)el.value=s[k];});const sb=document.getElementById('ps-standby');if(sb&&s.standby_steady!==undefined)sb.value=s.standby_steady?'1':'0';}
