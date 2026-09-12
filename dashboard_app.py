@@ -5682,7 +5682,7 @@ def _tables_payload():
     cfg=_tables_cfg()
     return {"on":bool(cfg.get("enabled")),"alert":TABLESW.get("state")=="left",
             "note":TABLESW.get("note",""),"desc":TABLESW.get("note",""),"at":int(TABLESW.get("img_at",0) or 0),
-            "img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
+            "cam":cfg.get("cam",""),"img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
 def tables_loop():
     while True:
         cfg=_tables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))

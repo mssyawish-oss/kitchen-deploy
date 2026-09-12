@@ -3337,7 +3337,21 @@ let _tablesAlarm=false;
 function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)return;_tablesAlarm=true;const t0=Date.now();
   (function b(){if(!_tablesAlarm)return;const c=_acfg('tables');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_tablesAlarm=false;_updateFlash();return;}_alarmHit('tables');setTimeout(()=>{if(_tablesAlarm)b();},c.interval);})();}
 function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
-function ackTables(){stopTablesAlarm();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
+let _tablesLiveTimer=null;
+function _tablesLiveStop(){if(_tablesLiveTimer){clearInterval(_tablesLiveTimer);_tablesLiveTimer=null;}const im=document.getElementById('tables-live');if(im){im.onerror=null;im.src='';}}
+function _tablesLiveStart(cam){
+  _tablesLiveStop();
+  if(!cam)return;
+  // Near-live feed: refresh the outside camera snapshot every 4s while the box is open. (This NVR channel
+  // has no working RTSP stream, but single snapshots are fast and reliable, so we poll them.) Only fetches
+  // the next frame once the previous one has loaded, so a slow camera never stacks up requests.
+  const poll=function(){
+    const i=document.getElementById('tables-live'); if(!i){_tablesLiveStop();return;}
+    i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
+  };
+  _tablesLiveTimer=setInterval(poll,4000);
+}
+function ackTables(){stopTablesAlarm();_tablesLiveStop();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
 function _tablesEnlarge(src){let o=document.getElementById('tables-zoom');if(!o){o=document.createElement('div');o.id='tables-zoom';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';o.onclick=function(){o.style.display='none';};o.innerHTML='<img style="max-width:100%;max-height:100%;border-radius:10px;">';document.body.appendChild(o);}o.querySelector('img').src=src;o.style.display='flex';}
 function handleTables(t){
   const tile=document.getElementById('tables-tile'); if(!tile)return;
@@ -3346,15 +3360,18 @@ function handleTables(t){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
       const cap=_mEsc(t.desc||t.note||'Food left on an outside table');
-      const src=(t.img||'/api/tables_frame.jpg')+(t.img&&t.img.indexOf('ts=')>=0?'':('?ts='+Date.now()));
-      tile.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;">'
-        +'<b style="color:var(--amber);font-size:var(--fs-lg);white-space:nowrap;">\u26A0 Check outside tables</b>'
-        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>'
-        +'<img src="'+src+'" onclick="_tablesEnlarge(this.src)" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;display:block;cursor:zoom-in;" alt="outside tables">'
-        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:5px;line-height:1.25;">'+cap+' &middot; <span style="opacity:.8;">tap to enlarge</span></div>';
+      const cam=t.cam||'';
+      const live=cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):((t.img||'/api/tables_frame.jpg')+'?ts='+Date.now());
+      tile.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+        +'<b style="color:var(--amber);font-size:var(--fs-md);flex:1;min-width:0;">\u26A0 Check outside tables</b>'
+        +'<span style="font-size:var(--fs-sm);color:var(--green);white-space:nowrap;">\u25CF live</span></div>'
+        +'<img id="tables-live" src="'+live+'" onclick="_tablesEnlarge(this.src)" style="width:100%;height:150px;object-fit:cover;border-radius:8px;display:block;cursor:zoom-in;background:#000;" alt="outside tables live">'
+        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin:5px 0 8px;line-height:1.25;">'+cap+'</div>'
+        +'<button class="btn btn-primary" style="width:100%;font-size:var(--fs-md);" onclick="ackTables()">Cleared it</button>';
+      _tablesLiveStart(cam);
     }
     if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
-  } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); }
+  } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); _tablesLiveStop(); }
 }
 // The server owns the detection; the screen just follows it. Acking tells the server a human dealt with
 // it, so it re-arms only on a genuinely NEW detection rather than nagging every poll.
