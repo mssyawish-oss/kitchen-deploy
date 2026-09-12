@@ -2605,8 +2605,10 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     </div>
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="tablesSave()">Save outside-tables watch</button><button class="btn" onclick="tablesTest()">Test now</button></div>
     <div id="tb-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
-    <img id="tb-preview" alt="outside tables — last test frame" style="display:none;width:100%;max-width:420px;border-radius:10px;margin-top:8px;border:1px solid var(--line);">
-    <div id="tb-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">This is exactly what the AI looked at.</div>
+    <img id="tb-preview" alt="outside tables — last test frame" style="display:none;width:100%;max-width:420px;border-radius:10px;margin-top:8px;border:1px solid var(--line);cursor:zoom-in;" onclick="_tablesEnlarge(this.src)">
+    <div id="tb-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">This is exactly what the AI looked at — tap to enlarge.</div>
+    <div class="row-between" style="margin-top:14px;"><div class="label" style="margin:0;">Recent detections <span style="color:var(--muted);font-weight:400;">(the frame the AI decided on, with its reason)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogClear()">Clear</button></span></div>
+    <div id="tb-log" style="margin-top:8px;"></div>
     <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Detection log <span style="color:var(--muted);font-weight:400;">(every red light, with the two frames that caused it)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="walkinLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="walkinLogClear()">Clear</button></span></div>
     <div id="wi-log" style="margin-top:8px;"></div>
     <div class="divider"></div>
@@ -3336,15 +3338,20 @@ function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)r
   (function b(){if(!_tablesAlarm)return;const c=_acfg('tables');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_tablesAlarm=false;_updateFlash();return;}_alarmHit('tables');setTimeout(()=>{if(_tablesAlarm)b();},c.interval);})();}
 function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
 function ackTables(){stopTablesAlarm();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
+function _tablesEnlarge(src){let o=document.getElementById('tables-zoom');if(!o){o=document.createElement('div');o.id='tables-zoom';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';o.onclick=function(){o.style.display='none';};o.innerHTML='<img style="max-width:100%;max-height:100%;border-radius:10px;">';document.body.appendChild(o);}o.querySelector('img').src=src;o.style.display='flex';}
 function handleTables(t){
   const tile=document.getElementById('tables-tile'); if(!tile)return;
   const on=!!(t&&t.alert);
   if(on){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
-      tile.innerHTML='<div style="display:flex;align-items:center;gap:10px;">'
+      const cap=_mEsc(t.desc||t.note||'Food left on an outside table');
+      const src=(t.img||'/api/tables_frame.jpg')+(t.img&&t.img.indexOf('ts=')>=0?'':('?ts='+Date.now()));
+      tile.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;">'
         +'<b style="color:var(--amber);font-size:var(--fs-lg);white-space:nowrap;">\u26A0 Check outside tables</b>'
-        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>';
+        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>'
+        +'<img src="'+src+'" onclick="_tablesEnlarge(this.src)" style="width:100%;border-radius:8px;display:block;cursor:zoom-in;" alt="outside tables">'
+        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:5px;">'+cap+' &middot; <span style="opacity:.8;">tap image to enlarge</span></div>';
     }
     if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
   } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); }
@@ -3442,6 +3449,7 @@ function tablesLoad(){
     if(g('tb-start')&&!g('tb-start').value)g('tb-start').value=10;
     if(g('tb-end')&&!g('tb-end').value)g('tb-end').value=22;
   }).catch(()=>{});
+  if(typeof tablesLogLoad==='function')tablesLogLoad();
 }
 function tablesSave(){
   const g=id=>document.getElementById(id),st=g('tb-status');
@@ -3460,9 +3468,21 @@ function tablesTest(){
     if(!d.ok){st.textContent=d.error||'Failed';st.style.color='var(--red)';if(img)img.style.display='none';if(cap)cap.style.display='none';return;}
     const r=d.row||{};st.textContent='AI says: '+((r.raw==='LEFT'||r.state==='left')?'FOOD LEFT on a table':'all clear')+(r.raw?(' ('+r.raw+')'):'')+(r.err?(' \u2014 '+r.err):'');
     st.style.color=(r.raw==='LEFT'||r.state==='left')?'var(--amber)':'var(--green)';
-    if(img){if(r.preview){img.src=r.preview;img.style.display='';if(cap)cap.style.display='';}else{img.style.display='none';if(cap)cap.style.display='none';}}
+    if(img){if(r.preview){img.src=r.preview;img.style.display='';if(cap){cap.textContent=(r.desc?('AI: '+r.desc+' — '):'')+'this is exactly what the AI looked at — tap to enlarge.';cap.style.display='';}}else{img.style.display='none';if(cap)cap.style.display='none';}}
   }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
+function tablesLogLoad(){
+  const box=document.getElementById('tb-log'); if(!box)return;
+  fetch('/api/tables_log').then(r=>r.json()).then(d=>{
+    const log=(d&&d.log)||[];
+    if(!log.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);">No detections yet — when the AI decides food has been left on a table, the frame it decided on shows up here.</div>';return;}
+    box.innerHTML=log.map(e=>'<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">'
+      +'<img src="/api/tables_log_frame.jpg?ts='+e.ts+'" onclick="_tablesEnlarge(this.src)" style="width:120px;height:72px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:0 0 auto;" alt="detection">'
+      +'<div style="min-width:0;"><div style="font-size:var(--fs-md);color:var(--text);">'+_mEsc(e.desc||'Food left on an outside table')+'</div>'
+      +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:2px;">'+_mEsc(e.at||'')+'</div></div></div>').join('');
+  }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the log.</div>';});
+}
+function tablesLogClear(){fetch('/api/tables_log_clear',{method:'POST'}).then(()=>tablesLogLoad()).catch(()=>{});}
 function walkinLoad(){
   fetch('/api/walkin_config').then(r=>r.json()).then(d=>{
     const g=id=>document.getElementById(id); if(!g('wi-enabled'))return;

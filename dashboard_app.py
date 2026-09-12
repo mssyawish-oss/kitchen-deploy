@@ -5562,13 +5562,34 @@ def api_display_photo(fn):
 # the Alarm Center "tables" key (so it behaves exactly like the probe alarms). See [[dash-status]].
 TABLESW={"state":"clear","pend":None,"pendn":0,"clearn":0,"at":0.0,"err":"","note":"","since":0.0,"raw":"","img_at":0}
 TABLES_DIR=os.path.join(BASE_DIR,"tables_watch")
-try: os.makedirs(TABLES_DIR,exist_ok=True)
+_TABLES_LOG_DIR=os.path.join(TABLES_DIR,"log")
+try: os.makedirs(_TABLES_LOG_DIR,exist_ok=True)
 except Exception: pass
+def _tables_log_add(frame_bytes,reason):
+    # keep a small rolling record of every real detection (frame + reason + time) so Marcel can review
+    # accuracy after the fact. Capped at 15; old frame files pruned to what's still in the list.
+    ts=int(time.time()*1000)
+    try:
+        with open(os.path.join(_TABLES_LOG_DIR,"%d.jpg"%ts),"wb") as f: f.write(frame_bytes)
+    except Exception: pass
+    log=list(db.get("tables_log",[]) or [])
+    log.insert(0,{"ts":ts,"desc":reason or "Food left on an outside table",
+                  "at":datetime.now().strftime("%a %d %b %I:%M %p")})
+    log=log[:15]
+    with data_lock: db["tables_log"]=log; save_data(db)
+    try:
+        keep={str(e.get("ts")) for e in log}
+        for fn in os.listdir(_TABLES_LOG_DIR):
+            if fn.endswith(".jpg") and fn[:-4] not in keep:
+                try: os.remove(os.path.join(_TABLES_LOG_DIR,fn))
+                except Exception: pass
+    except Exception: pass
 _TABLES_PROMPT=("This is the OUTDOOR dining area of a takeaway shop, with a few tables. Look ONLY at the "
-  "tables. Reply LEFT if there is abandoned food, a food tray, plates, cups, bottles or takeaway "
-  "rubbish sitting on a table with NOBODY seated at that table. Reply CLEAR if every table is either "
+  "tables. Decide LEFT if there is abandoned food, a food tray, plates, cups, bottles or takeaway "
+  "rubbish sitting on a table with NOBODY seated at that table. Decide CLEAR if every table is either "
   "empty and clean, or has people currently seated at it. Ignore the ground, bins, staff and passers-by. "
-  "Answer with exactly one word: LEFT or CLEAR.")
+  "Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 "
+  "words. Examples: 'LEFT - tray and cups left on an empty table', 'CLEAR - people seated and eating'.")
 def _tables_cfg():
     c=dict(db.get("tables_watch",{}) or {})
     c.setdefault("enabled",False); c.setdefault("cam","25d8d92d")
@@ -5582,11 +5603,11 @@ def _tables_open_now(cfg):
     except Exception: return True
 def _tables_ask(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
-    if not key or not jpeg: return None,"no key/frame"
+    if not key or not jpeg: return None,"no key/frame",""
     img=_downscale_jpeg(jpeg,720)
     _gem_count_call()
     model=(cfg.get("model") or "gemini-2.5-flash").strip()
-    gencfg={"temperature":0,"maxOutputTokens":8}
+    gencfg={"temperature":0,"maxOutputTokens":40}
     if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
     prompt=(_tables_cfg().get("prompt") or _TABLES_PROMPT)
     body={"contents":[{"parts":[{"text":prompt},
@@ -5597,23 +5618,32 @@ def _tables_ask(jpeg):
         req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
         with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
         parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
-        txt="".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).strip().upper()
-        if "LEFT" in txt: return "left",txt
-        if "CLEAR" in txt: return "clear",txt
-        return None,(txt or "empty reply")
+        txt=" ".join("".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).split()).strip()
+        up=txt.upper()
+        # pull a plain-English reason out of "LEFT - reason" / "CLEAR: reason" / etc.
+        reason=""
+        for sep in (" - "," -","- ",": ",":","—","-"):
+            if sep in txt:
+                reason=txt.split(sep,1)[1].strip(); break
+        if not reason:
+            reason=re.sub(r'^(LEFT|CLEAR)\b[\s:,.-]*','',txt,flags=re.I).strip()
+        reason=reason.strip().strip('.').strip()
+        if "LEFT" in up: return "left",txt,(reason or "food left on a table")
+        if "CLEAR" in up: return "clear",txt,(reason or "tables clear or in use")
+        return None,(txt or "empty reply"),""
     except Exception as e:
-        return None,("error: "+str(e)[:100])
+        return None,("error: "+str(e)[:100]),""
 def _tables_check_once(force=False,save_preview=False):
     cfg=_tables_cfg(); cam=_cam_by_id(cfg.get("cam"))
-    row={"state":TABLESW.get("state"),"raw":"","err":""}
+    row={"state":TABLESW.get("state"),"raw":"","err":"","desc":""}
     if not cam:
         TABLESW["err"]="camera not found"; row["err"]=TABLESW["err"]; return row
     jpeg,err=_snap_from(cam,timeout=25)
     if err or not jpeg:
         TABLESW["err"]=err or "no frame"; row["err"]=TABLESW["err"]; return row
-    verdict,raw=_tables_ask(jpeg)
-    TABLESW["at"]=time.time(); TABLESW["raw"]=raw; TABLESW["err"]=""
-    row["raw"]=raw
+    verdict,raw,reason=_tables_ask(jpeg)
+    TABLESW["at"]=time.time(); TABLESW["raw"]=raw; TABLESW["err"]=""; TABLESW["desc"]=reason
+    row["raw"]=raw; row["desc"]=reason
     if verdict is None:
         row["err"]="unreadable"; row["state"]=TABLESW.get("state")
         if save_preview:
@@ -5627,10 +5657,12 @@ def _tables_check_once(force=False,save_preview=False):
             TABLESW["pendn"]=TABLESW.get("pendn",0)+1
             if TABLESW["pendn"]>=int(cfg.get("confirm",2)):
                 TABLESW["state"]="left"; TABLESW["since"]=time.time(); TABLESW["pendn"]=0
-                TABLESW["note"]="Food or a tray left on an outside table"
+                TABLESW["note"]=reason or "Food or a tray left on an outside table"
                 try:
-                    with open(os.path.join(TABLES_DIR,"tables_last.jpg"),"wb") as f: f.write(_downscale_jpeg(jpeg,960))
+                    frame=_downscale_jpeg(jpeg,960)
+                    with open(os.path.join(TABLES_DIR,"tables_last.jpg"),"wb") as f: f.write(frame)
                     TABLESW["img_at"]=int(time.time()*1000)
+                    _tables_log_add(frame,TABLESW["note"])
                 except Exception: pass
     else:
         TABLESW["pendn"]=0
@@ -5646,7 +5678,7 @@ def _tables_check_once(force=False,save_preview=False):
 def _tables_payload():
     cfg=_tables_cfg()
     return {"on":bool(cfg.get("enabled")),"alert":TABLESW.get("state")=="left",
-            "note":TABLESW.get("note",""),"at":int(TABLESW.get("img_at",0) or 0),
+            "note":TABLESW.get("note",""),"desc":TABLESW.get("note",""),"at":int(TABLESW.get("img_at",0) or 0),
             "img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
 def tables_loop():
     while True:
@@ -5669,7 +5701,8 @@ def api_tables_status():
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
                     "open":_tables_open_now(cfg),"interval":int(cfg.get("interval",90) or 90),
                     "state":TABLESW.get("state"),"alert":TABLESW.get("state")=="left",
-                    "note":TABLESW.get("note",""),"raw":TABLESW.get("raw",""),"err":TABLESW.get("err","")})
+                    "note":TABLESW.get("note",""),"desc":TABLESW.get("desc",""),
+                    "raw":TABLESW.get("raw",""),"err":TABLESW.get("err","")})
 @app.route("/api/tables_config",methods=["POST"])
 def api_tables_config():
     d=request.get_json(silent=True) or {}; cur=dict(_tables_cfg())
@@ -5692,6 +5725,25 @@ def api_tables_test():
 @app.route("/api/tables_ack",methods=["POST"])
 def api_tables_ack():
     TABLESW["state"]="clear"; TABLESW["pendn"]=0; TABLESW["clearn"]=0; TABLESW["note"]=""
+    return jsonify({"ok":True})
+@app.route("/api/tables_log")
+def api_tables_log():
+    return jsonify({"ok":True,"log":list(db.get("tables_log",[]) or [])})
+@app.route("/api/tables_log_frame.jpg")
+def api_tables_log_frame():
+    ts=re.sub(r'[^0-9]','',request.args.get("ts",""))
+    pth=os.path.join(_TABLES_LOG_DIR,"%s.jpg"%ts) if ts else ""
+    if not pth or not os.path.exists(pth): return ("no frame",404)
+    return send_file(pth,mimetype="image/jpeg")
+@app.route("/api/tables_log_clear",methods=["POST"])
+def api_tables_log_clear():
+    with data_lock: db["tables_log"]=[]; save_data(db)
+    try:
+        for fn in os.listdir(_TABLES_LOG_DIR):
+            if fn.endswith(".jpg"):
+                try: os.remove(os.path.join(_TABLES_LOG_DIR,fn))
+                except Exception: pass
+    except Exception: pass
     return jsonify({"ok":True})
 
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
