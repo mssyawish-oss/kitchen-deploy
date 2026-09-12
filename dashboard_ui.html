@@ -1760,6 +1760,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
+      <div id="tables-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
@@ -2590,6 +2591,20 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     </div>
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="walkinSave()">Save walk-in watch</button><button class="btn" onclick="walkinTest()">Test now</button></div>
     <div id="wi-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
+
+    <div class="section-title" style="margin-top:18px;">Food left on outside tables (camera + AI)</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Watches the outside camera and pops the table view on the dash (with the probe-style alarm) when a food tray or rubbish is left behind on a table with nobody seated. Uses the same Gemini key as the rotisserie camera. Tune the sound/popup under Alarm Center &rarr; “Food left on outside table”.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="tb-enabled" style="width:18px;height:18px;"> Turn the outside-tables watch on</label>
+    <div class="grid-2">
+      <div><div class="label">Outside camera</div><select class="input" id="tb-cam" style="background:var(--surface2);"></select></div>
+      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="tb-interval" type="number" min="20" max="600" step="5" placeholder="90"></div>
+    </div>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Confirm after <span style="color:var(--muted);font-weight:400;">(reads in a row)</span></div><input class="input" id="tb-confirm" type="number" min="1" max="6" step="1" placeholder="2"></div>
+      <div><div class="label">Only between / and (24h)</div><div class="row" style="gap:6px;"><input class="input" id="tb-start" type="number" min="0" max="23" placeholder="10"><input class="input" id="tb-end" type="number" min="1" max="24" placeholder="22"></div></div>
+    </div>
+    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="tablesSave()">Save outside-tables watch</button><button class="btn" onclick="tablesTest()">Test now</button></div>
+    <div id="tb-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
     <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Detection log <span style="color:var(--muted);font-weight:400;">(every red light, with the two frames that caused it)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="walkinLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="walkinLogClear()">Clear</button></span></div>
     <div id="wi-log" style="margin-top:8px;"></div>
     <div class="divider"></div>
@@ -3045,12 +3060,13 @@ const _ALARM_DEF={
  preptasks:{label:'Prep & daily tasks (kitchen)',color:'#34d399',interval:2800,desc:'Prep-item and daily-task reminders. Kitchen business: hide it on the front-of-house iPad with the per-screen toggle.'},
  prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'},
- display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'}
+ display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'},
+ tables:{label:'Food left on outside table',color:'#f59e0b',interval:2800,desc:'The AI spotted a food tray/plate/rubbish left behind on an outside table with nobody seated. The outside camera view pops up on the dash. Sound + popup like a probe alarm.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','display','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','display','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3312,6 +3328,26 @@ let _walkinAlarm=false;
 function startWalkinAlarm(){if(!_acfg('walkin').enabled)return;if(_walkinAlarm)return;_walkinAlarm=true;const t0=Date.now();
   (function b(){if(!_walkinAlarm)return;const c=_acfg('walkin');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_walkinAlarm=false;_updateFlash();return;}_alarmHit('walkin');setTimeout(()=>{if(_walkinAlarm)b();},c.interval);})();}
 function stopWalkinAlarm(){_walkinAlarm=false;_updateFlash();}
+// ---- outside-tables abandoned-food watch (server detects; screen follows, same alarm path as probes) ----
+let _tablesAlarm=false;
+function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)return;_tablesAlarm=true;const t0=Date.now();
+  (function b(){if(!_tablesAlarm)return;const c=_acfg('tables');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_tablesAlarm=false;_updateFlash();return;}_alarmHit('tables');setTimeout(()=>{if(_tablesAlarm)b();},c.interval);})();}
+function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
+function ackTables(){stopTablesAlarm();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
+function handleTables(t){
+  const tile=document.getElementById('tables-tile'); if(!tile)return;
+  const on=!!(t&&t.alert);
+  if(on){
+    if(!tile._on){
+      tile._on=true; tile.style.display=''; tile.style.border='1px solid var(--amber)';
+      tile.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">'
+        +'<b style="color:var(--amber);font-size:var(--fs-lg);">\u26A0 '+_mEsc(t.note||'Food left on an outside table')+'</b>'
+        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>'
+        +'<img src="'+(t.img||'/api/tables_frame.jpg')+'" style="width:100%;border-radius:10px;display:block;" alt="outside tables">';
+    }
+    if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
+  } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); }
+}
 // The server owns the detection; the screen just follows it. Acking tells the server a human dealt with
 // it, so it re-arms only on a genuinely NEW detection rather than nagging every poll.
 // TEST MODE (default): a quiet red light in the corner, NO sound — so it can run all day while we see
@@ -3393,6 +3429,37 @@ function lpBrotherTest(){
       st.textContent=d.ok?('Sent ✓ — a test label should be coming out.'+(d.status?' Printer says: '+d.status:'')):(d.error||'Failed');
       st.style.color=d.ok?'var(--green)':'var(--red)';
     }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function tablesLoad(){
+  fetch('/api/tables_status').then(r=>r.json()).then(d=>{
+    const g=id=>document.getElementById(id); if(!g('tb-enabled'))return;
+    g('tb-enabled').checked=!!d.enabled; g('tb-interval').value=d.interval||90;
+    const sel=g('tb-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
+      sel.innerHTML=cams.map(c=>'<option value="'+c.id+'"'+(c.id===d.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');}
+    // confirm/start/end come from the config endpoint's echo on save; seed sensible defaults
+    if(g('tb-confirm')&&!g('tb-confirm').value)g('tb-confirm').value=2;
+    if(g('tb-start')&&!g('tb-start').value)g('tb-start').value=10;
+    if(g('tb-end')&&!g('tb-end').value)g('tb-end').value=22;
+  }).catch(()=>{});
+}
+function tablesSave(){
+  const g=id=>document.getElementById(id),st=g('tb-status');
+  const body={enabled:g('tb-enabled').checked,cam:g('tb-cam').value,
+    interval:parseInt(g('tb-interval').value)||90,confirm:parseInt(g('tb-confirm').value)||2,
+    start_hour:parseInt(g('tb-start').value),end_hour:parseInt(g('tb-end').value)};
+  if(!body.cam){st.textContent='Pick the outside camera first.';st.style.color='var(--amber)';return;}
+  st.textContent='Saving\u2026';st.style.color='var(--muted)';
+  fetch('/api/tables_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved \u2713':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function tablesTest(){
+  const st=document.getElementById('tb-status');
+  st.textContent='Taking a look at the outside tables\u2026';st.style.color='var(--muted)';
+  fetch('/api/tables_test',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(!d.ok){st.textContent=d.error||'Failed';st.style.color='var(--red)';return;}
+    const r=d.row||{};st.textContent='AI says: '+((r.state==='left')?'FOOD LEFT on a table':'all clear')+(r.raw?(' ('+r.raw+')'):'')+(r.err?(' \u2014 '+r.err):'');
+    st.style.color=(r.state==='left')?'var(--amber)':'var(--green)';
+  }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
 function walkinLoad(){
   fetch('/api/walkin_config').then(r=>r.json()).then(d=>{
@@ -3608,6 +3675,7 @@ function _activeAlarmDetails(){
     if(typeof _waitAlarm!=='undefined'&&_waitAlarm)out.push({key:'orders',label:'Orders waiting too long'});
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
+    if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
   }catch(e){}
   return out;
 }
@@ -3638,6 +3706,7 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='orders'){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}
   else if(key==='service'){if(typeof silenceAlarm==='function')silenceAlarm();}
   else if(key==='walkin'){if(typeof ackWalkin==='function')ackWalkin();}
+  else if(key==='tables'){if(typeof ackTables==='function')ackTables();}
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
   else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
@@ -3658,7 +3727,7 @@ function _ackReminder(key,label){
   if(typeof _toast==='function')_toast('\u2713 '+(label||'Done')+' \u2014 cleared for today');
 }
 function _broadcastSilence(key){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key||''})}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=Math.max(_silenceSeen,d.ts);}).catch(()=>{});}
-function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
+function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._tablesAlarm||!!_tablesAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(list){
   if(!Array.isArray(list)){list=(list?[{ts:list,key:''}]:[]);}   // tolerate an older server that still sends a bare ts
   const maxTs=list.reduce((m,e)=>Math.max(m,(e&&e.ts)||0),0);
@@ -3670,7 +3739,7 @@ function _applyRemoteSilence(list){
   try{ fresh.forEach(e=>{ if(e.key){ if(typeof silenceOneAlarm==='function')silenceOneAlarm(e.key); } else if(_anyAlarmActive()){ silenceAll(); } }); }
   finally{_applyingRemoteSilence=false;}
 }
-function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm){active.push('Food left on outside table');if(typeof ackTables==='function')ackTables();}_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 // ── Label-printer status light ──────────────────────────────────────────────────────────────────
 // The B1 Pro is only connected DURING a print (BLE, one link at a time), so there is no live
 // connection to poll — and polling it would risk knocking the FM230 probe link over. The light
@@ -5038,6 +5107,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
+try{handleTables(d.tables||{});}catch(e){console.warn('tables:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
 _recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;
@@ -8065,7 +8135,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}

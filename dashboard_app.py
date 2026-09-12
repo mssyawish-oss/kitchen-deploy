@@ -4651,7 +4651,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -5553,6 +5553,146 @@ def api_display_photo(fn):
     p=os.path.join(DISPLAY_DIR,fn)
     if not os.path.exists(p): return ("not found",404)
     return send_file(p,mimetype="image/jpeg")
+
+# -- OUTSIDE-TABLES "abandoned food" WATCH (12 Sep 2026) ------------------------------------------
+# Watches the OUTSIDE FRONT camera (default cam 25d8d92d / channel 5) and, when a food tray/plate/cup
+# or takeaway rubbish is left behind on a table with NOBODY seated there, raises an alert + pops the
+# camera view on the dash. Same shape as the display-food watch: periodic Gemini look, two-read
+# debounce so a customer mid-meal or a passing blur never fires it. The dash decides sound/popup via
+# the Alarm Center "tables" key (so it behaves exactly like the probe alarms). See [[dash-status]].
+TABLESW={"state":"clear","pend":None,"pendn":0,"clearn":0,"at":0.0,"err":"","note":"","since":0.0,"raw":"","img_at":0}
+TABLES_DIR=os.path.join(BASE_DIR,"tables_watch")
+try: os.makedirs(TABLES_DIR,exist_ok=True)
+except Exception: pass
+_TABLES_PROMPT=("This is the OUTDOOR dining area of a takeaway shop, with a few tables. Look ONLY at the "
+  "tables. Reply LEFT if there is abandoned food, a food tray, plates, cups, bottles or takeaway "
+  "rubbish sitting on a table with NOBODY seated at that table. Reply CLEAR if every table is either "
+  "empty and clean, or has people currently seated at it. Ignore the ground, bins, staff and passers-by. "
+  "Answer with exactly one word: LEFT or CLEAR.")
+def _tables_cfg():
+    c=dict(db.get("tables_watch",{}) or {})
+    c.setdefault("enabled",False); c.setdefault("cam","25d8d92d")
+    c.setdefault("interval",90); c.setdefault("confirm",2); c.setdefault("clear_confirm",1)
+    c.setdefault("start_hour",10); c.setdefault("end_hour",22)
+    return c
+def _tables_open_now(cfg):
+    try:
+        h=datetime.now().hour
+        return int(cfg.get("start_hour",10))<=h<int(cfg.get("end_hour",22))
+    except Exception: return True
+def _tables_ask(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,"no key/frame"
+    img=_downscale_jpeg(jpeg,720)
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":8}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    prompt=(_tables_cfg().get("prompt") or _TABLES_PROMPT)
+    body={"contents":[{"parts":[{"text":prompt},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).strip().upper()
+        if "LEFT" in txt: return "left",txt
+        if "CLEAR" in txt: return "clear",txt
+        return None,(txt or "empty reply")
+    except Exception as e:
+        return None,("error: "+str(e)[:100])
+def _tables_check_once(force=False,save_preview=False):
+    cfg=_tables_cfg(); cam=_cam_by_id(cfg.get("cam"))
+    row={"state":TABLESW.get("state"),"raw":"","err":""}
+    if not cam:
+        TABLESW["err"]="camera not found"; row["err"]=TABLESW["err"]; return row
+    jpeg,err=_snap_from(cam,timeout=25)
+    if err or not jpeg:
+        TABLESW["err"]=err or "no frame"; row["err"]=TABLESW["err"]; return row
+    verdict,raw=_tables_ask(jpeg)
+    TABLESW["at"]=time.time(); TABLESW["raw"]=raw; TABLESW["err"]=""
+    row["raw"]=raw
+    if verdict is None:
+        row["err"]="unreadable"; row["state"]=TABLESW.get("state")
+        if save_preview:
+            try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
+            except Exception: pass
+        return row
+    cur=TABLESW.get("state") or "clear"
+    if verdict=="left":
+        TABLESW["clearn"]=0
+        if cur!="left":
+            TABLESW["pendn"]=TABLESW.get("pendn",0)+1
+            if TABLESW["pendn"]>=int(cfg.get("confirm",2)):
+                TABLESW["state"]="left"; TABLESW["since"]=time.time(); TABLESW["pendn"]=0
+                TABLESW["note"]="Food or a tray left on an outside table"
+                try:
+                    with open(os.path.join(TABLES_DIR,"tables_last.jpg"),"wb") as f: f.write(_downscale_jpeg(jpeg,960))
+                    TABLESW["img_at"]=int(time.time()*1000)
+                except Exception: pass
+    else:
+        TABLESW["pendn"]=0
+        if cur=="left":
+            TABLESW["clearn"]=TABLESW.get("clearn",0)+1
+            if TABLESW["clearn"]>=int(cfg.get("clear_confirm",1)):
+                TABLESW["state"]="clear"; TABLESW["clearn"]=0; TABLESW["note"]=""
+    row["state"]=TABLESW.get("state")
+    if save_preview:
+        try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
+        except Exception: pass
+    return row
+def _tables_payload():
+    cfg=_tables_cfg()
+    return {"on":bool(cfg.get("enabled")),"alert":TABLESW.get("state")=="left",
+            "note":TABLESW.get("note",""),"at":int(TABLESW.get("img_at",0) or 0),
+            "img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
+def tables_loop():
+    while True:
+        cfg=_tables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))
+        try:
+            if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip() and _tables_open_now(cfg)):
+                time.sleep(iv); continue
+            _tables_check_once()
+        except Exception as e:
+            print("tables_loop:",str(e)[:120])
+        time.sleep(iv)
+@app.route("/api/tables_frame.jpg")
+def api_tables_frame():
+    pth=os.path.join(TABLES_DIR,"tables_last.jpg")
+    if not os.path.exists(pth): return ("no frame",404)
+    return send_file(pth,mimetype="image/jpeg")
+@app.route("/api/tables_status")
+def api_tables_status():
+    cfg=_tables_cfg()
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
+                    "open":_tables_open_now(cfg),"interval":int(cfg.get("interval",90) or 90),
+                    "state":TABLESW.get("state"),"alert":TABLESW.get("state")=="left",
+                    "note":TABLESW.get("note",""),"raw":TABLESW.get("raw",""),"err":TABLESW.get("err","")})
+@app.route("/api/tables_config",methods=["POST"])
+def api_tables_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_tables_cfg())
+    if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+    if "cam" in d: cur["cam"]=str(d["cam"] or "").strip() or cur.get("cam")
+    for k2 in ("interval","confirm","clear_confirm","start_hour","end_hour"):
+        if k2 in d:
+            try: cur[k2]=int(d[k2])
+            except Exception: pass
+    if "prompt" in d: cur["prompt"]=str(d["prompt"] or "")
+    with data_lock: db["tables_watch"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+@app.route("/api/tables_test",methods=["POST"])
+def api_tables_test():
+    if not (_rotcam_cfg().get("gemini_key") or "").strip():
+        return jsonify({"ok":False,"error":"No Gemini key configured (Rotisserie camera settings)"})
+    try: row=_tables_check_once(force=True,save_preview=True)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)[:160]})
+    return jsonify({"ok":True,"row":row})
+@app.route("/api/tables_ack",methods=["POST"])
+def api_tables_ack():
+    TABLESW["state"]="clear"; TABLESW["pendn"]=0; TABLESW["clearn"]=0; TABLESW["note"]=""
+    return jsonify({"ok":True})
 
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
@@ -6522,7 +6662,8 @@ def temps():
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
-          "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))}}),mimetype="application/json")
+          "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
+"tables":_tables_payload()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -9261,6 +9402,7 @@ if __name__=="__main__":
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
+    threading.Thread(target=tables_loop,daemon=True).start()                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
