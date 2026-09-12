@@ -1760,7 +1760,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
-      <div id="tables-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
+      <div id="tables-tile" class="card" style="display:none;position:fixed;right:16px;bottom:16px;width:auto;max-width:300px;padding:12px 14px;z-index:9000;box-shadow:0 6px 24px rgba(0,0,0,.35);"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
@@ -3339,11 +3339,10 @@ function handleTables(t){
   const on=!!(t&&t.alert);
   if(on){
     if(!tile._on){
-      tile._on=true; tile.style.display=''; tile.style.border='1px solid var(--amber)';
-      tile.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">'
-        +'<b style="color:var(--amber);font-size:var(--fs-lg);">\u26A0 '+_mEsc(t.note||'Food left on an outside table')+'</b>'
-        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>'
-        +'<img src="'+(t.img||'/api/tables_frame.jpg')+'" style="width:100%;border-radius:10px;display:block;" alt="outside tables">';
+      tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
+      tile.innerHTML='<div style="display:flex;align-items:center;gap:10px;">'
+        +'<b style="color:var(--amber);font-size:var(--fs-lg);white-space:nowrap;">\u26A0 Check outside tables</b>'
+        +'<button class="btn" onclick="ackTables()">Cleared it</button></div>';
     }
     if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
   } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); }
