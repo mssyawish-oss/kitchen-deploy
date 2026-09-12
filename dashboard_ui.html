@@ -1760,7 +1760,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
-      <div id="tables-tile" class="card" style="display:none;position:fixed;right:16px;bottom:16px;width:auto;max-width:300px;padding:12px 14px;z-index:9000;box-shadow:0 6px 24px rgba(0,0,0,.35);"></div>
+      <div id="tables-tile" class="card" style="display:none;position:fixed;right:14px;bottom:104px;width:270px;max-width:44vw;padding:10px 12px;z-index:9000;box-shadow:0 6px 24px rgba(0,0,0,.45);background:var(--surface,#15181d);"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
@@ -3350,8 +3350,8 @@ function handleTables(t){
       tile.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;">'
         +'<b style="color:var(--amber);font-size:var(--fs-lg);white-space:nowrap;">\u26A0 Check outside tables</b>'
         +'<button class="btn" onclick="ackTables()">Cleared it</button></div>'
-        +'<img src="'+src+'" onclick="_tablesEnlarge(this.src)" style="width:100%;border-radius:8px;display:block;cursor:zoom-in;" alt="outside tables">'
-        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:5px;">'+cap+' &middot; <span style="opacity:.8;">tap image to enlarge</span></div>';
+        +'<img src="'+src+'" onclick="_tablesEnlarge(this.src)" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;display:block;cursor:zoom-in;" alt="outside tables">'
+        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:5px;line-height:1.25;">'+cap+' &middot; <span style="opacity:.8;">tap to enlarge</span></div>';
     }
     if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
   } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); }

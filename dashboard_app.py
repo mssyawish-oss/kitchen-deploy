@@ -5584,12 +5584,15 @@ def _tables_log_add(frame_bytes,reason):
                 try: os.remove(os.path.join(_TABLES_LOG_DIR,fn))
                 except Exception: pass
     except Exception: pass
-_TABLES_PROMPT=("This is the OUTDOOR dining area of a takeaway shop, with a few tables. Look ONLY at the "
-  "tables. Decide LEFT if there is abandoned food, a food tray, plates, cups, bottles or takeaway "
-  "rubbish sitting on a table with NOBODY seated at that table. Decide CLEAR if every table is either "
-  "empty and clean, or has people currently seated at it. Ignore the ground, bins, staff and passers-by. "
-  "Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 "
-  "words. Examples: 'LEFT - tray and cups left on an empty table', 'CLEAR - people seated and eating'.")
+_TABLES_PROMPT=("This is the OUTDOOR dining area of a takeaway shop. There are a few SEPARATE tables. "
+  "Judge EACH table on its own. Decide LEFT if ANY ONE table has abandoned food, a food tray, plates, "
+  "cups, bottles or takeaway rubbish on it while NOBODY is seated at that same table - even if other "
+  "tables are occupied or empty. Decide CLEAR only if EVERY table is either (a) empty and clean, or "
+  "(b) has people currently seated at it. An empty clean table is CLEAR. A table with people eating is "
+  "CLEAR even if it is covered in food. Ignore the ground, bins, staff and passers-by. Answer on ONE "
+  "line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 words. "
+  "Examples: 'LEFT - tray and cups left on an unattended table', 'CLEAR - people seated and eating', "
+  "'CLEAR - all tables empty and clean'.")
 def _tables_cfg():
     c=dict(db.get("tables_watch",{}) or {})
     c.setdefault("enabled",False); c.setdefault("cam","25d8d92d")
