@@ -3010,6 +3010,104 @@ def api_products_all():
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)})
 
+# ── PACK-MODIFIER INTEGRITY GUARD (12 Sep 2026) ──────────────────────────────────────────────────
+# The ITEMS-panel switch-off/on of a side that lives in several pack lists could drop copies from some
+# lists (see [[packmod-loss-incident]]). This baseline+heal makes the menu self-repairing: capture the
+# known-good membership of the pack modifier lists once, then every hour recreate any side that has gone
+# missing (from the stored definition, with its image). It NEVER deletes — only re-adds — so it can't
+# fight a genuine addition; re-capture the baseline whenever the menu legitimately changes.
+_PACKMOD_DEFAULT_LISTS=["M6FFCUKR5YMJNVME22CFLJ7I","ZAVVMFJZ3TA6SOFT2MBSTONX",
+                        "EZI6F7YJUXPX7ERYGSYYPBY6","YNR3M7BUT2IW6CJVW5G73WI5"]
+def _packmod_guard_lists():
+    ls=db.get("packmod_lists")
+    return list(ls) if isinstance(ls,list) and ls else list(_PACKMOD_DEFAULT_LISTS)
+def _packmod_list_members(list_id,hdr):
+    """{NAME_UPPER: modifier_data} for the non-deleted modifiers in a list (live from Square)."""
+    out={}
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(list_id)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+            o=(json.loads(r.read().decode()) or {}).get("object") or {}
+    except Exception:
+        return None
+    for m in ((o.get("modifier_list_data") or {}).get("modifiers") or []):
+        if m.get("is_deleted"): continue
+        md=m.get("modifier_data") or {}
+        nm=(md.get("name") or "").strip().upper()
+        if nm: out[nm]=md
+    return out
+def _packmod_capture_baseline():
+    """Snapshot the current (assumed-good) membership of the guarded lists into db['packmod_baseline']."""
+    hdr=_sq_headers()
+    if not hdr: return {"ok":False,"error":"Square not configured"}
+    base={}
+    for lid in _packmod_guard_lists():
+        mem=_packmod_list_members(lid,hdr)
+        if mem is None: continue
+        base[lid]={nm:{"price_money":md.get("price_money"),"image_id":md.get("image_id"),
+                       "ordinal":md.get("ordinal")} for nm,md in mem.items()}
+    with data_lock:
+        db["packmod_baseline"]=base; db["packmod_baseline_at"]=int(time.time()*1000); save_data(db)
+    return {"ok":True,"lists":len(base),"sides":{lid:len(v) for lid,v in base.items()}}
+def _packmod_integrity(fix=True):
+    """Compare each guarded list to the baseline; recreate any missing side from the stored def."""
+    base=db.get("packmod_baseline") or {}
+    hdr=_sq_headers()
+    if not base or not hdr: return {"ok":True,"checked":0,"restored":[],"note":"no baseline yet"}
+    import uuid as _uuid
+    restored=[]; failed=[]; checked=0
+    for lid,expect in base.items():
+        checked+=1
+        live=_packmod_list_members(lid,hdr)
+        if live is None: continue
+        missing=[nm for nm in expect if nm not in live]
+        if not missing: continue
+        if not fix:
+            failed+=[{"list":lid,"name":nm,"note":"missing"} for nm in missing]; continue
+        for nm in missing:
+            d=expect[nm]
+            md={"name":nm,"modifier_list_id":lid}
+            if d.get("price_money"): md["price_money"]=d["price_money"]
+            if d.get("image_id"): md["image_id"]=d["image_id"]
+            if d.get("ordinal") is not None: md["ordinal"]=d["ordinal"]
+            obj={"type":"MODIFIER","id":"#pmheal","modifier_data":md}
+            try:
+                req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+                    data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":obj}).encode(),headers=hdr)
+                with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+                if res.get("errors"):                       # retry once without the image (stale image_id)
+                    md.pop("image_id",None)
+                    req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+                        data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":{"type":"MODIFIER","id":"#pmheal","modifier_data":md}}).encode(),headers=hdr)
+                    with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+                    if res.get("errors"): failed.append({"list":lid,"name":nm}); continue
+                restored.append({"list":lid,"name":nm})
+            except Exception as e:
+                failed.append({"list":lid,"name":nm,"err":str(e)[:80]})
+    if restored:
+        try: _PSRCH_CACHE["at"]=0                            # menu changed → rebuild the ITEMS search index
+        except Exception: pass
+        try:
+            note="Auto-restored %d missing pack side(s): %s"%(len(restored),
+                 ", ".join(sorted({x["name"].title() for x in restored})))
+            with data_lock:
+                notes=db.setdefault("handover_notes",[])
+                notes.append({"id":"pmheal_%d"%int(time.time()*1000),"text":note,
+                              "who":"Menu guard","time":datetime.now().astimezone().isoformat()})
+                db["handover_notes"]=notes[-50:]
+                db["packmod_last_heal"]={"at":int(time.time()*1000),"restored":restored}; save_data(db)
+        except Exception: pass
+    return {"ok":True,"checked":checked,"restored":restored,"failed":failed}
+@app.route("/api/packmod_baseline",methods=["POST","GET"])
+def api_packmod_baseline():
+    if request.method=="POST": return jsonify(_packmod_capture_baseline())
+    b=db.get("packmod_baseline") or {}
+    return jsonify({"ok":True,"at":db.get("packmod_baseline_at"),"lists":{k:sorted(v.keys()) for k,v in b.items()}})
+@app.route("/api/packmod_check",methods=["POST"])
+def api_packmod_check():
+    return jsonify(_packmod_integrity(fix=bool((request.get_json(silent=True) or {}).get("fix",True))))
+
+_PACKMOD_LAST_RUN=0
 def prodoff_auto_loop():
     while True:
         try:
@@ -3023,6 +3121,14 @@ def prodoff_auto_loop():
                 # silently switch everything back on in the middle of service
                 if target<=cur<target+120 and (db.get("prodoff_auto_lastrun") or "")!=today:
                     _prodoff_auto_enable()
+            # hourly self-heal of the pack modifier lists (12 Sep) — re-adds any side that went missing
+            _pmnow=time.time()
+            if _pmnow-globals().get("_PACKMOD_LAST_RUN",0)>900:
+                globals()["_PACKMOD_LAST_RUN"]=_pmnow
+                try:
+                    r=_packmod_integrity(fix=True)
+                    if r.get("restored"): print("pack-mod guard restored:",[x["name"] for x in r["restored"]])
+                except Exception as e: print("pack-mod guard:",e)
         except Exception: pass
         time.sleep(45)
 # ==================================================================================
