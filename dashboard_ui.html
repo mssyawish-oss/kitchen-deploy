@@ -2641,7 +2641,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="fd-enabled" style="width:18px;height:18px;"> Turn the front-door watch on</label>
     <div class="grid-2">
       <div><div class="label">Front-door camera</div><select class="input" id="fd-cam" style="background:var(--surface2);"></select></div>
-      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="fd-interval" type="number" min="5" max="120" step="1" placeholder="10"></div>
+      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds — 2 = fastest)</span></div><input class="input" id="fd-interval" type="number" min="2" max="120" step="1" placeholder="2"></div>
     </div>
     <div class="grid-2 mt-8">
       <div><div class="label">Confirm after <span style="color:var(--muted);font-weight:400;">(reads in a row)</span></div><input class="input" id="fd-confirm" type="number" min="1" max="4" step="1" placeholder="1"></div>
@@ -3423,7 +3423,7 @@ function _tablesEnlargeLive(cam){
 }
 function handleTables(t){
   const tile=document.getElementById('tables-tile'); if(!tile)return;
-  const on=!!(t&&t.alert);
+  const on=!!(t&&t.alert) && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'));   // 'Hidden on this screen' fully hides the box here
   if(on){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
@@ -3589,7 +3589,7 @@ function _intablesEnlarge(src){_intablesZoomStop();let o=document.getElementById
 function _intablesEnlargeLive(cam){_intablesEnlarge(cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):'/api/intables_frame.jpg');const c=document.getElementById('intables-zoom-cap');if(c)c.textContent='● live — inside';if(!cam)return;_intablesZoomTimer=setInterval(function(){const oo=document.getElementById('intables-zoom');if(!oo||oo.style.display==='none'){_intablesZoomStop();return;}const i=oo.querySelector('img');if(i)i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},2500);}
 function handleIntables(t){
   const tile=document.getElementById('intables-tile'); if(!tile)return;
-  const on=!!(t&&t.alert);
+  const on=!!(t&&t.alert) && !(typeof _devPopMuted==='function'&&_devPopMuted('intables'));
   if(on){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
@@ -3671,7 +3671,7 @@ function _frontdoorEnlarge(src){_frontdoorZoomStop();let o=document.getElementBy
 function _frontdoorEnlargeLive(cam){_frontdoorEnlarge(cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):'/api/frontdoor_frame.jpg');const c=document.getElementById('frontdoor-zoom-cap');if(c)c.textContent='● live — front door';if(!cam)return;_frontdoorZoomTimer=setInterval(function(){const oo=document.getElementById('frontdoor-zoom');if(!oo||oo.style.display==='none'){_frontdoorZoomStop();return;}const i=oo.querySelector('img');if(i)i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},2500);}
 function handleFrontdoor(t){
   const tile=document.getElementById('frontdoor-tile'); if(!tile)return;
-  const on=!!(t&&t.alert);
+  const on=!!(t&&t.alert) && !(typeof _devPopMuted==='function'&&_devPopMuted('frontdoor'));
   if(on){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid #38bdf8';
@@ -3695,7 +3695,7 @@ function handleFrontdoor(t){
 function frontdoorLoad(){
   fetch('/api/frontdoor_status').then(r=>r.json()).then(d=>{
     const g=id=>document.getElementById(id); if(!g('fd-enabled'))return;
-    g('fd-enabled').checked=!!d.enabled; g('fd-interval').value=d.interval||10;
+    g('fd-enabled').checked=!!d.enabled; g('fd-interval').value=d.interval||2;
     const sel=g('fd-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
       sel.innerHTML='<option value="">— pick a camera —</option>'+cams.map(c=>'<option value="'+c.id+'"'+(c.id===d.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');}
     if(g('fd-confirm'))g('fd-confirm').value=d.confirm||1;

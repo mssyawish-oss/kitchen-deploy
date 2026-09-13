@@ -5985,7 +5985,7 @@ _FRONTDOOR_PROMPT=("Look at the FRONT ENTRANCE / doorway of a takeaway shop. Ans
 def _frontdoor_cfg():
     c=dict(db.get("frontdoor_watch",{}) or {})
     c.setdefault("enabled",False); c.setdefault("cam","")
-    c.setdefault("interval",10); c.setdefault("confirm",1); c.setdefault("clear_confirm",2)
+    c.setdefault("interval",2); c.setdefault("confirm",1); c.setdefault("clear_confirm",2)
     c.setdefault("start_hour",8); c.setdefault("end_hour",22)
     c.setdefault("popup_secs",15)   # customer arrival is momentary; default show 15s then auto-dismiss
     return c
@@ -6033,6 +6033,13 @@ def _frontdoor_check_once(force=False,save_preview=False):
     jpeg,err=_snap_from(cam,timeout=25)
     if err or not jpeg:
         FRONTDOORW["err"]=err or "no frame"; row["err"]=FRONTDOORW["err"]; return row
+    # Motion gate so we can poll fast (every ~2s) WITHOUT calling Gemini every time: when the entrance is
+    # empty and the picture hasn't changed, skip the AI. Always run the AI on movement, when forced, or
+    # while a customer is present (to catch them leaving). This is what makes "fastest" cheap.
+    sig=_frame_sig(jpeg); moved=_frame_moved(FRONTDOORW.get("sig"),sig); FRONTDOORW["sig"]=sig
+    if not (force or moved or FRONTDOORW.get("state")=="in"):
+        FRONTDOORW["at"]=time.time(); FRONTDOORW["err"]=""
+        row["state"]=FRONTDOORW.get("state"); row["raw"]="(no motion)"; return row
     verdict,raw,reason=_frontdoor_ask(jpeg)
     FRONTDOORW["at"]=time.time(); FRONTDOORW["raw"]=raw; FRONTDOORW["err"]=""; FRONTDOORW["desc"]=reason
     row["raw"]=raw; row["desc"]=reason
@@ -6075,7 +6082,7 @@ def _frontdoor_payload():
             "img":"/api/frontdoor_frame.jpg?ts=%d"%int(FRONTDOORW.get("img_at",0) or 0)}
 def frontdoor_loop():
     while True:
-        cfg=_frontdoor_cfg(); iv=max(5,int(cfg.get("interval",10) or 10))
+        cfg=_frontdoor_cfg(); iv=max(2,int(cfg.get("interval",2) or 2))
         try:
             if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip() and _frontdoor_open_now(cfg)):
                 time.sleep(iv); continue
@@ -6092,7 +6099,7 @@ def api_frontdoor_frame():
 def api_frontdoor_status():
     cfg=_frontdoor_cfg()
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
-                    "open":_frontdoor_open_now(cfg),"interval":int(cfg.get("interval",10) or 10),
+                    "open":_frontdoor_open_now(cfg),"interval":int(cfg.get("interval",2) or 2),
                     "popup_secs":int(cfg.get("popup_secs",15) or 0),"confirm":int(cfg.get("confirm",1) or 1),
                     "start_hour":int(cfg.get("start_hour",8) or 8),"end_hour":int(cfg.get("end_hour",22) or 22),
                     "state":FRONTDOORW.get("state"),"alert":FRONTDOORW.get("state")=="in",
