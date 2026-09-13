@@ -5598,6 +5598,7 @@ def _tables_cfg():
     c.setdefault("enabled",False); c.setdefault("cam","25d8d92d")
     c.setdefault("interval",90); c.setdefault("confirm",2); c.setdefault("clear_confirm",1)
     c.setdefault("start_hour",10); c.setdefault("end_hour",22)
+    c.setdefault("popup_secs",0)   # 0 = keep the box up until the table is cleared; >0 = auto-dismiss after N seconds
     return c
 def _tables_open_now(cfg):
     try:
@@ -5682,7 +5683,8 @@ def _tables_payload():
     cfg=_tables_cfg()
     return {"on":bool(cfg.get("enabled")),"alert":TABLESW.get("state")=="left",
             "note":TABLESW.get("note",""),"desc":TABLESW.get("note",""),"at":int(TABLESW.get("img_at",0) or 0),
-            "cam":cfg.get("cam",""),"img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
+            "cam":cfg.get("cam",""),"popup_secs":int(cfg.get("popup_secs",0) or 0),
+            "img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
 def tables_loop():
     while True:
         cfg=_tables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))
@@ -5703,6 +5705,8 @@ def api_tables_status():
     cfg=_tables_cfg()
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
                     "open":_tables_open_now(cfg),"interval":int(cfg.get("interval",90) or 90),
+                    "popup_secs":int(cfg.get("popup_secs",0) or 0),"confirm":int(cfg.get("confirm",2) or 2),
+                    "start_hour":int(cfg.get("start_hour",10) or 10),"end_hour":int(cfg.get("end_hour",22) or 22),
                     "state":TABLESW.get("state"),"alert":TABLESW.get("state")=="left",
                     "note":TABLESW.get("note",""),"desc":TABLESW.get("desc",""),
                     "raw":TABLESW.get("raw",""),"err":TABLESW.get("err","")})
@@ -5711,7 +5715,7 @@ def api_tables_config():
     d=request.get_json(silent=True) or {}; cur=dict(_tables_cfg())
     if "enabled" in d: cur["enabled"]=bool(d["enabled"])
     if "cam" in d: cur["cam"]=str(d["cam"] or "").strip() or cur.get("cam")
-    for k2 in ("interval","confirm","clear_confirm","start_hour","end_hour"):
+    for k2 in ("interval","confirm","clear_confirm","start_hour","end_hour","popup_secs"):
         if k2 in d:
             try: cur[k2]=int(d[k2])
             except Exception: pass

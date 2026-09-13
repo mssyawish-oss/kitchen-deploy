@@ -2603,6 +2603,10 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div><div class="label">Confirm after <span style="color:var(--muted);font-weight:400;">(reads in a row)</span></div><input class="input" id="tb-confirm" type="number" min="1" max="6" step="1" placeholder="2"></div>
       <div><div class="label">Only between / and (24h)</div><div class="row" style="gap:6px;"><input class="input" id="tb-start" type="number" min="0" max="23" placeholder="10"><input class="input" id="tb-end" type="number" min="1" max="24" placeholder="22"></div></div>
     </div>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Keep the popup showing</div><select class="input" id="tb-popup" style="background:var(--surface2);"><option value="0">Until the table is cleared</option><option value="10">For 10 seconds</option><option value="20">For 20 seconds</option><option value="30">For 30 seconds</option><option value="60">For 1 minute</option><option value="120">For 2 minutes</option><option value="300">For 5 minutes</option></select></div>
+      <div></div>
+    </div>
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="tablesSave()">Save outside-tables watch</button><button class="btn" onclick="tablesTest()">Test now</button></div>
     <div id="tb-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
     <img id="tb-preview" alt="outside tables — last test frame" style="display:none;width:100%;max-width:420px;border-radius:10px;margin-top:8px;border:1px solid var(--line);cursor:zoom-in;" onclick="_tablesEnlarge(this.src)">
@@ -3337,20 +3341,16 @@ let _tablesAlarm=false;
 function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)return;_tablesAlarm=true;const t0=Date.now();
   (function b(){if(!_tablesAlarm)return;const c=_acfg('tables');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_tablesAlarm=false;_updateFlash();return;}_alarmHit('tables');setTimeout(()=>{if(_tablesAlarm)b();},c.interval);})();}
 function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
-let _tablesLiveTimer=null,_tablesLiveWatch=null,_tablesLiveOn=false;
+let _tablesLiveTimer=null,_tablesLiveWatch=null,_tablesLiveOn=false,_tablesAutoHide=null;
 function _tablesLiveStop(){_tablesLiveOn=false;if(_tablesLiveTimer){clearTimeout(_tablesLiveTimer);_tablesLiveTimer=null;}if(_tablesLiveWatch){clearTimeout(_tablesLiveWatch);_tablesLiveWatch=null;}const im=document.getElementById('tables-live');if(im){im.onload=null;im.onerror=null;im.src='';}}
 function _tablesLiveStart(cam){
   _tablesLiveStop();
   const img=document.getElementById('tables-live'); if(!img||!cam)return;
   _tablesLiveOn=true;
-  // Prefer a TRUE live video feed (MJPEG via the camera's RTSP). If the stream produces no frame within a
-  // few seconds (e.g. the camera is reached through the NVR, which serves no RTSP), fall back automatically
-  // to fast snapshot polling so the box is never blank.
-  let gotFrame=false;
-  img.onload=function(){gotFrame=true;};
-  img.onerror=function(){if(_tablesLiveOn)_tablesLiveSnap(cam);};
-  img.src='/api/cam_stream/'+cam;
-  _tablesLiveWatch=setTimeout(function(){if(_tablesLiveOn&&!gotFrame)_tablesLiveSnap(cam);},5000);
+  // Snapshot feed (chosen over the NVR's RTSP, which serves no stream): grab the next frame the instant the
+  // previous one loads (~2s cadence). If the NVR ever gets RTSP enabled, swap this line for the cam_stream
+  // path with a watchdog fallback (kept in _tablesLiveSnap's sibling logic in git history).
+  _tablesLiveSnap(cam);
 }
 function _tablesLiveSnap(cam){
   // fast near-live fallback: grab the next snapshot the instant the previous one loads (~as fast as the
@@ -3361,25 +3361,19 @@ function _tablesLiveSnap(cam){
   img.onload=next; img.onerror=next;
   img.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
 }
-function ackTables(){stopTablesAlarm();_tablesLiveStop();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
+function ackTables(){stopTablesAlarm();_tablesLiveStop();if(_tablesAutoHide){clearTimeout(_tablesAutoHide);_tablesAutoHide=null;}const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
 let _tablesZoomTimer=null;
 function _tablesZoomStop(){if(_tablesZoomTimer){clearInterval(_tablesZoomTimer);_tablesZoomTimer=null;}}
 function _tablesEnlarge(src){_tablesZoomStop();let o=document.getElementById('tables-zoom');if(!o){o=document.createElement('div');o.id='tables-zoom';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';o.onclick=function(){o.style.display='none';_tablesZoomStop();};o.innerHTML='<img style="max-width:100%;max-height:100%;border-radius:10px;"><div id="tables-zoom-cap" style="color:#bbb;font-size:13px;margin-top:8px;"></div>';document.body.appendChild(o);}o.querySelector('img').src=src;const c=document.getElementById('tables-zoom-cap');if(c)c.textContent='';o.style.display='flex';}
 function _tablesEnlargeLive(cam){
-  // enlarge to a TRUE live HD feed if the stream works, else fast snapshot refresh
-  _tablesEnlarge(cam?('/api/cam_stream/'+cam+'?hd=1'):'/api/tables_frame.jpg');
+  // enlarge to a near-live view: refresh the snapshot every ~2.5s while the overlay is open
+  _tablesEnlarge(cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):'/api/tables_frame.jpg');
   const c=document.getElementById('tables-zoom-cap');if(c)c.textContent='● live — outside front';
   if(!cam)return;
-  const o=document.getElementById('tables-zoom'),im=o&&o.querySelector('img');
-  if(!im)return;
-  let gotFrame=false; im.onload=function(){gotFrame=true;};
-  const snap=function(){
-    _tablesZoomStop(); im.onload=null;
-    const tick=function(){const oo=document.getElementById('tables-zoom');if(!oo||oo.style.display==='none'){_tablesZoomStop();return;}const i=oo.querySelector('img');if(i)i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();};
-    tick(); _tablesZoomTimer=setInterval(tick,2500);
-  };
-  im.onerror=snap;
-  _tablesZoomTimer=setTimeout(function(){if(!gotFrame)snap();},5000);
+  _tablesZoomTimer=setInterval(function(){
+    const oo=document.getElementById('tables-zoom');if(!oo||oo.style.display==='none'){_tablesZoomStop();return;}
+    const i=oo.querySelector('img');if(i)i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
+  },2500);
 }
 function handleTables(t){
   const tile=document.getElementById('tables-tile'); if(!tile)return;
@@ -3397,9 +3391,14 @@ function handleTables(t){
         +'<div style="font-size:var(--fs-sm);color:var(--muted);margin:5px 0 8px;line-height:1.25;">'+cap+'</div>'
         +'<button class="btn btn-primary" style="width:100%;font-size:var(--fs-md);" onclick="ackTables()">Cleared it</button>';
       _tablesLiveStart(cam);
+      // popup duration: 0 = stay until cleared; >0 = auto-dismiss after N seconds (re-pops on the next
+      // detection if the table is still not cleared, so it acts as a periodic reminder).
+      const secs=parseInt(t.popup_secs)||0;
+      if(_tablesAutoHide){clearTimeout(_tablesAutoHide);_tablesAutoHide=null;}
+      if(secs>0){_tablesAutoHide=setTimeout(function(){ackTables();},secs*1000);}
     }
     if(_acfg('tables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('tables'))) startTablesAlarm();
-  } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); _tablesLiveStop(); }
+  } else { tile._on=false; tile.style.display='none'; stopTablesAlarm(); _tablesLiveStop(); if(_tablesAutoHide){clearTimeout(_tablesAutoHide);_tablesAutoHide=null;} }
 }
 // The server owns the detection; the screen just follows it. Acking tells the server a human dealt with
 // it, so it re-arms only on a genuinely NEW detection rather than nagging every poll.
@@ -3489,10 +3488,10 @@ function tablesLoad(){
     g('tb-enabled').checked=!!d.enabled; g('tb-interval').value=d.interval||90;
     const sel=g('tb-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
       sel.innerHTML=cams.map(c=>'<option value="'+c.id+'"'+(c.id===d.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');}
-    // confirm/start/end come from the config endpoint's echo on save; seed sensible defaults
-    if(g('tb-confirm')&&!g('tb-confirm').value)g('tb-confirm').value=2;
-    if(g('tb-start')&&!g('tb-start').value)g('tb-start').value=10;
-    if(g('tb-end')&&!g('tb-end').value)g('tb-end').value=22;
+    if(g('tb-confirm'))g('tb-confirm').value=d.confirm||2;
+    if(g('tb-start'))g('tb-start').value=(d.start_hour!==undefined?d.start_hour:10);
+    if(g('tb-end'))g('tb-end').value=(d.end_hour!==undefined?d.end_hour:22);
+    if(g('tb-popup'))g('tb-popup').value=String(d.popup_secs||0);
   }).catch(()=>{});
   if(typeof tablesLogLoad==='function')tablesLogLoad();
 }
@@ -3500,7 +3499,8 @@ function tablesSave(){
   const g=id=>document.getElementById(id),st=g('tb-status');
   const body={enabled:g('tb-enabled').checked,cam:g('tb-cam').value,
     interval:parseInt(g('tb-interval').value)||90,confirm:parseInt(g('tb-confirm').value)||2,
-    start_hour:parseInt(g('tb-start').value),end_hour:parseInt(g('tb-end').value)};
+    start_hour:parseInt(g('tb-start').value),end_hour:parseInt(g('tb-end').value),
+    popup_secs:parseInt(g('tb-popup')&&g('tb-popup').value)||0};
   if(!body.cam){st.textContent='Pick the outside camera first.';st.style.color='var(--amber)';return;}
   st.textContent='Saving\u2026';st.style.color='var(--muted)';
   fetch('/api/tables_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
