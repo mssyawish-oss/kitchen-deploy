@@ -4492,7 +4492,13 @@ def _snap_from(cam,timeout=8):
     last=None
     try:
         d,e=_http(primary,timeout)
-        if d: _SNAP_OK[cid]=primary; return d,None
+        if d:
+            # Only remember a URL that names THIS channel. Never cache the no-channel/channel=0 default —
+            # on a multi-channel NVR it returns channel 1's camera for every id, which silently pins the
+            # wrong camera (the "cam 1 and cam 5 show the same feed" bug after an NVR reset).
+            if over or ("channel=%s"%ch) in primary: _SNAP_OK[cid]=primary
+            else: _SNAP_OK.pop(cid,None)
+            return d,None
         last=e
     except Exception as e: last=str(e)
     if over: return None,last            # an explicit override is a deliberate choice — don't second-guess it
@@ -4509,7 +4515,9 @@ def _snap_from(cam,timeout=8):
         if u==primary: continue
         try:
             d,e=_http(u,min(timeout,6))   # short — these are last-resort guesses, never worth a long wait
-            if d: _SNAP_OK[cid]=u; return d,None
+            if d:
+                if ("channel=%s"%ch) in u: _SNAP_OK[cid]=u   # cache only channel-correct URLs, never the ch1 default
+                return d,None
             last=e
         except Exception as e: last=str(e)
     return None,last or "no snapshot"
