@@ -3337,34 +3337,49 @@ let _tablesAlarm=false;
 function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)return;_tablesAlarm=true;const t0=Date.now();
   (function b(){if(!_tablesAlarm)return;const c=_acfg('tables');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_tablesAlarm=false;_updateFlash();return;}_alarmHit('tables');setTimeout(()=>{if(_tablesAlarm)b();},c.interval);})();}
 function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
-let _tablesLiveTimer=null;
-function _tablesLiveStop(){if(_tablesLiveTimer){clearInterval(_tablesLiveTimer);_tablesLiveTimer=null;}const im=document.getElementById('tables-live');if(im){im.onerror=null;im.src='';}}
+let _tablesLiveTimer=null,_tablesLiveWatch=null,_tablesLiveOn=false;
+function _tablesLiveStop(){_tablesLiveOn=false;if(_tablesLiveTimer){clearTimeout(_tablesLiveTimer);_tablesLiveTimer=null;}if(_tablesLiveWatch){clearTimeout(_tablesLiveWatch);_tablesLiveWatch=null;}const im=document.getElementById('tables-live');if(im){im.onload=null;im.onerror=null;im.src='';}}
 function _tablesLiveStart(cam){
   _tablesLiveStop();
-  if(!cam)return;
-  // Near-live feed: refresh the outside camera snapshot every 4s while the box is open. (This NVR channel
-  // has no working RTSP stream, but single snapshots are fast and reliable, so we poll them.) Only fetches
-  // the next frame once the previous one has loaded, so a slow camera never stacks up requests.
-  const poll=function(){
-    const i=document.getElementById('tables-live'); if(!i){_tablesLiveStop();return;}
-    i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
-  };
-  _tablesLiveTimer=setInterval(poll,4000);
+  const img=document.getElementById('tables-live'); if(!img||!cam)return;
+  _tablesLiveOn=true;
+  // Prefer a TRUE live video feed (MJPEG via the camera's RTSP). If the stream produces no frame within a
+  // few seconds (e.g. the camera is reached through the NVR, which serves no RTSP), fall back automatically
+  // to fast snapshot polling so the box is never blank.
+  let gotFrame=false;
+  img.onload=function(){gotFrame=true;};
+  img.onerror=function(){if(_tablesLiveOn)_tablesLiveSnap(cam);};
+  img.src='/api/cam_stream/'+cam;
+  _tablesLiveWatch=setTimeout(function(){if(_tablesLiveOn&&!gotFrame)_tablesLiveSnap(cam);},5000);
+}
+function _tablesLiveSnap(cam){
+  // fast near-live fallback: grab the next snapshot the instant the previous one loads (~as fast as the
+  // camera delivers, roughly every 2s), self-throttling so requests never stack up.
+  if(_tablesLiveWatch){clearTimeout(_tablesLiveWatch);_tablesLiveWatch=null;}
+  const img=document.getElementById('tables-live'); if(!img||!cam){_tablesLiveStop();return;}
+  const next=function(){if(!_tablesLiveOn)return;_tablesLiveTimer=setTimeout(function(){const i=document.getElementById('tables-live');if(!i||!_tablesLiveOn){return;}i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},200);};
+  img.onload=next; img.onerror=next;
+  img.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
 }
 function ackTables(){stopTablesAlarm();_tablesLiveStop();const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
 let _tablesZoomTimer=null;
 function _tablesZoomStop(){if(_tablesZoomTimer){clearInterval(_tablesZoomTimer);_tablesZoomTimer=null;}}
 function _tablesEnlarge(src){_tablesZoomStop();let o=document.getElementById('tables-zoom');if(!o){o=document.createElement('div');o.id='tables-zoom';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';o.onclick=function(){o.style.display='none';_tablesZoomStop();};o.innerHTML='<img style="max-width:100%;max-height:100%;border-radius:10px;"><div id="tables-zoom-cap" style="color:#bbb;font-size:13px;margin-top:8px;"></div>';document.body.appendChild(o);}o.querySelector('img').src=src;const c=document.getElementById('tables-zoom-cap');if(c)c.textContent='';o.style.display='flex';}
 function _tablesEnlargeLive(cam){
-  // enlarge to a near-live view: refresh the snapshot every 3s while the overlay is open
-  _tablesEnlarge(cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):'/api/tables_frame.jpg');
+  // enlarge to a TRUE live HD feed if the stream works, else fast snapshot refresh
+  _tablesEnlarge(cam?('/api/cam_stream/'+cam+'?hd=1'):'/api/tables_frame.jpg');
   const c=document.getElementById('tables-zoom-cap');if(c)c.textContent='● live — outside front';
   if(!cam)return;
-  _tablesZoomTimer=setInterval(function(){
-    const o=document.getElementById('tables-zoom');
-    if(!o||o.style.display==='none'){_tablesZoomStop();return;}
-    const im=o.querySelector('img');if(im)im.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
-  },3000);
+  const o=document.getElementById('tables-zoom'),im=o&&o.querySelector('img');
+  if(!im)return;
+  let gotFrame=false; im.onload=function(){gotFrame=true;};
+  const snap=function(){
+    _tablesZoomStop(); im.onload=null;
+    const tick=function(){const oo=document.getElementById('tables-zoom');if(!oo||oo.style.display==='none'){_tablesZoomStop();return;}const i=oo.querySelector('img');if(i)i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();};
+    tick(); _tablesZoomTimer=setInterval(tick,2500);
+  };
+  im.onerror=snap;
+  _tablesZoomTimer=setTimeout(function(){if(!gotFrame)snap();},5000);
 }
 function handleTables(t){
   const tile=document.getElementById('tables-tile'); if(!tile)return;
