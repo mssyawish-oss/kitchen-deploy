@@ -4651,7 +4651,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -5753,6 +5753,203 @@ def api_tables_log_clear():
     except Exception: pass
     return jsonify({"ok":True})
 
+
+# -- INSIDE-TABLES "abandoned food" WATCH (13 Sep 2026) -----------------------------------------
+# Twin of the outside-tables watch, on an inside camera (db.intables_watch). Same shape: periodic
+# Gemini look, two-read debounce, live snapshot box on the dash, "intables" Alarm Center key.
+INTABLESW={"state":"clear","pend":None,"pendn":0,"clearn":0,"at":0.0,"err":"","note":"","since":0.0,"raw":"","img_at":0}
+INTABLES_DIR=os.path.join(BASE_DIR,"intables_watch")
+_INTABLES_LOG_DIR=os.path.join(INTABLES_DIR,"log")
+try: os.makedirs(_INTABLES_LOG_DIR,exist_ok=True)
+except Exception: pass
+def _intables_log_add(frame_bytes,reason):
+    # keep a small rolling record of every real detection (frame + reason + time) so Marcel can review
+    # accuracy after the fact. Capped at 15; old frame files pruned to what's still in the list.
+    ts=int(time.time()*1000)
+    try:
+        with open(os.path.join(_INTABLES_LOG_DIR,"%d.jpg"%ts),"wb") as f: f.write(frame_bytes)
+    except Exception: pass
+    log=list(db.get("intables_log",[]) or [])
+    log.insert(0,{"ts":ts,"desc":reason or "Food left on an inside table",
+                  "at":datetime.now().strftime("%a %d %b %I:%M %p")})
+    log=log[:15]
+    with data_lock: db["intables_log"]=log; save_data(db)
+    try:
+        keep={str(e.get("ts")) for e in log}
+        for fn in os.listdir(_INTABLES_LOG_DIR):
+            if fn.endswith(".jpg") and fn[:-4] not in keep:
+                try: os.remove(os.path.join(_INTABLES_LOG_DIR,fn))
+                except Exception: pass
+    except Exception: pass
+_INTABLES_PROMPT=("This is an INDOOR seating/dining area inside a takeaway shop. There are a few SEPARATE tables. "
+  "Judge EACH table on its own. Decide LEFT if ANY ONE table has abandoned food, a food tray, plates, "
+  "cups, bottles or takeaway rubbish on it while NOBODY is seated at that same table - even if other "
+  "tables are occupied or empty. Decide CLEAR only if EVERY table is either (a) empty and clean, or "
+  "(b) has people currently seated at it. An empty clean table is CLEAR. A table with people eating is "
+  "CLEAR even if it is covered in food. Ignore the floor, bins, counters, staff and people walking past. "
+  "Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 "
+  "words. Examples: 'LEFT - tray and cups left on an unattended table', 'CLEAR - people seated and eating', "
+  "'CLEAR - all tables empty and clean'.")
+def _intables_cfg():
+    c=dict(db.get("intables_watch",{}) or {})
+    c.setdefault("enabled",False); c.setdefault("cam","")
+    c.setdefault("interval",90); c.setdefault("confirm",2); c.setdefault("clear_confirm",1)
+    c.setdefault("start_hour",10); c.setdefault("end_hour",22)
+    c.setdefault("popup_secs",0)   # 0 = keep the box up until the table is cleared; >0 = auto-dismiss after N seconds
+    return c
+def _intables_open_now(cfg):
+    try:
+        h=datetime.now().hour
+        return int(cfg.get("start_hour",10))<=h<int(cfg.get("end_hour",22))
+    except Exception: return True
+def _intables_ask(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,"no key/frame",""
+    img=_downscale_jpeg(jpeg,720)
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":40}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    prompt=(_intables_cfg().get("prompt") or _INTABLES_PROMPT)
+    body={"contents":[{"parts":[{"text":prompt},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt=" ".join("".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).split()).strip()
+        up=txt.upper()
+        # pull a plain-English reason out of "LEFT - reason" / "CLEAR: reason" / etc.
+        reason=""
+        for sep in (" - "," -","- ",": ",":","—","-"):
+            if sep in txt:
+                reason=txt.split(sep,1)[1].strip(); break
+        if not reason:
+            reason=re.sub(r'^(LEFT|CLEAR)\b[\s:,.-]*','',txt,flags=re.I).strip()
+        reason=reason.strip().strip('.').strip()
+        if "LEFT" in up: return "left",txt,(reason or "food left on a table")
+        if "CLEAR" in up: return "clear",txt,(reason or "tables clear or in use")
+        return None,(txt or "empty reply"),""
+    except Exception as e:
+        return None,("error: "+str(e)[:100]),""
+def _intables_check_once(force=False,save_preview=False):
+    cfg=_intables_cfg(); cam=_cam_by_id(cfg.get("cam"))
+    row={"state":INTABLESW.get("state"),"raw":"","err":"","desc":""}
+    if not cam:
+        INTABLESW["err"]="camera not found"; row["err"]=INTABLESW["err"]; return row
+    jpeg,err=_snap_from(cam,timeout=25)
+    if err or not jpeg:
+        INTABLESW["err"]=err or "no frame"; row["err"]=INTABLESW["err"]; return row
+    verdict,raw,reason=_intables_ask(jpeg)
+    INTABLESW["at"]=time.time(); INTABLESW["raw"]=raw; INTABLESW["err"]=""; INTABLESW["desc"]=reason
+    row["raw"]=raw; row["desc"]=reason
+    if verdict is None:
+        row["err"]="unreadable"; row["state"]=INTABLESW.get("state")
+        if save_preview:
+            try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
+            except Exception: pass
+        return row
+    cur=INTABLESW.get("state") or "clear"
+    if verdict=="left":
+        INTABLESW["clearn"]=0
+        if cur!="left":
+            INTABLESW["pendn"]=INTABLESW.get("pendn",0)+1
+            if INTABLESW["pendn"]>=int(cfg.get("confirm",2)):
+                INTABLESW["state"]="left"; INTABLESW["since"]=time.time(); INTABLESW["pendn"]=0
+                INTABLESW["note"]=reason or "Food or a tray left on an inside table"
+                try:
+                    frame=_downscale_jpeg(jpeg,960)
+                    with open(os.path.join(INTABLES_DIR,"intables_last.jpg"),"wb") as f: f.write(frame)
+                    INTABLESW["img_at"]=int(time.time()*1000)
+                    _intables_log_add(frame,INTABLESW["note"])
+                except Exception: pass
+    else:
+        INTABLESW["pendn"]=0
+        if cur=="left":
+            INTABLESW["clearn"]=INTABLESW.get("clearn",0)+1
+            if INTABLESW["clearn"]>=int(cfg.get("clear_confirm",1)):
+                INTABLESW["state"]="clear"; INTABLESW["clearn"]=0; INTABLESW["note"]=""
+    row["state"]=INTABLESW.get("state")
+    if save_preview:
+        try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
+        except Exception: pass
+    return row
+def _intables_payload():
+    cfg=_intables_cfg()
+    return {"on":bool(cfg.get("enabled")),"alert":INTABLESW.get("state")=="left",
+            "note":INTABLESW.get("note",""),"desc":INTABLESW.get("note",""),"at":int(INTABLESW.get("img_at",0) or 0),
+            "cam":cfg.get("cam",""),"popup_secs":int(cfg.get("popup_secs",0) or 0),
+            "img":"/api/intables_frame.jpg?ts=%d"%int(INTABLESW.get("img_at",0) or 0)}
+def intables_loop():
+    while True:
+        cfg=_intables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))
+        try:
+            if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip() and _intables_open_now(cfg)):
+                time.sleep(iv); continue
+            _intables_check_once()
+        except Exception as e:
+            print("intables_loop:",str(e)[:120])
+        time.sleep(iv)
+@app.route("/api/intables_frame.jpg")
+def api_intables_frame():
+    pth=os.path.join(INTABLES_DIR,"intables_last.jpg")
+    if not os.path.exists(pth): return ("no frame",404)
+    return send_file(pth,mimetype="image/jpeg")
+@app.route("/api/intables_status")
+def api_intables_status():
+    cfg=_intables_cfg()
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
+                    "open":_intables_open_now(cfg),"interval":int(cfg.get("interval",90) or 90),
+                    "popup_secs":int(cfg.get("popup_secs",0) or 0),"confirm":int(cfg.get("confirm",2) or 2),
+                    "start_hour":int(cfg.get("start_hour",10) or 10),"end_hour":int(cfg.get("end_hour",22) or 22),
+                    "state":INTABLESW.get("state"),"alert":INTABLESW.get("state")=="left",
+                    "note":INTABLESW.get("note",""),"desc":INTABLESW.get("desc",""),
+                    "raw":INTABLESW.get("raw",""),"err":INTABLESW.get("err","")})
+@app.route("/api/intables_config",methods=["POST"])
+def api_intables_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_intables_cfg())
+    if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+    if "cam" in d: cur["cam"]=str(d["cam"] or "").strip() or cur.get("cam")
+    for k2 in ("interval","confirm","clear_confirm","start_hour","end_hour","popup_secs"):
+        if k2 in d:
+            try: cur[k2]=int(d[k2])
+            except Exception: pass
+    if "prompt" in d: cur["prompt"]=str(d["prompt"] or "")
+    with data_lock: db["intables_watch"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+@app.route("/api/intables_test",methods=["POST"])
+def api_intables_test():
+    if not (_rotcam_cfg().get("gemini_key") or "").strip():
+        return jsonify({"ok":False,"error":"No Gemini key configured (Rotisserie camera settings)"})
+    try: row=_intables_check_once(force=True,save_preview=True)
+    except Exception as e: return jsonify({"ok":False,"error":str(e)[:160]})
+    return jsonify({"ok":True,"row":row})
+@app.route("/api/intables_ack",methods=["POST"])
+def api_intables_ack():
+    INTABLESW["state"]="clear"; INTABLESW["pendn"]=0; INTABLESW["clearn"]=0; INTABLESW["note"]=""
+    return jsonify({"ok":True})
+@app.route("/api/intables_log")
+def api_intables_log():
+    return jsonify({"ok":True,"log":list(db.get("intables_log",[]) or [])})
+@app.route("/api/intables_log_frame.jpg")
+def api_intables_log_frame():
+    ts=re.sub(r'[^0-9]','',request.args.get("ts",""))
+    pth=os.path.join(_INTABLES_LOG_DIR,"%s.jpg"%ts) if ts else ""
+    if not pth or not os.path.exists(pth): return ("no frame",404)
+    return send_file(pth,mimetype="image/jpeg")
+@app.route("/api/intables_log_clear",methods=["POST"])
+def api_intables_log_clear():
+    with data_lock: db["intables_log"]=[]; save_data(db)
+    try:
+        for fn in os.listdir(_INTABLES_LOG_DIR):
+            if fn.endswith(".jpg"):
+                try: os.remove(os.path.join(_INTABLES_LOG_DIR,fn))
+                except Exception: pass
+    except Exception: pass
+    return jsonify({"ok":True})
+
 _ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
 def _try_credit():
     if _rot_mode()=="probe": return               # probes are counting stock this session → ignore camera credits
@@ -6722,7 +6919,7 @@ def temps():
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
-"tables":_tables_payload()}),mimetype="application/json")
+"tables":_tables_payload(),"intables":_intables_payload()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -9461,7 +9658,8 @@ if __name__=="__main__":
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
-    threading.Thread(target=tables_loop,daemon=True).start()                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
+    threading.Thread(target=tables_loop,daemon=True).start()
+    threading.Thread(target=intables_loop,daemon=True).start()                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
