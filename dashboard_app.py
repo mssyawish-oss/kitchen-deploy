@@ -2585,12 +2585,28 @@ def api_product_search():
     Returns item groups: {name, ids:[variation ids], sizes:[names], off:bool-any-off}."""
     q=(request.args.get("q") or "").strip().lower()
     if len(q)<2: return jsonify({"ok":True,"items":[]})
+    # scope: "retail" (default) hides the catering menu so 86-ing a busy-service item doesn't also
+    # switch off its catering twin; "both" searches everything. The catering items are separate
+    # catalog items (same name, different id) living in these categories.
+    scope=(request.args.get("scope") or "retail").strip().lower()
+    CATERING_CATS={"SHARE PACKS","CHICKEN & SIDES","PARTY FOOD","BURGERS & SLIDERS","FUNCTION PACKS","KIDS MEALS","EXTRAS"}
     cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
     if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
     now=time.time()
     if now-_PSRCH_CACHE["at"]>180:      # refresh the item index every 3 min
         items=[];cursor=None
         try:
+            # which category ids belong to the catering menu (so results can be tagged/filtered)
+            catering_ids=set();cursor=None
+            for _ in range(20):
+                url=SQUARE_BASE+"/v2/catalog/list?types=CATEGORY"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                    data=json.loads(r.read().decode())
+                for obj in data.get("objects",[]) or []:
+                    if (obj.get("category_data") or {}).get("name") in CATERING_CATS: catering_ids.add(obj.get("id"))
+                cursor=data.get("cursor")
+                if not cursor: break
+            cursor=None
             for _ in range(25):
                 url=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
                 with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
@@ -2604,9 +2620,10 @@ def api_product_search():
                         voff=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (vd.get("location_overrides") or []))
                         vs.append({"id":v.get("id"),"name":vd.get("name") or "","off":voff})
                         if voff: off=True
+                    catering=any(c.get("id") in catering_ids for c in (idata.get("categories") or []))
                     if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
                                          "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],
-                                         "vars":vs,"off":off})
+                                         "vars":vs,"off":off,"catering":catering})
                 cursor=data.get("cursor")
                 if not cursor: break
             cursor=None
@@ -2625,7 +2642,10 @@ def api_product_search():
         except Exception as e:
             return jsonify({"ok":False,"error":str(e)[:160]})
     hits=[it for it in _PSRCH_CACHE["items"] if q in it["name"].lower()]
-    return jsonify({"ok":True,"items":hits[:20]})
+    if scope!="both":                    # default: retail only — hide the catering-menu twins
+        hits=[it for it in hits if not it.get("catering")]
+    n_catering=sum(1 for it in _PSRCH_CACHE["items"] if q in it["name"].lower() and it.get("catering"))
+    return jsonify({"ok":True,"items":hits[:20],"scope":scope,"hidden_catering":(n_catering if scope!="both" else 0)})
 
 def _sq_disable_variation(vid):
     """Mark one item-variation SOLD OUT at this location (86 it) — the reverse of enable.
