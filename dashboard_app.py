@@ -1102,6 +1102,8 @@ def _kds_fetch(cfg):
     for o in _search(["OPEN"],begin_open,8)+_search(["COMPLETED"],begin_done,8):
         oid=o.get("id")
         if oid and oid not in _seen: _seen.add(oid); allo.append(o)
+    global _KDS_RAW
+    _KDS_RAW={"ts":time.time(),"orders":allo}   # raw orders (with fulfillment uids/versions) for the auto-complete tick
     out=[]
     bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP   # same whole-bird equivalents the stock deduction uses
     for o in allo:
@@ -1218,6 +1220,80 @@ def _orders_refresh(cfg):
     ORDERS_LIVE={"board":tickets,"alerts":alerts,"ts":int(time.time()*1000),
                  "cfg":{"min_total":minT,"min_items":minI,"sched":schedOn,"enabled":enabled,"window":win,
                         "min_birds":minB,"cater":caterOn}}
+
+# ── AUTO-COMPLETE PICKED-UP ORDERS (16 Sep 2026) ────────────────────────────────────────────────
+# Square's KDS "done" only sets a fulfillment to PREPARED ("ready"). The order itself stays OPEN until
+# someone marks it PICKED UP on the POS Orders screen — a step that stopped being done around 17 Jul
+# 2026, so every Square Online + Kiosk order since sits OPEN forever (1,800+ by mid-Sep; ~$11k/wk that
+# any COMPLETED-only report silently drops). Square has no auto-complete setting, so this does it:
+# every minute, any paid order from the configured sources whose fulfillments are all PREPARED for
+# longer than `minutes` gets its fulfillments set to COMPLETED (= picked up), which closes the order.
+# Uses the raw orders the board already fetched (no extra reads). Writes are capped per tick so the
+# backlog drains gently. Config db["sq_autocomplete"]; log db["sq_autocomplete_log"] (last 300).
+_KDS_RAW={"ts":0,"orders":[]}
+_AUTOC={"last":0,"done":0,"err":""}
+_AUTOC_DEFAULTS={"enabled":True,"minutes":20,"sources":["Square Online","Kiosk"],"per_tick":25,"every":60}
+def _autoc_cfg():
+    c=dict(_AUTOC_DEFAULTS); c.update(db.get("sq_autocomplete") or {})
+    try: c["minutes"]=max(1,int(c.get("minutes") or 20))
+    except (TypeError,ValueError): c["minutes"]=20
+    try: c["per_tick"]=max(1,min(100,int(c.get("per_tick") or 25)))
+    except (TypeError,ValueError): c["per_tick"]=25
+    c["sources"]=[str(x).strip() for x in (c.get("sources") or []) if str(x).strip()]
+    return c
+def _autoc_candidates(orders,cfg,now=None):
+    """Orders that would be marked picked up now: OPEN, from a configured source, fully paid, every
+    fulfillment PREPARED (or already terminal) for longer than the delay. Returns (order, [prepared uids])."""
+    now=now or datetime.now(timezone.utc); out=[]
+    for o in orders or []:
+        if (o.get("state") or "").upper()!="OPEN": continue
+        if ((o.get("source") or {}).get("name") or "") not in cfg["sources"]: continue
+        try:
+            if int((o.get("net_amount_due_money") or {}).get("amount") or 0)>0: continue   # unpaid → leave alone
+        except (TypeError,ValueError): continue
+        fus=o.get("fulfillments") or []
+        if not fus: continue
+        if any((f.get("state") or "").upper() not in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for f in fus): continue
+        prepared=[f.get("uid") for f in fus if (f.get("state") or "").upper()=="PREPARED" and f.get("uid")]
+        if not prepared: continue
+        upd=_parse_dt(o.get("updated_at")) or _parse_dt(o.get("created_at"))
+        if not upd or (now-upd).total_seconds()<cfg["minutes"]*60: continue
+        out.append((o,prepared))
+    return out
+def _autoc_complete(sqcfg,o,uids):
+    """One Square write: set the PREPARED fulfillments of this order to COMPLETED (sparse update)."""
+    token=(sqcfg.get("access_token") or "").strip()
+    body={"idempotency_key":_secrets.token_hex(16),
+          "order":{"location_id":o.get("location_id"),"version":o.get("version"),
+                   "fulfillments":[{"uid":u,"state":"COMPLETED"} for u in uids]}}
+    req=urllib.request.Request(SQUARE_BASE+"/v2/orders/"+o["id"],data=json.dumps(body).encode(),method="PUT",
+        headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+    with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+    return (data.get("order") or {}).get("state")
+def _autoc_tick(sqcfg,force=False,dry=False,orders=None):
+    """Called from the poll loop. Throttled to cfg['every'] seconds; returns a small result dict."""
+    cfg=_autoc_cfg()
+    if not force and (not cfg.get("enabled") or time.time()-_AUTOC["last"]<cfg["every"]): return None
+    _AUTOC["last"]=time.time()
+    src=orders if orders is not None else _KDS_RAW.get("orders") or []
+    cands=_autoc_candidates(src,cfg)
+    res={"eligible":len(cands),"completed":0,"failed":0,"dry":dry,"ids":[]}
+    if dry: res["ids"]=[o["id"] for o,_ in cands[:cfg["per_tick"]]]; return res
+    log=list(db.get("sq_autocomplete_log") or [])
+    for o,uids in cands[:cfg["per_tick"]]:
+        try:
+            st=_autoc_complete(sqcfg,o,uids); res["completed"]+=1; res["ids"].append(o["id"])
+            log.append({"t":datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),"id":o["id"],"src":(o.get("source") or {}).get("name"),
+                        "total":round(int((o.get("total_money") or {}).get("amount") or 0)/100,2),"state":st})
+        except Exception as e:
+            res["failed"]+=1; _AUTOC["err"]=str(e)[:200]
+            log.append({"t":datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),"id":o.get("id"),"error":str(e)[:160]})
+    if res["completed"] or res["failed"]:
+        _AUTOC["done"]+=res["completed"]
+        with data_lock: db["sq_autocomplete_log"]=log[-300:]; save_data(db)
+        print(f"autocomplete: {res['completed']} orders marked picked up, {res['failed']} failed, {len(cands)} eligible")
+    return res
+
 def square_poll_loop():
     while True:
         cfg=db.get("square_config",{}) or {}
@@ -1281,6 +1357,8 @@ def square_poll_loop():
                     if fids: fry_deduct(fb,fids)
                     if _stat_dirty: save_data(db)   # persist the sales board (once per poll, after counting)
                     _orders_refresh(cfg)             # rebuild the on-dash orders board + catering/large popup alerts
+                    try: _autoc_tick(cfg)            # mark long-PREPARED online/kiosk orders as picked up (closes them)
+                    except Exception as e: print(f"autocomplete:{e}")
             except Exception as e: print(f"sales-poll:{e}")
         else:
             square_status["configured"]=False
@@ -4160,6 +4238,28 @@ def api_pl_send():
         with _pl_lock: R=_pl_compute(kind,ref)
         return Response(_pl_html(R),mimetype="text/html")
     return jsonify(_pl_send(kind,(d.get("to") or "").strip() or None,ref))
+
+@app.route("/api/sq_autocomplete",methods=["GET","POST"])
+def api_sq_autocomplete():
+    """GET → config + status + recent log.  POST {enabled,minutes,sources,per_tick} saves config;
+    POST {run:true, dry:true|false} runs one tick now on the board's current orders (dry = list only)."""
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        if d.get("run"):
+            r=_autoc_tick(db.get("square_config") or {},force=True,dry=bool(d.get("dry",True)))
+            return jsonify({"ok":True,"result":r})
+        c=dict(db.get("sq_autocomplete") or {})
+        if "enabled" in d: c["enabled"]=bool(d["enabled"])
+        for k in ("minutes","per_tick"):
+            if k in d:
+                try: c[k]=int(d[k])
+                except (TypeError,ValueError): pass
+        if isinstance(d.get("sources"),list): c["sources"]=[str(x) for x in d["sources"]]
+        with data_lock: db["sq_autocomplete"]=c; save_data(db)
+    cfg=_autoc_cfg()
+    pend=len(_autoc_candidates(_KDS_RAW.get("orders") or [],cfg))
+    return jsonify({"ok":True,"config":cfg,"pending":pend,"done_since_start":_AUTOC["done"],"last_error":_AUTOC["err"],
+                    "board_age_s":int(time.time()-(_KDS_RAW.get("ts") or 0)),"log":(db.get("sq_autocomplete_log") or [])[-40:]})
 
 @app.route("/api/pl_last")
 def api_pl_last():
