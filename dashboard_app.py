@@ -1257,6 +1257,13 @@ def _autoc_candidates(orders,cfg,now=None):
         prepared=[f.get("uid") for f in fus if (f.get("state") or "").upper()=="PREPARED" and f.get("uid")]
         if not prepared: continue
         upd=_parse_dt(o.get("updated_at")) or _parse_dt(o.get("created_at"))
+        # SCHEDULED pre-orders (catering booked ahead): the kitchen may mark them done well before the
+        # customer's pickup time — don't close those until the pickup time itself has passed + delay.
+        for f in fus:
+            pd=f.get("pickup_details") or {}; dd=f.get("delivery_details") or {}
+            if (pd.get("schedule_type") or dd.get("schedule_type"))=="SCHEDULED":
+                due=_parse_dt(pd.get("pickup_at") or dd.get("deliver_at"))
+                if due and upd and due>upd: upd=due
         if not upd or (now-upd).total_seconds()<cfg["minutes"]*60: continue
         out.append((o,prepared))
     return out
