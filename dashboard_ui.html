@@ -2654,7 +2654,8 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div><div class="label">Sound the alarm <span style="color:var(--muted);font-weight:400;">(seconds BEFORE the step ends)</span></div><input class="input" id="ov-lead" type="number" min="0" max="60" step="1" placeholder="2"></div>
       <div><div class="label">Give up after <span style="color:var(--muted);font-weight:400;">(seconds, if no door is seen)</span></div><input class="input" id="ov-maxsecs" type="number" min="30" max="1800" step="10" placeholder="240"></div>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:8px;cursor:pointer;"><input type="checkbox" id="ov-end" style="width:18px;height:18px;"> Also alarm when the program finishes</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:8px;cursor:pointer;"><input type="checkbox" id="ov-only" style="width:18px;height:18px;"> Only for the programs listed above <span style="color:var(--muted);font-size:var(--fs-sm);">(other cooks on the oven stay silent)</span></label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:6px;cursor:pointer;"><input type="checkbox" id="ov-end" style="width:18px;height:18px;"> Also alarm when the program finishes</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:6px;cursor:pointer;"><input type="checkbox" id="ov-door" style="width:18px;height:18px;"> Stop the alarm when the oven door opens</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:6px;cursor:pointer;"><input type="checkbox" id="ov-camon" style="width:18px;height:18px;"> Watch the door on a camera while the alarm is sounding <span style="color:var(--muted);font-size:var(--fs-sm);">(real time; without it the cloud signal takes 20&ndash;30 s)</span></label>
     <div class="grid-2 mt-8">
@@ -3683,7 +3684,7 @@ function ovenLoad(){
     g('ov-enabled').checked=!!c.enabled; g('ov-email').value=c.email||''; g('ov-password').value='';
     g('ov-password').placeholder=c.has_password?'(saved — leave blank to keep)':'ddc.unox.com password';
     g('ov-device').value=c.device_id||''; g('ov-poll').value=c.poll||5; g('ov-lead').value=(c.lead!==undefined?c.lead:2);
-    g('ov-end').checked=c.alert_on_end!==false; g('ov-door').checked=c.door_auto!==false; g('ov-camon').checked=c.cam_enabled!==false;
+    g('ov-end').checked=c.alert_on_end!==false; g('ov-door').checked=c.door_auto!==false; g('ov-camon').checked=c.cam_enabled!==false; if(g('ov-only'))g('ov-only').checked=c.only_listed!==false;
     g('ov-caminterval').value=c.cam_interval||2; g('ov-maxsecs').value=c.max_alarm_secs||240; g('ov-steps').value=c.steps_text||'';
     const sel=g('ov-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(x=>x.enabled!==false);
       sel.innerHTML=cams.map(x=>'<option value="'+x.id+'"'+(x.id===c.cam?' selected':'')+'>'+_mEsc(x.name||('Camera '+x.channel))+'</option>').join('');}
@@ -3704,7 +3705,7 @@ function ovenLoad(){
 function ovenSave(){
   const g=id=>document.getElementById(id),st=g('ov-status');
   const body={enabled:g('ov-enabled').checked,email:g('ov-email').value.trim(),device_id:g('ov-device').value.trim(),
-    poll:parseInt(g('ov-poll').value)||5,lead:parseFloat(g('ov-lead').value)||0,alert_on_end:g('ov-end').checked,
+    poll:parseInt(g('ov-poll').value)||5,lead:parseFloat(g('ov-lead').value)||0,alert_on_end:g('ov-end').checked,only_listed:!g('ov-only')||g('ov-only').checked,
     door_auto:g('ov-door').checked,cam:g('ov-cam').value,cam_enabled:g('ov-camon').checked,
     cam_interval:parseInt(g('ov-caminterval').value)||2,max_alarm_secs:parseInt(g('ov-maxsecs').value)||240,
     steps_text:g('ov-steps').value,

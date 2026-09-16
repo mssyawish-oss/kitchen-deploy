@@ -5934,7 +5934,12 @@ def _oven_cfg():
     c.setdefault("max_alarm_secs",240)     # safety: never let the siren run longer than this per step
     c.setdefault("steps_text","")          # "B TEST: Chicken, Potatoes, Pumpkin, Mac & cheese, Corn, Bread"
     c.setdefault("screens","mac")          # comma-separated screen names that show the pill/banner + sound; "" = every screen
+    c.setdefault("only_listed",True)       # only programs named in steps_text get the pill/alarms (staff's other cooks stay silent)
     return c
+def _oven_program_wanted(name,cfg=None):
+    cfg=cfg or _oven_cfg()
+    if not cfg.get("only_listed",True): return True
+    return (name or "").strip().upper() in _oven_steps_map(cfg)
 def _oven_screens(cfg=None):
     return [x.strip() for x in str((cfg or _oven_cfg()).get("screens") or "").split(",") if x.strip()]
 def _oven_steps_map(cfg=None):
@@ -6003,6 +6008,8 @@ def _oven_parse(raw):
             "sp_reached":st.get("spReached"),"oven_ts":ts(raw.get("timeStamp")),"end":ts(st.get("estimatedEnd"))}
 # --- alarm / door state machine ---
 def _oven_alert_start(kind,step,msg,label):
+    if kind!="test" and not _oven_program_wanted(OVEN.get("name")):
+        _oven_log("skipped","%s (program not in the trays list)"%msg); return
     OVEN.update(alert=True,alert_kind=kind,alert_step=step,alert_msg=msg,alert_label=label,alert_since=time.time(),
                 door_open=False,door_at=0.0,door_src="",cam_raw="",cam_err="")
     _oven_log("alert",msg)
@@ -6139,7 +6146,8 @@ def _oven_payload():
     cfg=_oven_cfg(); now=time.time()
     nxt=None
     if OVEN.get("state")=="COOKING" and OVEN.get("pred_end"): nxt=max(0,int(OVEN["pred_end"]-now))
-    return {"on":bool(cfg.get("enabled")),"state":OVEN.get("state"),"name":OVEN.get("name"),"step":OVEN.get("step"),
+    wanted=_oven_program_wanted(OVEN.get("name"),cfg) or bool(OVEN.get("alert"))
+    return {"on":bool(cfg.get("enabled")) and (wanted or OVEN.get("state")!="COOKING"),"state":OVEN.get("state"),"name":OVEN.get("name"),"step":OVEN.get("step"),
             "tot":OVEN.get("tot"),"next_in":nxt,"temp":OVEN.get("temp"),"sp":OVEN.get("sp"),
             "alert":bool(OVEN.get("alert")),"kind":OVEN.get("alert_kind"),"msg":OVEN.get("alert_msg"),
             "label":OVEN.get("alert_label"),"alert_step":OVEN.get("alert_step"),"since":OVEN.get("alert_since",0.0),
@@ -6189,7 +6197,7 @@ def api_oven_status():
 @app.route("/api/oven_config",methods=["POST"])
 def api_oven_config():
     d=request.get_json(silent=True) or {}; cur=dict(_oven_cfg())
-    for k in ("enabled","alert_on_end","door_auto","cam_enabled"):
+    for k in ("enabled","alert_on_end","door_auto","cam_enabled","only_listed"):
         if k in d: cur[k]=bool(d[k])
     for k in ("email","device_id","cam","steps_text","prompt","screens"):
         if k in d: cur[k]=str(d[k] or "").strip() if k!="steps_text" else str(d[k] or "")
