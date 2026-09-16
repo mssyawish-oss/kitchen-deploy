@@ -1767,6 +1767,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
         /* UNOX oven step alerts: one tile, two looks. .oven-mini = slim progress pill while a program runs;
            .oven-alert = the big "load the next tray" banner (stays until the server sees the door open). */
         #oven-tile{display:none;position:fixed;left:50%;transform:translateX(-50%);z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);}
+        #oven-tile.oven-mini,#oven-tile.oven-alert{display:block;}   /* the stylesheet hides it; a class (not an inline style) has to show it */
         #oven-tile.oven-mini{top:10px;padding:6px 14px;border-radius:999px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;border:1px solid var(--line);}
         #oven-tile.oven-mini .oven-mini-name{color:var(--text);font-weight:600;}
         #oven-tile.oven-alert{top:64px;width:62vw;min-width:340px;max-width:760px;padding:18px 22px;border:3px solid #fb923c;border-radius:16px;text-align:center;animation:ovenPulse 1.2s ease-in-out infinite;}
