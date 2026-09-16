@@ -4794,7 +4794,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables","frontdoor"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables","frontdoor","ovenstep"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -5894,6 +5894,344 @@ def api_tables_log_clear():
                 try: os.remove(os.path.join(_TABLES_LOG_DIR,fn))
                 except Exception: pass
     except Exception: pass
+    return jsonify({"ok":True})
+
+
+# -- UNOX OVEN STEP ALERT (16 Sep 2026) -----------------------------------------------------------
+# The CHEFTOP combi oven runs a multi-step program (e.g. "B TEST", 6 steps, a different tray goes in at
+# each step). Its own beep is too quiet, so the dash does it: the server polls UNOX Data Driven Cooking's
+# live feed for the oven (state, program, currentStep/totSteps, stepDuration = seconds LEFT in the step,
+# set-point/temp), predicts the step end from the countdown (oven timestamp + seconds left, fired
+# LEAD s early so it lines up with the oven) and raises an "ovenstep" alarm + kiosk banner naming the
+# tray to load. The alarm stops when the DOOR OPENS: real time via kitchen camera 4 + Gemini (every
+# ~2 s while the alarm is up), with the cloud's own door signals as the fallback (spReached 1->0, step
+# timer paused, chamber temp drop) which lag 20-30 s. POST /api/oven_door lets a physical sensor drive it.
+# Credentials (Marcel's ddc.unox.com login) live in db["oven_watch"] — stripped from /api/data.
+# Facts learned live 16 Sep: first sample of a program is currentStep 0 / stepDuration -1 (ignore);
+# startTime is garbage (oven clock wrong) — never use it; cloud sample cadence 5-30 s.
+_OVEN_API="https://apiv2.datadrivencooking.com"
+_OVEN_LOGIN="https://account.unox.com/api/login"
+_OVEN_KIND={1:"WASHING",2:"SET",3:"PROGRAM",4:"MIND.Maps",5:"MULTI.Time",6:"MISE EN PLACE",7:"CHEFUNOX MULTI.Time",8:"CHEFUNOX AUTO.Cook",11:"READY.Cook"}
+OVEN={"state":"OFF","name":"","kind":"","step":None,"tot":None,"left":None,"temp":None,"sp":None,"clima":None,"fan":None,
+      "sp_reached":None,"oven_ts":0.0,"at":0.0,"err":"","polls":0,"token":None,"sid":None,"did":None,
+      "cook_key":None,"pred_end":0.0,"pred_step":None,"predicted":set(),"end_fired":False,
+      "alert":False,"alert_kind":"","alert_step":None,"alert_msg":"","alert_label":"","alert_since":0.0,
+      "door":{"step":None,"max_temp":None,"sp":None,"ts":0.0,"left":None,"seen":False},
+      "door_open":False,"door_at":0.0,"door_src":"","cam_at":0.0,"cam_raw":"","cam_err":"","cam_calls":0}
+_OVEN_LOCK=threading.Lock()
+_OVEN_DOOR_PROMPT=("This is a fixed kitchen camera looking down at a takeaway shop kitchen. The UNOX combi oven is the "
+  "stainless-steel oven with a small blue touch-screen on its right-hand side, standing at the back-left of the "
+  "picture next to the flat-top grill. Its front is a glass door that swings open sideways. Is that oven's door "
+  "OPEN right now (door swung away from the oven body, the inside cavity or trays visible, or a person reaching "
+  "into it) or CLOSED (door flush against the oven)? Ignore every other appliance, fridge door and person. "
+  "Answer on ONE line: the word OPEN or CLOSED, then ' - ' and a reason of at most 8 words.")
+def _oven_cfg():
+    c=dict(db.get("oven_watch",{}) or {})
+    c.setdefault("enabled",False); c.setdefault("email",""); c.setdefault("password",""); c.setdefault("device_id","94651")
+    c.setdefault("poll",5); c.setdefault("lead",2.0); c.setdefault("alert_on_end",True)
+    c.setdefault("door_auto",True); c.setdefault("door_temp_drop",5.0); c.setdefault("door_pause",5.0)
+    c.setdefault("cam","06a25f13"); c.setdefault("cam_enabled",True); c.setdefault("cam_interval",2)
+    c.setdefault("max_alarm_secs",240)     # safety: never let the siren run longer than this per step
+    c.setdefault("steps_text","")          # "B TEST: Chicken, Potatoes, Pumpkin, Mac & cheese, Corn, Bread"
+    return c
+def _oven_steps_map(cfg=None):
+    """Parse steps_text -> {PROGRAM NAME (upper): [label per step]}. One program per line: NAME: a, b, c"""
+    out={}
+    for line in str((cfg or _oven_cfg()).get("steps_text") or "").splitlines():
+        if ":" not in line: continue
+        name,rest=line.split(":",1)
+        labels=[x.strip() for x in rest.split(",")]
+        if name.strip(): out[name.strip().upper()]=[x for x in labels]
+    return out
+def _oven_step_label(name,step,tot):
+    labels=_oven_steps_map().get((name or "").strip().upper()) or []
+    try:
+        if step and 1<=int(step)<=len(labels) and labels[int(step)-1]: return labels[int(step)-1]
+    except Exception: pass
+    return "Load the next tray"
+def _oven_log(event,detail=""):
+    row={"t":datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),"event":event,"detail":str(detail)[:160],
+         "program":OVEN.get("name"),"step":OVEN.get("step"),"tot":OVEN.get("tot"),"left":OVEN.get("left"),
+         "temp":OVEN.get("temp"),"sp":OVEN.get("sp"),"door":bool(OVEN.get("door_open"))}
+    try:
+        with data_lock:
+            log=list(db.get("oven_log",[]) or []); log.append(row); db["oven_log"]=log[-300:]; save_data(db)
+    except Exception as e: print("oven_log:",str(e)[:80])
+    print("oven: %s %s"%(event,detail))
+# --- DDC cloud client (read-only) ---
+def _oven_login(cfg):
+    import uuid as _uuid
+    body=json.dumps({"email":cfg.get("email",""),"password":cfg.get("password","")}).encode()
+    req=urllib.request.Request(_OVEN_LOGIN,data=body,method="POST",
+        headers={"Content-Type":"application/json","Accept":"application/json","User-Agent":"brunos-dashboard"})
+    with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: j=json.loads(r.read().decode())
+    tok=j.get("token") or (j.get("data") or {}).get("token")
+    if not tok: raise RuntimeError("login reply had no token")
+    OVEN["token"]=tok
+    OVEN["sid"]=str(_uuid.uuid4())                       # x-us: per-login session id (must stay constant)
+    if not OVEN.get("did"): OVEN["did"]=str(_uuid.uuid4())   # x-ud: per-"browser" id
+def _oven_get(cfg,path,params):
+    for attempt in (1,2):
+        if not OVEN.get("token"): _oven_login(cfg)
+        url=_OVEN_API+path+"?"+urllib.parse.urlencode(params)
+        req=urllib.request.Request(url,headers={"Authorization":"Bearer "+OVEN["token"],"x-us":OVEN["sid"],"x-ud":OVEN["did"],
+                                                "Accept":"application/json, text/plain, */*","User-Agent":"brunos-dashboard"})
+        try:
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code in (401,403) and attempt==1: OVEN["token"]=None; continue
+            raise
+    raise RuntimeError("unreachable")
+def _oven_parse(raw):
+    if isinstance(raw,list): raw=raw[0] if raw else {}
+    raw=raw or {}
+    states=raw.get("states") or []
+    st=next((s for s in states if s.get("slaveId") in (2,38,140)),states[0] if states else {})
+    def ts(s):
+        if not s or str(s).startswith("1970-"): return 0.0
+        try: return datetime.fromisoformat(str(s).replace("Z","+00:00")).timestamp()
+        except Exception: return 0.0
+    sd=st.get("stepDuration")
+    return {"state":(st.get("state") or "UNKNOWN").upper(),"name":st.get("name") or "",
+            "kind":_OVEN_KIND.get(st.get("kindOfCooking"),str(st.get("kindOfCooking") or "")),
+            "step":st.get("currentStep"),"tot":st.get("totSteps"),
+            "left":(sd/1000.0) if isinstance(sd,(int,float)) and sd>0 else None,
+            "temp":st.get("ovenTemp"),"sp":st.get("ovenSPTemp"),"clima":st.get("userClima"),"fan":st.get("ovenFan"),
+            "sp_reached":st.get("spReached"),"oven_ts":ts(raw.get("timeStamp")),"end":ts(st.get("estimatedEnd"))}
+# --- alarm / door state machine ---
+def _oven_alert_start(kind,step,msg,label):
+    OVEN.update(alert=True,alert_kind=kind,alert_step=step,alert_msg=msg,alert_label=label,alert_since=time.time(),
+                door_open=False,door_at=0.0,door_src="",cam_raw="",cam_err="")
+    _oven_log("alert",msg)
+def _oven_alert_stop(src,detail=""):
+    if not OVEN.get("alert"): return
+    OVEN["alert"]=False
+    _oven_log("silenced:"+src,detail or OVEN.get("alert_msg",""))
+def _oven_door_opened(src,detail=""):
+    OVEN.update(door_open=True,door_at=time.time(),door_src=src)
+    _oven_log("door_open:"+src,detail)
+    if _oven_cfg().get("door_auto",True): _oven_alert_stop("door",src+" "+detail)
+def _oven_new_program(live):
+    OVEN.update(cook_key=(live["name"],live["oven_ts"]) if live["state"]=="COOKING" else None,
+                pred_end=0.0,pred_step=None,predicted=set(),end_fired=False)
+    OVEN["door"]={"step":None,"max_temp":None,"sp":None,"ts":0.0,"left":None,"seen":False}
+def _oven_check_prediction():
+    """Fire the step alarm LEAD s before the countdown says the step ends (independent of cloud lag)."""
+    cfg=_oven_cfg()
+    if OVEN.get("state")!="COOKING" or not OVEN.get("pred_end") or OVEN.get("pred_step") is None: return
+    if time.time()<OVEN["pred_end"]-float(cfg.get("lead",2) or 0): return
+    tot=int(OVEN.get("tot") or 0); ps=int(OVEN["pred_step"]); nxt=ps+1; name=OVEN.get("name") or "Oven"
+    if tot and ps>=tot:
+        if not OVEN.get("end_fired"):
+            OVEN["end_fired"]=True
+            if cfg.get("alert_on_end",True): _oven_alert_start("end",ps,"%s FINISHED — take everything out"%name,"Program finished")
+    elif nxt not in OVEN["predicted"]:
+        OVEN["predicted"].add(nxt)
+        lab=_oven_step_label(name,nxt,tot)
+        _oven_alert_start("step",nxt,"%s: STEP %d of %s — %s"%(name,nxt,tot or "?",lab),lab)
+def _oven_apply(live):
+    """One new cloud sample -> program start/end, step change (confirms or fires), door fallback rules."""
+    cfg=_oven_cfg(); prev=dict(OVEN); now=time.time()
+    OVEN.update({k:live[k] for k in ("state","name","kind","step","tot","left","temp","sp","clima","fan","sp_reached","oven_ts")})
+    OVEN["at"]=now; OVEN["err"]=""
+    cooking=live["state"]=="COOKING"
+    key=(live["name"],) if cooking else None     # a program is identified by its name while it runs
+    prev_key=(prev.get("name"),) if prev.get("state")=="COOKING" else None
+    if key!=prev_key:
+        if prev_key is not None:
+            _oven_log("program_end",prev.get("name"))
+            if cfg.get("alert_on_end",True) and not prev.get("end_fired"):
+                _oven_alert_start("end",prev.get("step"),"%s FINISHED — take everything out"%prev.get("name"),"Program finished")
+        _oven_new_program(live)
+        if key is not None: _oven_log("program_start","%s (%s) step %s/%s"%(live["name"],live["kind"],live["step"],live["tot"]))
+    if not cooking:
+        if OVEN.get("alert") and OVEN.get("alert_kind")=="step": _oven_alert_stop("program_stopped")
+        return
+    step=live["step"]
+    if step is None: return
+    new_sample=live["oven_ts"] and live["oven_ts"]!=prev.get("oven_ts")
+    # --- step change seen by the cloud: confirm the predicted alarm, or fire it if the prediction missed
+    if prev.get("state")=="COOKING" and prev.get("step") is not None and prev["step"]!=step and step>=2:
+        if step in OVEN["predicted"]:
+            lag=(now-OVEN["pred_end"]) if OVEN.get("pred_end") else None
+            _oven_log("step_confirmed","step %s -> %s%s"%(prev["step"],step,(" (%+.0fs vs prediction)"%lag) if lag is not None else ""))
+        else:
+            OVEN["predicted"].add(step); lab=_oven_step_label(live["name"],step,live["tot"])
+            _oven_log("step","step %s -> %s (cloud, no prediction)"%(prev["step"],step))
+            _oven_alert_start("step",step,"%s: STEP %d of %s — %s"%(live["name"],step,live["tot"] or "?",lab),lab)
+    # --- door fallback rules (cloud): only meaningful on a NEW sample within the same step
+    d=OVEN["door"]
+    if new_sample:
+        if d.get("step")!=step:
+            OVEN["door"]={"step":step,"max_temp":live["temp"],"sp":live["sp"],"ts":live["oven_ts"],"left":live["left"],"seen":False}
+        else:
+            why=[]
+            if live["sp_reached"]==0 and prev.get("sp_reached")==1: why.append("spReached 1->0")
+            # a LOWER set-point step drops the chamber temp on its own: only count a drop while the set-point is unchanged
+            if (d.get("max_temp") is not None and live["temp"] is not None and d.get("sp")==live["sp"] and prev.get("sp_reached")==1
+                    and d["max_temp"]-live["temp"]>=float(cfg.get("door_temp_drop",5) or 5)):
+                why.append("temp %s->%s"%(d["max_temp"],live["temp"]))
+            if d.get("ts") and d.get("left") is not None and live["left"] is not None:
+                wall=live["oven_ts"]-d["ts"]; cnt=d["left"]-live["left"]
+                if wall-cnt>=float(cfg.get("door_pause",5) or 5): why.append("timer paused %.0fs"%(wall-cnt))
+            if why and not d.get("seen"):
+                d["seen"]=True
+                if OVEN.get("alert"): _oven_door_opened("cloud",", ".join(why))
+                else: _oven_log("door_open:cloud(no alarm)",", ".join(why))
+            if live["temp"] is not None and (d.get("max_temp") is None or live["temp"]>d["max_temp"]): d["max_temp"]=live["temp"]
+            d["ts"],d["left"]=live["oven_ts"],live["left"]
+    # --- countdown prediction from this sample (oven timestamp + seconds left); step 0 = just started, no countdown
+    if step>=1 and live["left"] and live["oven_ts"]:
+        OVEN["pred_end"]=live["oven_ts"]+live["left"]; OVEN["pred_step"]=step
+    elif step<1:
+        OVEN["pred_end"]=0.0; OVEN["pred_step"]=None
+    _oven_check_prediction()
+def _oven_cam_ask(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,"no key/frame",""
+    img=_downscale_jpeg(jpeg,720); _gem_count_call(); OVEN["cam_calls"]=OVEN.get("cam_calls",0)+1
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":40}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    prompt=(_oven_cfg().get("prompt") or _OVEN_DOOR_PROMPT)
+    body={"contents":[{"parts":[{"text":prompt},{"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt=" ".join("".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).split()).strip()
+        up=txt.upper(); reason=""
+        for sep in (" - "," -","- ",": ",":","—","-"):
+            if sep in txt: reason=txt.split(sep,1)[1].strip(); break
+        if not reason: reason=re.sub(r'^(OPEN|CLOSED)\b[\s:,.-]*','',txt,flags=re.I).strip()
+        if "OPEN" in up and "CLOSED" not in up.split(" - ")[0]: return "open",txt,reason
+        if "CLOSED" in up: return "closed",txt,reason
+        return None,(txt or "empty reply"),""
+    except Exception as e:
+        return None,("error: "+str(e)[:100]),""
+def _oven_cam_check(save_preview=False):
+    """One camera look at the oven door. Returns a row for the Test button / log."""
+    cfg=_oven_cfg(); cam=_cam_by_id(cfg.get("cam"))
+    row={"verdict":None,"raw":"","err":"","desc":""}
+    if not cam: OVEN["cam_err"]="camera not found"; row["err"]=OVEN["cam_err"]; return row
+    jpeg,err=_snap_from(cam,timeout=20)
+    if err or not jpeg: OVEN["cam_err"]=err or "no frame"; row["err"]=OVEN["cam_err"]; return row
+    verdict,raw,reason=_oven_cam_ask(jpeg)
+    OVEN["cam_at"]=time.time(); OVEN["cam_raw"]=raw; OVEN["cam_err"]="" if verdict else "unreadable"
+    row.update(verdict=verdict,raw=raw,desc=reason)
+    if save_preview:
+        try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
+        except Exception: pass
+    return row
+def _oven_payload():
+    cfg=_oven_cfg(); now=time.time()
+    nxt=None
+    if OVEN.get("state")=="COOKING" and OVEN.get("pred_end"): nxt=max(0,int(OVEN["pred_end"]-now))
+    return {"on":bool(cfg.get("enabled")),"state":OVEN.get("state"),"name":OVEN.get("name"),"step":OVEN.get("step"),
+            "tot":OVEN.get("tot"),"next_in":nxt,"temp":OVEN.get("temp"),"sp":OVEN.get("sp"),
+            "alert":bool(OVEN.get("alert")),"kind":OVEN.get("alert_kind"),"msg":OVEN.get("alert_msg"),
+            "label":OVEN.get("alert_label"),"alert_step":OVEN.get("alert_step"),"since":OVEN.get("alert_since",0.0),
+            "door_open":bool(OVEN.get("door_open")),"door_src":OVEN.get("door_src",""),
+            "cam":cfg.get("cam",""),"cam_on":bool(cfg.get("cam_enabled",True)),"err":OVEN.get("err","") or OVEN.get("cam_err","")}
+def oven_loop():
+    last_poll=0.0; last_cam=0.0; backoff=0.0
+    while True:
+        try:
+            cfg=_oven_cfg(); now=time.time()
+            if not (cfg.get("enabled") and cfg.get("email") and cfg.get("password") and cfg.get("device_id")):
+                if OVEN.get("state")!="OFF": OVEN.update(state="OFF",alert=False)
+                time.sleep(3); continue
+            poll=max(3,int(cfg.get("poll",5) or 5))
+            if now-last_poll>=poll+backoff:
+                last_poll=now
+                try:
+                    raw=_oven_get(cfg,"/v1/devices/realtime",{"id":str(cfg.get("device_id"))})
+                    OVEN["polls"]=OVEN.get("polls",0)+1
+                    with _OVEN_LOCK: _oven_apply(_oven_parse(raw))
+                    backoff=0.0
+                except Exception as e:
+                    OVEN["err"]=str(e)[:140]; backoff=min(60.0,(backoff or 5.0)*2)
+                    print("oven_loop:",OVEN["err"])
+            else:
+                with _OVEN_LOCK: _oven_check_prediction()
+            # while the alarm is up: watch the door on the kitchen camera (real time), plus a hard time cap
+            if OVEN.get("alert"):
+                if now-OVEN.get("alert_since",0)>int(cfg.get("max_alarm_secs",240) or 240):
+                    _oven_alert_stop("timeout","no door seen within %ss"%cfg.get("max_alarm_secs",240))
+                elif cfg.get("cam_enabled",True) and (_rotcam_cfg().get("gemini_key") or "").strip() and now-last_cam>=max(1,int(cfg.get("cam_interval",2) or 2)):
+                    last_cam=now
+                    row=_oven_cam_check()
+                    if row.get("verdict")=="open": _oven_door_opened("camera",row.get("desc") or "")
+        except Exception as e:
+            print("oven_loop outer:",str(e)[:120])
+        time.sleep(1)
+@app.route("/api/oven_status")
+def api_oven_status():
+    cfg=_oven_cfg()
+    safe={k:v for k,v in cfg.items() if k!="password"}; safe["has_password"]=bool(cfg.get("password"))
+    return jsonify({"ok":True,"config":safe,"live":_oven_payload(),
+                    "detail":{k:OVEN.get(k) for k in ("kind","left","clima","fan","sp_reached","err","polls","cam_raw","cam_err","cam_calls","alert_kind","door_src")},
+                    "oven_ts":OVEN.get("oven_ts"),"at":OVEN.get("at"),"cam_at":OVEN.get("cam_at"),
+                    "steps":_oven_steps_map(cfg),"log":(db.get("oven_log") or [])[-40:]})
+@app.route("/api/oven_config",methods=["POST"])
+def api_oven_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_oven_cfg())
+    for k in ("enabled","alert_on_end","door_auto","cam_enabled"):
+        if k in d: cur[k]=bool(d[k])
+    for k in ("email","device_id","cam","steps_text","prompt"):
+        if k in d: cur[k]=str(d[k] or "").strip() if k!="steps_text" else str(d[k] or "")
+    if d.get("password"): cur["password"]=str(d["password"])      # blank = keep the saved one
+    for k in ("poll","cam_interval","max_alarm_secs"):
+        if k in d:
+            try: cur[k]=int(d[k])
+            except Exception: pass
+    for k in ("lead","door_temp_drop","door_pause"):
+        if k in d:
+            try: cur[k]=float(d[k])
+            except Exception: pass
+    with data_lock: db["oven_watch"]=cur; save_data(db)
+    OVEN["token"]=None    # creds may have changed → fresh login on the next poll
+    safe={k:v for k,v in cur.items() if k!="password"}; safe["has_password"]=bool(cur.get("password"))
+    return jsonify({"ok":True,"config":safe})
+@app.route("/api/oven_test",methods=["POST"])
+def api_oven_test():
+    """Try the cloud login + one live read, and one camera look at the door. Nothing is written to UNOX."""
+    d=request.get_json(silent=True) or {}; cfg=_oven_cfg(); out={"ok":True}
+    try:
+        raw=_oven_get(cfg,"/v1/devices/realtime",{"id":str(cfg.get("device_id"))})
+        live=_oven_parse(raw); out["cloud"]={"ok":True,**{k:live[k] for k in ("state","name","kind","step","tot","left","temp","sp","sp_reached")}}
+    except Exception as e:
+        out["cloud"]={"ok":False,"error":str(e)[:160]}
+    if d.get("camera",True):
+        if not (_rotcam_cfg().get("gemini_key") or "").strip(): out["camera"]={"ok":False,"error":"No Gemini key configured (Rotisserie camera settings)"}
+        else:
+            try: row=_oven_cam_check(save_preview=True); out["camera"]={"ok":not row.get("err"),**row}
+            except Exception as e: out["camera"]={"ok":False,"error":str(e)[:160]}
+    return jsonify(out)
+@app.route("/api/oven_ack",methods=["POST"])
+def api_oven_ack():
+    _oven_alert_stop("tap")
+    return jsonify({"ok":True})
+@app.route("/api/oven_door",methods=["POST"])
+def api_oven_door():
+    """External door signal (a contact sensor, another camera, a button): {open:true|false}."""
+    d=request.get_json(silent=True) or {}
+    if d.get("open"): _oven_door_opened("sensor",str(d.get("src") or ""))
+    else: OVEN["door_open"]=False
+    return jsonify({"ok":True,"alert":bool(OVEN.get("alert"))})
+@app.route("/api/oven_fire",methods=["POST"])
+def api_oven_fire():
+    """Test the kiosk alarm end-to-end without a cook: raises a fake step alert (door/camera clears it as usual)."""
+    _oven_alert_start("test",0,"OVEN TEST — this is what a step alarm looks like","Test tray")
+    return jsonify({"ok":True})
+@app.route("/api/oven_log")
+def api_oven_log():
+    return jsonify({"ok":True,"log":list(db.get("oven_log") or [])[-300:]})
+@app.route("/api/oven_log_clear",methods=["POST"])
+def api_oven_log_clear():
+    with data_lock: db["oven_log"]=[]; save_data(db)
     return jsonify({"ok":True})
 
 
@@ -7260,7 +7598,7 @@ def temps():
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
-"tables":_tables_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload()}),mimetype="application/json")
+"tables":_tables_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -7371,7 +7709,7 @@ def test_print():
 def get_db():
     with data_lock: snap=dict(db)   # consistent shallow snapshot → avoids "dict changed size during iteration" 500s while a POST /api/data updates db concurrently
     # never ship secrets to the browser (Google refresh token, books password hash, session key, camera login)
-    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","_pin_salt","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks","clicksend")}
+    safe={k:v for k,v in snap.items() if k not in ("google_config","books_auth","_secret_key","_pin_salt","camera_config","camera_config_cl","rotcam_config","cameras","sales_stats","books_store","books_fin","thermoworks","clicksend","oven_watch","oven_log")}
     # staff PINs never leave the server — screens get a has_pin flag and verify via /api/pin_verify
     safe["staff"]=[{k:v for k,v in st.items() if k not in ("pin","pin_hash")}|{"has_pin":bool(st.get("pin_hash") or st.get("pin"))}
                    for st in (snap.get("staff") or []) if isinstance(st,dict)]
@@ -10000,6 +10338,7 @@ if __name__=="__main__":
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
     threading.Thread(target=tables_loop,daemon=True).start()
+    threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
     threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)

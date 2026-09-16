@@ -1763,6 +1763,19 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="tables-tile" class="card" style="display:none;position:fixed;right:16px;bottom:96px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <div id="intables-tile" class="card" style="display:none;position:fixed;left:16px;bottom:96px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <div id="frontdoor-tile" class="card" style="display:none;position:fixed;right:16px;top:64px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
+      <style>
+        /* UNOX oven step alerts: one tile, two looks. .oven-mini = slim progress pill while a program runs;
+           .oven-alert = the big "load the next tray" banner (stays until the server sees the door open). */
+        #oven-tile{display:none;position:fixed;left:50%;transform:translateX(-50%);z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);}
+        #oven-tile.oven-mini{top:10px;padding:6px 14px;border-radius:999px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;border:1px solid var(--line);}
+        #oven-tile.oven-mini .oven-mini-name{color:var(--text);font-weight:600;}
+        #oven-tile.oven-alert{top:64px;width:62vw;min-width:340px;max-width:760px;padding:18px 22px;border:3px solid #fb923c;border-radius:16px;text-align:center;animation:ovenPulse 1.2s ease-in-out infinite;}
+        #oven-tile .oven-head{font-size:var(--fs-md);color:#fb923c;font-weight:700;letter-spacing:.02em;}
+        #oven-tile .oven-label{font-size:clamp(28px,4.2vw,54px);font-weight:800;line-height:1.1;margin:8px 0 6px;color:var(--text);}
+        #oven-tile .oven-sub{font-size:var(--fs-md);color:var(--muted);}
+        @keyframes ovenPulse{0%,100%{box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 0 rgba(251,146,60,.55);}50%{box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 14px rgba(251,146,60,0);}}
+      </style>
+      <div id="oven-tile" class="card"></div>
       <div class="pb-split">
         <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
@@ -2618,6 +2631,38 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div id="tb-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">This is exactly what the AI looked at — tap to enlarge.</div>
     <div class="row-between" style="margin-top:14px;"><div class="label" style="margin:0;">Recent detections <span style="color:var(--muted);font-weight:400;">(the frame the AI decided on, with its reason)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogClear()">Clear</button></span></div>
     <div id="tb-log" style="margin-top:8px;"></div>
+    <div class="section-title" style="margin-top:18px;">Oven step alerts (UNOX cloud + camera)</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Follows the CHEFTOP oven through its program using your UNOX Data Driven Cooking login. A couple of seconds before each step ends, every screen shows a big banner naming the tray to load and sounds the <b>Oven step</b> alarm (Alarm Center). The alarm stops on its own when the oven door opens &mdash; seen live on the kitchen camera, with the cloud's own door signals as a slower backup. Nothing is ever sent to the oven. Uses the same Gemini key as the rotisserie camera.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ov-enabled" style="width:18px;height:18px;"> Turn the oven step alerts on</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-bottom:8px;cursor:pointer;color:var(--muted);"><input type="checkbox" id="ov-hidehere" style="width:16px;height:16px;" onchange="_camScreenHide('ovenstep',this.checked)"> Don't show the oven banner on THIS screen <span style="opacity:.7;">(other screens unaffected)</span></label>
+    <div id="ov-live" style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;min-height:14px;"></div>
+    <div class="grid-2">
+      <div><div class="label">ddc.unox.com email</div><input class="input" id="ov-email" type="email" autocomplete="off" placeholder="you@example.com"></div>
+      <div><div class="label">ddc.unox.com password</div><input class="input" id="ov-password" type="password" autocomplete="new-password" placeholder="ddc.unox.com password"></div>
+    </div>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Oven id <span style="color:var(--muted);font-weight:400;">(from the ddc.unox.com oven page URL)</span></div><input class="input" id="ov-device" type="text" placeholder="94651"></div>
+      <div><div class="label">Read the cloud every <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="ov-poll" type="number" min="3" max="60" step="1" placeholder="5"></div>
+    </div>
+    <div class="label mt-8">Trays per program <span style="color:var(--muted);font-weight:400;">&mdash; one program per line: <code>PROGRAM NAME: step 1 tray, step 2 tray, step 3 tray, &hellip;</code> (the name exactly as the oven shows it)</span></div>
+    <textarea class="input" id="ov-steps" rows="4" style="font-family:inherit;line-height:1.35;" placeholder="B TEST: Chicken, Roast potatoes, Pumpkin &amp; carrot, Mac &amp; cheese, Corn, Bread"></textarea>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Sound the alarm <span style="color:var(--muted);font-weight:400;">(seconds BEFORE the step ends)</span></div><input class="input" id="ov-lead" type="number" min="0" max="60" step="1" placeholder="2"></div>
+      <div><div class="label">Give up after <span style="color:var(--muted);font-weight:400;">(seconds, if no door is seen)</span></div><input class="input" id="ov-maxsecs" type="number" min="30" max="1800" step="10" placeholder="240"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:8px;cursor:pointer;"><input type="checkbox" id="ov-end" style="width:18px;height:18px;"> Also alarm when the program finishes</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:6px;cursor:pointer;"><input type="checkbox" id="ov-door" style="width:18px;height:18px;"> Stop the alarm when the oven door opens</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-top:6px;cursor:pointer;"><input type="checkbox" id="ov-camon" style="width:18px;height:18px;"> Watch the door on a camera while the alarm is sounding <span style="color:var(--muted);font-size:var(--fs-sm);">(real time; without it the cloud signal takes 20&ndash;30 s)</span></label>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Camera that sees the oven door</div><select class="input" id="ov-cam" style="background:var(--surface2);"></select></div>
+      <div><div class="label">Look every <span style="color:var(--muted);font-weight:400;">(seconds, while alarming)</span></div><input class="input" id="ov-caminterval" type="number" min="1" max="30" step="1" placeholder="2"></div>
+    </div>
+    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;min-width:160px;" onclick="ovenSave()">Save oven alerts</button><button class="btn" onclick="ovenTest()">Test cloud + camera</button><button class="btn" onclick="ovenFire()">Test the alarm on all screens</button></div>
+    <div id="ov-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
+    <img id="ov-preview" alt="oven door — last test frame" style="display:none;width:100%;max-width:420px;border-radius:10px;margin-top:8px;border:1px solid var(--line);cursor:zoom-in;" onclick="_tablesEnlarge(this.src)">
+    <div id="ov-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">This is exactly what the AI looked at when judging the door &mdash; tap to enlarge.</div>
+    <div class="row-between" style="margin-top:14px;"><div class="label" style="margin:0;">Oven log <span style="color:var(--muted);font-weight:400;">(program starts, step alarms, door openings, silences &mdash; with times)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="ovenLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="ovenLogClear()">Clear</button></span></div>
+    <div id="ov-log" style="margin-top:8px;"></div>
     <div class="section-title" style="margin-top:18px;">Food left on inside tables (camera + AI)</div>
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Same as the outside one, for a camera pointed at the inside seating area. Pops the table view on the dash when food or rubbish is left on an inside table with nobody seated. Uses the same Gemini key. Tune sound/popup under Alarm Center &rarr; “Food left on inside table”.</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="in-enabled" style="width:18px;height:18px;"> Turn the inside-tables watch on</label>
@@ -3120,12 +3165,13 @@ const _ALARM_DEF={
  display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'},
  tables:{label:'Food left on outside table',color:'#f59e0b',interval:2800,desc:'The AI spotted a food tray/plate/rubbish left behind on an outside table with nobody seated. The outside camera view pops up on the dash. Sound + popup like a probe alarm.'},
  intables:{label:'Food left on inside table',color:'#f59e0b',interval:2800,desc:'The AI spotted food/rubbish left on an INSIDE table with nobody seated. The inside camera view pops up on the dash. Sound + popup like a probe alarm.'},
- frontdoor:{label:'Customer at the front door',color:'#38bdf8',interval:2800,desc:'A customer walked in the front door. A live view pops up on the dash. Visual only unless you turn sound on here.'}
+ frontdoor:{label:'Customer at the front door',color:'#38bdf8',interval:2800,desc:'A customer walked in the front door. A live view pops up on the dash. Visual only unless you turn sound on here.'},
+ ovenstep:{label:'Oven step — load the next tray',color:'#fb923c',interval:1200,desc:'The combi oven is about to move to its next program step: a big banner names the tray to load. Keeps sounding until the oven door opens (camera / cloud) or someone taps Done. Set up under Settings → Oven step alerts.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','intables','frontdoor','display','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','intables','frontdoor','display','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3587,6 +3633,99 @@ function tablesLogLoad(){
   }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the log.</div>';});
 }
 function tablesLogClear(){fetch('/api/tables_log_clear',{method:'POST'}).then(()=>tablesLogLoad()).catch(()=>{});}
+// ---- UNOX oven step alerts (16 Sep 2026). The SERVER does the thinking (polls the UNOX cloud, predicts each
+//      step end from the oven's countdown, watches kitchen camera 4 for the door); this screen just follows
+//      /temps.oven: a compact progress pill while a program runs, a big banner + the 'ovenstep' Alarm Center
+//      sound when a tray is due, and it clears the moment the server sees the oven door open.
+let _ovenAlarm=false;
+function startOvenAlarm(){if(!_acfg('ovenstep').enabled)return;if(_ovenAlarm)return;_ovenAlarm=true;const t0=Date.now();
+  (function b(){if(!_ovenAlarm)return;const c=_acfg('ovenstep');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_ovenAlarm=false;_updateFlash();return;}_alarmHit('ovenstep');setTimeout(()=>{if(_ovenAlarm)b();},c.interval);})();}
+function stopOvenAlarm(){_ovenAlarm=false;_updateFlash();}
+function ackOven(){stopOvenAlarm();const t=document.getElementById('oven-tile');if(t){t._alert=false;t._since=0;}fetch('/api/oven_ack',{method:'POST'}).catch(()=>{});}
+function _ovenFmt(s){s=Math.max(0,parseInt(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+function handleOven(o){
+  const tile=document.getElementById('oven-tile'); if(!tile)return;
+  const hidden=(typeof _devPopMuted==='function'&&_devPopMuted('ovenstep'));   // Alarm Center "Hidden on this screen"
+  const cooking=!!(o&&o.on&&o.state==='COOKING');
+  const alert=!!(o&&o.alert);
+  if(!o||!o.on||hidden||(!cooking&&!alert)){tile._alert=false;tile._mode='';tile._html='';tile.style.display='none';tile.className='card';stopOvenAlarm();return;}
+  if(alert){
+    const since=o.since||0;
+    if(!tile._alert||tile._since!==since){
+      tile._alert=true;tile._since=since;tile._mode='alert';tile._html='';tile.className='card oven-alert';tile.style.display='';
+      const isEnd=(o.kind==='end');
+      const head=isEnd?(_mEsc(o.name||'Oven')+' — FINISHED'):(o.kind==='test'?'OVEN ALARM TEST':(_mEsc(o.name||'Oven')+' — STEP '+(o.alert_step||'?')+' of '+(o.tot||'?')));
+      tile.innerHTML='<div class="oven-head">🔥 '+head+'</div>'
+        +'<div class="oven-label">'+_mEsc(o.label||(isEnd?'Take everything out':'Load the next tray'))+'</div>'
+        +'<div class="oven-sub">'+(isEnd?'Open the oven door to stop the alarm.':'Open the oven and load it — the alarm stops when the door opens.')+'</div>'
+        +'<button class="btn" style="width:100%;margin-top:10px;font-size:var(--fs-md);" onclick="ackOven()">Done — silence</button>';
+      if(typeof _paint==='function')_paint();
+    }
+    if(_acfg('ovenstep').enabled) startOvenAlarm();
+  } else {
+    if(tile._alert){tile._alert=false;tile._since=0;stopOvenAlarm();}
+    // compact progress pill while a program runs: program, step, countdown to the next tray, chamber temp
+    const nx=(o.next_in!==null&&o.next_in!==undefined)?('next tray in '+_ovenFmt(o.next_in)):'';
+    const html='<span class="oven-mini-name">🔥 '+_mEsc(o.name||'Oven')+'</span> step '+(o.step||0)+'/'+(o.tot||'?')+(nx?(' · '+nx):'')+((o.temp!==null&&o.temp!==undefined)?(' · '+Math.round(o.temp)+'°'):'');
+    if(tile._mode!=='mini'||tile._html!==html){tile._mode='mini';tile._html=html;tile.className='card oven-mini';tile.style.display='';tile.innerHTML=html;}
+  }
+}
+function ovenLoad(){
+  fetch('/api/oven_status').then(r=>r.json()).then(d=>{
+    const g=id=>document.getElementById(id); if(!g('ov-enabled'))return;
+    const c=d.config||{},l=d.live||{},dt=d.detail||{};
+    g('ov-enabled').checked=!!c.enabled; g('ov-email').value=c.email||''; g('ov-password').value='';
+    g('ov-password').placeholder=c.has_password?'(saved — leave blank to keep)':'ddc.unox.com password';
+    g('ov-device').value=c.device_id||''; g('ov-poll').value=c.poll||5; g('ov-lead').value=(c.lead!==undefined?c.lead:2);
+    g('ov-end').checked=c.alert_on_end!==false; g('ov-door').checked=c.door_auto!==false; g('ov-camon').checked=c.cam_enabled!==false;
+    g('ov-caminterval').value=c.cam_interval||2; g('ov-maxsecs').value=c.max_alarm_secs||240; g('ov-steps').value=c.steps_text||'';
+    const sel=g('ov-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(x=>x.enabled!==false);
+      sel.innerHTML=cams.map(x=>'<option value="'+x.id+'"'+(x.id===c.cam?' selected':'')+'>'+_mEsc(x.name||('Camera '+x.channel))+'</option>').join('');}
+    if(g('ov-hidehere'))g('ov-hidehere').checked=_camScreenHidden('ovenstep');
+    const lv=g('ov-live'); if(lv){
+      if(!c.enabled)lv.textContent='Watch is off.';
+      else if(l.state==='COOKING')lv.textContent='Live: '+(l.name||'')+' — step '+(l.step||0)+'/'+(l.tot||'?')+(l.next_in!==null&&l.next_in!==undefined?(', next tray in '+_ovenFmt(l.next_in)):'')+(l.temp!==null&&l.temp!==undefined?(', oven '+Math.round(l.temp)+'° / set '+(l.sp||'?')+'°'):'')+(l.alert?(' — ALARM: '+l.msg):'');
+      else lv.textContent='Live: oven '+(l.state||'?').toLowerCase()+(dt.polls?(' · '+dt.polls+' reads'):'')+(dt.err?(' · '+dt.err):'');
+      lv.style.color=dt.err?'var(--amber)':'var(--muted)';}
+  }).catch(()=>{});
+  if(typeof ovenLogLoad==='function')ovenLogLoad();
+}
+function ovenSave(){
+  const g=id=>document.getElementById(id),st=g('ov-status');
+  const body={enabled:g('ov-enabled').checked,email:g('ov-email').value.trim(),device_id:g('ov-device').value.trim(),
+    poll:parseInt(g('ov-poll').value)||5,lead:parseFloat(g('ov-lead').value)||0,alert_on_end:g('ov-end').checked,
+    door_auto:g('ov-door').checked,cam:g('ov-cam').value,cam_enabled:g('ov-camon').checked,
+    cam_interval:parseInt(g('ov-caminterval').value)||2,max_alarm_secs:parseInt(g('ov-maxsecs').value)||240,
+    steps_text:g('ov-steps').value};
+  if(g('ov-password').value)body.password=g('ov-password').value;
+  if(body.enabled&&!body.email){st.textContent='Enter the ddc.unox.com email first.';st.style.color='var(--amber)';return;}
+  st.textContent='Saving…';st.style.color='var(--muted)';
+  fetch('/api/oven_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved ✓':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';g('ov-password').value='';if(d.ok)setTimeout(ovenLoad,1500);}).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function ovenTest(){
+  const st=document.getElementById('ov-status'),img=document.getElementById('ov-preview'),cap=document.getElementById('ov-preview-cap');
+  st.textContent='Logging in to the UNOX cloud and looking at the oven door…';st.style.color='var(--muted)';
+  fetch('/api/oven_test',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{
+    const c=d.cloud||{},k=d.camera||{};let msg='';
+    if(c.ok)msg+='Cloud OK: oven '+(c.state||'?').toLowerCase()+(c.state==='COOKING'?(' — '+(c.name||'')+' step '+(c.step||0)+'/'+(c.tot||'?')+', '+Math.round(c.left||0)+'s left in step, '+Math.round(c.temp||0)+'°/'+(c.sp||'?')+'°'):'')+'. ';
+    else msg+='Cloud FAILED: '+(c.error||'?')+'. ';
+    if(k.ok)msg+='Camera says the oven door is '+(k.verdict?k.verdict.toUpperCase():'unreadable')+(k.raw?(' ('+k.raw+')'):'')+'.';
+    else msg+='Camera: '+(k.error||k.err||'failed')+'.';
+    st.textContent=msg;st.style.color=(c.ok&&k.ok)?'var(--green)':'var(--amber)';
+    if(img){if(k.preview){img.src=k.preview;img.style.display='';if(cap){cap.style.display='';}}else{img.style.display='none';if(cap)cap.style.display='none';}}
+  }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function ovenFire(){const st=document.getElementById('ov-status');fetch('/api/oven_fire',{method:'POST'}).then(()=>{if(st){st.textContent='Test alarm raised — every screen shows the banner now; open the oven door (or tap Done) to clear it.';st.style.color='var(--muted)';}}).catch(()=>{});}
+function ovenLogLoad(){
+  const box=document.getElementById('ov-log'); if(!box)return;
+  fetch('/api/oven_log').then(r=>r.json()).then(d=>{
+    const log=((d&&d.log)||[]).slice(-40).reverse();
+    if(!log.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);">Nothing yet — every program start, step alarm, door opening and silence gets a line here with the time.</div>';return;}
+    box.innerHTML='<div style="max-height:260px;overflow:auto;font-size:var(--fs-sm);">'+log.map(e=>'<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--line);"><span style="color:var(--muted);white-space:nowrap;">'+_mEsc((e.t||'').slice(11))+'</span><b style="white-space:nowrap;">'+_mEsc(e.event||'')+'</b><span style="color:var(--text);min-width:0;">'+_mEsc(e.detail||'')+(e.step?(' [step '+e.step+'/'+(e.tot||'?')+(e.temp!==null&&e.temp!==undefined?(', '+Math.round(e.temp)+'°'):'')+']'):'')+'</span></div>').join('')+'</div>';
+  }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the log.</div>';});
+}
+function ovenLogClear(){fetch('/api/oven_log_clear',{method:'POST'}).then(()=>ovenLogLoad()).catch(()=>{});}
 // ---- inside-tables abandoned-food watch (twin of the outside one) ----
 let _intablesAlarm=false;
 function startIntablesAlarm(){if(!_acfg('intables').enabled)return;if(_intablesAlarm)return;_intablesAlarm=true;const t0=Date.now();
@@ -3945,7 +4084,7 @@ function displayStatusPoll(){
   }).catch(()=>{});
 }
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
 // Every alarm currently sounding, in plain words, with the key needed to silence just that one.
 function _activeAlarmDetails(){
   const out=[];
@@ -3969,6 +4108,7 @@ function _activeAlarmDetails(){
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
+    if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)out.push({key:'ovenstep',label:'Oven — load the next tray'});
   }catch(e){}
   return out;
 }
@@ -4002,6 +4142,7 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='tables'){if(typeof ackTables==='function')ackTables();}
   else if(key==='intables'){if(typeof ackIntables==='function')ackIntables();}
   else if(key==='frontdoor'){if(typeof ackFrontdoor==='function')ackFrontdoor();}
+  else if(key==='ovenstep'){if(typeof ackOven==='function')ackOven();}
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
   else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
@@ -4022,7 +4163,7 @@ function _ackReminder(key,label){
   if(typeof _toast==='function')_toast('\u2713 '+(label||'Done')+' \u2014 cleared for today');
 }
 function _broadcastSilence(key){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key||''})}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=Math.max(_silenceSeen,d.ts);}).catch(()=>{});}
-function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._tablesAlarm||!!_tablesAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
+function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._tablesAlarm||!!_tablesAlarm||!!window._ovenAlarm||!!_ovenAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(list){
   if(!Array.isArray(list)){list=(list?[{ts:list,key:''}]:[]);}   // tolerate an older server that still sends a bare ts
   const maxTs=list.reduce((m,e)=>Math.max(m,(e&&e.ts)||0),0);
@@ -4036,7 +4177,7 @@ function _applyRemoteSilence(list){
 }
 function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});
   /* Silence-all must mute products-off until tomorrow even if we hit it between beeps (alarms['prod-off'] momentarily false) — otherwise the next /temps poll re-rings it. Idempotent: no-op when nothing is off. */
-  if(typeof _prodOffList!=='undefined'&&_prodOffList.length){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');if(active.indexOf(_alarmLabel('prod-off'))<0)active.push(_alarmLabel('prod-off'));}if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm){active.push('Food left on outside table');if(typeof ackTables==='function')ackTables();}if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm){active.push('Food left on inside table');if(typeof ackIntables==='function')ackIntables();}if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm){active.push('Customer at the front door');if(typeof ackFrontdoor==='function')ackFrontdoor();}_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+  if(typeof _prodOffList!=='undefined'&&_prodOffList.length){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');if(active.indexOf(_alarmLabel('prod-off'))<0)active.push(_alarmLabel('prod-off'));}if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm){active.push('Food left on outside table');if(typeof ackTables==='function')ackTables();}if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm){active.push('Food left on inside table');if(typeof ackIntables==='function')ackIntables();}if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm){active.push('Customer at the front door');if(typeof ackFrontdoor==='function')ackFrontdoor();}if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm){active.push('Oven — load the next tray');if(typeof ackOven==='function')ackOven();}_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 // ── Label-printer status light ──────────────────────────────────────────────────────────────────
 // The B1 Pro is only connected DURING a print (BLE, one link at a time), so there is no live
 // connection to poll — and polling it would risk knocking the FM230 probe link over. The light
@@ -5407,6 +5548,7 @@ try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
 try{handleTables(d.tables||{});}catch(e){console.warn('tables:',e);}
 try{handleIntables(d.intables||{});}catch(e){console.warn('intables:',e);}
 try{handleFrontdoor(d.frontdoor||{});}catch(e){console.warn('frontdoor:',e);}
+try{handleOven(d.oven||{});}catch(e){console.warn('oven:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
 _recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;
@@ -8264,7 +8406,7 @@ let _setSeeded=false;try{_setSeeded=localStorage.getItem('setCollapsed_v2')!=nul
 function setupSettingsTabs(){const modal=document.querySelector('#settings-modal .modal');if(!modal)return;
   const grpOf=t=>{t=(t||'').toLowerCase();
     if(t.includes('square')||t.includes('cook log')||t.includes('sales feed')||t.includes('phone order'))return 'Sales';
-    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out')||t.includes('products')||t.includes('display food'))return 'Kitchen';
+    if(t.includes('probe')||t.includes('alarm')||t.includes('stock-check')||t.includes('rotisserie')||t.includes('hand-out')||t.includes('products')||t.includes('display food')||t.includes('oven step'))return 'Kitchen';
     if(t.includes('task photos')||t.includes('recent task')||t.includes('store camera'))return 'Camera';
     if(t.includes('staff'))return 'Staff';
     return 'General';};
@@ -8437,7 +8579,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();intablesLoad();frontdoorLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();ovenLoad();intablesLoad();frontdoorLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}
