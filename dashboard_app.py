@@ -5933,7 +5933,10 @@ def _oven_cfg():
     c.setdefault("cam","06a25f13"); c.setdefault("cam_enabled",True); c.setdefault("cam_interval",2)
     c.setdefault("max_alarm_secs",240)     # safety: never let the siren run longer than this per step
     c.setdefault("steps_text","")          # "B TEST: Chicken, Potatoes, Pumpkin, Mac & cheese, Corn, Bread"
+    c.setdefault("screens","mac")          # comma-separated screen names that show the pill/banner + sound; "" = every screen
     return c
+def _oven_screens(cfg=None):
+    return [x.strip() for x in str((cfg or _oven_cfg()).get("screens") or "").split(",") if x.strip()]
 def _oven_steps_map(cfg=None):
     """Parse steps_text -> {PROGRAM NAME (upper): [label per step]}. One program per line: NAME: a, b, c"""
     out={}
@@ -6134,7 +6137,8 @@ def _oven_payload():
             "alert":bool(OVEN.get("alert")),"kind":OVEN.get("alert_kind"),"msg":OVEN.get("alert_msg"),
             "label":OVEN.get("alert_label"),"alert_step":OVEN.get("alert_step"),"since":OVEN.get("alert_since",0.0),
             "door_open":bool(OVEN.get("door_open")),"door_src":OVEN.get("door_src",""),
-            "cam":cfg.get("cam",""),"cam_on":bool(cfg.get("cam_enabled",True)),"err":OVEN.get("err","") or OVEN.get("cam_err","")}
+            "cam":cfg.get("cam",""),"cam_on":bool(cfg.get("cam_enabled",True)),"screens":_oven_screens(cfg),
+            "err":OVEN.get("err","") or OVEN.get("cam_err","")}
 def oven_loop():
     last_poll=0.0; last_cam=0.0; backoff=0.0
     while True:
@@ -6180,7 +6184,7 @@ def api_oven_config():
     d=request.get_json(silent=True) or {}; cur=dict(_oven_cfg())
     for k in ("enabled","alert_on_end","door_auto","cam_enabled"):
         if k in d: cur[k]=bool(d[k])
-    for k in ("email","device_id","cam","steps_text","prompt"):
+    for k in ("email","device_id","cam","steps_text","prompt","screens"):
         if k in d: cur[k]=str(d[k] or "").strip() if k!="steps_text" else str(d[k] or "")
     if d.get("password"): cur["password"]=str(d["password"])      # blank = keep the saved one
     for k in ("poll","cam_interval","max_alarm_secs"):

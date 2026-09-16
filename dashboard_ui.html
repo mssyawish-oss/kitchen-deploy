@@ -2635,6 +2635,8 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Follows the CHEFTOP oven through its program using your UNOX Data Driven Cooking login. A couple of seconds before each step ends, every screen shows a big banner naming the tray to load and sounds the <b>Oven step</b> alarm (Alarm Center). The alarm stops on its own when the oven door opens &mdash; seen live on the kitchen camera, with the cloud's own door signals as a slower backup. Nothing is ever sent to the oven. Uses the same Gemini key as the rotisserie camera.</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ov-enabled" style="width:18px;height:18px;"> Turn the oven step alerts on</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-bottom:8px;cursor:pointer;color:var(--muted);"><input type="checkbox" id="ov-hidehere" style="width:16px;height:16px;" onchange="_camScreenHide('ovenstep',this.checked)"> Don't show the oven banner on THIS screen <span style="opacity:.7;">(other screens unaffected)</span></label>
+    <div class="label">Show on these screens <span style="color:var(--muted);font-weight:400;">(pill, banner and sound — untick all for every screen)</span></div>
+    <div id="ov-screens" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 8px;font-size:var(--fs-md);"></div>
     <div id="ov-live" style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;min-height:14px;"></div>
     <div class="grid-2">
       <div><div class="label">ddc.unox.com email</div><input class="input" id="ov-email" type="email" autocomplete="off" placeholder="you@example.com"></div>
@@ -3645,7 +3647,9 @@ function ackOven(){stopOvenAlarm();const t=document.getElementById('oven-tile');
 function _ovenFmt(s){s=Math.max(0,parseInt(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 function handleOven(o){
   const tile=document.getElementById('oven-tile'); if(!tile)return;
-  const hidden=(typeof _devPopMuted==='function'&&_devPopMuted('ovenstep'));   // Alarm Center "Hidden on this screen"
+  let hidden=(typeof _devPopMuted==='function'&&_devPopMuted('ovenstep'));   // Alarm Center "Hidden on this screen"
+  // Settings allow-list: only the named screens show the pill/banner or sound the alarm (blank list = every screen)
+  try{const al=(o&&o.screens)||[];if(al.length){const me=devName().trim().toLowerCase();if(!al.some(x=>String(x).trim().toLowerCase()===me))hidden=true;}}catch(e){}
   const cooking=!!(o&&o.on&&o.state==='COOKING');
   const alert=!!(o&&o.alert);
   if(!o||!o.on||hidden||(!cooking&&!alert)){tile._alert=false;tile._mode='';tile._html='';tile.style.display='none';tile.className='card';stopOvenAlarm();return;}
@@ -3682,6 +3686,11 @@ function ovenLoad(){
     const sel=g('ov-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(x=>x.enabled!==false);
       sel.innerHTML=cams.map(x=>'<option value="'+x.id+'"'+(x.id===c.cam?' selected':'')+'>'+_mEsc(x.name||('Camera '+x.channel))+'</option>').join('');}
     if(g('ov-hidehere'))g('ov-hidehere').checked=_camScreenHidden('ovenstep');
+    const sc=g('ov-screens'); if(sc){
+      const chosen=String(c.screens||'').split(',').map(x=>x.trim()).filter(Boolean);
+      const known=new Set([...Object.keys(appData.device_prefs||{}),...Object.keys(appData.device_seen||{}),...chosen,devName()]);
+      const me=devName();
+      sc.innerHTML=[...known].sort((a,b)=>a.localeCompare(b)).map(n=>'<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="ov-screen" value="'+_mEsc(n)+'"'+(chosen.some(x=>x.toLowerCase()===n.toLowerCase())?' checked':'')+' style="width:16px;height:16px;"> '+_mEsc(n)+(n===me?' <span style="color:var(--muted);font-size:var(--fs-sm);">(this screen)</span>':'')+(typeof _devSeenLabel==='function'&&n!==me?'<span style="color:var(--muted);font-size:var(--fs-sm);">'+_mEsc(_devSeenLabel(n))+'</span>':'')+'</label>').join('');}
     const lv=g('ov-live'); if(lv){
       if(!c.enabled)lv.textContent='Watch is off.';
       else if(l.state==='COOKING')lv.textContent='Live: '+(l.name||'')+' — step '+(l.step||0)+'/'+(l.tot||'?')+(l.next_in!==null&&l.next_in!==undefined?(', next tray in '+_ovenFmt(l.next_in)):'')+(l.temp!==null&&l.temp!==undefined?(', oven '+Math.round(l.temp)+'° / set '+(l.sp||'?')+'°'):'')+(l.alert?(' — ALARM: '+l.msg):'');
@@ -3696,7 +3705,8 @@ function ovenSave(){
     poll:parseInt(g('ov-poll').value)||5,lead:parseFloat(g('ov-lead').value)||0,alert_on_end:g('ov-end').checked,
     door_auto:g('ov-door').checked,cam:g('ov-cam').value,cam_enabled:g('ov-camon').checked,
     cam_interval:parseInt(g('ov-caminterval').value)||2,max_alarm_secs:parseInt(g('ov-maxsecs').value)||240,
-    steps_text:g('ov-steps').value};
+    steps_text:g('ov-steps').value,
+    screens:[...document.querySelectorAll('#ov-screens .ov-screen:checked')].map(x=>x.value).join(', ')};
   if(g('ov-password').value)body.password=g('ov-password').value;
   if(body.enabled&&!body.email){st.textContent='Enter the ddc.unox.com email first.';st.style.color='var(--amber)';return;}
   st.textContent='Saving…';st.style.color='var(--muted)';
