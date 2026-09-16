@@ -6042,9 +6042,16 @@ def _oven_apply(live):
     prev_key=(prev.get("name"),) if prev.get("state")=="COOKING" else None
     if key!=prev_key:
         if prev_key is not None:
-            _oven_log("program_end",prev.get("name"))
-            if cfg.get("alert_on_end",True) and not prev.get("end_fired"):
-                _oven_alert_start("end",prev.get("step"),"%s FINISHED — take everything out"%prev.get("name"),"Program finished")
+            ran_out=bool(prev.get("tot")) and prev.get("step") is not None and int(prev["step"])>=int(prev["tot"]) and (prev.get("left") or 0)<=15
+            if prev.get("end_fired"):
+                _oven_log("program_end",prev.get("name"))
+            elif ran_out:
+                _oven_log("program_end",prev.get("name"))
+                if cfg.get("alert_on_end",True):
+                    _oven_alert_start("end",prev.get("step"),"%s FINISHED — take everything out"%prev.get("name"),"Program finished")
+            else:   # stopped by hand mid-program (or lost): no "finished" alarm, and drop any banner that is up
+                _oven_log("program_stopped","%s at step %s/%s"%(prev.get("name"),prev.get("step"),prev.get("tot")))
+                _oven_alert_stop("program_stopped")
         _oven_new_program(live)
         if key is not None: _oven_log("program_start","%s (%s) step %s/%s"%(live["name"],live["kind"],live["step"],live["tot"]))
     if not cooking:
