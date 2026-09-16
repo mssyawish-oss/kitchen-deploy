@@ -1255,7 +1255,9 @@ def _autoc_candidates(orders,cfg,now=None):
         if not fus: continue
         if any((f.get("state") or "").upper() not in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for f in fus): continue
         prepared=[f.get("uid") for f in fus if (f.get("state") or "").upper()=="PREPARED" and f.get("uid")]
-        if not prepared: continue
+        # fulfillments all done but the ORDER still OPEN (first-day bug: marking the fulfillment COMPLETED alone
+        # does not close the order) → still a candidate; the write below sets the order state itself.
+        if not prepared and not all((f.get("state") or "").upper()=="COMPLETED" for f in fus): continue
         upd=_parse_dt(o.get("updated_at")) or _parse_dt(o.get("created_at"))
         # SCHEDULED pre-orders (catering booked ahead): the kitchen may mark them done well before the
         # customer's pickup time — don't close those until the pickup time itself has passed + delay.
@@ -1268,15 +1270,21 @@ def _autoc_candidates(orders,cfg,now=None):
         out.append((o,prepared))
     return out
 def _autoc_complete(sqcfg,o,uids):
-    """One Square write: set the PREPARED fulfillments of this order to COMPLETED (sparse update)."""
+    """One Square write: set the PREPARED fulfillments of this order to COMPLETED (picked up) AND the order
+    state to COMPLETED — Square does NOT close the order from the fulfillment alone (verified 16 Sep: 574
+    orders ended up fulfillment=COMPLETED / order=OPEN until the state was set explicitly)."""
     token=(sqcfg.get("access_token") or "").strip()
-    body={"idempotency_key":_secrets.token_hex(16),
-          "order":{"location_id":o.get("location_id"),"version":o.get("version"),
-                   "fulfillments":[{"uid":u,"state":"COMPLETED"} for u in uids]}}
-    req=urllib.request.Request(SQUARE_BASE+"/v2/orders/"+o["id"],data=json.dumps(body).encode(),method="PUT",
-        headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
-    with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: data=json.loads(r.read().decode())
-    return (data.get("order") or {}).get("state")
+    def _put(order):
+        body={"idempotency_key":_secrets.token_hex(16),"order":order}
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/"+o["id"],data=json.dumps(body).encode(),method="PUT",
+            headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: return json.loads(r.read().decode()).get("order") or {}
+    ver=o.get("version"); loc=o.get("location_id")
+    if uids:   # step 1: fulfillments → COMPLETED (picked up); Square bumps the version
+        got=_put({"location_id":loc,"version":ver,"fulfillments":[{"uid":u,"state":"COMPLETED"} for u in uids]})
+        ver=got.get("version",ver)
+    got=_put({"location_id":loc,"version":ver,"state":"COMPLETED"})   # step 2: close the order itself
+    return got.get("state")
 def _autoc_tick(sqcfg,force=False,dry=False,orders=None):
     """Called from the poll loop. Throttled to cfg['every'] seconds; returns a small result dict."""
     cfg=_autoc_cfg()
