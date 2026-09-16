@@ -2228,10 +2228,11 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="pl2-status" id="dg-status"></div>
     <div class="pl2-actions">
       <button class="btn" onclick="closeModal('drygoods-modal')">Close</button>
-      <button class="btn btn-primary" id="dg-print" onclick="_dgPrint()">Print &amp; save</button>
+      <button class="btn" id="dg-print-only" onclick="_dgPrint(false)">Print (don&rsquo;t save)</button>
+      <button class="btn btn-primary" id="dg-print" onclick="_dgPrint(true)">Print &amp; save</button>
     </div>
-    <div class="pl2-lab" style="margin-top:16px;margin-bottom:6px;">Saved packs &mdash; tap Re-print (stamps today&rsquo;s date)</div>
-    <div id="dg-list" style="max-height:32vh;overflow-y:auto;"></div>
+    <div class="pl2-lab" style="margin-top:16px;margin-bottom:6px;">Saved packs &mdash; tap one to load it, then Print (stamps today&rsquo;s date)</div>
+    <div id="dg-list" class="prep-grid" style="max-height:34vh;overflow-y:auto;"></div>
   </div>
 </div>
 <!-- Missed-pull prompt: probe reconnected much lower → a row likely came off during the blackout -->
@@ -8302,36 +8303,36 @@ function _dgPrev(){
     const im=new Image();im.onload=()=>{el.innerHTML='';el.appendChild(im);};im.onerror=()=>{el.innerHTML='<span class="pl2-prev-wait">Preview unavailable</span>';};im.alt='Label preview';im.src='/api/drygoods_preview?'+q;
   },220);
 }
-function _dgPrint(){ if(!_dgStaff){const st=document.getElementById('dg-status');if(st){st.textContent='Tap your name first.';st.style.color='var(--red)';}return;} _dgPrintGo(); }
-function _dgPrintGo(){
-  const st=document.getElementById('dg-status'),btn=document.getElementById('dg-print');
+function _dgPrint(save){ if(!_dgStaff){const st=document.getElementById('dg-status');if(st){st.textContent='Tap your name first.';st.style.color='var(--red)';}return;} _dgPrintGo(save); }
+function _dgPrintGo(save){
+  save=(save!==false);   // default: save. "Print (don't save)" passes false.
+  const st=document.getElementById('dg-status'),btn=document.getElementById('dg-print'),b2=document.getElementById('dg-print-only');
   const c=((document.getElementById('dg-contents')||{}).value||'').trim();
   if(!c){if(st){st.textContent='Type what&rsquo;s in the pack first.';st.style.color='var(--red)';}return;}
-  if(btn)btn.disabled=true;
-  if(st){st.textContent='Sending '+_dgQty+' label'+(_dgQty>1?'s':'')+'…';st.style.color='var(--muted)';}
-  fetch('/api/drygoods_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:c,staff:_dgStaff,qty:_dgQty,save:true})}).then(r=>r.json()).then(d=>{
-    if(btn)btn.disabled=false;
-    if(d.ok&&d.printed){_toast('✓ '+_dgQty+' label'+(_dgQty>1?'s':'')+' printed');if(st)st.textContent='';_dgLoadList();}
+  if(btn)btn.disabled=true; if(b2)b2.disabled=true;
+  if(st){st.textContent='Sending '+_dgQty+' label'+(_dgQty>1?'s':'')+(save?'':' (not saving)')+'…';st.style.color='var(--muted)';}
+  fetch('/api/drygoods_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:c,staff:_dgStaff,qty:_dgQty,save:save})}).then(r=>r.json()).then(d=>{
+    if(btn)btn.disabled=false; if(b2)b2.disabled=false;
+    if(d.ok&&d.printed){_toast('✓ '+_dgQty+' label'+(_dgQty>1?'s':'')+' printed'+(save?' & saved':''));if(st)st.textContent='';if(save)_dgLoadList();}
     else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn’t confirm.');st.style.color='var(--red)';}}
-  }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
+  }).catch(()=>{if(btn)btn.disabled=false;if(b2)b2.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 function _dgLoadList(){
   const el=document.getElementById('dg-list');if(!el)return;
   fetch('/api/drygoods').then(r=>r.json()).then(d=>{
     const items=(d&&d.items)||[];
-    el.innerHTML=items.length?items.map(it=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">'
-      +'<span style="flex:1;min-width:0;font-size:var(--fs-md);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_mEsc(it.contents||'')+'</span>'
-      +'<button class="btn btn-primary" style="padding:4px 12px;font-size:var(--fs-sm);" onclick="_dgLoad('+_jsq(it.contents||'')+')">Re-print</button>'
-      +'<button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="_dgDelete('+_jsq(it.id||'')+',this)">&times;</button></div>').join('')
-      :'<div style="color:var(--muted);font-size:var(--fs-md);padding:6px 0;">No saved packs yet &mdash; print one above and it&rsquo;ll appear here.</div>';
+    el.innerHTML=items.length?items.map(it=>'<div class="prep-card" style="position:relative;" onclick="_dgLoad('+_jsq(it.contents||'')+')">'
+      +'<div class="pc-row"><div class="pc-name">'+_mEsc(it.contents||'')+'</div></div>'
+      +'<button onclick="event.stopPropagation();_dgDelete('+_jsq(it.id||'')+',this)" title="Remove" style="position:absolute;top:2px;right:4px;background:transparent;border:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:0 5px;">&times;</button></div>').join('')
+      :'<div style="color:var(--muted);font-size:var(--fs-md);padding:12px;grid-column:1/-1;">No saved packs yet &mdash; Print &amp; save one above and it&rsquo;ll appear here as a box.</div>';
   }).catch(()=>{el.innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm);">Couldn&rsquo;t load saved packs.</div>';});
 }
 function _dgLoad(contents){const i=document.getElementById('dg-contents');if(i)i.value=contents;_dgPrev();const st=document.getElementById('dg-status');if(st){st.textContent='Loaded “'+contents+'” — pick who packed it, then Print.';st.style.color='var(--amber)';}}
 let _dgDelArm=null,_dgDelTimer=null;
 function _dgDelete(id,btn){
   if(_dgDelArm===id){clearTimeout(_dgDelTimer);_dgDelArm=null;fetch('/api/drygoods_delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>_dgLoadList());return;}
-  _dgDelArm=id;if(btn){btn.textContent='Tap to confirm';btn.style.minWidth='96px';}
-  clearTimeout(_dgDelTimer);_dgDelTimer=setTimeout(()=>{_dgDelArm=null;if(btn){btn.innerHTML='&times;';btn.style.minWidth='';}},2500);
+  _dgDelArm=id;if(btn){btn.style.color='var(--red)';btn.style.fontWeight='700';btn.title='Tap again to remove';}
+  clearTimeout(_dgDelTimer);_dgDelTimer=setTimeout(()=>{_dgDelArm=null;if(btn){btn.style.color='var(--muted)';btn.style.fontWeight='';btn.title='Remove';}},2500);
 }
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
