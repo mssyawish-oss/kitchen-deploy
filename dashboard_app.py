@@ -1482,10 +1482,10 @@ def _status_name(o):
         return parts[0]+" "+parts[-1][:1].upper()
     return raw
 def _status_number(o):
+    # only a real, customer-meaningful reference — never the raw order-id hash. Numbered POS tickets carry
+    # their number in the name ("Order #80"), so a blank here just means "identify by name".
     ref=(o.get("reference_id") or "").strip()
-    if ref: return "#"+ref.lstrip('#')
-    oid=o.get("id") or ""
-    return ("#"+oid[-5:].upper()) if oid else ""
+    return ("#"+ref.lstrip('#')) if ref else ""
 def _order_status_payload():
     cfg=_status_cfg(); nows=time.time()
     inprog=[]; ready=[]
