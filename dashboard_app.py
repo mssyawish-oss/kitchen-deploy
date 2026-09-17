@@ -1485,10 +1485,12 @@ def _status_name(o):
         return parts[0]+" "+parts[-1][:1].upper()
     return raw
 def _status_number(o):
-    # only a real, customer-meaningful reference — never the raw order-id hash. Numbered POS tickets carry
-    # their number in the name ("Order #80"), so a blank here just means "identify by name".
-    ref=(o.get("reference_id") or "").strip()
-    return ("#"+ref.lstrip('#')) if ref else ""
+    # only a short, customer-meaningful reference. Numbered POS tickets carry their number in the name
+    # ("Order #80"); delivery orders (Uber/DoorDash) use a long UUID as reference_id — useless to a
+    # customer and it wraps the card, so suppress it and let the name identify the order.
+    ref=(o.get("reference_id") or "").strip().lstrip('#')
+    if not ref or '-' in ref or len(ref)>12: return ""
+    return "#"+ref
 def _order_status_payload():
     cfg=_status_cfg(); nows=time.time()
     inprog=[]; ready=[]
