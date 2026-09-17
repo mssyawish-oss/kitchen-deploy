@@ -1454,6 +1454,85 @@ def index():
     with open(ui,encoding="utf-8") as f: html=f.read()
     return Response(html,mimetype="text/html",headers={"Cache-Control":"no-store, must-revalidate"})  # always serve the freshest screen (no stale cached copy on tablets)
 
+# ===== CUSTOMER ORDER STATUS DISPLAY (/status) ==============================================
+# A customer-facing board fed from the SAME Square order data the KDS/Orders board already polls
+# (_KDS_RAW, refreshed every cycle by _orders_refresh → _kds_fetch). Read-only: it never writes to
+# Square. IN PROGRESS = not yet ready; READY = staff bumped it (fulfillment PREPARED) — except paid
+# in-store "Point of Sale" tickets, which Square auto-completes on ring-up with NO KDS-bump signal in
+# the API (documented in _orders_refresh), so those flip to READY on a prep-time estimate instead.
+_STATUS_READY={}   # order id -> epoch secs first seen ready (bump path); powers the ready-display window
+def _status_cfg():
+    def _i(k,d):
+        try: return int(db.get(k) or d)
+        except (TypeError,ValueError): return d
+    return {"prep_min":_i("order_status_prep_min",8),      # in-store ticket: minutes till shown READY (estimate)
+            "ready_min":_i("order_status_ready_min",10),   # how long a READY card stays on screen
+            "est_sources":[s.strip().lower() for s in (db.get("order_status_est_sources") or ["Point of Sale"]) if str(s).strip()],
+            "hide":{s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}}
+def _status_name(o):
+    raw=(o.get("ticket_name") or "").strip()
+    if not raw:
+        for fu in o.get("fulfillments") or []:
+            rec=(fu.get("pickup_details") or {}).get("recipient") or (fu.get("delivery_details") or {}).get("recipient") or {}
+            if rec.get("display_name"): raw=(rec.get("display_name") or "").strip(); break
+    if not raw: raw=(o.get("reference_id") or "").strip()
+    if not raw: return "Order"
+    if re.fullmatch(r'#?\d+',raw): return "Order #"+raw.lstrip('#')   # a bare ticket number
+    parts=[p for p in raw.split() if p]
+    if len(parts)>=2 and parts[0][:1].isalpha():                       # First name + surname initial (privacy)
+        return parts[0]+" "+parts[-1][:1].upper()
+    return raw
+def _status_number(o):
+    ref=(o.get("reference_id") or "").strip()
+    if ref: return "#"+ref.lstrip('#')
+    oid=o.get("id") or ""
+    return ("#"+oid[-5:].upper()) if oid else ""
+def _order_status_payload():
+    cfg=_status_cfg(); nows=time.time()
+    inprog=[]; ready=[]; present=set()
+    for o in (_KDS_RAW.get("orders") or []):
+        oid=o.get("id")
+        if not oid or not o.get("fulfillments"): continue
+        src=((o.get("source") or {}).get("name") or "").strip()
+        if src.lower() in cfg["hide"]: continue
+        created=_parse_dt(o.get("created_at"))
+        if not created: continue
+        ff=[(fu.get("state") or "").upper() for fu in (o.get("fulfillments") or [])]
+        if ff and all(s in ("CANCELED","CANCELLED","FAILED") for s in ff): continue   # cancelled: never show
+        fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
+        present.add(oid)
+        if src.lower() in cfg["est_sources"]:            # in-store POS: no bump signal → time estimate
+            is_ready=(nows-created.timestamp())>=cfg["prep_min"]*60
+            ready_at=created.timestamp()+cfg["prep_min"]*60
+        else:                                             # online/kiosk/delivery: real bump = PREPARED
+            is_ready=fulfilled
+            if is_ready:
+                ready_at=_STATUS_READY.get(oid) or nows; _STATUS_READY[oid]=ready_at
+            else:
+                _STATUS_READY.pop(oid,None); ready_at=None
+        row={"id":oid,"name":_status_name(o),"number":_status_number(o),
+             "source":src,"created":int(created.timestamp()*1000)}
+        if is_ready:
+            if ready_at and (nows-ready_at)<cfg["ready_min"]*60:
+                row["_r"]=ready_at; ready.append(row)
+        else:
+            inprog.append(row)
+    for k in list(_STATUS_READY.keys()):
+        if k not in present: _STATUS_READY.pop(k,None)
+    inprog.sort(key=lambda r:r["created"])                 # longest-waiting at the top
+    ready.sort(key=lambda r:r.get("_r",0),reverse=True)    # most recently ready first
+    for r in ready: r.pop("_r",None)
+    return {"in_progress":inprog,"ready":ready,"ts":int(nows),"board_age_s":int(nows-(_KDS_RAW.get("ts") or 0))}
+@app.route("/api/order_status")
+def api_order_status():
+    return jsonify(_order_status_payload())
+@app.route("/status")
+def order_status_page():
+    p=os.path.join(BASE_DIR,"order_status.html")
+    if not os.path.exists(p): return ("Order status page not deployed yet.",404)
+    with open(p,encoding="utf-8") as f: html=f.read()
+    return Response(html,mimetype="text/html",headers={"Cache-Control":"no-store, must-revalidate"})
+
 @app.route("/api/netinfo")
 def api_netinfo():
     ips=[]
