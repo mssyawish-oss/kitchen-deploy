@@ -1467,6 +1467,9 @@ def _status_cfg():
     return {"prep_min":_i("order_status_prep_min",8),      # in-store ticket: minutes till shown READY (estimate)
             "ready_min":_i("order_status_ready_min",10),   # how long a READY card stays on screen
             "est_sources":[s.strip().lower() for s in (db.get("order_status_est_sources") or ["Point of Sale"]) if str(s).strip()],
+            # in-store orders have no automatic ready signal from Square; until the KDS screen-reader is
+            # wired, keep them OFF the board (show_instore=False) so only the auto-flowing sources appear.
+            "show_instore":bool(db.get("order_status_show_instore",False)),
             "hide":{s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}}
 def _status_name(o):
     raw=(o.get("ticket_name") or "").strip()
@@ -1499,7 +1502,8 @@ def _order_status_payload():
         ff=[(fu.get("state") or "").upper() for fu in (o.get("fulfillments") or [])]
         if ff and all(s in ("CANCELED","CANCELLED","FAILED") for s in ff): continue   # cancelled: never show
         fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
-        if src.lower() in cfg["est_sources"]:            # in-store POS: no bump signal → time estimate
+        if src.lower() in cfg["est_sources"]:            # in-store POS: no automatic ready signal
+            if not cfg["show_instore"]: continue          # hidden until the KDS screen-reader is live
             is_ready=(nows-created.timestamp())>=cfg["prep_min"]*60
             ready_at=created.timestamp()+cfg["prep_min"]*60
         else:                                             # online/kiosk/delivery: real bump = PREPARED
@@ -1521,39 +1525,6 @@ def _order_status_payload():
 @app.route("/api/order_status")
 def api_order_status():
     return jsonify(_order_status_payload())
-@app.route("/api/order_status_debug")
-def api_order_status_debug():
-    # TEMP: inspect what a real in-store order actually carries, to hunt for a bump signal Square might
-    # expose (fulfillment state, in_store_details timestamps, updated_at vs created_at).
-    out=[]
-    for o in (_KDS_RAW.get("orders") or []):
-        src=((o.get("source") or {}).get("name") or "")
-        fus=o.get("fulfillments") or []
-        out.append({"src":src,"state":o.get("state"),"created":o.get("created_at"),"updated":o.get("updated_at"),
-            "fulfillments":[{"type":fu.get("type"),"state":fu.get("state"),
-                             "in_store":fu.get("in_store_details"),
-                             "pickup":({k:(fu.get("pickup_details") or {}).get(k) for k in ("placed_at","accepted_at","ready_at","picked_up_at","prepared_at","schedule_type")} if fu.get("pickup_details") else None)}
-                            for fu in fus]})
-    bysrc={}
-    for r in out: bysrc[r["src"]]=bysrc.get(r["src"],0)+1
-    # aggregate: for each source, what fulfillment states + timestamps ever appear? (hunting a bump signal)
-    from collections import Counter
-    agg={}
-    for r in out:
-        s=r["src"] or "?"; a=agg.setdefault(s,{"n":0,"states":Counter(),"prepared_at":0,"ready_at":0,"in_store":0,"updated_gt_created_5min":0})
-        a["n"]+=1
-        for fu in r["fulfillments"]:
-            a["states"][fu.get("state")]+=1
-            pk=fu.get("pickup") or {}
-            if pk.get("prepared_at"): a["prepared_at"]+=1
-            if pk.get("ready_at"): a["ready_at"]+=1
-            if fu.get("in_store"): a["in_store"]+=1
-        try:
-            c=_parse_dt(r["created"]); u=_parse_dt(r["updated"])
-            if c and u and (u-c).total_seconds()>300: a["updated_gt_created_5min"]+=1
-        except Exception: pass
-    for s in agg: agg[s]["states"]=dict(agg[s]["states"])
-    return jsonify({"counts_by_source":bysrc,"aggregate":agg,"total":len(out)})
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")
