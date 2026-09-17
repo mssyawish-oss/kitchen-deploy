@@ -1527,21 +1527,134 @@ def _order_status_payload():
 @app.route("/api/order_status")
 def api_order_status():
     return jsonify(_order_status_payload())
-@app.route("/api/kds_probe.jpg")
-def api_kds_probe():
-    # TEMP: grab one frame from the KDS tablet's Screen Stream (MJPEG) to confirm ORDERMATE can read it.
-    base=(request.args.get("url") or "http://192.168.0.167:8080").rstrip("/")
-    import subprocess
-    last=""
-    for u in (base+"/stream.mjpeg", base+"/", base+"/stream", base+"/mjpeg", base):
+# ===== KDS SCREEN READER ====================================================================
+# Reads the Square Expo KDS by grabbing the tablet's Screen Stream (MJPEG) and asking Gemini which
+# order tickets are in the OPEN list. When a ticket that was open disappears (staff bumped it), that
+# order is READY — this is the ONLY signal that captures in-store bumps, which Square's API hides.
+KDS_SCREEN={"open":{}, "bumped":{}, "at":0.0, "raw":"", "err":"", "tickets":[]}   # open: key->{first,last,name,source}; bumped: key->ts
+def _kds_cfg():
+    c=dict(db.get("kds_reader",{}) or {})
+    c.setdefault("enabled",False); c.setdefault("url","http://192.168.0.167:8080")
+    c.setdefault("interval",6); c.setdefault("confirm",2)
+    return c
+def _kds_frame(cfg):
+    url=(cfg.get("url") or "").rstrip("/")
+    if not url: return None,"no url"
+    import subprocess; last=""
+    for u in (url+"/stream.mjpeg", url+"/"):
         try:
             p=subprocess.run(["ffmpeg","-nostdin","-i",u,"-frames:v","1","-q:v","4","-f","image2","-"],
                              capture_output=True,timeout=15)
-            if p.returncode==0 and p.stdout[:2]==b"\xff\xd8":
-                return Response(p.stdout,mimetype="image/jpeg",headers={"X-Src":u,"Cache-Control":"no-store"})
-            last=(p.stderr or b"")[-200:].decode("latin1","ignore")
-        except Exception as e: last=str(e)[:200]
-    return Response("no frame from "+base+" :: "+last,status=502)
+            if p.returncode==0 and p.stdout[:2]==b"\xff\xd8": return p.stdout,None
+            last=(p.stderr or b"")[-160:].decode("latin1","ignore")
+        except Exception as e: last=str(e)[:160]
+    return None,("no frame: "+last)
+_KDS_PROMPT=("This is a kitchen 'Expo' order-display screen. Look ONLY at the order tickets shown in the "
+  "OPEN list (ignore the 'Completed' tab, the top status bar, and the page arrows). For EACH open ticket, "
+  "read the big customer name or order number at the TOP of the ticket, and the small source word if shown "
+  "(Kiosk, Online, Uber, DoorDash, Takeaway, Dine In, etc). Output ONE ticket per line, exactly as "
+  "'NAME | SOURCE' (use '?' for source if none). If there are NO open tickets, output the single word NONE.")
+def _kds_read_tickets(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,"no key/frame"
+    img=_downscale_jpeg(jpeg,1100)
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":400}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_KDS_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).strip()
+        if txt.strip().upper()=="NONE": return [],txt
+        out=[]
+        for line in txt.splitlines():
+            line=line.strip().lstrip("-*• ").strip()
+            if not line or "|" not in line: continue
+            nm,_,sc=line.partition("|")
+            nm=nm.strip(); sc=sc.strip()
+            if nm: out.append({"name":nm,"source":sc})
+        return out,txt
+    except Exception as e:
+        return None,("error: "+str(e)[:120])
+def _kds_key(name):
+    return re.sub(r'[^a-z0-9]','',(name or "").lower())[:24]
+def _kds_check_once(save=False):
+    cfg=_kds_cfg(); jpeg,err=_kds_frame(cfg)
+    if err or not jpeg:
+        KDS_SCREEN["err"]=err or "no frame"; return {"err":KDS_SCREEN["err"]}
+    tickets,raw=_kds_read_tickets(jpeg)
+    KDS_SCREEN["at"]=time.time(); KDS_SCREEN["raw"]=raw; KDS_SCREEN["err"]=""
+    if tickets is None:
+        KDS_SCREEN["err"]="unreadable"; return {"err":"unreadable","raw":raw}
+    KDS_SCREEN["tickets"]=tickets
+    now=time.time(); curkeys={}
+    for t in tickets:
+        k=_kds_key(t["name"])
+        if k: curkeys[k]=t
+    prev=KDS_SCREEN.get("open") or {}
+    # mark still-present / newly-seen
+    newopen={}
+    for k,t in curkeys.items():
+        e=prev.get(k) or {"first":now,"name":t["name"],"source":t.get("source","")}
+        e["last"]=now; e["gone"]=0; e["name"]=t["name"]; e["source"]=t.get("source","")
+        newopen[k]=e
+    # tickets that were open but are gone this read → increment gone; after `confirm` reads, mark bumped
+    conf=int(cfg.get("confirm",2) or 2)
+    for k,e in prev.items():
+        if k in curkeys: continue
+        e["gone"]=int(e.get("gone",0))+1
+        if e["gone"]>=conf:
+            KDS_SCREEN.setdefault("bumped",{})[k]=now      # bumped/ready now
+        else:
+            newopen[k]=e                                    # keep watching a couple reads (OCR flicker guard)
+    KDS_SCREEN["open"]=newopen
+    # prune old bumped entries (older than 30 min)
+    for k in list(KDS_SCREEN.get("bumped",{}).keys()):
+        if now-KDS_SCREEN["bumped"][k]>1800: KDS_SCREEN["bumped"].pop(k,None)
+    row={"open":[{"name":e["name"],"source":e.get("source","")} for e in newopen.values() if not e.get("gone")],
+         "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"raw":raw}
+    if save:
+        try: row["frame"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,900)).decode()
+        except Exception: pass
+    return row
+def kds_loop():
+    while True:
+        cfg=_kds_cfg(); iv=max(3,int(cfg.get("interval",6) or 6))
+        try:
+            if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip()):
+                time.sleep(iv); continue
+            _kds_check_once()
+        except Exception as e:
+            print("kds_loop:",str(e)[:120])
+        time.sleep(iv)
+@app.route("/api/kds_read")
+def api_kds_read():
+    # live read now (for testing/verifying accuracy)
+    row=_kds_check_once(save=(request.args.get("frame")=="1"))
+    return jsonify({"ok":"err" not in row or not row.get("err"),"cfg":{k:_kds_cfg()[k] for k in ("enabled","url","interval","confirm")},**row})
+@app.route("/api/kds_config",methods=["POST"])
+def api_kds_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_kds_cfg())
+    if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+    if "url" in d: cur["url"]=str(d["url"] or "").strip() or cur.get("url")
+    for k2 in ("interval","confirm"):
+        if k2 in d:
+            try: cur[k2]=int(d[k2])
+            except Exception: pass
+    with data_lock: db["kds_reader"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+@app.route("/api/kds_probe.jpg")
+def api_kds_probe():
+    base=(request.args.get("url") or _kds_cfg().get("url") or "http://192.168.0.167:8080").rstrip("/")
+    jpeg,err=_kds_frame({"url":base})
+    if jpeg: return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    return Response("no frame from "+base+" :: "+str(err),status=502)
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")
@@ -10454,7 +10567,8 @@ if __name__=="__main__":
     threading.Thread(target=tables_loop,daemon=True).start()
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
-    threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
+    threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)
+    threading.Thread(target=kds_loop,daemon=True).start()                            # KDS-screen reader for in-store ready (db.kds_reader.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
