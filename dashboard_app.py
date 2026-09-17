@@ -1460,7 +1460,6 @@ def index():
 # Square. IN PROGRESS = not yet ready; READY = staff bumped it (fulfillment PREPARED) — except paid
 # in-store "Point of Sale" tickets, which Square auto-completes on ring-up with NO KDS-bump signal in
 # the API (documented in _orders_refresh), so those flip to READY on a prep-time estimate instead.
-_STATUS_READY={}   # order id -> epoch secs first seen ready (bump path); powers the ready-display window
 def _status_cfg():
     def _i(k,d):
         try: return int(db.get(k) or d)
@@ -1489,7 +1488,7 @@ def _status_number(o):
     return ("#"+oid[-5:].upper()) if oid else ""
 def _order_status_payload():
     cfg=_status_cfg(); nows=time.time()
-    inprog=[]; ready=[]; present=set()
+    inprog=[]; ready=[]
     for o in (_KDS_RAW.get("orders") or []):
         oid=o.get("id")
         if not oid or not o.get("fulfillments"): continue
@@ -1500,16 +1499,14 @@ def _order_status_payload():
         ff=[(fu.get("state") or "").upper() for fu in (o.get("fulfillments") or [])]
         if ff and all(s in ("CANCELED","CANCELLED","FAILED") for s in ff): continue   # cancelled: never show
         fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
-        present.add(oid)
         if src.lower() in cfg["est_sources"]:            # in-store POS: no bump signal → time estimate
             is_ready=(nows-created.timestamp())>=cfg["prep_min"]*60
             ready_at=created.timestamp()+cfg["prep_min"]*60
         else:                                             # online/kiosk/delivery: real bump = PREPARED
             is_ready=fulfilled
-            if is_ready:
-                ready_at=_STATUS_READY.get(oid) or nows; _STATUS_READY[oid]=ready_at
-            else:
-                _STATUS_READY.pop(oid,None); ready_at=None
+            # stateless ready-time = when Square last changed the order (≈ the bump), so a card only shows
+            # in READY for the display window after it was actually bumped — not flooded in on a restart.
+            ready_at=((_parse_dt(o.get("updated_at")) or created).timestamp()) if is_ready else None
         row={"id":oid,"name":_status_name(o),"number":_status_number(o),
              "source":src,"created":int(created.timestamp()*1000)}
         if is_ready:
@@ -1517,8 +1514,6 @@ def _order_status_payload():
                 row["_r"]=ready_at; ready.append(row)
         else:
             inprog.append(row)
-    for k in list(_STATUS_READY.keys()):
-        if k not in present: _STATUS_READY.pop(k,None)
     inprog.sort(key=lambda r:r["created"])                 # longest-waiting at the top
     ready.sort(key=lambda r:r.get("_r",0),reverse=True)    # most recently ready first
     for r in ready: r.pop("_r",None)
