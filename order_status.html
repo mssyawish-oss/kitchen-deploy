@@ -68,25 +68,29 @@ header{height:11vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
 .col.prog .dots i{background:rgba(255,255,255,.35)}
 .dots i.on{background:var(--ink)}
 .col.prog .dots i.on{background:#fff}
-/* ---- PORTRAIT: rotate the tablet long-ways → stack IN PROGRESS above READY.
-   In portrait the tall side is the height, so vh text would blow up; re-base the
-   type on vw (the narrow side) so it stays in proportion. ---- */
+/* ---- PORTRAIT: rotate the tablet long-ways. Keep the two panels SIDE BY SIDE but
+   narrower, using the full tall height, so each column fits many more orders. Type
+   re-bases on vw (the narrow side) and cards go compact so both fit in a half-width
+   column, including the IN PROGRESS wait pill. ---- */
 @media (orientation:portrait){
-  .wrap{padding:1.4vh 2.2vw}
-  header{height:auto;min-height:0;grid-template-columns:1fr auto 1fr;padding:.6vh 0}
-  .logo{height:6.4vw}
-  .clock{font-size:5vw} .clock .ap{font-size:2.6vw}
-  .board{grid-template-columns:1fr;grid-template-rows:1fr 1fr;gap:1.4vh;margin-top:1vh}
-  .col h2{font-size:5.6vw;padding:1.2vh 3vw .4vh}
-  .sun{width:5.4vw;height:5.4vw}
-  .list{gap:1vh;padding:.6vh 2.4vw 1.4vh}
-  .card{padding:1.2vh 3vw;gap:2.4vw}
-  .card .badge{width:9vw;height:9vw}
-  .card .nm{font-size:4vw} .card .num{font-size:4vw} .card .tm{font-size:2.7vw}
-  .card .pill{font-size:3.6vw;min-width:24vw;padding:.9vh 3vw;gap:1.4vw}
-  .card .pill svg{width:3.6vw;height:3.6vw}
-  .empty{font-size:3.4vw;padding:2vh 3vw}
-  .dots i{width:1.4vw;height:1.4vw}
+  .wrap{padding:1.1vh 1.4vw}
+  header{height:auto;min-height:0;grid-template-columns:1fr auto 1fr;padding:.5vh 0}
+  .logo{height:5vw}
+  .clock{font-size:3.6vw} .clock .ap{font-size:1.9vw}
+  .board{grid-template-columns:1fr 1fr;gap:1.2vw;margin-top:.8vh}
+  .col{border-radius:16px}
+  .col h2{font-size:3.4vw;padding:1vh 1.6vw .3vh;gap:1.4vw}
+  .sun{width:3.2vw;height:3.2vw}
+  .list{gap:.8vh;padding:.5vh 1.2vw 1vh}
+  .card{padding:.85vh 1.4vw;gap:1.4vw;border-radius:11px;flex-wrap:wrap}
+  .card .badge{width:5vw;height:5vw}
+  .card .who{flex:1 1 auto}
+  .card .nm{font-size:2.6vw} .card .num{font-size:2.4vw} .card .tm{font-size:1.7vw}
+  .card .mid{flex:0 0 auto}
+  .card .pill{font-size:2.3vw;min-width:0;padding:.5vh 1.4vw;gap:.8vw;border-radius:9px}
+  .card .pill svg{width:2.3vw;height:2.3vw}
+  .empty{font-size:2.2vw;padding:1.4vh 1.4vw}
+  .dots i{width:1.1vw;height:1.1vw}
 }
 </style>
 </head>
