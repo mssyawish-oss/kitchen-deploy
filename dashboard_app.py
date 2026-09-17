@@ -1689,6 +1689,18 @@ def api_kds_probe():
     jpeg,err=_kds_frame({"url":base})
     if jpeg: return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
     return Response("no frame from "+base+" :: "+str(err),status=502)
+@app.route("/api/kds_status")
+def api_kds_status():
+    # CHEAP status for the Settings panel — reports config + the LAST-KNOWN reading (no Gemini call, no
+    # frame grab), so opening Settings never spends credit. Use /api/kds_read to force a fresh read.
+    cfg={k:_kds_cfg()[k] for k in ("enabled","url","interval","confirm")}
+    now=time.time(); at=KDS_SCREEN.get("at") or 0
+    return jsonify({"ok":True,"config":cfg,
+        "open":[{"name":e.get("name",""),"source":e.get("source","")} for e in (KDS_SCREEN.get("open") or {}).values()],
+        "bumped":[{"name":b.get("name",""),"source":b.get("source",""),"ago":int(now-b.get("ts",now))}
+                  for b in (KDS_SCREEN.get("bumped") or {}).values()],
+        "err":KDS_SCREEN.get("err",""), "age":(int(now-at) if at else None),
+        "has_key":bool((_rotcam_cfg().get("gemini_key") or "").strip())})
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")

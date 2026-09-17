@@ -2830,6 +2830,18 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     </div>
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Direct URL: <span style="font-family:var(--font-mono);color:var(--text);" id="status-url-display"></span></div>
     <div class="divider"></div>
+    <div class="section-title" style="margin-top:6px;">In-store orders — reads your KDS screen</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Square gives no &ldquo;ready&rdquo; signal for in-store (Point&nbsp;of&nbsp;Sale) orders, so we read your kitchen&rsquo;s KDS screen: an order shows IN&nbsp;PROGRESS while it&rsquo;s on the KDS and moves to READY the moment your staff bump it. The KDS tablet must be running the <b>Screen&nbsp;Stream</b> app (Local&nbsp;&middot;&nbsp;MJPEG, Started, screen kept awake). Online/Uber/DoorDash don&rsquo;t need this &mdash; they come from Square automatically.</div>
+    <label class="row" style="gap:8px;align-items:center;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="kds-enabled"><span>Read the KDS screen for in-store orders</span></label>
+    <div class="grid-2">
+      <div><div class="label">KDS tablet address <span style="color:var(--muted);font-weight:400;">(Screen Stream shows it)</span></div><input class="input" id="kds-url" placeholder="http://192.168.0.167:8080" style="font-family:var(--font-mono);"></div>
+      <div><div class="label">Check every <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="kds-interval" type="number" min="3" max="60" placeholder="6"></div>
+    </div>
+    <div class="row" style="gap:6px;margin-top:8px;"><button class="btn btn-primary" style="flex:1;" onclick="kdsSave()">Save KDS reader</button><button class="btn" style="flex:1;" onclick="kdsTest()">Test — show what it reads</button></div>
+    <div id="kds-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;"></div>
+    <div id="kds-reading" style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;"></div>
+    <div id="kds-preview" style="margin-top:8px;"></div>
+    <div class="divider"></div>
     <div style="font-size:var(--fs-sm);color:var(--muted);">Server: <span style="font-family:var(--font-mono);color:var(--text);" id="server-url-display"></span></div>
   </div>
 </div>
@@ -3598,6 +3610,47 @@ function lpBrotherTest(){
       st.textContent=d.ok?('Sent ✓ — a test label should be coming out.'+(d.status?' Printer says: '+d.status:'')):(d.error||'Failed');
       st.style.color=d.ok?'var(--green)':'var(--red)';
     }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function kdsLoad(){
+  const g=id=>document.getElementById(id); if(!g('kds-enabled'))return;
+  g('kds-status').textContent=''; g('kds-reading').innerHTML=''; g('kds-preview').innerHTML='';
+  fetch('/api/kds_status').then(r=>r.json()).then(d=>{
+    const c=d.config||{};
+    g('kds-enabled').checked=!!c.enabled;
+    g('kds-url').value=c.url||'http://192.168.0.167:8080';
+    g('kds-interval').value=c.interval||6;
+    if(!d.has_key){g('kds-reading').innerHTML='<span style="color:var(--amber)">No Gemini key set (bench-cam settings) — the reader needs it.</span>';return;}
+    let h='';
+    if(d.err) h+='<div style="color:var(--red)">Last read: '+_mEsc(d.err)+'</div>';
+    const op=(d.open||[]).map(o=>_mEsc(o.name)).join(', ');
+    h+='<div>On the KDS now: '+(op?('<b style="color:var(--text)">'+op+'</b>'):'<span style="opacity:.7">none seen</span>')+'</div>';
+    if((d.bumped||[]).length) h+='<div>Recently bumped: '+d.bumped.map(b=>_mEsc(b.name)).join(', ')+'</div>';
+    if(d.age!=null) h+='<div style="opacity:.6">Last looked '+d.age+'s ago.</div>';
+    g('kds-reading').innerHTML=h;
+  }).catch(()=>{g('kds-reading').textContent='Could not reach the server.';});
+}
+function kdsSave(){
+  const g=id=>document.getElementById(id),st=g('kds-status');
+  const body={enabled:g('kds-enabled').checked,url:(g('kds-url').value||'').trim(),
+    interval:parseInt(g('kds-interval').value)||6};
+  st.textContent='Saving…';st.style.color='var(--muted)';
+  fetch('/api/kds_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved ✓':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function kdsTest(){
+  const g=id=>document.getElementById(id),st=g('kds-status'),pv=g('kds-preview'),rd=g('kds-reading');
+  st.textContent='Reading the KDS screen… (this uses one AI check)';st.style.color='var(--muted)';
+  pv.innerHTML=''; rd.innerHTML='';
+  fetch('/api/kds_read?frame=1').then(r=>r.json()).then(d=>{
+    if(!d.ok||d.err){st.textContent=d.err||d.raw||'Could not read the screen. Is Screen Stream running on the tablet?';st.style.color='var(--red)';return;}
+    st.textContent='Read the screen ✓';st.style.color='var(--green)';
+    let h='';
+    const op=(d.open||[]).map(o=>_mEsc(o.name)+' <span style="opacity:.6">('+_mEsc(o.source||'?')+')</span>').join('<br>');
+    h+='<div style="margin-top:4px"><b style="color:var(--text)">Open tickets it can see:</b><br>'+(op||'<span style="opacity:.7">none</span>')+'</div>';
+    if((d.bumped_keys||[]).length) h+='<div style="margin-top:4px;opacity:.8">Bumped (ready): '+d.bumped_keys.map(_mEsc).join(', ')+'</div>';
+    rd.innerHTML=h;
+    if(d.frame) pv.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:4px">What the reader is looking at:</div><img src="'+d.frame+'" style="max-width:100%;border-radius:10px;border:1px solid var(--border)">';
+  }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
 function tablesLoad(){
   fetch('/api/tables_status').then(r=>r.json()).then(d=>{
@@ -8600,7 +8653,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;var _su=document.getElementById('status-url-display');if(_su)_su.textContent=window.location.origin+'/status';const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();ovenLoad();intablesLoad();frontdoorLoad();displayLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;var _su=document.getElementById('status-url-display');if(_su)_su.textContent=window.location.origin+'/status';const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();ovenLoad();intablesLoad();frontdoorLoad();displayLoad();kdsLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}
