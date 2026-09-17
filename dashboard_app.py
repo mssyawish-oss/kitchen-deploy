@@ -1521,6 +1521,23 @@ def _order_status_payload():
 @app.route("/api/order_status")
 def api_order_status():
     return jsonify(_order_status_payload())
+@app.route("/api/order_status_debug")
+def api_order_status_debug():
+    # TEMP: inspect what a real in-store order actually carries, to hunt for a bump signal Square might
+    # expose (fulfillment state, in_store_details timestamps, updated_at vs created_at).
+    out=[]
+    for o in (_KDS_RAW.get("orders") or []):
+        src=((o.get("source") or {}).get("name") or "")
+        fus=o.get("fulfillments") or []
+        out.append({"src":src,"state":o.get("state"),"created":o.get("created_at"),"updated":o.get("updated_at"),
+            "fulfillments":[{"type":fu.get("type"),"state":fu.get("state"),
+                             "in_store":fu.get("in_store_details"),
+                             "pickup":({k:(fu.get("pickup_details") or {}).get(k) for k in ("placed_at","accepted_at","ready_at","picked_up_at","prepared_at","schedule_type")} if fu.get("pickup_details") else None)}
+                            for fu in fus]})
+    bysrc={}
+    for r in out: bysrc[r["src"]]=bysrc.get(r["src"],0)+1
+    pos=[r for r in out if "point of sale" in (r["src"] or "").lower()][:8]
+    return jsonify({"counts_by_source":bysrc,"sample_pos":pos,"total":len(out)})
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")
