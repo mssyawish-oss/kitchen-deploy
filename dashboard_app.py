@@ -1590,41 +1590,45 @@ def _kds_read_tickets(jpeg):
         return None,("error: "+str(e)[:120])
 def _kds_key(name):
     return re.sub(r'[^a-z0-9]','',(name or "").lower())[:24]
-def _kds_check_once(save=False):
+def _kds_check_once(save=False,force=False):
     cfg=_kds_cfg(); jpeg,err=_kds_frame(cfg)
     if err or not jpeg:
         KDS_SCREEN["err"]=err or "no frame"; return {"err":KDS_SCREEN["err"]}
+    now=time.time()
+    # MOTION GATE: only spend a Gemini call when the KDS screen actually changed (an order was added or
+    # bumped). Between changes the frame is static, so we skip — keeps the AI cost tiny for an all-day loop.
+    sig=_frame_sig(jpeg); prev_sig=KDS_SCREEN.get("sig"); KDS_SCREEN["sig"]=sig
+    moved=True
+    if prev_sig is not None and sig is not None and len(prev_sig)==len(sig):
+        moved=(sum(abs(a-b) for a,b in zip(prev_sig,sig))/float(len(sig)))>=6.0
+    if not force and not moved and KDS_SCREEN.get("at"):
+        KDS_SCREEN["at"]=now
+        return {"open":[{"name":e["name"],"source":e.get("source","")} for e in (KDS_SCREEN.get("open") or {}).values()],
+                "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"skipped":True}
     tickets,raw=_kds_read_tickets(jpeg)
-    KDS_SCREEN["at"]=time.time(); KDS_SCREEN["raw"]=raw; KDS_SCREEN["err"]=""
+    KDS_SCREEN["at"]=now; KDS_SCREEN["raw"]=raw; KDS_SCREEN["err"]=""
     if tickets is None:
         KDS_SCREEN["err"]="unreadable"; return {"err":"unreadable","raw":raw}
     KDS_SCREEN["tickets"]=tickets
-    now=time.time(); curkeys={}
+    curkeys={}
     for t in tickets:
         k=_kds_key(t["name"])
         if k: curkeys[k]=t
     prev=KDS_SCREEN.get("open") or {}
-    # mark still-present / newly-seen
-    newopen={}
-    for k,t in curkeys.items():
-        e=prev.get(k) or {"first":now,"name":t["name"],"source":t.get("source","")}
-        e["last"]=now; e["gone"]=0; e["name"]=t["name"]; e["source"]=t.get("source","")
-        newopen[k]=e
-    # tickets that were open but are gone this read → increment gone; after `confirm` reads, mark bumped
-    conf=int(cfg.get("confirm",2) or 2)
+    # the screen changed and a ticket that was open is now gone → staff bumped it = READY
     for k,e in prev.items():
         if k in curkeys: continue
-        e["gone"]=int(e.get("gone",0))+1
-        if e["gone"]>=conf:
-            KDS_SCREEN.setdefault("bumped",{})[k]={"ts":now,"name":e.get("name",""),
-                                                   "source":e.get("source",""),"first":e.get("first",now)}
-        else:
-            newopen[k]=e                                    # keep watching a couple reads (OCR flicker guard)
+        KDS_SCREEN.setdefault("bumped",{})[k]={"ts":now,"name":e.get("name",""),
+                                               "source":e.get("source",""),"first":e.get("first",now)}
+    newopen={}
+    for k,t in curkeys.items():
+        e=prev.get(k) or {"first":now}
+        e.update({"name":t["name"],"source":t.get("source",""),"last":now}); e.setdefault("first",now)
+        newopen[k]=e
     KDS_SCREEN["open"]=newopen
-    # prune old bumped entries (older than 30 min)
-    for k in list(KDS_SCREEN.get("bumped",{}).keys()):
+    for k in list(KDS_SCREEN.get("bumped",{}).keys()):   # prune bumped entries older than 30 min
         if now-KDS_SCREEN["bumped"][k]["ts"]>1800: KDS_SCREEN["bumped"].pop(k,None)
-    row={"open":[{"name":e["name"],"source":e.get("source","")} for e in newopen.values() if not e.get("gone")],
+    row={"open":[{"name":e["name"],"source":e.get("source","")} for e in newopen.values()],
          "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"raw":raw}
     if save:
         try: row["frame"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,900)).decode()
@@ -1665,8 +1669,8 @@ def kds_loop():
         time.sleep(iv)
 @app.route("/api/kds_read")
 def api_kds_read():
-    # live read now (for testing/verifying accuracy)
-    row=_kds_check_once(save=(request.args.get("frame")=="1"))
+    # live read now (for testing/verifying accuracy) — force bypasses the motion gate
+    row=_kds_check_once(save=(request.args.get("frame")=="1"),force=True)
     return jsonify({"ok":"err" not in row or not row.get("err"),"cfg":{k:_kds_cfg()[k] for k in ("enabled","url","interval","confirm")},**row})
 @app.route("/api/kds_config",methods=["POST"])
 def api_kds_config():
