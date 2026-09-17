@@ -1536,8 +1536,24 @@ def api_order_status_debug():
                             for fu in fus]})
     bysrc={}
     for r in out: bysrc[r["src"]]=bysrc.get(r["src"],0)+1
-    pos=[r for r in out if "point of sale" in (r["src"] or "").lower()][:8]
-    return jsonify({"counts_by_source":bysrc,"sample_pos":pos,"total":len(out)})
+    # aggregate: for each source, what fulfillment states + timestamps ever appear? (hunting a bump signal)
+    from collections import Counter
+    agg={}
+    for r in out:
+        s=r["src"] or "?"; a=agg.setdefault(s,{"n":0,"states":Counter(),"prepared_at":0,"ready_at":0,"in_store":0,"updated_gt_created_5min":0})
+        a["n"]+=1
+        for fu in r["fulfillments"]:
+            a["states"][fu.get("state")]+=1
+            pk=fu.get("pickup") or {}
+            if pk.get("prepared_at"): a["prepared_at"]+=1
+            if pk.get("ready_at"): a["ready_at"]+=1
+            if fu.get("in_store"): a["in_store"]+=1
+        try:
+            c=_parse_dt(r["created"]); u=_parse_dt(r["updated"])
+            if c and u and (u-c).total_seconds()>300: a["updated_gt_created_5min"]+=1
+        except Exception: pass
+    for s in agg: agg[s]["states"]=dict(agg[s]["states"])
+    return jsonify({"counts_by_source":bysrc,"aggregate":agg,"total":len(out)})
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")
