@@ -1527,6 +1527,21 @@ def _order_status_payload():
 @app.route("/api/order_status")
 def api_order_status():
     return jsonify(_order_status_payload())
+@app.route("/api/kds_probe.jpg")
+def api_kds_probe():
+    # TEMP: grab one frame from the KDS tablet's Screen Stream (MJPEG) to confirm ORDERMATE can read it.
+    base=(request.args.get("url") or "http://192.168.0.167:8080").rstrip("/")
+    import subprocess
+    last=""
+    for u in (base+"/stream.mjpeg", base+"/", base+"/stream", base+"/mjpeg", base):
+        try:
+            p=subprocess.run(["ffmpeg","-nostdin","-i",u,"-frames:v","1","-q:v","4","-f","image2","-"],
+                             capture_output=True,timeout=15)
+            if p.returncode==0 and p.stdout[:2]==b"\xff\xd8":
+                return Response(p.stdout,mimetype="image/jpeg",headers={"X-Src":u,"Cache-Control":"no-store"})
+            last=(p.stderr or b"")[-200:].decode("latin1","ignore")
+        except Exception as e: last=str(e)[:200]
+    return Response("no frame from "+base+" :: "+last,status=502)
 @app.route("/status")
 def order_status_page():
     p=os.path.join(BASE_DIR,"order_status.html")
