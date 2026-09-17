@@ -1520,6 +1520,8 @@ def _order_status_payload():
                 row["_r"]=ready_at; ready.append(row)
         else:
             inprog.append(row)
+    ki,kr=_kds_instore_orders()                            # in-store orders read from the KDS screen
+    inprog+=ki; ready+=kr
     inprog.sort(key=lambda r:r["created"])                 # longest-waiting at the top
     ready.sort(key=lambda r:r.get("_r",0),reverse=True)    # most recently ready first
     for r in ready: r.pop("_r",None)
@@ -1549,11 +1551,15 @@ def _kds_frame(cfg):
             last=(p.stderr or b"")[-160:].decode("latin1","ignore")
         except Exception as e: last=str(e)[:160]
     return None,("no frame: "+last)
-_KDS_PROMPT=("This is a kitchen 'Expo' order-display screen. Look ONLY at the order tickets shown in the "
-  "OPEN list (ignore the 'Completed' tab, the top status bar, and the page arrows). For EACH open ticket, "
-  "read the big customer name or order number at the TOP of the ticket, and the small source word if shown "
-  "(Kiosk, Online, Uber, DoorDash, Takeaway, Dine In, etc). Output ONE ticket per line, exactly as "
-  "'NAME | SOURCE' (use '?' for source if none). If there are NO open tickets, output the single word NONE.")
+_KDS_PROMPT=("This is a kitchen 'Expo' order-display screen showing order tickets. Look ONLY at the tickets "
+  "in the OPEN list (ignore the 'Completed' tab, the top status bar, and the page arrows). For EACH open "
+  "ticket output ONE line, exactly 'NAME | CHANNEL', where:\n"
+  "- NAME = the big bold customer name OR order number at the very top-left of the ticket (e.g. '149' or "
+  "'Nick M.').\n"
+  "- CHANNEL = the ordering channel, which is the SMALL grey text on the ticket, and must be one of: "
+  "Point of Sale, Kiosk, Online, Uber Eats, DoorDash. Do NOT output the order type (Takeaway, Delivery, "
+  "Dine In) — that is different from the channel. If a ticket says 'Point of Sale' use exactly that.\n"
+  "If there are NO open tickets, output the single word NONE.")
 def _kds_read_tickets(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key or not jpeg: return None,"no key/frame"
@@ -1610,19 +1616,43 @@ def _kds_check_once(save=False):
         if k in curkeys: continue
         e["gone"]=int(e.get("gone",0))+1
         if e["gone"]>=conf:
-            KDS_SCREEN.setdefault("bumped",{})[k]=now      # bumped/ready now
+            KDS_SCREEN.setdefault("bumped",{})[k]={"ts":now,"name":e.get("name",""),
+                                                   "source":e.get("source",""),"first":e.get("first",now)}
         else:
             newopen[k]=e                                    # keep watching a couple reads (OCR flicker guard)
     KDS_SCREEN["open"]=newopen
     # prune old bumped entries (older than 30 min)
     for k in list(KDS_SCREEN.get("bumped",{}).keys()):
-        if now-KDS_SCREEN["bumped"][k]>1800: KDS_SCREEN["bumped"].pop(k,None)
+        if now-KDS_SCREEN["bumped"][k]["ts"]>1800: KDS_SCREEN["bumped"].pop(k,None)
     row={"open":[{"name":e["name"],"source":e.get("source","")} for e in newopen.values() if not e.get("gone")],
          "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"raw":raw}
     if save:
         try: row["frame"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,900)).decode()
         except Exception: pass
     return row
+def _kds_instore_orders():
+    # in-store (Point of Sale) orders for the customer board, sourced from the KDS screen: open POS
+    # tickets = IN PROGRESS; a POS ticket that was bumped (left the Open list) = READY for the window.
+    kcfg=_kds_cfg()
+    if not kcfg.get("enabled"): return [],[]
+    scfg=_status_cfg(); nows=time.time()
+    def _isPOS(src):
+        s=(src or "").lower()
+        return ("point of sale" in s) or s=="pos" or ("in store" in s) or ("in-store" in s)
+    def _disp(name):
+        n=(name or "").strip()
+        return ("Order #"+n.lstrip('#')) if re.fullmatch(r'#?\d+',n) else n
+    inprog=[]; ready=[]
+    for k,e in (KDS_SCREEN.get("open") or {}).items():
+        if e.get("gone") or not _isPOS(e.get("source")): continue
+        inprog.append({"id":"kds-"+k,"name":_disp(e.get("name")),"number":"",
+                       "source":"Point of Sale","created":int(e.get("first",nows)*1000)})
+    for k,b in (KDS_SCREEN.get("bumped") or {}).items():
+        if not _isPOS(b.get("source")): continue
+        if (nows-b.get("ts",0))<scfg["ready_min"]*60:
+            ready.append({"id":"kds-"+k,"name":_disp(b.get("name")),"number":"",
+                          "source":"Point of Sale","created":int(b.get("first",nows)*1000),"_r":b.get("ts",0)})
+    return inprog,ready
 def kds_loop():
     while True:
         cfg=_kds_cfg(); iv=max(3,int(cfg.get("interval",6) or 6))
