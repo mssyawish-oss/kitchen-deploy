@@ -92,6 +92,16 @@ header{height:11vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
   .empty{font-size:2.2vw;padding:1.4vh 1.4vw}
   .dots i{width:1.1vw;height:1.1vw}
 }
+/* DENSITY TIERS: as the board fills, tighten vertical spacing so more orders fit before it needs to
+   scroll — text size is kept for readability. Applied adaptively by render() when a column overflows. */
+.board.d1 .card{padding-top:.55vh;padding-bottom:.55vh}
+.board.d1 .list{gap:.6vh}
+.board.d2 .card{padding-top:.3vh;padding-bottom:.3vh}
+.board.d2 .list{gap:.35vh}
+@media (orientation:portrait){
+  .board.d1 .card{padding-top:.5vh;padding-bottom:.5vh}
+  .board.d2 .card{padding-top:.28vh;padding-bottom:.28vh}
+}
 </style>
 </head>
 <body>
@@ -191,34 +201,43 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;',
 const pageState={prog:0,ready:0};
 function renderColumn(key,items,ready){
   const list=document.getElementById(key+'-list'),dots=document.getElementById(key+'-dots');
-  if(!items.length){list.innerHTML='<div class="empty">'+(ready?'No orders ready yet':'No orders in progress')+'</div>';dots.innerHTML='';return;}
-  // measure capacity: render all, then if overflowing, paginate
-  list.innerHTML=items.map(o=>cardHTML(o,ready)).join('');
-  requestAnimationFrame(()=>{
-    const cap=capacityOf(list);
-    if(items.length<=cap){dots.innerHTML='';list.dataset.pages=1;return;}
-    const pages=Math.ceil(items.length/cap);
-    if(pageState[key]>=pages)pageState[key]=0;
-    const start=pageState[key]*cap;
-    list.innerHTML=items.slice(start,start+cap).map(o=>cardHTML(o,ready)).join('');
-    dots.innerHTML=Array.from({length:pages},(_,i)=>'<i class="'+(i===pageState[key]?'on':'')+'"></i>').join('');
-    list.dataset.pages=pages;
-  });
+  if(dots)dots.innerHTML='';                                // no more page-flipping — we shrink + scroll
+  if(!items.length){list.innerHTML='<div class="empty">'+(ready?'No orders ready yet':'No orders in progress')+'</div>';list.scrollTop=0;delete scrollers[key];return;}
+  list.innerHTML=items.map(o=>cardHTML(o,ready)).join('');   // render ALL — nothing is hidden
 }
 function capacityOf(list){
   const first=list.querySelector('.card'); if(!first)return 99;
   const ch=first.getBoundingClientRect().height+ (parseFloat(getComputedStyle(list).rowGap)||0);
   const avail=list.clientHeight; return Math.max(1,Math.floor(avail/ch));
 }
+// scroll manager: any column whose orders overflow the screen gently auto-scrolls (top->bottom->top),
+// pausing at each end, so EVERY order is seen — instead of the old jumpy page-flip.
+const scrollers={};
+function setupScroll(key){const list=document.getElementById(key+'-list');if(!list)return;
+  const over=list.scrollHeight-list.clientHeight;
+  if(over<=6){delete scrollers[key];list.scrollTop=0;return;}
+  const ex=scrollers[key];
+  scrollers[key]={list,over,pos:ex?Math.min(ex.pos,over):0,dir:ex?ex.dir:1,pause:performance.now()+1800};}
+function _scrollTick(t){for(const k in scrollers){const s=scrollers[k];if(t<s.pause)continue;
+    s.pos+=s.dir*0.4;                                       // ~24px/sec — slow and readable
+    if(s.pos>=s.over){s.pos=s.over;s.dir=-1;s.pause=t+2200;}
+    else if(s.pos<=0){s.pos=0;s.dir=1;s.pause=t+2200;}
+    s.list.scrollTop=s.pos;}
+  requestAnimationFrame(_scrollTick);}
+requestAnimationFrame(_scrollTick);
+function _overflows(){return ['prog-list','ready-list'].some(id=>{const l=document.getElementById(id);return l&&(l.scrollHeight-l.clientHeight>6);});}
 function render(){
+  const b=document.querySelector('.board');b.classList.remove('d1','d2');
   renderColumn('prog',DATA.in_progress,false);
   renderColumn('ready',DATA.ready,true);
   DATA.in_progress.concat(DATA.ready).forEach(o=>seen.add(o.id));
-}
-function rotate(){
-  ['prog','ready'].forEach(k=>{const list=document.getElementById(k+'-list');const p=parseInt(list.dataset.pages||1);
-    if(p>1){pageState[k]=(pageState[k]+1)%p;}});
-  if(document.getElementById('prog-list').dataset.pages>1||document.getElementById('ready-list').dataset.pages>1)render();
+  // (A) adaptively tighten spacing so more orders fit; if it STILL overflows, hand off to the scroller.
+  requestAnimationFrame(()=>{
+    if(_overflows()){b.classList.add('d1');
+      requestAnimationFrame(()=>{if(_overflows())b.classList.add('d2');
+        requestAnimationFrame(()=>{setupScroll('prog');setupScroll('ready');});});}
+    else{setupScroll('prog');setupScroll('ready');}
+  });
 }
 function updateWaits(){document.querySelectorAll('[data-wait]').forEach(el=>{
   const t=parseInt(el.getAttribute('data-wait'));el.textContent=Math.max(0,Math.floor((Date.now()-t)/60000))+' min';});}
@@ -228,7 +247,7 @@ tickClock();poll();
 setInterval(tickClock,1000);
 setInterval(updateWaits,1000);
 setInterval(poll,5000);      // real page: pulls /api/order_status
-setInterval(rotate,8000);    // cycle pages when overflowing
+// (page-rotation removed — overflow is handled by shrink-to-fit + gentle auto-scroll)
 window.addEventListener('resize',render);
 </script>
 </body>
