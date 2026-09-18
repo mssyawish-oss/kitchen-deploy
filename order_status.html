@@ -39,20 +39,20 @@ header{height:11vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
 .sun{width:4.4vh;height:4.4vh;flex:0 0 auto}
 .list{flex:1;display:flex;flex-direction:column;gap:1.05vh;padding:.6vh 1.2vw 1.4vh;min-height:0;overflow:hidden}
 /* ---- cards ---- */
-.card{background:var(--card);border-radius:14px;display:flex;align-items:center;
-  padding:1.15vh 1.3vw;gap:1vw;box-shadow:0 1px 0 rgba(0,0,0,.04)}
-.col.ready .card{background:var(--card-ready);box-shadow:none;border-bottom:1px solid var(--line);border-radius:12px}
+.card{background:var(--card);border-radius:16px;display:flex;align-items:center;
+  padding:1.6vh 1.4vw;gap:1.1vw;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.col.ready .card{background:var(--card-ready);box-shadow:none;border-bottom:1px solid var(--line);border-radius:14px}
 .card .who{flex:1 1 40%;min-width:0}
-.card .nm{font-weight:800;font-size:3vh;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .badge{flex:0 0 auto;width:6vh;height:6vh;display:flex;align-items:center;justify-content:center}
+.card .nm{font-weight:800;font-size:3.9vh;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .badge{flex:0 0 auto;width:7.4vh;height:7.4vh;display:flex;align-items:center;justify-content:center}
 .card .badge img{width:100%;height:100%;object-fit:contain;border-radius:20%}
 .card .mid{flex:0 0 26%;text-align:left}
-.card .num{font-weight:800;font-size:3vh;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .tm{font-size:2vh;color:var(--muted);margin-top:.2vh}
+.card .num{font-weight:800;font-size:3.9vh;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .tm{font-size:2.4vh;color:var(--muted);margin-top:.2vh}
 .card .pill{flex:0 0 auto;margin-left:auto;background:var(--pill);color:var(--pill-ink);
-  border-radius:12px;padding:1vh 1.2vw;display:flex;align-items:center;gap:.6vw;
-  font-weight:800;font-size:2.9vh;min-width:9.5vw;justify-content:center}
-.card .pill svg{width:2.9vh;height:2.9vh;flex:0 0 auto}
+  border-radius:12px;padding:1.2vh 1.4vw;display:flex;align-items:center;gap:.6vw;
+  font-weight:800;font-size:3.6vh;min-width:11vw;justify-content:center}
+.card .pill svg{width:3.6vh;height:3.6vh;flex:0 0 auto}
 /* new-order pulse: border of that one card only */
 @keyframes newpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}
   50%{box-shadow:0 0 0 .5vh #ffd24a,0 0 2vh rgba(255,210,74,.6)}}
@@ -183,33 +183,7 @@ function sampleData(){return {
   ]};}
 let DATA={in_progress:[],ready:[]}; const seen=new Set();
 function _hydrate(o){return {id:o.id,name:o.name,number:o.number,source:o.source,created:new Date(o.created)};}
-// ------- DEMO MODE: /status?demo=20 (&ready=8) fabricates orders client-side to preview a busy board.
-// Never calls the server, never touches Square. Only shown on a screen that opens that exact URL.
-const _QS=new URLSearchParams(location.search);
-const DEMO_N=Math.max(0,Math.min(60,parseInt(_QS.get('demo')||'0')||0));
-const DEMO_R=_QS.has('ready')?Math.max(0,Math.min(60,parseInt(_QS.get('ready'))||0)):Math.min(8,Math.round(DEMO_N*0.4));
-let _DEMO=null;
-function demoData(){
-  if(_DEMO) return _DEMO;
-  const first=['Daniel','Sarah','Mike','Priya','John','Lucy','James','Lilly','Marco','Ree','Simone','Aisha','Tom','Grace','Liam','Chloe','Ben','Mia','Noah','Zoe','Ethan','Ava','Jack','Ella','Oscar','Ruby','Leo','Isla','Max','Ivy'];
-  const ini='ABCDEFGHJKLMNPRSTVW';
-  const srcs=['Point of Sale','Point of Sale','Point of Sale','Point of Sale','Kiosk','Square Online','Square Online','Uber Eats','Uber Eats','DoorDash'];
-  let pos=120+Math.floor(Math.random()*40);
-  const mk=(i,mins)=>{
-    const src=srcs[(i*7+3)%srcs.length];
-    const posLike=(src==='Point of Sale');
-    const name=posLike?('Order #'+(pos++)):(first[(i*11)%first.length]+' '+ini[(i*5)%ini.length]);
-    return {id:'demo-'+i,name,number:'',source:src,created:new Date(Date.now()-mins*60000)};
-  };
-  const ip=[],rd=[];
-  for(let i=0;i<DEMO_N;i++) ip.push(mk(i, Math.round(1+i*(17/Math.max(1,DEMO_N-1))) ));   // 1..18 min waits
-  for(let j=0;j<DEMO_R;j++) rd.push(mk(100+j, 8+j*1.5));
-  ip.sort((a,b)=>a.created-b.created);          // oldest-waiting first
-  rd.sort((a,b)=>b.created-a.created);          // most recently ready first
-  _DEMO={in_progress:ip,ready:rd}; return _DEMO;
-}
 async function fetchOrders(){
-  if(DEMO_N) return demoData();
   const r=await fetch('/api/order_status',{cache:'no-store'});
   if(!r.ok) throw new Error('status '+r.status);
   const d=await r.json();
@@ -282,7 +256,17 @@ function render(){
 function updateWaits(){document.querySelectorAll('[data-wait]').forEach(el=>{
   const t=parseInt(el.getAttribute('data-wait'));el.textContent=Math.max(0,Math.floor((Date.now()-t)/60000))+' min';});}
 
-async function poll(){try{const d=await fetchOrders();DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();}catch(e){}}
+// DEMO preview: open /status?demo=N to fill the board with N sample orders per column (only for whoever
+// opens that link — the real board is untouched). Handy to check readability from a distance.
+const DEMO=Math.max(0,parseInt(new URLSearchParams(location.search).get('demo'))||0);
+function _demoData(n){
+  const srcs=['Uber Eats','Point of Sale','DoorDash','Square Online','Point of Sale'];
+  const nm=['Daniel K','Order #15','Mike T','Sarah M','Simone P','James S','Lilly P','Lucy B','Aaron W','Bianca R','Chris D','Emma L','Farid N','Grace O','Henry P','Isla Q','Jack R','Kira S','Liam T','Mia U','Noah V','Owen W','Priya X','Quinn Y'];
+  const mk=(i,src,mins)=>({id:'demo'+src+i,name:nm[i%nm.length],number:'#'+(100+i),source:src,created:new Date(Date.now()-mins*60000)});
+  const ip=[],rd=[];for(let i=0;i<n;i++){ip.push(mk(i,srcs[i%srcs.length],2+i));rd.push(mk(i+40,srcs[(i+2)%srcs.length],1+i));}
+  return {in_progress:ip,ready:rd};
+}
+async function poll(){try{const d=DEMO?_demoData(DEMO):await fetchOrders();DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();}catch(e){}}
 tickClock();poll();
 setInterval(tickClock,1000);
 setInterval(updateWaits,1000);
