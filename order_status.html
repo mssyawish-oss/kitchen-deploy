@@ -183,7 +183,33 @@ function sampleData(){return {
   ]};}
 let DATA={in_progress:[],ready:[]}; const seen=new Set();
 function _hydrate(o){return {id:o.id,name:o.name,number:o.number,source:o.source,created:new Date(o.created)};}
+// ------- DEMO MODE: /status?demo=20 (&ready=8) fabricates orders client-side to preview a busy board.
+// Never calls the server, never touches Square. Only shown on a screen that opens that exact URL.
+const _QS=new URLSearchParams(location.search);
+const DEMO_N=Math.max(0,Math.min(60,parseInt(_QS.get('demo')||'0')||0));
+const DEMO_R=_QS.has('ready')?Math.max(0,Math.min(60,parseInt(_QS.get('ready'))||0)):Math.min(8,Math.round(DEMO_N*0.4));
+let _DEMO=null;
+function demoData(){
+  if(_DEMO) return _DEMO;
+  const first=['Daniel','Sarah','Mike','Priya','John','Lucy','James','Lilly','Marco','Ree','Simone','Aisha','Tom','Grace','Liam','Chloe','Ben','Mia','Noah','Zoe','Ethan','Ava','Jack','Ella','Oscar','Ruby','Leo','Isla','Max','Ivy'];
+  const ini='ABCDEFGHJKLMNPRSTVW';
+  const srcs=['Point of Sale','Point of Sale','Point of Sale','Point of Sale','Kiosk','Square Online','Square Online','Uber Eats','Uber Eats','DoorDash'];
+  let pos=120+Math.floor(Math.random()*40);
+  const mk=(i,mins)=>{
+    const src=srcs[(i*7+3)%srcs.length];
+    const posLike=(src==='Point of Sale');
+    const name=posLike?('Order #'+(pos++)):(first[(i*11)%first.length]+' '+ini[(i*5)%ini.length]);
+    return {id:'demo-'+i,name,number:'',source:src,created:new Date(Date.now()-mins*60000)};
+  };
+  const ip=[],rd=[];
+  for(let i=0;i<DEMO_N;i++) ip.push(mk(i, Math.round(1+i*(17/Math.max(1,DEMO_N-1))) ));   // 1..18 min waits
+  for(let j=0;j<DEMO_R;j++) rd.push(mk(100+j, 8+j*1.5));
+  ip.sort((a,b)=>a.created-b.created);          // oldest-waiting first
+  rd.sort((a,b)=>b.created-a.created);          // most recently ready first
+  _DEMO={in_progress:ip,ready:rd}; return _DEMO;
+}
 async function fetchOrders(){
+  if(DEMO_N) return demoData();
   const r=await fetch('/api/order_status',{cache:'no-store'});
   if(!r.ok) throw new Error('status '+r.status);
   const d=await r.json();
