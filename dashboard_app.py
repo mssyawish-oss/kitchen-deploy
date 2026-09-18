@@ -3287,28 +3287,88 @@ def _sq_find_modifier_by_name(name):
         print("find_modifier_by_name:",e); return None
     return hits[0] if len(hits)==1 else None
 
+def _norm_name(s):
+    # normalise an add-on name so slight spelling differences count as the SAME add-on:
+    # case, punctuation, '&' vs 'and', and spacing are all ignored.
+    return re.sub(r'[^a-z0-9]','',(s or "").lower().replace("&","and"))
+
+def _sq_all_modifier_ids_by_norm(name):
+    """Every LIVE modifier id whose name matches `name` after normalising — so
+    'PUMPKIN & BEETROOT SALAD' and 'PUMPKIN BEETROOT SALAD' are treated as one add-on."""
+    target=_norm_name(name)
+    if not target: return []
+    hdr=_sq_headers()
+    if not hdr: return []
+    ids=[]; cursor=None
+    try:
+        for _pg in range(40):
+            u=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER_LIST"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
+                data=json.loads(r.read().decode())
+            for ml in data.get("objects") or []:
+                for mod in ((ml.get("modifier_list_data") or {}).get("modifiers") or []):
+                    if _norm_name((mod.get("modifier_data") or {}).get("name"))==target:
+                        ids.append(mod.get("id"))
+            cursor=data.get("cursor")
+            if not cursor: break
+    except Exception as e:
+        print("all_modifier_ids_by_norm:",str(e)[:120])
+    return list(dict.fromkeys(ids))
+
+def _sq_disable_modifier_all(vid,name):
+    """Switch an add-on OFF across EVERY copy. The same side often exists as several modifier objects
+    named slightly differently across menus; turning off just the tapped one leaves the twins orderable.
+    Match by normalised name, archive+delete each, then re-scan to CONFIRM none remain live."""
+    vid=_sq_follow_mod_id(vid)
+    if not name:                                    # discover the real name if the caller didn't send one
+        try:
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=_sq_headers()),timeout=20,context=SSL_CTX) as r:
+                name=((((json.loads(r.read().decode()) or {}).get("object") or {}).get("modifier_data") or {}).get("name")) or ""
+        except Exception: name=""
+    ids=[vid]+([i for i in _sq_all_modifier_ids_by_norm(name) if i!=vid] if name else [])
+    ids=list(dict.fromkeys([i for i in ids if i]))
+    done=0; lasterr=None
+    for _id in ids:
+        try: o,e=_sq_disable_modifier(_id)
+        except Exception as ex: o,e=False,str(ex)[:140]
+        if o: done+=1
+        elif e and "404" in str(e): continue        # a listed copy already vanished — fine
+        elif e: lasterr=e
+    if name:
+        remain=_sq_all_modifier_ids_by_norm(name)
+        if not remain: return True,None
+        return False,("switched off %d, but %d cop%s still showing on POS — tap again in a moment"
+                      %(done,len(remain),"y" if len(remain)==1 else "ies"))
+    return (done>0),(None if done>0 else (lasterr or "couldn't switch this add-on off"))
+
+def _sq_restore_modifier_all(vid):
+    """Turn an add-on back ON across every archived copy (the reverse of the cascade off)."""
+    bin_=db.get("mod_86_bin") or {}
+    b=bin_.get(vid); target=_norm_name((b or {}).get("name")) if b else None
+    ids=[vid]+([k for k,v in bin_.items() if k!=vid and target and _norm_name(v.get("name"))==target] if target else [])
+    ids=list(dict.fromkeys([i for i in ids if i]))
+    done=0; lasterr=None
+    for _id in ids:
+        try: o,e=_sq_restore_modifier(_id)
+        except Exception as ex: o,e=False,str(ex)[:140]
+        if o: done+=1
+        elif e: lasterr=e
+    return (done>0),(None if done>0 else (lasterr or "couldn't bring this add-on back"))
+
 @app.route("/api/product_disable",methods=["POST"])
 def api_product_disable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
     kind=str(d.get("kind") or ""); nm=str(d.get("name") or "")
-    fn=_sq_disable_modifier if kind=="modifier" else _sq_disable_variation
-    if kind=="modifier": vid=_sq_follow_mod_id(vid)      # stale listing? follow the rename chain first
-    ok,err=fn(vid)
-    if not ok and err and "404" in str(err) and kind=="modifier":
-        # The id is genuinely gone and we have no mapping for it. Re-resolve by name and retry once,
-        # instead of making the owner search again and re-click (they hit this twice on 6 Aug).
-        alt=_sq_find_modifier_by_name(nm)
-        if alt and alt!=vid:
-            ok,err=fn(alt)
-            if ok: print("product_disable: followed '%s' %s -> %s"%(nm,vid,alt))
-        if not ok and not alt:
-            err=("couldn't find an add-on called \"%s\" in Square any more — it may have been renamed or deleted"%nm) if nm \
-                else "this listing is out of date — search again"
-    elif not ok and err and "404" in str(err):
-        err="Square rejected the change (404 from its API) — tell Claude; this is a bug, not your listing"
-    elif not ok and err and "POS" not in str(err):
-        time.sleep(0.8); ok,err=fn(vid)
+    if kind=="modifier":
+        # CASCADE: switch OFF every copy of this add-on (matched by normalised name) + verify none remain.
+        # Replaces the old single-id disable that left differently-spelled twins live on POS/online.
+        ok,err=_sq_disable_modifier_all(vid,nm)
+    else:
+        ok,err=_sq_disable_variation(vid)
+        if not ok and err and "POS" not in str(err):
+            time.sleep(0.8); ok,err=_sq_disable_variation(vid)
     _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
     if ok:
         # Fresh grace clock NOW. The offline scan only clears a stamp when it SEES the product back on
@@ -3323,12 +3383,15 @@ def api_product_disable():
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
     if not vid: return jsonify({"ok":False,"error":"no id"})
-    ok,err=_sq_enable_variation(vid)
-    if not ok and err and "add-on" not in str(err):
-        # transient Square hiccup (e.g. concurrent edits to sibling sizes of the same item bump
-        # versions under us) — one fresh read-modify-write attempt fixes virtually all of them
-        time.sleep(0.8)
+    if vid in (db.get("mod_86_bin") or {}):
+        ok,err=_sq_restore_modifier_all(vid)     # cascade: bring back EVERY archived copy of this add-on
+    else:
         ok,err=_sq_enable_variation(vid)
+        if not ok and err and "add-on" not in str(err):
+            # transient Square hiccup (e.g. concurrent edits to sibling sizes of the same item bump
+            # versions under us) — one fresh read-modify-write attempt fixes virtually all of them
+            time.sleep(0.8)
+            ok,err=_sq_enable_variation(vid)
     try: _PSRCH_CACHE["at"]=0     # revive swaps mint new ids — refresh the search index
     except Exception: pass
     if ok:
