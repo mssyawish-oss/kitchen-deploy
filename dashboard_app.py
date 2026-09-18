@@ -1539,26 +1539,83 @@ def _kds_cfg():
     c.setdefault("enabled",False); c.setdefault("url","http://192.168.0.167:8080")
     c.setdefault("interval",6); c.setdefault("confirm",2)
     return c
+_FFMPEG_BIN=None
+def _ffmpeg_bin():
+    # Resolve the ffmpeg executable robustly. Relying on the bare name "ffmpeg" broke after a reboot
+    # (server started without ffmpeg on PATH → WinError 2). Check an explicit db override, then PATH,
+    # then the usual Windows install spots; only cache a real hit so a later fix is still picked up.
+    global _FFMPEG_BIN
+    if _FFMPEG_BIN: return _FFMPEG_BIN
+    import shutil,glob
+    cands=[]
+    try:
+        p=(db.get("ffmpeg_path") or "").strip()
+        if p: cands.append(p)
+    except Exception: pass
+    w=shutil.which("ffmpeg")
+    if w: cands.append(w)
+    la=os.environ.get("LOCALAPPDATA","")
+    cands+=[r"C:\ffmpeg\bin\ffmpeg.exe",r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+            r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",os.path.join(BASE_DIR,"ffmpeg.exe")]
+    if la:
+        cands.append(os.path.join(la,"Microsoft","WinGet","Links","ffmpeg.exe"))
+        try: cands+=glob.glob(os.path.join(la,"Microsoft","WinGet","Packages","Gyan.FFmpeg*","ffmpeg-*","bin","ffmpeg.exe"))
+        except Exception: pass
+    for c in cands:
+        try:
+            if c and os.path.exists(c): _FFMPEG_BIN=c; return c
+        except Exception: pass
+    return "ffmpeg"   # last resort: hope it's on PATH (don't cache, so a later fix is retried)
+def _mjpeg_grab(url,timeout=8):
+    # Pull ONE JPEG straight from an MJPEG (multipart) HTTP stream in pure Python — NO ffmpeg needed,
+    # so the KDS reader works even if ffmpeg isn't installed/on PATH. Scans bytes for a full JPEG.
+    try:
+        req=urllib.request.Request(url,headers={"User-Agent":"brunos-kds"})
+        with urllib.request.urlopen(req,timeout=timeout) as r:
+            buf=b""; deadline=time.time()+timeout
+            while time.time()<deadline:
+                chunk=r.read(8192)
+                if not chunk: break
+                buf+=chunk
+                s=buf.find(b"\xff\xd8")
+                if s>=0:
+                    e=buf.find(b"\xff\xd9",s+2)
+                    if e>=0: return buf[s:e+2],None
+                if len(buf)>6000000: break
+        return None,"no jpeg in stream"
+    except Exception as ex:
+        return None,str(ex)[:160]
 def _kds_frame(cfg):
     url=(cfg.get("url") or "").rstrip("/")
     if not url: return None,"no url"
-    import subprocess; last=""
+    # 1) native MJPEG grab first (no ffmpeg dependency) — Screen Stream serves /stream.mjpeg
+    jpeg,err=_mjpeg_grab(url+"/stream.mjpeg")
+    if jpeg and jpeg[:2]==b"\xff\xd8": return jpeg,None
+    last=err or ""
+    # 2) fall back to ffmpeg if present (also handles a plain "/" snapshot)
+    import subprocess
     for u in (url+"/stream.mjpeg", url+"/"):
         try:
-            p=subprocess.run(["ffmpeg","-nostdin","-i",u,"-frames:v","1","-q:v","4","-f","image2","-"],
+            p=subprocess.run([_ffmpeg_bin(),"-nostdin","-i",u,"-frames:v","1","-q:v","4","-f","image2","-"],
                              capture_output=True,timeout=15)
             if p.returncode==0 and p.stdout[:2]==b"\xff\xd8": return p.stdout,None
             last=(p.stderr or b"")[-160:].decode("latin1","ignore")
         except Exception as e: last=str(e)[:160]
     return None,("no frame: "+last)
-_KDS_PROMPT=("This is a kitchen 'Expo' order-display screen showing order tickets. Look ONLY at the tickets "
+_KDS_PROMPT=("This is a kitchen 'Expo' order-display screen showing order tickets. FIRST decide which tab is "
+  "on screen. If the tickets have a 'Recall ticket' button, or the 'Completed' tab at the top is the "
+  "highlighted/selected one, then these are ALREADY-DONE orders (the Completed view) — in that case output "
+  "the single token COMPLETED_VIEW and nothing else. Otherwise it is the OPEN list (open tickets have a bump "
+  "control, NOT a 'Recall ticket' button). Look ONLY at the tickets "
   "in the OPEN list (ignore the 'Completed' tab, the top status bar, and the page arrows). For EACH open "
   "ticket output ONE line, exactly 'NAME | CHANNEL', where:\n"
   "- NAME = the big bold customer name OR order number at the very top-left of the ticket (e.g. '149' or "
   "'Nick M.').\n"
   "- CHANNEL = the ordering channel, which is the SMALL grey text on the ticket, and must be one of: "
   "Point of Sale, Kiosk, Online, Uber Eats, DoorDash. Do NOT output the order type (Takeaway, Delivery, "
-  "Dine In) — that is different from the channel. If a ticket says 'Point of Sale' use exactly that.\n"
+  "Dine In) — that is different from the channel. If a ticket says 'Point of Sale' use exactly that. If that "
+  "small text is instead a STAFF MEMBER'S NAME (a person's name, e.g. 'James Dryden'), the order was rung up "
+  "in-store at the register, so output 'Point of Sale' for it.\n"
   "If there are NO open tickets, output the single word NONE.")
 def _kds_read_tickets(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
@@ -1577,6 +1634,7 @@ def _kds_read_tickets(jpeg):
         with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
         parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
         txt="".join(pp.get("text","") for pp in parts if isinstance(pp,dict)).strip()
+        if "COMPLETED_VIEW" in txt.upper(): return "COMPLETED_VIEW",txt   # staff peeking at the Completed tab
         if txt.strip().upper()=="NONE": return [],txt
         out=[]
         for line in txt.splitlines():
@@ -1607,6 +1665,12 @@ def _kds_check_once(save=False,force=False):
                 "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"skipped":True}
     tickets,raw=_kds_read_tickets(jpeg)
     KDS_SCREEN["at"]=now; KDS_SCREEN["raw"]=raw; KDS_SCREEN["err"]=""
+    if tickets=="COMPLETED_VIEW":
+        # Staff are looking at the Completed tab. Do NOT touch the open set or compute bumps — those are
+        # finished orders; treating them as open would re-post done orders, and treating their absence (when
+        # staff flip back) as a bump would flood READY. Just leave the board exactly as it was.
+        return {"open":[{"name":e["name"],"source":e.get("source","")} for e in (KDS_SCREEN.get("open") or {}).values()],
+                "bumped_keys":list(KDS_SCREEN.get("bumped",{}).keys()),"completed_view":True}
     if tickets is None:
         KDS_SCREEN["err"]="unreadable"; return {"err":"unreadable","raw":raw}
     KDS_SCREEN["tickets"]=tickets
