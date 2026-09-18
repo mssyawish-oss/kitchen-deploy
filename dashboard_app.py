@@ -3288,9 +3288,11 @@ def _sq_find_modifier_by_name(name):
     return hits[0] if len(hits)==1 else None
 
 def _norm_name(s):
-    # normalise an add-on name so slight spelling differences count as the SAME add-on:
-    # case, punctuation, '&' vs 'and', and spacing are all ignored.
-    return re.sub(r'[^a-z0-9]','',(s or "").lower().replace("&","and"))
+    # normalise an add-on name so slight spelling differences count as the SAME add-on: DROP '&' and the
+    # word 'and' (so 'A & B' == 'A B' == 'A and B'), then strip all punctuation/spacing and lowercase.
+    # e.g. 'PUMPKIN BEETROOT SALAD' and 'Pumpkin & Beetroot Salad' both -> 'pumpkinbeetrootsalad'.
+    s=re.sub(r'&|\band\b',' ',(s or "").lower())
+    return re.sub(r'[^a-z0-9]','',s)
 
 def _sq_all_modifier_ids_by_norm(name):
     """Every LIVE modifier id whose name matches `name` after normalising — so
