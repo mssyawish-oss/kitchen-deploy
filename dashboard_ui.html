@@ -5153,9 +5153,14 @@ function renderProbes(){
     const pidN=parseInt(pid),st=probeStates[pidN]||{status:'idle',alerted:false};
     const status=st.status,acked=st.alerted,cardCls=(status==='idle'||status==='standby')?'':acked?status+' acked':status;
     if(prevStatuses[pidN]!==status){
-      if(status==='almost'){stopProbeAlarm(pidN,false);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}
-      if(status==='ready'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'ready');if(!_devPopMuted('probeReady'))showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
-      if(status==='overdone'){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'overdone');if(!_devPopMuted('probeOverdone'))showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
+      // Honour an active silence THROUGH a status wobble: a bird sitting on a threshold flips
+      // ready<->overdone (or almost<->ready) as the temp jitters a degree. Each flip is a "status change",
+      // and re-sounding here (which also wiped the snooze) is why a Silence/snooze "didn't register" and
+      // why the other dash re-rang after syncing the silence. If it's snoozed, leave the snooze alone.
+      const _snz=_probeSnoozed(pidN);
+      if(status==='almost'){if(!_snz){stopProbeAlarm(pidN,false);if(_acfg('probeAlmost').enabled)_alarmHit('probeAlmost');}}
+      if(status==='ready'){if(!_snz){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'ready');}if(!_devPopMuted('probeReady'))showLockBanner('&#10003; Probe '+pidN+' READY',p.name||('Probe '+pidN));}
+      if(status==='overdone'){if(!_snz){stopProbeAlarm(pidN,false);startProbeAlarm(pidN,'overdone');}if(!_devPopMuted('probeOverdone'))showLockBanner('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Probe '+pidN+' OVERDONE',p.name||('Probe '+pidN));}
       if(status==='idle'||status==='standby')stopProbeAlarm(pidN,false);   // genuinely pulled → clear the snooze too
       delete _probePopDismissed[pidN];   // status changed → allow the popup to show again
       if(status==='ready'||status==='overdone')_paint();   // force the Silence button to appear without needing a tap
@@ -9279,6 +9284,19 @@ async function init(){
     sectionUnlockedAt={};
     if(typeof _toast==='function')_toast('Menu closed — idle for 30s');
   },5000);   // self-update: auto-reload when a new screen build is deployed
+  // Kiosk auto-return: after 5 min with NO interaction, snap back to the temperature (home) page from
+  // whatever page was left open, so the screen resets itself for the next person. Any touch/scroll/keypress
+  // resets the timer (shared _uiIdleLast). Skipped while a modal or the lock screen is up, so it never
+  // yanks the view mid-task.
+  setInterval(()=>{
+    if(Date.now()-window._uiIdleLast<300000)return;                 // active within the last 5 min
+    const home=(typeof _viewHome==='function')?_viewHome():'probes';
+    const act=document.querySelector('.page.active');const cur=act?act.id.replace('page-',''):'';
+    if(!cur||cur===home)return;                                     // already on the temp page
+    if(document.querySelector('.modal-overlay.open'))return;        // don't interrupt an open dialog
+    const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;
+    navTo(home);
+  },15000);
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();
