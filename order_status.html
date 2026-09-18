@@ -118,7 +118,7 @@ header{height:11vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
 .board.big .card .tm{font-size:3vh;margin-top:0}
 .board.big .card .pill{order:4;margin-left:auto;font-size:4.6vh;min-width:auto;padding:1.1vh 1.8vw;gap:.8vw}
 .board.big .card .pill svg{width:4.6vh;height:4.6vh}
-.board.big .col h2{font-size:7vh}
+.board.big .col h2{font-size:5.2vh;white-space:nowrap}
 .board.big .empty{font-size:4vh}
 @media (orientation:portrait){
   .board.big .card .badge{width:9vw;height:9vw}
@@ -149,12 +149,12 @@ header{height:11vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
   </header>
   <div class="board">
     <section class="col prog">
-      <h2>IN PROGRESS</h2>
+      <h2>WORKING ON IT</h2>
       <div class="list" id="prog-list"></div>
       <div class="dots" id="prog-dots"></div>
     </section>
     <section class="col ready">
-      <h2>READY FOR COLLECTION
+      <h2>READY
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="#C13A27" stroke-width="2.4" stroke-linecap="round">
           <path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
         </svg>
@@ -238,7 +238,7 @@ const pageState={prog:0,ready:0};
 function renderColumn(key,items,ready){
   const list=document.getElementById(key+'-list'),dots=document.getElementById(key+'-dots');
   if(dots)dots.innerHTML='';                                // no more page-flipping — we shrink + scroll
-  if(!items.length){list.innerHTML='<div class="empty">'+(ready?'No orders ready yet':'No orders in progress')+'</div>';list.scrollTop=0;delete scrollers[key];return;}
+  if(!items.length){list.innerHTML='<div class="empty">'+(ready?'No orders ready yet':'No orders in progress')+'</div>';list.scrollTop=0;return;}
   list.innerHTML=items.map(o=>cardHTML(o,ready)).join('');   // render ALL — nothing is hidden
 }
 function capacityOf(list){
@@ -246,19 +246,22 @@ function capacityOf(list){
   const ch=first.getBoundingClientRect().height+ (parseFloat(getComputedStyle(list).rowGap)||0);
   const avail=list.clientHeight; return Math.max(1,Math.floor(avail/ch));
 }
-// scroll manager: any column whose orders overflow the screen gently auto-scrolls (top->bottom->top),
-// pausing at each end, so EVERY order is seen — instead of the old jumpy page-flip.
-const scrollers={};
-function setupScroll(key){const list=document.getElementById(key+'-list');if(!list)return;
-  const over=list.scrollHeight-list.clientHeight;
-  if(over<=6){delete scrollers[key];list.scrollTop=0;return;}
-  const ex=scrollers[key];
-  scrollers[key]={list,over,pos:ex?Math.min(ex.pos,over):0,dir:ex?ex.dir:1,pause:performance.now()+1800};}
-function _scrollTick(t){for(const k in scrollers){const s=scrollers[k];if(t<s.pause)continue;
-    s.pos+=s.dir*0.4;                                       // ~24px/sec — slow and readable
-    if(s.pos>=s.over){s.pos=s.over;s.dir=-1;s.pause=t+2200;}
-    else if(s.pos<=0){s.pos=0;s.dir=1;s.pause=t+2200;}
-    s.list.scrollTop=s.pos;}
+// scroll manager: when orders overflow, BOTH columns auto-scroll TOGETHER in the SAME direction
+// (down together, pause, up together, pause) using one shared phase, so they never drift apart.
+// Each column maps the shared 0..1 phase onto its own overflow amount.
+let _scrPhase=0,_scrDir=1,_scrPause=performance.now()+1500;
+function setupScroll(){}                                    // no-op: the shared ticker reads the DOM live
+function _scrollTick(t){
+  const cols=['prog-list','ready-list'].map(id=>document.getElementById(id)).filter(Boolean);
+  const overs=cols.map(l=>Math.max(0,l.scrollHeight-l.clientHeight));
+  const maxOver=Math.max(0,...overs);
+  if(maxOver<=6){cols.forEach(l=>{l.scrollTop=0;});_scrPhase=0;_scrDir=1;_scrPause=t+1200;requestAnimationFrame(_scrollTick);return;}
+  if(t>=_scrPause){
+    _scrPhase+=(_scrDir*0.62)/maxOver;                      // ~37px/sec on the longest column — a touch faster
+    if(_scrPhase>=1){_scrPhase=1;_scrDir=-1;_scrPause=t+2000;}
+    else if(_scrPhase<=0){_scrPhase=0;_scrDir=1;_scrPause=t+2000;}
+  }
+  cols.forEach((l,i)=>{l.scrollTop=_scrPhase*overs[i];});
   requestAnimationFrame(_scrollTick);}
 requestAnimationFrame(_scrollTick);
 function _overflows(){return ['prog-list','ready-list'].some(id=>{const l=document.getElementById(id);return l&&(l.scrollHeight-l.clientHeight>6);});}
