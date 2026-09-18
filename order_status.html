@@ -234,7 +234,7 @@ const pageState={prog:0,ready:0};
 function renderColumn(key,items,ready){
   const list=document.getElementById(key+'-list'),dots=document.getElementById(key+'-dots');
   if(dots)dots.innerHTML='';                                // no more page-flipping — we shrink + scroll
-  if(!items.length){list.innerHTML='<div class="empty">'+(ready?'No orders ready yet':'No orders in progress')+'</div>';list.scrollTop=0;return;}
+  if(!items.length){list.innerHTML='';list.scrollTop=0;return;}   // empty column shows nothing (no placeholder text)
   list.innerHTML=items.map(o=>cardHTML(o,ready)).join('');   // render ALL — nothing is hidden
 }
 function capacityOf(list){
