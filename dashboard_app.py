@@ -1503,8 +1503,9 @@ def _order_status_payload():
         if src.lower() in cfg["hide"]: continue
         created=_parse_dt(o.get("created_at"))
         if not created: continue
-        # SAME-DAY ONLY: hide pre-orders scheduled for a future day (customers ordering online for
-        # tomorrow etc. shouldn't sit on today's board). Uses the SCHEDULED fulfillment pickup/deliver time.
+        # SCHEDULED pre-orders only appear once they're near their pickup time — a same-day later order
+        # (or tomorrow's) shouldn't clutter the board hours early. Show only within `sched_lead_min`
+        # (default 30) minutes before the scheduled pickup/deliver time.
         _due=None
         for _fu in (o.get("fulfillments") or []):
             _pd=_fu.get("pickup_details") or {}; _dd=_fu.get("delivery_details") or {}
@@ -1512,9 +1513,9 @@ def _order_status_payload():
                 _d=_parse_dt(_pd.get("pickup_at") or _dd.get("deliver_at"))
                 if _d and (_due is None or _d<_due): _due=_d
         if _due:
-            try:
-                if _due.astimezone().date() > datetime.now().date(): continue
-            except Exception: pass
+            try: _lead=int(db.get("order_status_sched_lead_min",30) or 30)
+            except Exception: _lead=30
+            if time.time() < (_due.timestamp()-_lead*60): continue   # still too early → hide for now
         ff=[(fu.get("state") or "").upper() for fu in (o.get("fulfillments") or [])]
         if ff and all(s in ("CANCELED","CANCELLED","FAILED") for s in ff): continue   # cancelled: never show
         fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
