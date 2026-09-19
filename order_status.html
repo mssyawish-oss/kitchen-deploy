@@ -301,6 +301,11 @@ tickClock();poll();
 setInterval(tickClock,1000);
 setInterval(updateWaits,1000);
 setInterval(poll,5000);      // real page: pulls /api/order_status
+// AUTO-UPDATE: reload the page when the server deploys a new build, so layout/design changes appear on
+// the tablet on their own (no manual reload). Watches the server's applied commit sha.
+let _bootSha=null;
+async function _checkBuild(){try{const r=await fetch('/api/selfupdate_status',{cache:'no-store'});const d=await r.json();const s=(d&&d.applied_sha)||'';if(!s)return;if(_bootSha===null)_bootSha=s;else if(s!==_bootSha)location.reload(true);}catch(e){}}
+setInterval(_checkBuild,60000); _checkBuild();
 // (page-rotation removed — overflow is handled by shrink-to-fit + gentle auto-scroll)
 window.addEventListener('resize',render);
 </script>
