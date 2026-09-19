@@ -108,18 +108,16 @@ header{height:14vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
 .board.d2 .card .pill{font-size:2.1vh;min-width:8vw;padding:.5vh 1vw}
 /* BIG mode (?big=1): ~double-size cards for reading from 3-4m. Density shrink is disabled in big mode
    (cards stay big); overflow is handled purely by the slow auto-scroll. */
-.board.big .list{gap:1.1vh;padding:.8vh 1.2vw 1.4vh}
-/* two-row GRID card: badge spans left; name on row1; number+time on row2 with the wait pill aligned
-   to the right of that same row → compact (only two rows deep) while keeping the big name. */
-.board.big .card{display:grid;grid-template-columns:auto 1fr auto;column-gap:1.4vw;row-gap:.2vh;align-items:center;padding:1vh 1.7vw;border-radius:18px}
-.board.big .card .badge{grid-row:1 / span 2;width:8vh;height:8vh}
-.board.big .card .who{grid-column:2;grid-row:1;min-width:0}
+.board.big .list{gap:1.4vh;padding:.8vh 1.2vw 1.4vh}
+.board.big .card{padding:1.35vh 1.7vw;gap:1.4vw;border-radius:20px;flex-wrap:wrap;row-gap:.3vh}
+.board.big .card .badge{order:1;width:10vh;height:10vh}
+.board.big .card .who{order:2;flex:1 1 55%;min-width:0}
 .board.big .card .nm{font-size:6vh}
-.board.big .card .mid{grid-column:2;grid-row:2;display:flex;gap:1.2vw;align-items:baseline}
-.board.big .card .num{font-size:3.6vh}
-.board.big .card .tm{font-size:2.4vh;margin-top:0}
-.board.big .card .pill{grid-column:3;grid-row:2;justify-self:end;align-self:center;margin-left:0;font-size:3.4vh;min-width:auto;padding:.65vh 1.3vw;gap:.5vw}
-.board.big .card .pill svg{width:3.4vh;height:3.4vh}
+.board.big .card .mid{order:3;flex:0 0 auto;display:flex;align-items:baseline;gap:1.4vw}
+.board.big .card .num{font-size:4.4vh}
+.board.big .card .tm{font-size:3vh;margin-top:0}
+.board.big .card .pill{order:4;margin-left:auto;font-size:4.6vh;min-width:auto;padding:1.1vh 1.8vw;gap:.8vw}
+.board.big .card .pill svg{width:4.6vh;height:4.6vh}
 .board.big .col h2{font-size:5.2vh;white-space:nowrap;padding:2.8vh 1.6vw 1.2vh}
 .board.big .empty{font-size:4vh}
 @media (orientation:portrait){
