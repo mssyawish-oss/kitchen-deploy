@@ -1488,6 +1488,8 @@ def _status_number(o):
     # only a short, customer-meaningful reference. Numbered POS tickets carry their number in the name
     # ("Order #80"); delivery orders (Uber/DoorDash) use a long UUID as reference_id — useless to a
     # customer and it wraps the card, so suppress it and let the name identify the order.
+    src=((o.get("source") or {}).get("name") or "").strip().lower()
+    if src=="square online": return ""   # Marcel: online shows the name only, no number
     ref=(o.get("reference_id") or "").strip().lstrip('#')
     if not ref or '-' in ref or len(ref)>12: return ""
     return "#"+ref

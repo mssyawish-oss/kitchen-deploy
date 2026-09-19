@@ -108,16 +108,17 @@ header{height:14vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
 .board.d2 .card .pill{font-size:2.1vh;min-width:8vw;padding:.5vh 1vw}
 /* BIG mode (?big=1): ~double-size cards for reading from 3-4m. Density shrink is disabled in big mode
    (cards stay big); overflow is handled purely by the slow auto-scroll. */
-.board.big .list{gap:1.4vh;padding:.8vh 1.2vw 1.4vh}
-.board.big .card{padding:1.35vh 1.7vw;gap:1.4vw;border-radius:20px;flex-wrap:wrap;row-gap:.3vh}
-.board.big .card .badge{order:1;width:10vh;height:10vh}
-.board.big .card .who{order:2;flex:1 1 55%;min-width:0}
+.board.big .list{gap:1.2vh;padding:.8vh 1.2vw 1.4vh}
+/* wait pill sits on the NAME row (line 1, right); number+time drop to line 2 under the name */
+.board.big .card{padding:1.1vh 1.7vw;gap:1.3vw;border-radius:20px;flex-wrap:wrap;align-items:center;row-gap:.1vh}
+.board.big .card .badge{order:1;width:8.5vh;height:8.5vh}
+.board.big .card .who{order:2;flex:1 1 auto;min-width:0}
 .board.big .card .nm{font-size:6vh}
-.board.big .card .mid{order:3;flex:0 0 auto;display:flex;align-items:baseline;gap:1.4vw}
-.board.big .card .num{font-size:4.4vh}
-.board.big .card .tm{font-size:3vh;margin-top:0}
-.board.big .card .pill{order:4;margin-left:auto;font-size:4.6vh;min-width:auto;padding:1.1vh 1.8vw;gap:.8vw}
-.board.big .card .pill svg{width:4.6vh;height:4.6vh}
+.board.big .card .pill{order:3;margin-left:auto;font-size:3.8vh;min-width:auto;padding:.7vh 1.4vw;gap:.6vw}
+.board.big .card .pill svg{width:3.8vh;height:3.8vh}
+.board.big .card .mid{order:4;flex:1 1 100%;display:flex;align-items:baseline;gap:1.4vw;margin-left:calc(8.5vh + 1.3vw)}
+.board.big .card .num{font-size:3.4vh}
+.board.big .card .tm{font-size:2.6vh;margin-top:0}
 .board.big .col h2{font-size:5.2vh;white-space:nowrap;padding:2.8vh 1.6vw 1.2vh}
 .board.big .empty{font-size:4vh}
 @media (orientation:portrait){
@@ -283,10 +284,16 @@ function updateWaits(){document.querySelectorAll('[data-wait]').forEach(el=>{
 const DEMO=Math.max(0,parseInt(new URLSearchParams(location.search).get('demo'))||0);
 const BIG=/^(1|true|yes|on)$/i.test(new URLSearchParams(location.search).get('big')||'');   // ?big=1 → ~double-size cards
 function _demoData(n){
-  const srcs=['Uber Eats','Point of Sale','DoorDash','Square Online','Point of Sale'];
-  const nm=['Daniel K','Order #15','Mike T','Sarah M','Simone P','James S','Lilly P','Lucy B','Aaron W','Bianca R','Chris D','Emma L','Farid N','Grace O','Henry P','Isla Q','Jack R','Kira S','Liam T','Mia U','Noah V','Owen W','Priya X','Quinn Y'];
-  const mk=(i,src,mins)=>({id:'demo'+src+i,name:nm[i%nm.length],number:'#'+(100+i),source:src,created:new Date(Date.now()-mins*60000)});
-  const ip=[],rd=[];for(let i=0;i<n;i++){ip.push(mk(i,srcs[i%srcs.length],2+i));rd.push(mk(i+40,srcs[(i+2)%srcs.length],1+i));}
+  // realistic mix: in-store = "Order #N" (no name/number); delivery = customer name + number;
+  // Square Online = name only (no number).
+  const nm=['Nick M','Sarah M','James S','Lilly P','Aaron W','Bianca R','Chris D','Emma L','Grace O','Owen W','Priya X','Liam T'];
+  const dsrc=['Uber Eats','DoorDash','Square Online'];
+  const mk=(i,base,mins)=>{
+    if(i%2===0) return {id:'demo'+base+i,name:'Order #'+(base+i),number:'',source:'Point of Sale',created:new Date(Date.now()-mins*60000)};
+    const src=dsrc[((i-1)/2|0)%dsrc.length];
+    return {id:'demo'+base+i,name:nm[i%nm.length],number:(src==='Square Online'?'':'#'+(1000+base+i)),source:src,created:new Date(Date.now()-mins*60000)};
+  };
+  const ip=[],rd=[];for(let i=0;i<n;i++){ip.push(mk(i,180,2+i*2));rd.push(mk(i,140,1+i*2));}
   return {in_progress:ip,ready:rd};
 }
 async function poll(){try{const d=DEMO?_demoData(DEMO):await fetchOrders();DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();}catch(e){}}
