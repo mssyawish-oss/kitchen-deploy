@@ -6126,13 +6126,15 @@ def _tables_log_add(frame_bytes,reason):
                 except Exception: pass
     except Exception: pass
 _TABLES_PROMPT=("This is the OUTDOOR dining area of a takeaway shop. There are a few SEPARATE tables. "
-  "Judge EACH table on its own. Decide LEFT if ANY ONE table has abandoned food, a food tray, plates, "
-  "cups, bottles or takeaway rubbish on it while NOBODY is seated at that same table - even if other "
-  "tables are occupied or empty. Decide CLEAR only if EVERY table is either (a) empty and clean, or "
-  "(b) has people currently seated at it. An empty clean table is CLEAR. A table with people eating is "
-  "CLEAR even if it is covered in food. Ignore the ground, bins, staff and passers-by. Answer on ONE "
-  "line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 words. "
-  "Examples: 'LEFT - tray and cups left on an unattended table', 'CLEAR - people seated and eating', "
+  "Judge EACH table on its own. Decide LEFT if ANY ONE table has ANYTHING left on it that a customer would "
+  "leave behind - abandoned food, a food tray, plates, cups, bottles, cans, NAPKINS or serviettes, tissues, "
+  "food wrappers or packaging, cutlery, straws, or any takeaway rubbish or mess - while NOBODY is seated at "
+  "that same table, even if other tables are occupied or empty. Even a single napkin, cup or wrapper left on "
+  "an unattended table counts as LEFT (the table needs clearing). Decide CLEAR only if EVERY table is either "
+  "(a) genuinely empty and clean with nothing on it, or (b) has people currently seated at it. A table with "
+  "people eating is CLEAR even if it is covered in food. Ignore the ground, bins, staff and passers-by. "
+  "Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 "
+  "words. Examples: 'LEFT - napkins and cup left on an empty table', 'CLEAR - people seated and eating', "
   "'CLEAR - all tables empty and clean'.")
 def _tables_cfg():
     c=dict(db.get("tables_watch",{}) or {})
@@ -6680,14 +6682,16 @@ def _intables_log_add(frame_bytes,reason):
                 except Exception: pass
     except Exception: pass
 _INTABLES_PROMPT=("This is an INDOOR seating/dining area inside a takeaway shop. There are a few SEPARATE tables. "
-  "Judge EACH table on its own. Decide LEFT if ANY ONE table has abandoned food, a food tray, plates, "
-  "cups, bottles or takeaway rubbish on it while NOBODY is seated at that same table - even if other "
-  "tables are occupied or empty. Decide CLEAR only if EVERY table is either (a) empty and clean, or "
-  "(b) has people currently seated at it. An empty clean table is CLEAR. A table with people eating is "
-  "CLEAR even if it is covered in food. Ignore the floor, bins, counters, staff and people walking past. "
-  "Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of at most 8 "
-  "words. Examples: 'LEFT - tray and cups left on an unattended table', 'CLEAR - people seated and eating', "
-  "'CLEAR - all tables empty and clean'.")
+  "Judge EACH table on its own. Decide LEFT if ANY ONE table has ANYTHING left on it that a customer would "
+  "leave behind - abandoned food, a food tray, plates, cups, bottles, cans, NAPKINS or serviettes, tissues, "
+  "food wrappers or packaging, cutlery, straws, or any takeaway rubbish or mess - while NOBODY is seated at "
+  "that same table, even if other tables are occupied or empty. Even a single napkin, cup or wrapper left on "
+  "an unattended table counts as LEFT (the table needs clearing). Decide CLEAR only if EVERY table is either "
+  "(a) genuinely empty and clean with nothing on it, or (b) has people currently seated at it. A table with "
+  "people eating is CLEAR even if it is covered in food. Ignore the floor, bins, counters, staff and people "
+  "walking past. Answer on ONE line: the word LEFT or CLEAR, then ' - ' and a short plain-English reason of "
+  "at most 8 words. Examples: 'LEFT - napkins and cup left on an empty table', 'CLEAR - people seated and "
+  "eating', 'CLEAR - all tables empty and clean'.")
 def _intables_cfg():
     c=dict(db.get("intables_watch",{}) or {})
     c.setdefault("enabled",False); c.setdefault("cam","")
