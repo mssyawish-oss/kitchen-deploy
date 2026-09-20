@@ -3386,6 +3386,12 @@ def api_product_disable():
         ok,err=_sq_disable_variation(vid)
         if not ok and err and "POS" not in str(err):
             time.sleep(0.8); ok,err=_sq_disable_variation(vid)
+        # ALSO switch off the same-named ADD-ON (modifier), so turning a menu item OFF removes it as an
+        # add-on too (Marcel: 'turning the item off didn't turn off the add-ons' → had to do it in POS).
+        # Best-effort by name; never fail the item result on the add-on sweep.
+        if nm:
+            try: _sq_disable_modifier_all("",nm)
+            except Exception as _e: print("product_disable addon-sweep:",str(_e)[:120])
     _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
     if ok:
         # Fresh grace clock NOW. The offline scan only clears a stamp when it SEES the product back on
