@@ -2020,7 +2020,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
   </div>
 </div>
 <div class="modal-overlay" id="prodoff-modal">
-  <div class="modal" style="max-width:520px;">
+  <div class="modal" style="max-width:960px;width:96vw;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
     <div class="po-bar">
       <label class="po-sw"><input type="checkbox" id="po-auto" onchange="poSaveAuto()"><span class="po-sl"></span></label>
@@ -2029,13 +2029,23 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
     <div id="po-status" style="margin-top:8px;clear:both;"></div>
-    <div class="row" style="gap:8px;margin-top:10px;align-items:center;">
-      <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
-      <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;cursor:pointer;" title="By default only the retail menu is searched, so switching a product OFF doesn't also switch off its catering version. Tick to search catering too.">
-        <span class="po-sw sm"><input type="checkbox" id="po-inc-catering" onchange="poSearch()"><span class="po-sl"></span></span>Include catering</label>
+    <div class="po-cols" style="display:flex;gap:18px;margin-top:12px;align-items:flex-start;flex-wrap:wrap;">
+      <!-- LEFT: products currently switched off -->
+      <div style="flex:1 1 400px;min-width:0;">
+        <div style="font-weight:800;color:var(--amber);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">CURRENTLY SWITCHED OFF</div>
+        <div id="prodoff-list" style="max-height:62vh;overflow:auto;"></div>
+      </div>
+      <!-- RIGHT: search + switch a product off -->
+      <div style="flex:1 1 400px;min-width:0;">
+        <div style="font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
+        <div class="row" style="gap:8px;align-items:center;">
+          <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;cursor:pointer;" title="By default only the retail menu is searched, so switching a product OFF doesn't also switch off its catering version. Tick to search catering too.">
+            <span class="po-sw sm"><input type="checkbox" id="po-inc-catering" onchange="poSearch()"><span class="po-sl"></span></span>Catering</label>
+        </div>
+        <div id="po-search-results" style="margin-top:8px;max-height:56vh;overflow:auto;"></div>
+      </div>
     </div>
-    <div id="po-search-results" style="margin-top:6px;"></div>
-    <div id="prodoff-list"></div>
   </div>
 </div>
 
@@ -7370,7 +7380,7 @@ function _pdOffGroups(){
     const k=p.item||'?';
     if(!m.has(k))m.set(k,{name:k,ids:[],tags:[],off_since:0});
     const g=m.get(k); g.ids.push(p.id);
-    const t=(p.kind==='modifier')?'ADD-ON':((p.variation&&p.variation.toLowerCase()!=='regular')?p.variation:'');
+    const t=(p.kind==='modifier')?'MODIFIER':((p.variation&&p.variation.toLowerCase()!=='regular')?p.variation:'');
     if(t&&g.tags.indexOf(t)<0)g.tags.push(t);
     if(p.off_since&&(!g.off_since||p.off_since<g.off_since))g.off_since=p.off_since;   // earliest switch-off drives the alarm
   });
@@ -7576,7 +7586,7 @@ function _prodOffRenderModal(){
     +'</div>';
     if(multi){
       rows+=members.map(m=>{
-        const t=(m.kind==='modifier')?'ADD-ON':((m.variation&&m.variation.toLowerCase()!=='regular')?m.variation:'Regular');
+        const t=(m.kind==='modifier')?'MODIFIER':((m.variation&&m.variation.toLowerCase()!=='regular')?m.variation:'Regular');
         return '<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;">'
           +'<div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+_mEsc(t)+'</div>'
           +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnOne(\''+m.id+'\')">Turn on</button></div>'

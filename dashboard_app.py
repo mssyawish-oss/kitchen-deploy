@@ -3060,7 +3060,7 @@ def api_product_search():
                 for obj in data.get("objects",[]) or []:
                     if obj.get("is_deleted"): continue
                     md=obj.get("modifier_data") or {}
-                    items.append({"name":md.get("name") or "?","ids":[obj.get("id")],"sizes":["ADD-ON"],"off":any(
+                    items.append({"name":md.get("name") or "?","ids":[obj.get("id")],"sizes":["MODIFIER"],"off":any(
                         ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])),"kind":"modifier"})
                 cursor=data.get("cursor")
                 if not cursor: break
