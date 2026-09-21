@@ -3402,6 +3402,61 @@ def api_product_disable():
             s=db.setdefault("prodoff_since",{}); s[vid]=int(time.time()*1000); save_data(db)
     return jsonify({"ok":ok,"error":(None if ok else err)})
 
+def _sq_catalog_list(types):
+    """All non-deleted catalog objects of the given type(s) (paginated)."""
+    hdr=_sq_headers()
+    if not hdr: return []
+    out=[]; cursor=None
+    for _ in range(80):
+        u=SQUARE_BASE+"/v2/catalog/list?types="+types+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
+                d=json.loads(r.read().decode())
+        except Exception as e:
+            print("catalog_list:",str(e)[:120]); break
+        for o in d.get("objects") or []:
+            if not o.get("is_deleted"): out.append(o)
+        cursor=d.get("cursor")
+        if not cursor: break
+    return out
+def _name_toks(s):
+    return set(t for t in re.sub(r'[^a-z0-9 ]',' ',(s or "").lower().replace("&"," and ")).split() if t and t!="and")
+@app.route("/api/name_audit")
+def api_name_audit():
+    # READ-ONLY audit: find menu ITEMs and their matching ADD-ON (MODIFIER) whose names don't match
+    # EXACTLY, so they can be standardised. Match item<->modifier by exact name, then normalised name
+    # (case/&/punct/space ignored), then token-subset (one name's words contained in the other, >=2 words).
+    if not _sq_headers(): return jsonify({"ok":False,"error":"Square not configured"})
+    item_names=[]
+    for o in _sq_catalog_list("ITEM"):
+        nm=((o.get("item_data") or {}).get("name") or "").strip()
+        if nm: item_names.append(nm)
+    uniq_items=sorted(set(item_names))
+    mods={}
+    for o in _sq_catalog_list("MODIFIER"):
+        nm=((o.get("modifier_data") or {}).get("name") or "").strip()
+        if nm: mods[nm]=mods.get(nm,0)+1
+    inconsistent=[]; mod_no_item=[]
+    item_norm={inm:_norm_name(inm) for inm in uniq_items}
+    item_tok={inm:_name_toks(inm) for inm in uniq_items}
+    for mnm in sorted(mods):
+        mnorm=_norm_name(mnm); mt=_name_toks(mnm); best=None; how=None
+        if mnm in uniq_items: best=mnm; how="exact"
+        if best is None:
+            for inm in uniq_items:
+                if item_norm[inm]==mnorm: best=inm; how="normalised"; break
+        if best is None and len(mt)>=2:
+            cands=[]
+            for inm in uniq_items:
+                it=item_tok[inm]
+                if len(it)>=2 and (mt<=it or it<=mt): cands.append((len(mt&it),inm))
+            if cands: cands.sort(reverse=True); best=cands[0][1]; how="tokens"
+        if best is None: mod_no_item.append({"modifier":mnm,"copies":mods[mnm]})
+        elif best!=mnm: inconsistent.append({"item":best,"modifier":mnm,"copies":mods[mnm],"match":how})
+    inconsistent.sort(key=lambda r:r["item"].lower())
+    return jsonify({"ok":True,"counts":{"items":len(uniq_items),"modifier_names":len(mods)},
+                    "inconsistent":inconsistent,"modifiers_without_matching_item":mod_no_item})
+
 @app.route("/api/product_enable",methods=["POST"])
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
