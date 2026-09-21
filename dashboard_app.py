@@ -4646,6 +4646,12 @@ def _pl_html(R):
         H.append('</div>')
     sc=(C.get("scan") or {})
     if sc: H.append('<div style="margin-top:8px;font-size:11px;color:#999;">Invoice scan: %s PDFs in Drive, %s totalled, %s new read this run%s. Generated %s.</div>'%(sc.get("pdfs",0),sc.get("booked",0),sc.get("read",0),(", %d unreadable"%sc["unreadable"]) if sc.get("unreadable") else "",esc(R["generated"])))
+    try:   # AI camera checks — how much Gemini this period cost + whether the key still works (Marcel asked for regular checks)
+        hist=list(db.get("gem_daily") or []); n=max(1,int(R.get("days") or 1)); per=hist[-n:]
+        calls=sum(int(h.get("calls") or 0) for h in per) if per else ROTCAM.get("calls_today",0)
+        gh=_gem_ping(); gtxt=("key OK" if gh[0] else ("<b style=\"color:#b91c1c\">KEY PROBLEM: %s</b>"%esc(gh[1])))
+        H.append('<div style="margin-top:8px;font-size:11px;color:#999;">AI camera checks (Gemini): %s calls &asymp; $%.2f this period &middot; %s &middot; <a href="%s">usage &amp; billing</a></div>'%(calls,calls*_GEM_COST_PER_CALL,gtxt,_GEM_BILLING_URL))
+    except Exception: pass
     H.append('</div></div>')
     return "".join(H)
 
@@ -5457,7 +5463,13 @@ ROTCAM["calls_total"]=_gem_u.get("calls_total",0)
 def _gem_count_call():
     with _gem_lock:                   # parallel reads call this concurrently — keep the meter exact
         today=datetime.now().astimezone().date().isoformat()
-        if ROTCAM.get("calls_day")!=today: ROTCAM["calls_day"]=today; ROTCAM["calls_today"]=0
+        if ROTCAM.get("calls_day")!=today:
+            if ROTCAM.get("calls_day") and ROTCAM.get("calls_today"):   # keep a 60-day history for the health check + reports
+                try:
+                    hist=[h for h in (db.get("gem_daily") or []) if h.get("day")!=ROTCAM["calls_day"]]
+                    hist.append({"day":ROTCAM["calls_day"],"calls":int(ROTCAM["calls_today"])}); db["gem_daily"]=hist[-60:]
+                except Exception: pass
+            ROTCAM["calls_day"]=today; ROTCAM["calls_today"]=0
         ROTCAM["calls_today"]=ROTCAM.get("calls_today",0)+1
         ROTCAM["calls_total"]=ROTCAM.get("calls_total",0)+1
         persist=(ROTCAM["calls_total"]%10==0)
@@ -5467,6 +5479,76 @@ def _gem_count_call():
                 db["rotcam_usage"]={"calls_today":ROTCAM["calls_today"],"calls_day":ROTCAM["calls_day"],"calls_total":ROTCAM["calls_total"]}
                 save_data(db)
         except Exception: pass
+# ── GEMINI HEALTH (Marcel, 22 Sep 2026: "link me to billing and check regularly so I know if we run low") ──
+# The Gemini API is pay-as-you-go on a Google Cloud card, so there is no credit balance to run down; the failure
+# mode is the card/billing/key going bad → every call returns 403/429 and all the camera watches go quiet at once.
+# So: a tiny text-only ping every few hours (+ on demand), a call-count history, an email the moment the key
+# stops working (once per failure, once on recovery), and a usage line in the profit reports.
+GEMH={"ok":None,"err":"","checked":0,"alerted":False,"last_err_at":0}
+_GEM_BILLING_URL="https://aistudio.google.com/usage"; _GEM_CLOUD_URL="https://console.cloud.google.com/billing"
+def _gem_classify(err):
+    e=(err or "").lower()
+    if "429" in e or "resource_exhausted" in e or "quota" in e or "rate" in e: return "quota or rate limit hit"
+    if "403" in e or "permission_denied" in e or "billing" in e or "suspended" in e: return "key blocked or billing problem"
+    if "400" in e and ("api key" in e or "api_key" in e or "invalid" in e): return "API key invalid"
+    if "401" in e or "unauthenticated" in e: return "API key not accepted"
+    return (err or "unknown error")[:100]
+def _gem_ping(force=False):
+    """Text-only 'reply OK' call — proves the key + billing work. Cached 10 min unless forced."""
+    if not force and time.time()-GEMH.get("checked",0)<600 and GEMH.get("ok") is not None: return GEMH["ok"],GEMH["err"]
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key: GEMH.update(ok=False,err="no Gemini key configured",checked=time.time()); return False,GEMH["err"]
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    body={"contents":[{"parts":[{"text":"Reply with the single word OK."}]}],"generationConfig":{"temperature":0,"maxOutputTokens":4}}
+    if "2.5" in model: body["generationConfig"]["thinkingConfig"]={"thinkingBudget":0}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        ok=bool((data.get("candidates") or [{}])[0].get("content")); err="" if ok else "empty reply"
+    except urllib.error.HTTPError as e:
+        try: detail=e.read().decode()[:300]
+        except Exception: detail=""
+        ok=False; err="HTTP %s %s"%(e.code,detail)
+    except Exception as e: ok=False; err=str(e)[:200]
+    GEMH.update(ok=ok,err=("" if ok else _gem_classify(err)),raw=("" if ok else err[:300]),checked=time.time())
+    if not ok: GEMH["last_err_at"]=time.time()
+    return ok,GEMH["err"]
+def _gem_health(force=False):
+    ok,err=_gem_ping(force)
+    hist=list(db.get("gem_daily") or []); last7=[h.get("calls",0) for h in hist[-7:]]
+    today=ROTCAM.get("calls_today",0)
+    # watches whose LAST read failed for a key/billing reason (their own state dicts hold the raw error)
+    werr=[]
+    for name,txt in (("outside tables",TABLESW.get("raw","")),("inside tables",INTABLESW.get("raw","")),("walk-in",WALKIN.get("err","")),("pack evidence",PACKEV.get("err",""))):
+        t=str(txt or "")
+        if t.lower().startswith("error") and any(k in t for k in ("429","403","quota","RESOURCE_EXHAUSTED","PERMISSION_DENIED","API key")): werr.append(name+": "+_gem_classify(t))
+    return {"ok":ok,"err":err,"raw":GEMH.get("raw",""),"checked":int(GEMH.get("checked",0)),"calls_today":today,
+            "cost_today":round(today*_GEM_COST_PER_CALL,2),"yesterday":(hist[-1].get("calls") if hist else None),
+            "avg7":(round(sum(last7)/len(last7)) if last7 else None),"cost_month_est":round((sum(last7)/len(last7) if last7 else today)*30*_GEM_COST_PER_CALL,2),
+            "history":hist[-14:],"watch_errors":werr,"billing_url":_GEM_BILLING_URL,"cloud_url":_GEM_CLOUD_URL,"per_call":_GEM_COST_PER_CALL}
+def _gem_health_notify(h):
+    # email once when the key stops working, once when it recovers — never every check
+    to=((db.get("report_config") or {}).get("to") or (db.get("email_config") or {}).get("smtp_user") or "").strip()
+    if not to: return
+    try:
+        if not h["ok"] and not GEMH.get("alerted"):
+            send_email(to,"Dashboard AI (Gemini) has STOPPED working","The dashboard's Gemini key failed its check: %s\n\nEvery camera watch (rotisserie, tables, walk-in, pack evidence, display) is blind until this is fixed.\nCheck usage/billing: %s\nGoogle Cloud billing: %s\n\nRaw: %s"%(h["err"],_GEM_BILLING_URL,_GEM_CLOUD_URL,h.get("raw","")))
+            GEMH["alerted"]=True
+        elif h["ok"] and GEMH.get("alerted"):
+            send_email(to,"Dashboard AI (Gemini) is working again","The Gemini key passed its check again. Calls today: %s."%h["calls_today"]); GEMH["alerted"]=False
+    except Exception as e: print("gem notify:",str(e)[:100])
+def gem_health_loop():
+    time.sleep(90)
+    while True:
+        try: _gem_health_notify(_gem_health(force=True))
+        except Exception as e: print("gem_health_loop:",str(e)[:100])
+        time.sleep(6*3600)
+@app.route("/api/gemini_health")
+def api_gemini_health():
+    h=_gem_health(force=bool(request.args.get("force")))
+    if request.args.get("force"): _gem_health_notify(h)
+    return jsonify(dict(h,ok_flag=True))
 def _downscale_jpeg(jpeg,maxw=640):
     # shrink the frame before sending to Gemini — rows are easily countable at low-res, and it cuts cost a lot
     try:
@@ -11172,6 +11254,7 @@ if __name__=="__main__":
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
     threading.Thread(target=tables_loop,daemon=True).start()
     threading.Thread(target=_packev_prune,daemon=True).start()   # drop pack-evidence frames older than keep_days
+    threading.Thread(target=gem_health_loop,daemon=True).start() # Gemini key/billing ping every 6 h + email on failure/recovery
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
     threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)
