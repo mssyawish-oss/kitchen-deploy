@@ -2020,7 +2020,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
   </div>
 </div>
 <div class="modal-overlay" id="prodoff-modal">
-  <div class="modal" style="max-width:960px;width:96vw;">
+  <div class="modal" style="max-width:640px;width:96vw;">
     <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
     <div class="po-bar">
       <label class="po-sw"><input type="checkbox" id="po-auto" onchange="poSaveAuto()"><span class="po-sl"></span></label>
@@ -2029,25 +2029,16 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
     <div id="po-status" style="margin-top:8px;clear:both;"></div>
-    <style>.po-cols>.po-col-off{order:1}.po-cols>.po-col-search{order:2}
-    @media(max-width:860px){.po-cols>.po-col-search{order:0}.po-cols>.po-col-off{order:1}.po-cols>.po-col-off #prodoff-list{max-height:40vh}}</style>
-    <div class="po-cols" style="display:flex;gap:18px;margin-top:12px;align-items:flex-start;flex-wrap:wrap;">
-      <!-- LEFT: products currently switched off -->
-      <div class="po-col-off" style="flex:1 1 400px;min-width:0;">
-        <div style="font-weight:800;color:var(--amber);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">CURRENTLY SWITCHED OFF</div>
-        <div id="prodoff-list" style="max-height:62vh;overflow:auto;"></div>
-      </div>
-      <!-- RIGHT: search + switch a product off -->
-      <div class="po-col-search" style="flex:1 1 400px;min-width:0;">
-        <div style="font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
-        <div class="row" style="gap:8px;align-items:center;">
-          <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
-          <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;cursor:pointer;" title="By default only the retail menu is searched, so switching a product OFF doesn't also switch off its catering version. Tick to search catering too.">
-            <span class="po-sw sm"><input type="checkbox" id="po-inc-catering" onchange="poSearch()"><span class="po-sl"></span></span>Catering</label>
-        </div>
-        <div id="po-search-results" style="margin-top:8px;max-height:56vh;overflow:auto;"></div>
-      </div>
+    <!-- SEARCH ON TOP so it is always visible (never pushed off-screen after a turn-off) -->
+    <div style="margin-top:12px;font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
+    <div class="row" style="gap:8px;align-items:center;">
+      <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;cursor:pointer;" title="By default only the retail menu is searched, so switching a product OFF doesn't also switch off its catering version. Tick to search catering too.">
+        <span class="po-sw sm"><input type="checkbox" id="po-inc-catering" onchange="poSearch()"><span class="po-sl"></span></span>Catering</label>
     </div>
+    <div id="po-search-results" style="margin-top:8px;max-height:38vh;overflow:auto;"></div>
+    <div style="margin-top:16px;font-weight:800;color:var(--amber);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">CURRENTLY SWITCHED OFF</div>
+    <div id="prodoff-list" style="max-height:38vh;overflow:auto;"></div>
   </div>
 </div>
 
