@@ -1142,6 +1142,7 @@ def _kds_fetch(cfg):
         out.append({"id":oid,"name":name,"items":items,"icount":icount,"src":(o.get("source") or {}).get("name") or "",
                     "total":round(total,2),"sched":sched,"due":(due.isoformat() if due else None),
                     "created":o.get("created_at"),"fulfilled":fulfilled,
+                    "picked":(bool(ff) and all(s=="COMPLETED" for s in ff)),   # courier/customer has collected it
                     "birds":round(birds,2),"cater":cater})
     return out
 def _orders_refresh(cfg):
@@ -6782,10 +6783,23 @@ except Exception: pass
 def _packev_cfg():
     c=dict(db.get("packev",{}) or {})
     c.setdefault("enabled",False); c.setdefault("cam","cdbb4279")   # Camera 2 "CASH REGISTER" = counter/packing view
-    c.setdefault("delay",25); c.setdefault("keep_days",45)
+    c.setdefault("burst",[0,5,10,20,30,45,60])      # seconds after the KDS bump: staff print the slip, bump, then staple + bag within ~a minute
+    c.setdefault("pickup_burst",[0,10,20])          # seconds after Square marks the order collected: drink handed to the driver
+    c.setdefault("keep_days",45)
     c.setdefault("sources",["uber","door"])                            # substring match on Square source.name (lowercased)
     c.setdefault("check_ai",False)                                      # optional bump-time pack check (costs 1 Gemini call/order)
     return c
+def _packev_secs(v,default):
+    # "0,5,10" / [0,5,10] → sorted unique ints 0..600 (max 12 frames)
+    try:
+        if isinstance(v,str): v=[x for x in re.split(r'[,\s]+',v) if x.strip()]
+        out=set()
+        for x in (v or []):
+            try: out.add(max(0,min(600,int(float(x)))))
+            except (TypeError,ValueError): pass          # skip a stray "abc", keep the rest
+        out=sorted(out)
+        return out[:12] if out else list(default)
+    except Exception: return list(default)
 def _packev_src_ok(src,cfg=None):
     s=(src or "").lower().replace(" ","")
     keys=[str(k).lower().replace(" ","") for k in ((cfg or _packev_cfg()).get("sources") or []) if str(k).strip()]
@@ -6862,34 +6876,41 @@ _PACKEV_CHECK_PROMPT=("This is the service counter / packing bench of a takeaway
   "containers on the counter. Answer on ONE line: 'OK - reason' if a packed order matching that list is "
   "visible; 'CHECK - reason' if a listed item clearly seems to be missing from what is packed; "
   "'UNSURE - reason' if no packed order is visible or the bag is closed so you cannot tell. Reason = at most 10 words.")
-def _packev_capture(b):
+def _packev_capture(b,phase="bump"):
+    """phase 'bump': frames at cfg.burst seconds after the KDS bump (n = 0..); phase 'pickup': frames at
+    cfg.pickup_burst seconds after the courier collects (n = 100..). Frames are numbered by their offset
+    index so the list/ask code can tell the two series apart. Runs in its own thread."""
     cfg=_packev_cfg(); cam=_cam_by_id(cfg.get("cam"))
     if not cam: PACKEV["err"]="camera not found"; return
     oid=str(b.get("id") or ""); key=re.sub(r'[^A-Za-z0-9_-]','',oid)[:48]
     if not key: return
-    try: delay=max(0,min(180,int(cfg.get("delay",25) or 0)))
-    except Exception: delay=25
-    t0=time.time(); frames=[]; raw={}
-    for n,dl in enumerate((0,delay)):
-        w=t0+dl-time.time()
+    secs=_packev_secs(cfg.get("pickup_burst"),[0,10,20]) if phase=="pickup" else _packev_secs(cfg.get("burst"),[0,5,10,20,30,45,60])
+    base=100 if phase=="pickup" else 0
+    t0=time.time(); frames=[]; raw={}; offs={}
+    for i,dl in enumerate(secs):
+        n=base+i; w=t0+dl-time.time()
         if w>0: time.sleep(w)
         jpeg,err=_snap_from(cam,timeout=20)
         if jpeg:
             try:
                 with open(_packev_frame_path(key,n),"wb") as f: f.write(_downscale_jpeg(jpeg,1280))
-                frames.append(n); raw[n]=jpeg
+                frames.append(n); raw[n]=jpeg; offs[str(n)]=dl
             except Exception as e: PACKEV["err"]=("save: "+str(e))[:120]
         else: PACKEV["err"]=(err or "no frame")[:120]
-        if n==0 and delay==0: break
-    entry={"oid":oid,"key":key,"name":b.get("name") or "","src":b.get("src") or "","items":b.get("items") or [],
-           "total":b.get("total") or 0,"bump":int(t0*1000),"at":datetime.fromtimestamp(t0).strftime("%a %d %b %I:%M %p"),
-           "frames":frames,"ai":None}
     with _PACKEV_LOCK:
-        idx=_packev_idx(); idx[:]=[e for e in idx if e.get("oid")!=oid]; idx.insert(0,entry); _packev_idx_save()
-    PACKEV["captures"]=PACKEV.get("captures",0)+1; PACKEV["last"]={"oid":oid,"name":entry["name"],"src":entry["src"],"at":entry["at"],"frames":len(frames)}
+        idx=_packev_idx(); entry=next((e for e in idx if e.get("oid")==oid),None)
+        if entry is None:
+            entry={"oid":oid,"key":key,"name":b.get("name") or "","src":b.get("src") or "","items":b.get("items") or [],
+                   "total":b.get("total") or 0,"bump":int(t0*1000),"at":datetime.fromtimestamp(t0).strftime("%a %d %b %I:%M %p"),
+                   "frames":[],"offs":{},"ai":None}
+            idx.insert(0,entry)
+        if phase=="pickup": entry["picked"]=int(t0*1000); entry["picked_at"]=datetime.fromtimestamp(t0).strftime("%I:%M %p")
+        entry["frames"]=sorted(set((entry.get("frames") or [])+frames)); entry.setdefault("offs",{}).update(offs)
+        _packev_idx_save()
+    PACKEV["captures"]=PACKEV.get("captures",0)+1; PACKEV["last"]={"oid":oid,"name":entry["name"],"src":entry["src"],"at":entry["at"],"frames":len(entry["frames"]),"phase":phase}
     if frames: PACKEV["err"]=""
-    # optional bump-time pack check — one Gemini call on the LAST frame (bag sealed)
-    if cfg.get("check_ai") and frames and (_rotcam_cfg().get("gemini_key") or "").strip():
+    # optional bump-time pack check — one Gemini call on the LAST bump frame (bag stapled/sealed)
+    if phase=="bump" and cfg.get("check_ai") and frames and (_rotcam_cfg().get("gemini_key") or "").strip():
         txt=_packev_gemini(_PACKEV_CHECK_PROMPT%_packev_items_text(entry["items"]),[raw[frames[-1]]],max_tokens=48)
         if txt.startswith("error:"): PACKEV["err"]=txt[:120]; return
         word,reason=_packev_split(txt,("OK","CHECK","UNSURE"))
@@ -6914,10 +6935,14 @@ def _packev_tick(board):
         if not oid: continue
         live.add(oid)
         if not _packev_src_ok(b.get("src"),cfg): continue
-        prev=seen.get(oid); ful=bool(b.get("fulfilled")); seen[oid]=ful
-        if prev is False and ful and oid not in done:
+        prev=seen.get(oid); ful=bool(b.get("fulfilled")); pk=bool(b.get("picked")); seen[oid]=(ful,pk)
+        pf,pp=(prev if isinstance(prev,tuple) else (None,None))
+        if pf is False and ful and oid not in done:
             done[oid]=now
-            threading.Thread(target=_packev_capture,args=(dict(b),),daemon=True).start()
+            threading.Thread(target=_packev_capture,args=(dict(b),"bump"),daemon=True).start()
+        if pp is False and pk and (oid+":p") not in done and (oid in done or pf is not None):
+            done[oid+":p"]=now          # courier collected → drink hand-over frames
+            threading.Thread(target=_packev_capture,args=(dict(b),"pickup"),daemon=True).start()
     for oid in [k for k in seen if k not in live]: seen.pop(oid,None)
     for oid in [k for k,t in done.items() if now-t>86400]: done.pop(oid,None)
 def _packev_payload():
@@ -6929,7 +6954,8 @@ def _packev_payload():
 def api_packev_status():
     cfg=_packev_cfg()
     with _PACKEV_LOCK: n=len(_packev_idx())
-    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),"delay":int(cfg.get("delay",25) or 0),
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
+                    "burst":_packev_secs(cfg.get("burst"),[0,5,10,20,30,45,60]),"pickup_burst":_packev_secs(cfg.get("pickup_burst"),[0,10,20]),
                     "keep_days":int(cfg.get("keep_days",45) or 45),"sources":list(cfg.get("sources") or []),
                     "check_ai":bool(cfg.get("check_ai")),"stored":n,"captures":PACKEV.get("captures",0),
                     "last":PACKEV.get("last"),"err":PACKEV.get("err",""),"alert":PACKEV.get("alert"),
@@ -6940,10 +6966,11 @@ def api_packev_config():
     if "enabled" in d: cur["enabled"]=bool(d["enabled"])
     if "check_ai" in d: cur["check_ai"]=bool(d["check_ai"])
     if "cam" in d: cur["cam"]=str(d["cam"] or "").strip() or cur.get("cam")
-    for k2,lo,hi in (("delay",0,180),("keep_days",1,365)):
-        if k2 in d:
-            try: cur[k2]=max(lo,min(hi,int(d[k2])))
-            except Exception: pass
+    if "keep_days" in d:
+        try: cur["keep_days"]=max(1,min(365,int(d["keep_days"])))
+        except Exception: pass
+    if "burst" in d: cur["burst"]=_packev_secs(d["burst"],[0,5,10,20,30,45,60])
+    if "pickup_burst" in d: cur["pickup_burst"]=_packev_secs(d["pickup_burst"],[0,10,20])
     if isinstance(d.get("sources"),list): cur["sources"]=[str(s).strip().lower() for s in d["sources"] if str(s).strip()]
     with data_lock: db["packev"]=cur; save_data(db)
     return jsonify({"ok":True,"config":cur})
@@ -6984,20 +7011,23 @@ def api_packev_ask():
     d=request.get_json(silent=True) or {}; oid=str(d.get("oid") or ""); claim=str(d.get("claim") or "").strip()[:200]
     with _PACKEV_LOCK: e=next((x for x in _packev_idx() if x.get("oid")==oid),None)
     if not e: return jsonify({"ok":False,"error":"order not in the evidence store"})
-    jpegs=[]
+    jpegs=[]; labels=[]; offs=e.get("offs") or {}
     for n in (e.get("frames") or []):
         try:
             with open(_packev_frame_path(e.get("key"),n),"rb") as f: jpegs.append(f.read())
+            labels.append(("pickup +%ss"%offs.get(str(n),"?")) if int(n)>=100 else ("bump +%ss"%offs.get(str(n),"?")))
         except Exception: pass
     if not jpegs: return jsonify({"ok":False,"error":"no frames saved for this order"})
-    prompt=("These %d photos are the service counter / packing bench of a takeaway chicken shop, taken when this delivery "
-            "order was marked ready (first photo) and about %s seconds later (last photo). The order was: %s. "
+    prompt=("These %d photos are the service counter / packing bench of a takeaway chicken shop, in order: %s. "
+            "'bump' photos start when this delivery order was marked ready on the kitchen screen - staff print its slip, "
+            "staple the slip to the bag and pack it within about a minute. 'pickup' photos (if any) are when the courier "
+            "collected it; drinks are packed separately and handed to the driver then. The order was: %s. "
             "%sAnswer on ONE line: 'PACKED - reason' if the claimed item(s) are visibly in the bag/boxes or the full order "
             "is clearly packed; 'NOT VISIBLE - reason' if you cannot see them; 'UNSURE - reason' if the packing is not visible at all. "
-            "Then a second line starting 'SEEN: ' listing what packed items you can actually see (max 20 words).")%(
-            len(jpegs),_packev_cfg().get("delay",25),_packev_items_text(e.get("items")),
+            "Then a second line starting 'SEEN: ' listing what packed items, bags and drinks you can actually see and in which photo (max 30 words).")%(
+            len(jpegs),", ".join(labels),_packev_items_text(e.get("items")),
             ("The customer claims this was MISSING: %s. "%claim) if claim else "")
-    txt=_packev_gemini(prompt,jpegs,max_tokens=120)
+    txt=_packev_gemini(prompt,jpegs,max_tokens=160)
     if txt.startswith("error:"): return jsonify({"ok":False,"error":txt[6:].strip()})   # don't record a failed call as a verdict
     first=txt.split("SEEN:",1)[0].strip(); seen=txt.split("SEEN:",1)[1].strip() if "SEEN:" in txt else ""
     word,reason=_packev_split(first,("PACKED","NOT VISIBLE","UNSURE"))
