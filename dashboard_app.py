@@ -6786,6 +6786,7 @@ def _packev_cfg():
     c.setdefault("burst",[0,5,10,20,30,45,60])      # seconds after the KDS bump: staff print the slip, bump, then staple + bag within ~a minute
     c.setdefault("pickup_burst",[0,10,20])          # seconds after Square marks the order collected: drink handed to the driver
     c.setdefault("keep_days",45)
+    c.setdefault("crop","")                          # "left,top,right,bottom" in % of the frame — keeps the pack bench at full camera resolution instead of shrinking the whole wide-angle frame
     c.setdefault("sources",["uber","door"])                            # substring match on Square source.name (lowercased)
     c.setdefault("check_ai",False)                                      # optional bump-time pack check (costs 1 Gemini call/order)
     return c
@@ -6800,6 +6801,26 @@ def _packev_secs(v,default):
         out=sorted(out)
         return out[:12] if out else list(default)
     except Exception: return list(default)
+def _packev_crop_box(v):
+    # "0,55,60,100" → (0.0,0.55,0.60,1.0) or None
+    try:
+        p=[max(0.0,min(100.0,float(x))) for x in re.split(r'[,\s]+',str(v or "").strip()) if x.strip()]
+        if len(p)!=4 or p[2]-p[0]<5 or p[3]-p[1]<5: return None
+        return tuple(x/100.0 for x in p)
+    except Exception: return None
+def _packev_prep(jpeg,cfg=None,maxw=1280):
+    """Crop to the configured bench box (if any) at native resolution, then cap width. Falls back to the full frame."""
+    box=_packev_crop_box((cfg or _packev_cfg()).get("crop"))
+    if box:
+        try:
+            from PIL import Image; import io
+            im=Image.open(io.BytesIO(jpeg)); im.load()
+            if im.mode!="RGB": im=im.convert("RGB")
+            W,H=im.size; im=im.crop((int(box[0]*W),int(box[1]*H),int(box[2]*W),int(box[3]*H)))
+            if im.width>maxw: im=im.resize((maxw,max(1,int(im.height*maxw/im.width))))
+            out=io.BytesIO(); im.save(out,"JPEG",quality=80); return out.getvalue()
+        except Exception: pass
+    return _downscale_jpeg(jpeg,maxw)
 def _packev_src_ok(src,cfg=None):
     s=(src or "").lower().replace(" ","")
     keys=[str(k).lower().replace(" ","") for k in ((cfg or _packev_cfg()).get("sources") or []) if str(k).strip()]
@@ -6893,7 +6914,8 @@ def _packev_capture(b,phase="bump"):
         jpeg,err=_snap_from(cam,timeout=20)
         if jpeg:
             try:
-                with open(_packev_frame_path(key,n),"wb") as f: f.write(_downscale_jpeg(jpeg,1280))
+                jpeg=_packev_prep(jpeg,cfg)
+                with open(_packev_frame_path(key,n),"wb") as f: f.write(jpeg)
                 frames.append(n); raw[n]=jpeg; offs[str(n)]=dl
             except Exception as e: PACKEV["err"]=("save: "+str(e))[:120]
         else: PACKEV["err"]=(err or "no frame")[:120]
@@ -6957,7 +6979,7 @@ def api_packev_status():
     return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":cfg.get("cam"),
                     "burst":_packev_secs(cfg.get("burst"),[0,5,10,20,30,45,60]),"pickup_burst":_packev_secs(cfg.get("pickup_burst"),[0,10,20]),
                     "keep_days":int(cfg.get("keep_days",45) or 45),"sources":list(cfg.get("sources") or []),
-                    "check_ai":bool(cfg.get("check_ai")),"stored":n,"captures":PACKEV.get("captures",0),
+                    "check_ai":bool(cfg.get("check_ai")),"crop":cfg.get("crop",""),"stored":n,"captures":PACKEV.get("captures",0),
                     "last":PACKEV.get("last"),"err":PACKEV.get("err",""),"alert":PACKEV.get("alert"),
                     "gemini":bool((_rotcam_cfg().get("gemini_key") or "").strip())})
 @app.route("/api/packev_config",methods=["POST"])
@@ -6971,6 +6993,7 @@ def api_packev_config():
         except Exception: pass
     if "burst" in d: cur["burst"]=_packev_secs(d["burst"],[0,5,10,20,30,45,60])
     if "pickup_burst" in d: cur["pickup_burst"]=_packev_secs(d["pickup_burst"],[0,10,20])
+    if "crop" in d: cur["crop"]=str(d["crop"] or "").strip() if _packev_crop_box(d.get("crop")) or not str(d["crop"] or "").strip() else cur.get("crop","")
     if isinstance(d.get("sources"),list): cur["sources"]=[str(s).strip().lower() for s in d["sources"] if str(s).strip()]
     with data_lock: db["packev"]=cur; save_data(db)
     return jsonify({"ok":True,"config":cur})
@@ -6999,6 +7022,9 @@ def api_packev_test():
     if not cam: return jsonify({"ok":False,"error":"Packing camera not found — pick one and save first"})
     jpeg,err=_snap_from(cam,timeout=25)
     if err or not jpeg: return jsonify({"ok":False,"error":err or "no frame"})
+    d=request.get_json(silent=True) or {}
+    if "crop" in d: cfg=dict(cfg,crop=str(d.get("crop") or ""))   # preview an unsaved crop box
+    jpeg=_packev_prep(jpeg,cfg)
     desc=""
     if (_rotcam_cfg().get("gemini_key") or "").strip():
         desc=_packev_gemini("This is a takeaway shop counter camera. In at most 12 words, say what packed food, bags or boxes are visible on the counter (or 'nothing packed visible').",[jpeg],max_tokens=32)

@@ -2653,7 +2653,8 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="pk-src-online" value="square online"> Square Online</label>
       </div></div>
     </div>
-    <div class="grid-2 mt-8"><div><div class="label">Keep for <span style="color:var(--muted);font-weight:400;">(days)</span></div><input class="input" id="pk-keep" type="number" min="1" max="365" step="1" placeholder="45"></div><div></div></div>
+    <div class="grid-2 mt-8"><div><div class="label">Keep for <span style="color:var(--muted);font-weight:400;">(days)</span></div><input class="input" id="pk-keep" type="number" min="1" max="365" step="1" placeholder="45"></div>
+      <div><div class="label">Crop to the pack bench <span style="color:var(--muted);font-weight:400;">(left,top,right,bottom in % — blank = whole frame)</span></div><input class="input" id="pk-crop" placeholder="e.g. 0,55,60,100"></div></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-top:10px;cursor:pointer;"><input type="checkbox" id="pk-check" style="width:16px;height:16px;"> Also run an AI pack check on the second photo <span style="color:var(--muted);">(compares what’s on the bench with the order; pops a small “Check this order” box if something looks missing. One Gemini call per delivery order.)</span></label>
     <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="packevSave()">Save pack evidence</button><button class="btn" onclick="packevTest()">Test camera now</button></div>
     <div id="pk-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
@@ -3870,7 +3871,7 @@ function handleIntables(t){
 function packevLoad(){
   fetch('/api/packev_status').then(r=>r.json()).then(d=>{
     const g=id=>document.getElementById(id); if(!g('pk-enabled'))return;
-    g('pk-enabled').checked=!!d.enabled; g('pk-burst').value=(d.burst||[0,5,10,20,30,45,60]).join(','); g('pk-pickup').value=(d.pickup_burst||[0,10,20]).join(','); g('pk-keep').value=d.keep_days||45;
+    g('pk-enabled').checked=!!d.enabled; g('pk-burst').value=(d.burst||[0,5,10,20,30,45,60]).join(','); g('pk-pickup').value=(d.pickup_burst||[0,10,20]).join(','); g('pk-keep').value=d.keep_days||45; if(g('pk-crop'))g('pk-crop').value=d.crop||'';
     const sel=g('pk-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
       sel.innerHTML=cams.map(c=>'<option value="'+c.id+'"'+(c.id===d.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');}
     const srcs=(d.sources||[]).map(s=>String(s).toLowerCase());
@@ -3884,7 +3885,7 @@ function packevLoad(){
 function packevSave(){
   const g=id=>document.getElementById(id),st=g('pk-status');
   const sources=[];['uber','door','online'].forEach(k=>{const e=g('pk-src-'+k);if(e&&e.checked)sources.push(e.value);});
-  const body={enabled:g('pk-enabled').checked,cam:g('pk-cam').value,burst:g('pk-burst').value,pickup_burst:g('pk-pickup').value,keep_days:parseInt(g('pk-keep').value)||45,sources:sources,check_ai:g('pk-check').checked};
+  const body={enabled:g('pk-enabled').checked,cam:g('pk-cam').value,burst:g('pk-burst').value,pickup_burst:g('pk-pickup').value,keep_days:parseInt(g('pk-keep').value)||45,crop:(g('pk-crop')&&g('pk-crop').value)||'',sources:sources,check_ai:g('pk-check').checked};
   if(!body.cam){st.textContent='Pick the packing camera first.';st.style.color='var(--amber)';return;}
   if(body.enabled&&!sources.length){st.textContent='Tick at least one order source.';st.style.color='var(--amber)';return;}
   st.textContent='Saving…';st.style.color='var(--muted)';
@@ -3894,7 +3895,8 @@ function packevSave(){
 function packevTest(){
   const st=document.getElementById('pk-status'),img=document.getElementById('pk-preview'),cap=document.getElementById('pk-preview-cap');
   st.textContent='Taking a photo of the packing bench…';st.style.color='var(--muted)';
-  fetch('/api/packev_test',{method:'POST'}).then(r=>r.json()).then(d=>{
+  const _crop=(document.getElementById('pk-crop')||{}).value||'';
+  fetch('/api/packev_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crop:_crop})}).then(r=>r.json()).then(d=>{
     if(!d.ok){st.textContent=d.error||'Failed';st.style.color='var(--red)';if(img)img.style.display='none';if(cap)cap.style.display='none';return;}
     st.textContent='Camera OK'+(d.desc?(' — AI sees: '+d.desc):'');st.style.color='var(--green)';
     if(img&&d.preview){img.src=d.preview;img.style.display='';if(cap){cap.textContent='This is what will be saved for every delivery order — tap to enlarge.';cap.style.display='';}}
