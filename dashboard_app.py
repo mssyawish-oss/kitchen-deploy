@@ -3457,6 +3457,52 @@ def api_name_audit():
     return jsonify({"ok":True,"counts":{"items":len(uniq_items),"modifier_names":len(mods)},
                     "inconsistent":inconsistent,"modifiers_without_matching_item":mod_no_item})
 
+def _sq_rename_modifier(mid,newname,obj=None):
+    """Rename ONE modifier object (keeps its id/price/list membership — just changes the display name)."""
+    hdr=_sq_headers()
+    try:
+        if obj is None:
+            u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(mid)
+            with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+                obj=(json.loads(r.read().decode()) or {}).get("object")
+        if not obj or obj.get("type")!="MODIFIER": return False
+        o2=copy.deepcopy(obj); md=o2.get("modifier_data") or {}
+        if (md.get("name") or "")==newname: return True
+        md["name"]=newname; o2["modifier_data"]=md
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":_secrets.token_hex(16),"object":o2}).encode(),headers=hdr)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r:
+            res=json.loads(r.read().decode())
+        if res.get("errors"): return False
+        _SQ_OBJ_CACHE.pop(mid,None); return True
+    except Exception as e:
+        print("rename_modifier:",str(e)[:120]); return False
+@app.route("/api/name_fix",methods=["POST"])
+def api_name_fix():
+    # Standardise ADD-ON (modifier) names to EXACTLY match their menu item — but ONLY when the sole
+    # difference is case/&/spacing (normalised names equal). Never touches ADD/REMOVE/size modifiers
+    # (they never normalise-equal an item name). GET-style dry run unless {"fix":true}.
+    d=request.get_json(silent=True) or {}
+    if not _sq_headers(): return jsonify({"ok":False,"error":"Square not configured"})
+    items={}
+    for o in _sq_catalog_list("ITEM"):
+        nm=((o.get("item_data") or {}).get("name") or "").strip()
+        if nm: items.setdefault(_norm_name(nm),nm)
+    todo=[]
+    for o in _sq_catalog_list("MODIFIER"):
+        md=o.get("modifier_data") or {}; mnm=(md.get("name") or "").strip()
+        if not mnm: continue
+        canon=items.get(_norm_name(mnm))
+        if canon and canon!=mnm: todo.append((o,mnm,canon))
+    if not d.get("fix"):
+        return jsonify({"ok":True,"applied":False,"would_rename":[{"from":m,"to":c} for _o,m,c in todo]})
+    renamed=[]; failed=[]
+    for o,mnm,canon in todo:
+        if _sq_rename_modifier(o.get("id"),canon,o): renamed.append({"from":mnm,"to":canon})
+        else: failed.append({"from":mnm,"to":canon})
+    _PSRCH_CACHE["at"]=0
+    return jsonify({"ok":True,"applied":True,"renamed":renamed,"failed":failed})
+
 @app.route("/api/product_enable",methods=["POST"])
 def api_product_enable():
     d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
