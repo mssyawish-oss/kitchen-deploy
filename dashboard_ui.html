@@ -1761,6 +1761,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
       <div id="tables-tile" class="card" style="display:none;position:fixed;right:16px;bottom:96px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
+      <div id="packev-tile" class="card" style="display:none;position:fixed;right:16px;bottom:96px;width:300px;max-width:40vw;padding:12px 14px;z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <div id="intables-tile" class="card" style="display:none;position:fixed;left:16px;bottom:96px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <div id="frontdoor-tile" class="card" style="display:none;position:fixed;right:16px;top:64px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <style>
@@ -2636,6 +2637,30 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div id="tb-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">This is exactly what the AI looked at — tap to enlarge.</div>
     <div class="row-between" style="margin-top:14px;"><div class="label" style="margin:0;">Recent detections <span style="color:var(--muted);font-weight:400;">(the frame the AI decided on, with its reason)</span></div><span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogLoad()">Refresh</button> <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="tablesLogClear()">Clear</button></span></div>
     <div id="tb-log" style="margin-top:8px;"></div>
+    <div class="section-title" style="margin-top:18px;">Delivery pack evidence (camera)</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">For Uber Eats / DoorDash “item missing” refund claims. Every time a delivery order is bumped on the KDS, the packing camera takes a photo at the bump and another a few seconds later (bag sealed / handed over). Photos + the order’s item list are kept for the number of days below, so a claim can be answered with a picture of that exact order. No AI runs on the live path unless you turn the pack check on.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="pk-enabled" style="width:18px;height:18px;"> Keep pack evidence for delivery orders</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-bottom:8px;cursor:pointer;color:var(--muted);"><input type="checkbox" id="pk-hidehere" style="width:16px;height:16px;" onchange="_camScreenHide('packev',this.checked)"> Don't show the pack-check popup on THIS screen <span style="opacity:.7;">(other screens unaffected)</span></label>
+    <div class="grid-2">
+      <div><div class="label">Packing camera</div><select class="input" id="pk-cam" style="background:var(--surface2);"></select></div>
+      <div><div class="label">Second photo after <span style="color:var(--muted);font-weight:400;">(seconds)</span></div><input class="input" id="pk-delay" type="number" min="0" max="180" step="5" placeholder="25"></div>
+    </div>
+    <div class="grid-2 mt-8">
+      <div><div class="label">Keep for <span style="color:var(--muted);font-weight:400;">(days)</span></div><input class="input" id="pk-keep" type="number" min="1" max="365" step="1" placeholder="45"></div>
+      <div><div class="label">Which orders</div><div class="row" style="gap:10px;flex-wrap:wrap;font-size:var(--fs-sm);">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="pk-src-uber" value="uber"> Uber Eats</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="pk-src-door" value="door"> DoorDash</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="pk-src-online" value="square online"> Square Online</label>
+      </div></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-top:10px;cursor:pointer;"><input type="checkbox" id="pk-check" style="width:16px;height:16px;"> Also run an AI pack check on the second photo <span style="color:var(--muted);">(compares what’s on the bench with the order; pops a small “Check this order” box if something looks missing. One Gemini call per delivery order.)</span></label>
+    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="packevSave()">Save pack evidence</button><button class="btn" onclick="packevTest()">Test camera now</button></div>
+    <div id="pk-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;color:var(--muted);"></div>
+    <img id="pk-preview" alt="packing camera — test frame" style="display:none;width:100%;max-width:420px;border-radius:10px;margin-top:8px;border:1px solid var(--line);cursor:zoom-in;" onclick="_tablesEnlarge(this.src)">
+    <div id="pk-preview-cap" style="display:none;font-size:var(--fs-sm);color:var(--muted);margin-top:4px;"></div>
+    <div class="row-between" style="margin-top:14px;flex-wrap:wrap;gap:6px;"><div class="label" style="margin:0;">Recent delivery orders <span style="color:var(--muted);font-weight:400;">(tap a photo to enlarge; type what the customer says is missing and Ask AI)</span></div>
+      <span class="row" style="gap:6px;"><select class="input" id="pk-days" style="width:auto;padding:4px 8px;font-size:var(--fs-sm);background:var(--surface2);" onchange="packevListLoad()"><option value="1">Today</option><option value="7" selected>7 days</option><option value="30">30 days</option><option value="90">90 days</option></select><input class="input" id="pk-q" placeholder="search name / item" style="width:150px;padding:4px 8px;font-size:var(--fs-sm);" onkeydown="if(event.key==='Enter')packevListLoad()"><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="packevListLoad()">Refresh</button></span></div>
+    <div id="pk-list" style="margin-top:8px;"></div>
     <div class="section-title" style="margin-top:18px;">Oven step alerts (UNOX cloud + camera)</div>
     <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Follows the CHEFTOP oven through its program using your UNOX Data Driven Cooking login. A couple of seconds before each step ends, every screen shows a big banner naming the tray to load and sounds the <b>Oven step</b> alarm (Alarm Center). The alarm stops on its own when the oven door opens &mdash; seen live on the kitchen camera, with the cloud's own door signals as a slower backup. Nothing is ever sent to the oven. Uses the same Gemini key as the rotisserie camera.</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="ov-enabled" style="width:18px;height:18px;"> Turn the oven step alerts on</label>
@@ -3192,6 +3217,7 @@ const _ALARM_DEF={
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'},
  display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'},
  tables:{label:'Food left on outside table',color:'#f59e0b',interval:2800,desc:'The AI spotted a food tray/plate/rubbish left behind on an outside table with nobody seated. The outside camera view pops up on the dash. Sound + popup like a probe alarm.'},
+ packev:{label:'Delivery pack check',color:'#f59e0b',interval:2800,desc:'The AI pack check thinks an item may be missing from an Uber Eats / DoorDash order that was just bumped. A small box shows the pack photo so someone can check the bag before the driver leaves.'},
  intables:{label:'Food left on inside table',color:'#f59e0b',interval:2800,desc:'The AI spotted food/rubbish left on an INSIDE table with nobody seated. The inside camera view pops up on the dash. Sound + popup like a probe alarm.'},
  frontdoor:{label:'Customer at the front door',color:'#38bdf8',interval:2800,desc:'A customer walked in the front door. A live view pops up on the dash. Visual only unless you turn sound on here.'},
  ovenstep:{label:'Oven step — load the next tray',color:'#fb923c',interval:1200,desc:'The combi oven is about to move to its next program step: a big banner names the tray to load. Keeps sounding until the oven door opens (camera / cloud) or someone taps Done. Set up under Settings → Oven step alerts.'}
@@ -3199,7 +3225,7 @@ const _ALARM_DEF={
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','intables','frontdoor','display','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3839,6 +3865,92 @@ function handleIntables(t){
     if(_acfg('intables').enabled && !(typeof _devPopMuted==='function'&&_devPopMuted('intables'))) startIntablesAlarm();
   } else { tile._on=false; tile.style.display='none'; stopIntablesAlarm(); _intablesLiveStop(); if(_intablesAutoHide){clearTimeout(_intablesAutoHide);_intablesAutoHide=null;} }
 }
+// ── Delivery pack evidence (Uber/DoorDash missing-item claims) ─────────────────────────────────────
+function packevLoad(){
+  fetch('/api/packev_status').then(r=>r.json()).then(d=>{
+    const g=id=>document.getElementById(id); if(!g('pk-enabled'))return;
+    g('pk-enabled').checked=!!d.enabled; g('pk-delay').value=(d.delay!==undefined?d.delay:25); g('pk-keep').value=d.keep_days||45;
+    const sel=g('pk-cam'); if(sel){const cams=(appData.cameras_public||[]).filter(c=>c.enabled!==false);
+      sel.innerHTML=cams.map(c=>'<option value="'+c.id+'"'+(c.id===d.cam?' selected':'')+'>'+_mEsc(c.name||('Camera '+c.channel))+'</option>').join('');}
+    const srcs=(d.sources||[]).map(s=>String(s).toLowerCase());
+    ['uber','door','online'].forEach(k=>{const e=g('pk-src-'+k);if(e)e.checked=srcs.some(s=>s.indexOf(k==='online'?'online':k)>=0);});
+    if(g('pk-check'))g('pk-check').checked=!!d.check_ai;
+    if(g('pk-hidehere'))g('pk-hidehere').checked=_camScreenHidden('packev');
+    const st=g('pk-status'); if(st){st.textContent=(d.enabled?('On — '+(d.stored||0)+' orders stored'+(d.last?(', last: '+(d.last.name||'')+' '+(d.last.at||'')):'')):'Off')+(d.err?(' — '+d.err):'')+(d.gemini?'':' — no Gemini key, so AI checks are unavailable');st.style.color=d.err?'var(--amber)':'var(--muted)';}
+  }).catch(()=>{});
+  packevListLoad();
+}
+function packevSave(){
+  const g=id=>document.getElementById(id),st=g('pk-status');
+  const sources=[];['uber','door','online'].forEach(k=>{const e=g('pk-src-'+k);if(e&&e.checked)sources.push(e.value);});
+  const body={enabled:g('pk-enabled').checked,cam:g('pk-cam').value,delay:parseInt(g('pk-delay').value),keep_days:parseInt(g('pk-keep').value)||45,sources:sources,check_ai:g('pk-check').checked};
+  if(isNaN(body.delay))body.delay=25;
+  if(!body.cam){st.textContent='Pick the packing camera first.';st.style.color='var(--amber)';return;}
+  if(body.enabled&&!sources.length){st.textContent='Tick at least one order source.';st.style.color='var(--amber)';return;}
+  st.textContent='Saving…';st.style.color='var(--muted)';
+  fetch('/api/packev_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{st.textContent=d.ok?'Saved ✓':'Failed';st.style.color=d.ok?'var(--green)':'var(--red)';}).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function packevTest(){
+  const st=document.getElementById('pk-status'),img=document.getElementById('pk-preview'),cap=document.getElementById('pk-preview-cap');
+  st.textContent='Taking a photo of the packing bench…';st.style.color='var(--muted)';
+  fetch('/api/packev_test',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(!d.ok){st.textContent=d.error||'Failed';st.style.color='var(--red)';if(img)img.style.display='none';if(cap)cap.style.display='none';return;}
+    st.textContent='Camera OK'+(d.desc?(' — AI sees: '+d.desc):'');st.style.color='var(--green)';
+    if(img&&d.preview){img.src=d.preview;img.style.display='';if(cap){cap.textContent='This is what will be saved for every delivery order — tap to enlarge.';cap.style.display='';}}
+  }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
+}
+function _packevItems(items){return (items||[]).map(it=>_mEsc(String(it.q||1)+'x '+(it.n||''))+(it.mods&&it.mods.length?' <span style="color:var(--muted);">('+_mEsc(it.mods.join(', '))+')</span>':'')).join(' · ');}
+function _packevVerdict(ai){
+  if(!ai)return '';
+  const v=String(ai.verdict||'?'),col=(v==='PACKED'||v==='OK')?'var(--green)':(v==='CHECK'||v==='NOT VISIBLE')?'var(--red)':'var(--amber)';
+  return '<div style="font-size:var(--fs-sm);margin-top:4px;"><b style="color:'+col+';">AI: '+_mEsc(v)+'</b>'+(ai.claim?(' <span style="color:var(--muted);">(claim: '+_mEsc(ai.claim)+')</span>'):'')+' '+_mEsc(ai.reason||'')+(ai.seen?('<div style="color:var(--muted);">Seen: '+_mEsc(ai.seen)+'</div>'):'')+'</div>';
+}
+function packevListLoad(){
+  const box=document.getElementById('pk-list'); if(!box)return;
+  const days=(document.getElementById('pk-days')||{}).value||7,q=encodeURIComponent((document.getElementById('pk-q')||{}).value||'');
+  fetch('/api/packev_list?days='+days+'&q='+q).then(r=>r.json()).then(d=>{
+    const list=(d&&d.list)||[];
+    if(!list.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);">No delivery orders captured in this period yet — photos appear here as Uber / DoorDash orders are bumped.</div>';return;}
+    box.innerHTML=list.map(e=>{
+      const pics=(e.frames||[]).map(n=>'<img src="/api/packev_frame.jpg?key='+encodeURIComponent(e.key)+'&n='+n+'" onclick="_tablesEnlarge(this.src)" style="width:120px;height:72px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:0 0 auto;" alt="pack photo '+n+'">').join('');
+      const oid=_mEsc(e.oid||'');
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);">'
+        +'<div style="display:flex;gap:4px;flex:0 0 auto;">'+(pics||'<div style="width:120px;height:72px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:var(--fs-sm);color:var(--muted);">no photo</div>')+'</div>'
+        +'<div style="min-width:0;flex:1;"><div style="font-size:var(--fs-md);color:var(--text);"><b>'+_mEsc(e.name||'')+'</b> <span style="color:var(--muted);">'+_mEsc(e.src||'')+' · '+_mEsc(e.at||'')+(e.total?(' · $'+Number(e.total).toFixed(2)):'')+'</span></div>'
+        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:2px;">'+_packevItems(e.items)+'</div>'
+        +'<div id="pk-ai-'+oid+'">'+_packevVerdict(e.ai)+'</div>'
+        +'<div class="row" style="gap:6px;margin-top:6px;"><input class="input" id="pk-claim-'+oid+'" placeholder="what the customer says is missing" style="flex:1;padding:4px 8px;font-size:var(--fs-sm);"><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="packevAsk(\''+oid+'\')">Ask AI</button></div>'
+        +'</div></div>';}).join('');
+  }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the evidence list.</div>';});
+}
+function packevAsk(oid){
+  const inp=document.getElementById('pk-claim-'+oid),out=document.getElementById('pk-ai-'+oid);
+  if(out)out.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">Asking the AI to look at the photos…</div>';
+  fetch('/api/packev_ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oid:oid,claim:(inp&&inp.value)||''})})
+    .then(r=>r.json()).then(d=>{if(out)out.innerHTML=d.ok?_packevVerdict(d.ai):'<div style="font-size:var(--fs-sm);color:var(--red);">'+_mEsc(d.error||'Failed')+'</div>';})
+    .catch(()=>{if(out)out.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">Could not reach the server.</div>';});
+}
+let _packevAlarm=false;
+function startPackevAlarm(){if(!_acfg('packev').enabled)return;if(_packevAlarm)return;_packevAlarm=true;const t0=Date.now();
+  (function b(){if(!_packevAlarm)return;const c=_acfg('packev');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_packevAlarm=false;_updateFlash();return;}_alarmHit('packev');setTimeout(()=>{if(_packevAlarm)b();},c.interval);})();}
+function stopPackevAlarm(){_packevAlarm=false;_updateFlash();}
+function handlePackev(p){
+  const tile=document.getElementById('packev-tile'); if(!tile)return;
+  const on=!!(p&&p.alert) && !(typeof _devPopMuted==='function'&&_devPopMuted('packev'));
+  if(on){
+    if(!tile._on||tile._at!==p.at){
+      tile._on=true; tile._at=p.at; tile.style.display=''; tile.style.border='2px solid var(--amber)';
+      tile.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><b style="color:var(--amber);font-size:var(--fs-md);flex:1;min-width:0;">⚠ Check this delivery order</b></div>'
+        +(p.img?('<img src="'+p.img+'" onclick="_tablesEnlarge(this.src)" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;display:block;cursor:zoom-in;background:#000;" alt="pack photo">'):'')
+        +'<div style="font-size:var(--fs-sm);color:var(--text);margin:5px 0 2px;"><b>'+_mEsc(p.name||'')+'</b> <span style="color:var(--muted);">'+_mEsc(p.src||'')+'</span></div>'
+        +'<div style="font-size:var(--fs-sm);color:var(--muted);margin:0 0 8px;line-height:1.25;">AI: '+_mEsc(p.desc||'an item may be missing')+'</div>'
+        +'<button class="btn btn-primary" style="width:100%;font-size:var(--fs-md);" onclick="ackPackev()">Checked it</button>';
+    }
+    if(_acfg('packev').enabled) startPackevAlarm();
+  } else { tile._on=false; tile.style.display='none'; stopPackevAlarm(); }
+}
+function ackPackev(){stopPackevAlarm();const t=document.getElementById('packev-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/packev_ack',{method:'POST'}).catch(()=>{});}
 function intablesLoad(){
   fetch('/api/intables_status').then(r=>r.json()).then(d=>{
     const g=id=>document.getElementById(id); if(!g('in-enabled'))return;
@@ -5627,7 +5739,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
-try{handleTables(d.tables||{});}catch(e){console.warn('tables:',e);}
+try{handleTables(d.tables||{});}catch(e){console.warn('tables:',e);}try{handlePackev(d.packev||{});}catch(e){console.warn('packev:',e);}
 try{handleIntables(d.intables||{});}catch(e){console.warn('intables:',e);}
 try{handleFrontdoor(d.frontdoor||{});}catch(e){console.warn('frontdoor:',e);}
 try{handleOven(d.oven||{});}catch(e){console.warn('oven:',e);}
@@ -8661,7 +8773,7 @@ function alarmUpload(key,input){const f=input.files&&input.files[0];if(!f)return
 function alarmResetSound(key){fetch('/api/alarm_sound/'+key,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok){appData.alarm_cfg=appData.alarm_cfg||{};appData.alarm_cfg[key]=appData.alarm_cfg[key]||{};appData.alarm_cfg[key].has_custom=false;renderAlarmCenter();}}).catch(()=>{});}
 function alarmSetTone(key,val){alarmSet(key,'sound_preset',val);const c=_acfg(key);if(val&&_TONES[val]){try{_TONES[val].fn(c.volume);}catch(e){}}}
 function alarmPreviewTone(key){const c=_acfg(key);if(c.sound_preset&&_TONES[c.sound_preset]){try{_TONES[c.sound_preset].fn(c.volume);}catch(e){}}else _alarmSynth(key,c.volume);}
-function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;var _su=document.getElementById('status-url-display');if(_su)_su.textContent=window.location.origin+'/status';const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();ovenLoad();intablesLoad();frontdoorLoad();displayLoad();kdsLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
+function _openSettingsModal(){const cfg=appData.email_config||{};document.getElementById('cfg-email').value=cfg.smtp_user||'';document.getElementById('cfg-apppass').value='';document.getElementById('server-url-display').textContent=window.location.origin;var _su=document.getElementById('status-url-display');if(_su)_su.textContent=window.location.origin+'/status';const sq=appData.square_config||{};document.getElementById('sq-token').value=sq.access_token||'';document.getElementById('sq-location').value=sq.location_id||'';document.getElementById('sq-threshold').value=sq.busy_threshold||3;if(serverSettings&&serverSettings.cooked_temp)syncProbeSettingsUI(serverSettings);rfxLoad();const rc=appData.report_config||{};document.getElementById('rep-enabled').checked=rc.enabled!==false;document.getElementById('rep-time').value=rc.time||'22:30';document.getElementById('rep-to').value=rc.to||'';loadCookLog();fillRotisserieSettings();editingStaff=null;setBtn('btn-add-staff','+ Add Staff');renderStaffAdmin();fillCameraSettings();fillNoWait();fillRotcam();fillFeatures();fillGoogle();dialpadLoad();walkinLoad();tablesLoad();packevLoad();ovenLoad();intablesLoad();frontdoorLoad();displayLoad();kdsLoad();lpLoad();plLoad();renderCamsList();openModal('settings-modal');setupSettingsTabs();showSettingsTab('General');loadSalesFeed();if(!_salesFeedTimer)_salesFeedTimer=setInterval(loadSalesFeed,8000);renderDeployHealth();loadAppData().then(renderDeployHealth);}
 function saveSquareConfig(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');saveAppData().then(()=>{s.textContent='Saved! Busy/quiet updates within 30s.';s.style.color='var(--green)';});}
 async function testSquare(){const access_token=document.getElementById('sq-token').value.trim();const location_id=document.getElementById('sq-location').value.trim();const busy_threshold=parseInt(document.getElementById('sq-threshold').value)||3;appData.square_config={access_token,location_id,busy_threshold};const s=document.getElementById('square-status');s.textContent='Testing...';s.style.color='var(--muted)';await saveAppData();try{const r=await fetch('/api/test_square',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await r.json();if(d.ok){s.textContent='✓ Connected — '+d.count+' sale(s) in last 30 min.';s.style.color='var(--green)';}else{s.textContent='Error: '+d.error;s.style.color='var(--red)';}}catch(e){s.textContent='Error contacting server.';s.style.color='var(--red)';}}
 function fillGoogle(){const p=document.getElementById('google-conn-pill');if(p){const on=!!appData.google_connected;p.textContent=on?'● connected':'○ not connected';p.style.color=on?'var(--green)':'var(--muted)';}['g-cid','g-csec','g-rtok'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});const s=document.getElementById('google-status');if(s)s.textContent='';}
