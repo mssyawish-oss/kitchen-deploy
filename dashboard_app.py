@@ -1542,6 +1542,30 @@ def _order_status_payload():
     inprog+=ki; ready+=kr
     inprog.sort(key=lambda r:r["created"])                 # longest-waiting at the top
     ready.sort(key=lambda r:r.get("_r",0),reverse=True)    # most recently ready first
+    # --- reconcile the two feeds (Square orders + KDS screen reader) ---------------------------
+    # The SAME order can arrive from BOTH feeds (e.g. a POS ticket the Square estimate calls "ready"
+    # while the KDS screen still shows it OPEN), and a re-opened/brought-back ticket can sit in the
+    # bumped=READY set while it is open again. Collapse duplicates by a customer-facing key and let
+    # OPEN win: anything currently IN PROGRESS is removed from READY, so a not-yet-done order can
+    # never show as ready (the issue staff reported 2026-09-21).
+    def _skey(r):
+        num=str(r.get("number") or "").strip().lstrip('#')
+        if not num:
+            nm=(r.get("name") or "").strip()
+            m=re.search(r'(\d+)',nm)
+            if m and nm.lower().startswith("order"): num=m.group(1)
+        if num: return "#"+num
+        return _norm_name(r.get("name") or "")+"|"+((r.get("source") or "").strip().lower())
+    def _dedup(rows):
+        seen=set(); out=[]
+        for r in rows:
+            k=_skey(r)
+            if k in seen: continue
+            seen.add(k); out.append(r)
+        return out
+    inprog=_dedup(inprog); ready=_dedup(ready)
+    prog_keys={_skey(r) for r in inprog}
+    ready=[r for r in ready if _skey(r) not in prog_keys]  # OPEN wins over a stale READY twin
     for r in ready: r.pop("_r",None)
     return {"in_progress":inprog,"ready":ready,"ts":int(nows),"board_age_s":int(nows-(_KDS_RAW.get("ts") or 0))}
 @app.route("/api/order_status")
@@ -1707,6 +1731,9 @@ def _kds_check_once(save=False,force=False):
         e=prev.get(k) or {"first":now}
         e.update({"name":t["name"],"source":t.get("source",""),"last":now}); e.setdefault("first",now)
         newopen[k]=e
+        # a ticket that is (still, or again) OPEN is NOT ready — drop any stale bumped
+        # record so a re-opened / brought-back ticket can't show as READY and PREPARING at once
+        KDS_SCREEN.get("bumped",{}).pop(k,None)
     KDS_SCREEN["open"]=newopen
     for k in list(KDS_SCREEN.get("bumped",{}).keys()):   # prune bumped entries older than 30 min
         if now-KDS_SCREEN["bumped"][k]["ts"]>1800: KDS_SCREEN["bumped"].pop(k,None)

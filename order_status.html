@@ -207,10 +207,12 @@ function sampleData(){return {
   ]};}
 let DATA={in_progress:[],ready:[]}; const seen=new Set();
 function _hydrate(o){return {id:o.id,name:o.name,number:o.number,source:o.source,created:new Date(o.created)};}
+let _lastAge=null;
 async function fetchOrders(){
   const r=await fetch('/api/order_status',{cache:'no-store'});
   if(!r.ok) throw new Error('status '+r.status);
   const d=await r.json();
+  _lastAge=(typeof d.board_age_s==='number')?d.board_age_s:null;
   return {in_progress:(d.in_progress||[]).map(_hydrate), ready:(d.ready||[]).map(_hydrate)};
 }
 
@@ -301,11 +303,41 @@ function _demoData(n){
   const ip=[],rd=[];for(let i=0;i<n;i++){ip.push(mk(i,180,2+i*2));rd.push(mk(i,140,1+i*2));}
   return {in_progress:ip,ready:rd};
 }
-async function poll(){try{const d=DEMO?_demoData(DEMO):await fetchOrders();DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();}catch(e){}}
+// SELF-HEAL: the board must never sit silently frozen. Track the last good update; if polling
+// stops working (tab lost its connection after the tablet slept, server hiccup, KDS feed stalled)
+// show a small "Reconnecting…" notice and, if it stays down, hard-reload to re-establish everything.
+let _lastOk=Date.now(),_failN=0,_staleEl=null;
+function _setStale(on,msg){
+  if(on){
+    if(!_staleEl){_staleEl=document.createElement('div');
+      _staleEl.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:9999;'
+        +'background:rgba(180,40,40,.92);color:#fff;font-weight:700;padding:6px 16px;border-radius:20px;'
+        +'font-size:2.4vh;letter-spacing:.5px;box-shadow:0 2px 10px rgba(0,0,0,.3);pointer-events:none;';
+      document.body.appendChild(_staleEl);}
+    _staleEl.textContent=msg||'Reconnecting…';_staleEl.style.display='block';
+  } else if(_staleEl){_staleEl.style.display='none';}
+}
+async function poll(){
+  try{
+    const d=DEMO?_demoData(DEMO):await fetchOrders();
+    DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();
+    _lastOk=Date.now();_failN=0;
+    // the page is fine but the SERVER's own order feed has stalled (KDS/Square poll stopped) → warn softly
+    if(!DEMO && _lastAge!=null && _lastAge>150) _setStale(true,'Updating…');
+    else _setStale(false);
+  }catch(e){
+    _failN++;
+    const downMs=Date.now()-_lastOk;
+    if(downMs>20000) _setStale(true,'Reconnecting…');   // ~4 missed polls → tell staff it isn't live
+    if(downMs>150000) location.reload(true);            // 2.5 min with no data → full reload to recover a wedged tab
+  }
+}
 tickClock();poll();
 setInterval(tickClock,1000);
 setInterval(updateWaits,1000);
 setInterval(poll,5000);      // real page: pulls /api/order_status
+// the tablet screen waking from sleep can leave intervals throttled/stale → poll immediately on wake
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){poll();_checkBuild();}});
 // AUTO-UPDATE: reload the page when the server deploys a new build, so layout/design changes appear on
 // the tablet on their own (no manual reload). Watches the server's applied commit sha.
 let _bootSha=null;
