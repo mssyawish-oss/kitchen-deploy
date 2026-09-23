@@ -335,7 +335,7 @@ async function poll(){
 tickClock();poll();
 setInterval(tickClock,1000);
 setInterval(updateWaits,1000);
-setInterval(poll,5000);      // real page: pulls /api/order_status
+setInterval(poll,1200);      // real page: pulls /api/order_status (fast so a new/ready order shows near-instantly)
 // the tablet screen waking from sleep can leave intervals throttled/stale → poll immediately on wake
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){poll();_checkBuild();}});
 // AUTO-UPDATE: reload the page when the server deploys a new build, so layout/design changes appear on

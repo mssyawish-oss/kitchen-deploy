@@ -1579,7 +1579,7 @@ KDS_SCREEN={"open":{}, "bumped":{}, "at":0.0, "raw":"", "err":"", "tickets":[]} 
 def _kds_cfg():
     c=dict(db.get("kds_reader",{}) or {})
     c.setdefault("enabled",False); c.setdefault("url","http://192.168.0.167:8080")
-    c.setdefault("interval",6); c.setdefault("confirm",2)
+    c.setdefault("interval",2); c.setdefault("confirm",2)
     return c
 _FFMPEG_BIN=None
 def _ffmpeg_bin():
@@ -1768,7 +1768,7 @@ def _kds_instore_orders():
     return inprog,ready
 def kds_loop():
     while True:
-        cfg=_kds_cfg(); iv=max(3,int(cfg.get("interval",6) or 6))
+        cfg=_kds_cfg(); iv=max(1,int(cfg.get("interval",2) or 2))   # 1s floor: motion-gate keeps Gemini cheap, so a fast loop just spots changes sooner
         try:
             if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip()):
                 time.sleep(iv); continue
