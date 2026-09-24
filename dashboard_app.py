@@ -7033,7 +7033,7 @@ def _packev_capture(b,phase="bump"):
         if entry is None:
             entry={"oid":oid,"key":key,"name":b.get("name") or "","src":b.get("src") or "","items":b.get("items") or [],
                    "total":b.get("total") or 0,"bump":int(t0*1000),"at":datetime.fromtimestamp(t0).strftime("%a %d %b %I:%M %p"),
-                   "frames":[],"offs":{},"ai":None}
+                   "frames":[],"offs":{},"ai":None,"tag":(BAGTAG.get("pending") or {}).pop(oid,None)}
             idx.insert(0,entry)
         if phase=="pickup": entry["picked"]=int(t0*1000); entry["picked_at"]=datetime.fromtimestamp(t0).strftime("%I:%M %p")
         entry["frames"]=sorted(set((entry.get("frames") or [])+frames)); entry.setdefault("offs",{}).update(offs)
@@ -7305,7 +7305,9 @@ def _bagtag_for_order(b):
         _bagtag_send(_bagtag_escpos(img),cfg)
         BAGTAG["printed"]=BAGTAG.get("printed",0)+1; BAGTAG["err"]=""
         BAGTAG["last"]={"num":num,"name":who,"src":src,"at":datetime.now().strftime("%I:%M:%S %p"),"oid":b.get("id")}
-        # remember number ↔ order so a refund claim can be matched to the exact bag
+        # remember number ↔ order so a refund claim can be matched to the exact bag. The evidence entry
+        # doesn't exist yet (it's written when the 60s burst finishes), so park it for the capture to claim.
+        BAGTAG.setdefault("pending",{})[b.get("id")]=num
         with _PACKEV_LOCK:
             for e in _packev_idx():
                 if e.get("oid")==b.get("id"): e["tag"]=num; _packev_idx_save(); break
