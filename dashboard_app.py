@@ -7071,6 +7071,7 @@ def _packev_tick(board):
         if pf is False and ful and oid not in done:
             done[oid]=now
             threading.Thread(target=_packev_capture,args=(dict(b),"bump"),daemon=True).start()
+            threading.Thread(target=_bagtag_for_order,args=(dict(b),),daemon=True).start()   # print the fold-over bag tag
         if pp is False and pk and (oid+":p") not in done and (oid in done or pf is not None):
             done[oid+":p"]=now          # courier collected → drink hand-over frames
             threading.Thread(target=_packev_capture,args=(dict(b),"pickup"),daemon=True).start()
@@ -7178,6 +7179,160 @@ def api_packev_prune():
     _packev_prune()
     with _PACKEV_LOCK: n=len(_packev_idx())
     return jsonify({"ok":True,"stored":n})
+# ── DELIVERY BAG TAG (auto-printed on the KDS bump) ─────────────────────────────────────────────────
+# Marcel, 24 Sep 2026: a stapled ticket faces whichever way the bag happens to be turned, so the ceiling
+# camera often can't read it. This prints a FOLD-OVER tag on the pass printer the moment an Uber/DoorDash
+# order is bumped: the top half is upside down, so once it's folded on the dashed line and stapled over
+# the bag top, the same big number reads correctly from BOTH sides. The number is a simple daily counter
+# (far more camera-readable than Uber's 5-character code); the dash keeps the number↔order mapping, so a
+# refund claim can be matched back to the exact bag. See [[delivery-pack-evidence]].
+BAGTAG={"last":None,"err":"","printed":0}
+def _bagtag_cfg():
+    c=dict(db.get("bagtag",{}) or {})
+    c.setdefault("enabled",False)
+    c.setdefault("ip","192.168.0.155")          # the PASS printer (raw ESC/POS on 9100)
+    c.setdefault("port",9100)
+    c.setdefault("sources",["uber","door"])
+    c.setdefault("width",576)                   # 72mm printable on an 80mm roll @203dpi
+    c.setdefault("digit",300)                   # px tall ≈ 37mm
+    return c
+def _bagtag_next_num():
+    """1..999, restarting each day."""
+    today=datetime.now().astimezone().date().isoformat()
+    with data_lock:
+        st=dict(db.get("bagtag_seq",{}) or {})
+        if st.get("day")!=today: st={"day":today,"n":0}
+        st["n"]=int(st.get("n",0))%999+1
+        db["bagtag_seq"]=st; save_data(db)
+        return st["n"]
+_BAGTAG_FONTS=("C:/Windows/Fonts/ariblk.ttf","C:/Windows/Fonts/arialbd.ttf","C:/Windows/Fonts/impact.ttf",
+               "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+               "/System/Library/Fonts/Supplemental/Arial Black.ttf","/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+def _bagtag_font(size):
+    from PIL import ImageFont
+    for p in _BAGTAG_FONTS:
+        try: return ImageFont.truetype(p,size)
+        except Exception: pass
+    return None
+def _bagtag_render(num,src,who,tm,items,cfg=None):
+    """One tall 1-bit image: [face upside-down] [dashed fold line] [face upright]."""
+    from PIL import Image,ImageDraw
+    cfg=cfg or _bagtag_cfg()
+    W=int(cfg.get("width",576)); DS=int(cfg.get("digit",300))
+    fbig=_bagtag_font(DS); fmid=_bagtag_font(46); fsml=_bagtag_font(30)
+    def _txt(d,x,y,s,f,anchor="ma"):
+        if f is not None: d.text((x,y),s,font=f,fill=0,anchor=anchor); return
+        # no TrueType on this box: draw the default bitmap font scaled up so it's still camera-readable
+        from PIL import ImageFont
+        tmp=Image.new("L",(len(s)*8+4,12),255); ImageDraw.Draw(tmp).text((2,0),s,font=ImageFont.load_default(),fill=0)
+        k=max(1,int(DS/12)) if f is fbig else 3
+        tmp=tmp.resize((tmp.width*k,tmp.height*k),Image.NEAREST)
+        d._image.paste(tmp,(max(0,x-tmp.width//2),y))
+    def face():
+        h=DS+170
+        im=Image.new("L",(W,h),255); d=ImageDraw.Draw(im); d._image=im
+        _txt(d,W//2,14,src.upper(),fmid)
+        _txt(d,W//2,70,str(num),fbig)
+        _txt(d,W//2,h-78,("%s   %s"%(who,tm)).strip(),fsml)
+        _txt(d,W//2,h-40,items,fsml)
+        return im
+    top=face().rotate(180); bot=face(); GAP=70
+    H=top.height+GAP+bot.height
+    tag=Image.new("L",(W,H),255); tag.paste(top,(0,0)); tag.paste(bot,(0,top.height+GAP))
+    d=ImageDraw.Draw(tag); y=top.height+GAP//2
+    for x in range(10,W-10,26): d.line([(x,y),(x+14,y)],fill=0,width=3)     # fold line
+    return tag.point(lambda p:0 if p<128 else 255)
+def _bagtag_escpos(img):
+    """ESC/POS raster (GS v 0) in horizontal bands + feed + full cut."""
+    W,H=img.size; px=img.load(); wb=W//8
+    out=bytearray(b"\x1b\x40")
+    STEP=120
+    for y0 in range(0,H,STEP):
+        y1=min(H,y0+STEP); rows=bytearray()
+        for y in range(y0,y1):
+            row=bytearray(wb)
+            for x in range(W):
+                if px[x,y]==0: row[x>>3]|=0x80>>(x&7)
+            rows+=row
+        h=y1-y0
+        out+=b"\x1dv0\x00"+bytes([wb&0xff,wb>>8,h&0xff,h>>8])+bytes(rows)
+    out+=b"\x1b\x64\x04"          # feed
+    out+=b"\x1d\x56\x42\x00"      # full cut
+    return bytes(out)
+def _bagtag_send(data,cfg=None):
+    cfg=cfg or _bagtag_cfg()
+    s=socket.create_connection((cfg.get("ip"),int(cfg.get("port",9100))),timeout=8)
+    try: s.sendall(data)
+    finally:
+        try: s.close()
+        except Exception: pass
+def _bagtag_items_line(items):
+    n=0; drinks=0
+    for it in (items or []):
+        try: q=int(float(it.get("q",1) or 1))
+        except (TypeError,ValueError): q=1
+        nm=(it.get("n","") or "").upper()
+        if any(k in nm for k in ("CAN","BOTTLE","DRINK","COKE","SPRITE","FANTA","LT","WATER","SPRITZ","JUICE")): drinks+=q
+        else: n+=q
+    s="%d item%s"%(n,"" if n==1 else "s")
+    if drinks: s+=" + %d drink%s"%(drinks,"" if drinks==1 else "s")
+    return s
+def _bagtag_for_order(b):
+    """Print one tag for a just-bumped delivery order. Returns the tag number, or None."""
+    cfg=_bagtag_cfg()
+    if not cfg.get("enabled"): return None
+    if not _packev_src_ok(b.get("src"),{"sources":cfg.get("sources") or []}): return None
+    try:
+        num=_bagtag_next_num()
+        src=(b.get("src") or "").strip() or "DELIVERY"
+        who=(b.get("name") or "").strip()[:18]
+        tm=datetime.now().strftime("%-I:%M %p") if os.name!="nt" else datetime.now().strftime("%I:%M %p").lstrip("0")
+        img=_bagtag_render(num,src,who,tm,_bagtag_items_line(b.get("items")),cfg)
+        _bagtag_send(_bagtag_escpos(img),cfg)
+        BAGTAG["printed"]=BAGTAG.get("printed",0)+1; BAGTAG["err"]=""
+        BAGTAG["last"]={"num":num,"name":who,"src":src,"at":datetime.now().strftime("%I:%M:%S %p"),"oid":b.get("id")}
+        # remember number ↔ order so a refund claim can be matched to the exact bag
+        with _PACKEV_LOCK:
+            for e in _packev_idx():
+                if e.get("oid")==b.get("id"): e["tag"]=num; _packev_idx_save(); break
+        return num
+    except Exception as ex:
+        BAGTAG["err"]=str(ex)[:140]; print("bagtag:",BAGTAG["err"]); return None
+@app.route("/api/bagtag_status")
+def api_bagtag_status():
+    c=_bagtag_cfg()
+    return jsonify({"ok":True,"enabled":bool(c.get("enabled")),"ip":c.get("ip"),"port":int(c.get("port",9100)),
+                    "sources":list(c.get("sources") or []),"digit":int(c.get("digit",300)),
+                    "printed":BAGTAG.get("printed",0),"last":BAGTAG.get("last"),"err":BAGTAG.get("err","")})
+@app.route("/api/bagtag_config",methods=["POST"])
+def api_bagtag_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_bagtag_cfg())
+    if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+    if "ip" in d: cur["ip"]=str(d["ip"] or "").strip() or cur.get("ip")
+    for k,lo,hi in (("port",1,65535),("digit",80,600),("width",192,1024)):
+        if k in d:
+            try: cur[k]=max(lo,min(hi,int(d[k])))
+            except Exception: pass
+    if isinstance(d.get("sources"),list): cur["sources"]=[str(s).strip().lower() for s in d["sources"] if str(s).strip()]
+    with data_lock: db["bagtag"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+@app.route("/api/bagtag_test",methods=["POST"])
+def api_bagtag_test():
+    d=request.get_json(silent=True) or {}; cfg=_bagtag_cfg()
+    try:
+        num=d.get("num") if str(d.get("num") or "").isdigit() else _bagtag_next_num()
+        img=_bagtag_render(int(num),d.get("src") or "UBER EATS",d.get("name") or "TEST",
+                           datetime.now().strftime("%I:%M %p").lstrip("0"),d.get("items") or "2 items + 1 drink",cfg)
+        if not d.get("preview_only"): _bagtag_send(_bagtag_escpos(img),cfg)
+        prev=""
+        try:
+            import io as _io
+            buf=_io.BytesIO(); img.convert("L").resize((img.width//2,img.height//2)).save(buf,"PNG")
+            prev="data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode()
+        except Exception: pass
+        return jsonify({"ok":True,"num":int(num),"preview":prev,"printed":not d.get("preview_only")})
+    except Exception as ex:
+        return jsonify({"ok":False,"error":str(ex)[:180]})
 INTABLESW={"state":"clear","pend":None,"pendn":0,"clearn":0,"at":0.0,"err":"","note":"","since":0.0,"raw":"","img_at":0}
 INTABLES_DIR=os.path.join(BASE_DIR,"intables_watch")
 _INTABLES_LOG_DIR=os.path.join(INTABLES_DIR,"log")
