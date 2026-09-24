@@ -7214,32 +7214,46 @@ def _bagtag_font(size):
         try: return ImageFont.truetype(p,size)
         except Exception: pass
     return None
+def _bagtag_ink(s,f,size_hint):
+    """Render text and crop to the actual ink, so nothing can overlap regardless of font metrics."""
+    from PIL import Image,ImageDraw,ImageChops,ImageFont
+    s=str(s)
+    if f is None:   # no TrueType on this box: scale the default bitmap font up so it stays camera-readable
+        base=Image.new("L",(max(8,len(s)*7)+8,16),255)
+        ImageDraw.Draw(base).text((4,1),s,font=ImageFont.load_default(),fill=0)
+        k=max(1,int(size_hint/14))
+        base=base.resize((base.width*k,base.height*k),Image.NEAREST)
+    else:
+        base=Image.new("L",(max(600,size_hint*len(s)+200),int(size_hint*2.2)+80),255)
+        ImageDraw.Draw(base).text((40,30),s,font=f,fill=0)
+    bb=ImageChops.invert(base).getbbox()
+    return base.crop(bb) if bb else base
 def _bagtag_render(num,src,who,tm,items,cfg=None):
-    """One tall 1-bit image: [face upside-down] [dashed fold line] [face upright]."""
+    """One tall 1-bit image: [face upside-down] [dashed fold line] [face upright].
+    Every element is measured by its real ink box and stacked with fixed gaps, so the big number can
+    never collide with the name/item lines (it did on the first print, 24 Sep)."""
     from PIL import Image,ImageDraw
     cfg=cfg or _bagtag_cfg()
     W=int(cfg.get("width",576)); DS=int(cfg.get("digit",300))
     fbig=_bagtag_font(DS); fmid=_bagtag_font(46); fsml=_bagtag_font(30)
-    def _txt(d,x,y,s,f,anchor="ma"):
-        if f is not None: d.text((x,y),s,font=f,fill=0,anchor=anchor); return
-        # no TrueType on this box: draw the default bitmap font scaled up so it's still camera-readable
-        from PIL import ImageFont
-        tmp=Image.new("L",(len(s)*8+4,12),255); ImageDraw.Draw(tmp).text((2,0),s,font=ImageFont.load_default(),fill=0)
-        k=max(1,int(DS/12)) if f is fbig else 3
-        tmp=tmp.resize((tmp.width*k,tmp.height*k),Image.NEAREST)
-        d._image.paste(tmp,(max(0,x-tmp.width//2),y))
-    def face():
-        h=DS+170
-        im=Image.new("L",(W,h),255); d=ImageDraw.Draw(im); d._image=im
-        _txt(d,W//2,14,src.upper(),fmid)
-        _txt(d,W//2,70,str(num),fbig)
-        _txt(d,W//2,h-78,("%s   %s"%(who,tm)).strip(),fsml)
-        _txt(d,W//2,h-40,items,fsml)
-        return im
-    top=face().rotate(180); bot=face(); GAP=70
-    H=top.height+GAP+bot.height
-    tag=Image.new("L",(W,H),255); tag.paste(top,(0,0)); tag.paste(bot,(0,top.height+GAP))
-    d=ImageDraw.Draw(tag); y=top.height+GAP//2
+    parts=[(_bagtag_ink(str(src).upper(),fmid,46),30),
+           (_bagtag_ink(num,fbig,DS),40),
+           (_bagtag_ink((str(who)+"   "+str(tm)).strip(),fsml,30),18),
+           (_bagtag_ink(items,fsml,30),0)]
+    parts=[(im,g) for im,g in parts if im.width>1]
+    PAD=30
+    h=PAD+sum(im.height+g for im,g in parts)+PAD
+    face=Image.new("L",(W,h),255); y=PAD
+    for im,g in parts:
+        if im.width>W-12:                                   # never let a long name run off the paper
+            im=im.resize((W-12,max(1,int(im.height*(W-12)/im.width))),Image.LANCZOS)
+        face.paste(im,((W-im.width)//2,y)); y+=im.height+g
+    GAP=96
+    H=face.height*2+GAP
+    tag=Image.new("L",(W,H),255)
+    tag.paste(face.rotate(180),(0,0))                       # drapes down the BACK of the bag
+    tag.paste(face,(0,face.height+GAP))                     # drapes down the FRONT
+    d=ImageDraw.Draw(tag); y=face.height+GAP//2
     for x in range(10,W-10,26): d.line([(x,y),(x+14,y)],fill=0,width=3)     # fold line
     return tag.point(lambda p:0 if p<128 else 255)
 def _bagtag_escpos(img):
