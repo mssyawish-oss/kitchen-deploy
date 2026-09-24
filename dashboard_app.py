@@ -6449,7 +6449,7 @@ def _tables_payload():
             "img":"/api/tables_frame.jpg?ts=%d"%int(TABLESW.get("img_at",0) or 0)}
 def tables_loop():
     while True:
-        cfg=_tables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))
+        cfg=_tables_cfg(); iv=max(10,int(cfg.get("interval",90) or 90))   # owner 24 Sep: wants 10s checks
         try:
             if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip() and _tables_open_now(cfg)):
                 time.sleep(iv); continue
@@ -7738,7 +7738,7 @@ def _intables_payload():
             "img":"/api/intables_frame.jpg?ts=%d"%int(INTABLESW.get("img_at",0) or 0)}
 def intables_loop():
     while True:
-        cfg=_intables_cfg(); iv=max(20,int(cfg.get("interval",90) or 90))
+        cfg=_intables_cfg(); iv=max(10,int(cfg.get("interval",90) or 90))   # owner 24 Sep: wants 10s checks
         try:
             if not (cfg.get("enabled") and (_rotcam_cfg().get("gemini_key") or "").strip() and _intables_open_now(cfg)):
                 time.sleep(iv); continue
