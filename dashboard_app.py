@@ -7583,9 +7583,12 @@ def api_packrec_cut():
     if not e: return jsonify({"ok":False,"error":"order not in the evidence store"})
     try: mins=max(1,min(60,int(d.get("minutes") or 10)))
     except Exception: mins=10
-    _packrec_cut(oid,e["key"],int(e["bump"]),int(e["bump"])+mins*60000,"manual")
-    with _PACKEV_LOCK: e2=next((x for x in _packev_idx() if x.get("oid")==oid),None)
-    return jsonify({"ok":True,"clip":(e2 or {}).get("clip"),"err":PACKREC.get("err","")})
+    # NEVER encode inside the request thread — doing so on 24 Sep blocked a worker for the whole encode
+    # and helped wedge the box. Kick it off in the background and let the caller poll packev_list.
+    if oid in PACKREC.get("cutting",{}): return jsonify({"ok":True,"started":False,"note":"already cutting"})
+    PACKREC.setdefault("cutting",{})[oid]=True
+    threading.Thread(target=_packrec_cut,args=(oid,e["key"],int(e["bump"]),int(e["bump"])+mins*60000,"manual"),daemon=True).start()
+    return jsonify({"ok":True,"started":True,"note":"cutting in the background; poll /api/packev_list for the clip"})
 @app.route("/api/packrec_still.jpg")
 def api_packrec_still():
     """Pull a still out of a saved clip at any second — this is how we go back through the recording
