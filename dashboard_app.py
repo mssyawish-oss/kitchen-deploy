@@ -7194,7 +7194,7 @@ def _bagtag_cfg():
     c.setdefault("port",9100)
     c.setdefault("sources",["uber","door"])
     c.setdefault("width",576)                   # 72mm printable on an 80mm roll @203dpi
-    c.setdefault("digit",300)                   # px tall ≈ 37mm
+    c.setdefault("digit",430)                   # px tall ≈ 54mm (owner 24 Sep: go bigger, paper is cheap)
     return c
 def _bagtag_next_num():
     """1..999, restarting each day."""
@@ -7202,7 +7202,7 @@ def _bagtag_next_num():
     with data_lock:
         st=dict(db.get("bagtag_seq",{}) or {})
         if st.get("day")!=today: st={"day":today,"n":0}
-        st["n"]=int(st.get("n",0))%999+1
+        st["n"]=int(st.get("n",0))%99+1     # owner: two digits is plenty for one day, and reads further
         db["bagtag_seq"]=st; save_data(db)
         return st["n"]
 _BAGTAG_FONTS=("C:/Windows/Fonts/ariblk.ttf","C:/Windows/Fonts/arialbd.ttf","C:/Windows/Fonts/impact.ttf",
@@ -7231,23 +7231,35 @@ def _bagtag_ink(s,f,size_hint):
 def _bagtag_render(num,src,who,tm,items,cfg=None):
     """One tall 1-bit image: [face upside-down] [dashed fold line] [face upright].
     Every element is measured by its real ink box and stacked with fixed gaps, so the big number can
-    never collide with the name/item lines (it did on the first print, 24 Sep)."""
+    never collide with the lines under it (it did on the first print, 24 Sep).
+    Owner, 24 Sep: make the lower text bigger, BOX the item count, and show the PACKED time large --
+    drivers sometimes wander and the shop gets blamed for cold food, so the customer must see when the
+    food actually went into the bag."""
     from PIL import Image,ImageDraw
     cfg=cfg or _bagtag_cfg()
     W=int(cfg.get("width",576)); DS=int(cfg.get("digit",300))
-    fbig=_bagtag_font(DS); fmid=_bagtag_font(46); fsml=_bagtag_font(30)
-    parts=[(_bagtag_ink(str(src).upper(),fmid,46),30),
-           (_bagtag_ink(num,fbig,DS),40),
-           (_bagtag_ink((str(who)+"   "+str(tm)).strip(),fsml,30),18),
-           (_bagtag_ink(items,fsml,30),0)]
-    parts=[(im,g) for im,g in parts if im.width>1]
+    fbig=_bagtag_font(DS); fsrc=_bagtag_font(62); ftime=_bagtag_font(78); fitem=_bagtag_font(66); fsml=_bagtag_font(44)
+    BOXPAD=22
+    rows=[(_bagtag_ink(str(src).upper(),fsrc,62),34,None),
+          (_bagtag_ink(num,fbig,DS),40,None),
+          (_bagtag_ink("PACKED "+str(tm).strip(),ftime,78),26,None),
+          (_bagtag_ink(str(items).upper(),fitem,66),24,"box")]
+    who=str(who or "").strip()
+    if who: rows.append((_bagtag_ink(who,fsml,44),0,None))
+    rows=[(im,g,st) for im,g,st in rows if im.width>1]
     PAD=30
-    h=PAD+sum(im.height+g for im,g in parts)+PAD
-    face=Image.new("L",(W,h),255); y=PAD
-    for im,g in parts:
-        if im.width>W-12:                                   # never let a long name run off the paper
-            im=im.resize((W-12,max(1,int(im.height*(W-12)/im.width))),Image.LANCZOS)
-        face.paste(im,((W-im.width)//2,y)); y+=im.height+g
+    def rowh(im,st): return im.height+(BOXPAD*2 if st=="box" else 0)
+    h=PAD+sum(rowh(im,st)+g for im,g,st in rows)+PAD
+    face=Image.new("L",(W,h),255); fd=ImageDraw.Draw(face); y=PAD
+    for im,g,st in rows:
+        lim=W-((BOXPAD*2+24) if st=="box" else 16)   # a boxed row must leave room for its own outline
+        if im.width>lim: im=im.resize((lim,max(1,int(im.height*lim/im.width))),Image.LANCZOS)   # long names shrink to fit, never run off the roll
+        x=(W-im.width)//2
+        if st=="box":
+            fd.rectangle((x-BOXPAD,y,x+im.width+BOXPAD,y+im.height+BOXPAD*2),outline=0,width=5)
+            face.paste(im,(x,y+BOXPAD)); y+=im.height+BOXPAD*2+g
+        else:
+            face.paste(im,(x,y)); y+=im.height+g
     GAP=96
     H=face.height*2+GAP
     tag=Image.new("L",(W,H),255)
@@ -7325,7 +7337,7 @@ def api_bagtag_config():
     d=request.get_json(silent=True) or {}; cur=dict(_bagtag_cfg())
     if "enabled" in d: cur["enabled"]=bool(d["enabled"])
     if "ip" in d: cur["ip"]=str(d["ip"] or "").strip() or cur.get("ip")
-    for k,lo,hi in (("port",1,65535),("digit",80,600),("width",192,1024)):
+    for k,lo,hi in (("port",1,65535),("digit",80,900),("width",192,1024)):
         if k in d:
             try: cur[k]=max(lo,min(hi,int(d[k])))
             except Exception: pass
