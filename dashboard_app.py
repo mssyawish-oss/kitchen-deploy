@@ -7375,6 +7375,13 @@ def api_bagtag_test():
 # which is the backward-tracking Marcel asked for: the bag is identified by its printed tag, then the
 # footage is walked back to before anything went in it. Clips are kept keep_days (14) and pruned.
 PACKREC={"frames":0,"clips":0,"err":"","last":0.0,"cutting":{},"pending":{}}
+# ONE encode at a time. 24 Sep: the sweep matured a batch of orders together, several ffmpeg encodes ran
+# at once with no thread cap, and the whole dashboard crawled to 3-9s a request until it was restarted.
+_REC_ENCODE=threading.Semaphore(1)
+def _packrec_nice():
+    """Run ffmpeg below normal priority so it can never starve the dashboard."""
+    if os.name=="nt": return {"creationflags":0x00004000}          # BELOW_NORMAL_PRIORITY_CLASS
+    return {"preexec_fn":(lambda: os.nice(10))}
 PACKREC_DIR=os.path.join(BASE_DIR,"pack_rec")
 _REC_RING=os.path.join(PACKREC_DIR,"ring")
 _REC_CLIPS=os.path.join(PACKREC_DIR,"clips")
@@ -7469,9 +7476,11 @@ def _packrec_cut(oid,key,bump_ms,end_ms,reason="collected"):
             for i,(_ts,p) in enumerate(picked): shutil.copyfile(p,os.path.join(tmp,"%05d.jpg"%i))
             try:
                 fps=max(1,round(1.0/max(1,int(cfg.get("every",2)))*4))   # play back ~4x real time
-                r=subprocess.run(["ffmpeg","-nostdin","-y","-framerate",str(fps),"-i",os.path.join(tmp,"%05d.jpg"),
-                                  "-c:v","libx264","-preset","veryfast","-crf","28","-pix_fmt","yuv420p",out_mp4],
-                                 capture_output=True,timeout=180)
+                with _REC_ENCODE:                                        # serialise: never two encodes at once
+                    r=subprocess.run(["ffmpeg","-nostdin","-y","-threads","1","-framerate",str(fps),
+                                      "-i",os.path.join(tmp,"%05d.jpg"),
+                                      "-c:v","libx264","-preset","veryfast","-crf","28","-pix_fmt","yuv420p",out_mp4],
+                                     capture_output=True,timeout=300,**_packrec_nice())
                 if r.returncode==0 and os.path.exists(out_mp4) and os.path.getsize(out_mp4)>1000: made="mp4"
                 else: PACKREC["err"]=("ffmpeg: "+(r.stderr.decode(errors="ignore")[-120:] if r.stderr else "failed"))
             except Exception as e: PACKREC["err"]=("ffmpeg: "+str(e))[:120]
@@ -7510,10 +7519,12 @@ def _packrec_sweep():
     cfg=_packrec_cfg()
     if not cfg.get("enabled"): return
     now=time.time()*1000; mw=int(cfg.get("max_wait",900))*1000
-    for oid,p in list((PACKREC.get("pending") or {}).items()):
-        if now-p["t"]>mw and oid not in PACKREC.get("cutting",{}):
+    if PACKREC.get("cutting"): return          # something is already encoding — let it finish first
+    for oid,p in sorted((PACKREC.get("pending") or {}).items(),key=lambda kv:kv[1]["t"]):
+        if now-p["t"]>mw:
             PACKREC["pending"].pop(oid,None); PACKREC.setdefault("cutting",{})[oid]=True
             threading.Thread(target=_packrec_cut,args=(oid,p["key"],int(p["t"]),int(now),"timeout"),daemon=True).start()
+            return                             # one per tick; the rest mature on later ticks
 @app.route("/api/packrec_status")
 def api_packrec_status():
     cfg=_packrec_cfg(); ring=_packrec_ring_files()
@@ -7589,8 +7600,8 @@ def api_packrec_still():
                 return send_file(os.path.join(d,best),mimetype="image/jpeg")
         return ("no clip",404)
     try:
-        r=subprocess.run(["ffmpeg","-nostdin","-ss",str(sec),"-i",p,"-frames:v","1","-q:v","3","-f","image2","-"],
-                         capture_output=True,timeout=30)
+        r=subprocess.run(["ffmpeg","-nostdin","-threads","1","-ss",str(sec),"-i",p,"-frames:v","1","-q:v","3","-f","image2","-"],
+                         capture_output=True,timeout=30,**_packrec_nice())
         if r.returncode==0 and r.stdout[:2]==b"\xff\xd8":
             return Response(r.stdout,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
         return ("could not read that moment",503)
