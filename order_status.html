@@ -165,7 +165,27 @@ header{height:14vh;min-height:64px;display:grid;grid-template-columns:1fr auto 1
       <div class="dots" id="ready-dots"></div>
     </section>
   </div>
+  <!-- IDLE SPLASH: shown when there are no orders on the board -->
+  <div id="idle">
+    <div id="idle-logo-wrap"><img id="idle-logo" alt="Bruno's"></div>
+    <div id="idle-msg"></div>
+  </div>
 </div>
+<style>
+#idle{display:none;position:absolute;inset:0;z-index:5;flex-direction:column;align-items:center;justify-content:center;gap:4vh;text-align:center;pointer-events:none;}
+.board.hidden{display:none;}
+#idle-logo-wrap{position:relative;animation:idle-float 4.2s ease-in-out infinite;}
+#idle-logo{width:44vw;max-width:620px;height:auto;filter:drop-shadow(0 10px 26px rgba(0,0,0,.18));}
+#idle-logo-wrap::before,#idle-logo-wrap::after{content:"";position:absolute;bottom:100%;width:10px;height:60px;left:38%;
+  border-radius:50%;background:linear-gradient(to top,rgba(180,60,40,.16),transparent);filter:blur(4px);
+  animation:idle-steam 3.6s ease-in-out infinite;opacity:0;}
+#idle-logo-wrap::after{left:60%;animation-delay:1.8s;}
+#idle-msg{font-size:4vh;font-weight:800;color:#b43c28;letter-spacing:.4px;opacity:0;transition:opacity .7s ease;min-height:5vh;}
+#idle-msg.show{opacity:1;}
+@keyframes idle-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+@keyframes idle-steam{0%{opacity:0;transform:translateY(10px) scaleX(1)}30%{opacity:.9}100%{opacity:0;transform:translateY(-46px) scaleX(1.6)}}
+@media(orientation:portrait){#idle-logo{width:70vw;}#idle-msg{font-size:3.2vh;}}
+</style>
 <script>
 // ------- provider source config (swap `icon` for official asset URLs when supplied) -------
 const IC={
@@ -231,7 +251,7 @@ function cardHTML(o,ready){
     +badge
     +'<div class="who"><div class="nm">'+esc(o.name)+'</div></div>'
     +'<div class="mid"><div class="num">'+esc(o.number||'')+'</div><div class="tm">'+fmtTime(o.created)+'</div></div>';
-  if(!ready) h+='<div class="pill">'+CLK+'<span data-wait="'+o.created.getTime()+'">'+waitMin(o.created)+' min</span></div>';
+  // (removed the red "X min waited" pill — customers misread it as minutes-until-ready; the grey order time is enough)
   h+='</div>';
   return h;
 }
@@ -269,8 +289,25 @@ function _scrollTick(t){
   requestAnimationFrame(_scrollTick);}
 requestAnimationFrame(_scrollTick);
 function _overflows(){return ['prog-list','ready-list'].some(id=>{const l=document.getElementById(id);return l&&(l.scrollHeight-l.clientHeight>6);});}
+// ---- idle splash (no orders on the board) ----
+const IDLE_MSGS=["All caught up!","Freshly cooked, made to order","Order at the counter or online","Thanks for waiting with us"];
+let _idleOn=false,_idleTimer=null,_idleMi=0;
+function _idleStart(){
+  if(_idleOn)return; _idleOn=true;
+  const logo=document.querySelector('header .logo'),il=document.getElementById('idle-logo');
+  if(logo&&il&&!il.src) il.src=logo.src;                 // reuse the header logo (no duplicated data URI)
+  const msg=document.getElementById('idle-msg');
+  const show=()=>{msg.classList.remove('show');
+    setTimeout(()=>{msg.textContent=IDLE_MSGS[_idleMi%IDLE_MSGS.length];_idleMi++;msg.classList.add('show');},400);};
+  show(); _idleTimer=setInterval(show,4500);
+}
+function _idleStop(){ if(!_idleOn)return; _idleOn=false; if(_idleTimer){clearInterval(_idleTimer);_idleTimer=null;} }
 function render(){
   const b=document.querySelector('.board');b.classList.remove('d1','d2');b.classList.toggle('big',BIG);
+  const empty=!DATA.in_progress.length && !DATA.ready.length;
+  const idle=document.getElementById('idle');
+  if(empty){ b.classList.add('hidden'); if(idle)idle.style.display='flex'; _idleStart(); return; }
+  b.classList.remove('hidden'); if(idle)idle.style.display='none'; _idleStop();
   renderColumn('prog',DATA.in_progress,false);
   renderColumn('ready',DATA.ready,true);
   DATA.in_progress.concat(DATA.ready).forEach(o=>seen.add(o.id));
@@ -317,9 +354,16 @@ function _setStale(on,msg){
     _staleEl.textContent=msg||'Reconnecting…';_staleEl.style.display='block';
   } else if(_staleEl){_staleEl.style.display='none';}
 }
+const IDLE_PREVIEW=/^(1|true|yes|on)$/i.test(new URLSearchParams(location.search).get('idle')||'');  // ?idle=1 → force the idle splash to preview it
+let _downLong=false;
 async function poll(){
+  if(IDLE_PREVIEW){DATA={in_progress:[],ready:[]};render();_setStale(false);return;}
   try{
     const d=DEMO?_demoData(DEMO):await fetchOrders();
+    // This fetch SUCCEEDED, so the server is confirmed back. If we'd been down a while, reload ONCE now
+    // to pick up any new build + clear stale state. Safe because it only fires right after a success —
+    // never into a down server (reloading during the outage is what stranded the kiosk on an error page).
+    if(_downLong){location.reload();return;}
     DATA={in_progress:d.in_progress||[],ready:d.ready||[]};render();
     _lastOk=Date.now();_failN=0;
     // the page is fine but the SERVER's own order feed has stalled (KDS/Square poll stopped) → warn softly
@@ -328,8 +372,8 @@ async function poll(){
   }catch(e){
     _failN++;
     const downMs=Date.now()-_lastOk;
-    if(downMs>20000) _setStale(true,'Reconnecting…');   // ~4 missed polls → tell staff it isn't live
-    if(downMs>150000) location.reload(true);            // 2.5 min with no data → full reload to recover a wedged tab
+    if(downMs>15000){_setStale(true,'Reconnecting…'); if(downMs>60000)_downLong=true;}  // keep polling — recovers on its own when the server returns
+    // NOTE: never location.reload() in here — the server may still be down and we'd land on a dead error page.
   }
 }
 tickClock();poll();

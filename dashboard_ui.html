@@ -1756,6 +1756,11 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
         <div style="flex:1;min-width:0;"><div style="font-weight:800;color:#fff;font-size:var(--fs-md);">An update is ready</div><div style="font-size:var(--fs-sm);color:#86efac;">Tap restart to apply it (screen reconnects automatically).</div></div>
         <button class="btn btn-primary" onclick="restartDashboard()">Restart now</button>
       </div>
+      <div id="gemini-banner" style="display:none;align-items:center;gap:10px;background:#2a0d0d;border:1px solid #ef4444;border-left:4px solid #ef4444;border-radius:var(--radius);padding:11px 14px;margin-bottom:10px;animation:prodoff-pulse 1.8s ease-in-out infinite;">
+        <span style="font-size:var(--fs-lg);">⚠️</span>
+        <div style="flex:1;min-width:0;"><div style="font-weight:800;color:#fff;font-size:var(--fs-md);">AI (Gemini) is down — camera watches & the in-store order screen are blind</div><div id="gemini-banner-sub" style="font-size:var(--fs-sm);color:#fca5a5;">Most likely the AI credit ran out. Tap to top up.</div></div>
+        <a class="btn btn-primary" href="https://aistudio.google.com/usage" target="_blank" rel="noopener" style="text-decoration:none;">Top up</a>
+      </div>
       <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
       <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
@@ -7848,6 +7853,17 @@ function renderDeployHealth(){const el=document.getElementById('deploy-health');
   }
   el.innerHTML=html;}
 let _uiVer=null,_uiUpdatePending=false;   // self-update: reload the app on its own when a new screen build is deployed, so nobody has to manually refresh
+// Red home-page banner while the AI (Gemini) key/credit is down — pairs with the repeating email alert.
+async function checkGeminiHealth(){
+  try{
+    const el=document.getElementById('gemini-banner'); if(!el) return;
+    const r=await fetch('/api/gemini_health',{cache:'no-store'}); const d=await r.json();
+    const down=d && d.ok===false;
+    el.style.display=down?'flex':'none';
+    if(down){const sub=document.getElementById('gemini-banner-sub');
+      if(sub&&d.err) sub.textContent=(/quota|rate|resource/i.test(d.err)?'AI credit looks exhausted — tap to top up.':('AI check failed: '+d.err+' — tap to top up.'));}
+  }catch(e){}
+}
 async function checkUiVersion(){
   try{const r=await fetch('/api/version',{cache:'no-store'});const d=await r.json();if(!d||!d.ui)return;
     if(_uiVer===null){_uiVer=d.ui;return;}                 // first read = the version we loaded with
@@ -9383,6 +9399,7 @@ async function init(){
   displayStatusPoll();setInterval(displayStatusPoll,30000);   // hot/cold display food-level tile (no-op unless configured)
   checkUpdateBanner();setInterval(()=>{const _fin=()=>{if(typeof checkUpdateBanner==='function')checkUpdateBanner();if(typeof renderDeployHealth==='function')renderDeployHealth();};if(typeof loadAppData==='function')loadAppData().then(_fin).catch(_fin);else _fin();},60000);   // refresh from server so the 'update ready' banner clears on every device once applied, + refresh deploy health
   checkUiVersion();setInterval(checkUiVersion,60000);
+  checkGeminiHealth();setInterval(checkGeminiHealth,120000);   // red banner while AI is down
   refreshNiimStatus();setInterval(refreshNiimStatus,60000);   // reads stored state only — never touches Bluetooth
   // Idle auto-close: an open menu or Settings shuts itself after 30s untouched, and the unlock lapses
   // with it — walking away from an open admin surface must not leave it open for the next person.
