@@ -7477,12 +7477,16 @@ def _packrec_cut(oid,key,bump_ms,end_ms,reason="collected"):
             try:
                 fps=max(1,round(1.0/max(1,int(cfg.get("every",2)))*4))   # play back ~4x real time
                 with _REC_ENCODE:                                        # serialise: never two encodes at once
-                    r=subprocess.run(["ffmpeg","-nostdin","-y","-threads","1","-framerate",str(fps),
+                    r=subprocess.run(["ffmpeg","-nostdin","-y","-framerate",str(fps),"-start_number","0",
                                       "-i",os.path.join(tmp,"%05d.jpg"),
-                                      "-c:v","libx264","-preset","veryfast","-crf","28","-pix_fmt","yuv420p",out_mp4],
+                                      "-threads","1","-c:v","libx264","-preset","veryfast","-crf","28",
+                                      "-pix_fmt","yuv420p","-vf","pad=ceil(iw/2)*2:ceil(ih/2)*2",out_mp4],
                                      capture_output=True,timeout=300,**_packrec_nice())
                 if r.returncode==0 and os.path.exists(out_mp4) and os.path.getsize(out_mp4)>1000: made="mp4"
-                else: PACKREC["err"]=("ffmpeg: "+(r.stderr.decode(errors="ignore")[-120:] if r.stderr else "failed"))
+                else:
+                    PACKREC["err"]=("ffmpeg: "+(r.stderr.decode(errors="ignore")[-160:] if r.stderr else "failed"))
+                    try: os.remove(out_mp4)          # never leave a broken file behind — stills must win
+                    except Exception: pass
             except Exception as e: PACKREC["err"]=("ffmpeg: "+str(e))[:120]
             shutil.rmtree(tmp,ignore_errors=True)
         if made is None:      # no ffmpeg / encode failed → keep the stills so the evidence still exists
@@ -7590,6 +7594,7 @@ def api_packrec_still():
     try: sec=max(0.0,min(7200.0,float(request.args.get("sec","0"))))
     except (TypeError,ValueError): sec=0.0
     p=os.path.join(_REC_CLIPS,"%s.mp4"%key) if key else ""
+    if p and os.path.exists(p) and os.path.getsize(p)<=1000: p=""   # empty/broken encode → use the stills
     if not p or not os.path.exists(p):
         d=os.path.join(_REC_CLIPS,key)                    # stills fallback: nearest frame to that second
         if key and os.path.isdir(d):
