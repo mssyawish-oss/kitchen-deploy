@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil, subprocess
 from datetime import date, datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -7072,11 +7072,15 @@ def _packev_tick(board):
             done[oid]=now
             threading.Thread(target=_packev_capture,args=(dict(b),"bump"),daemon=True).start()
             threading.Thread(target=_bagtag_for_order,args=(dict(b),),daemon=True).start()   # print the fold-over bag tag
+            _packrec_note_bump(b)                        # mark where this order starts in the rolling recording
         if pp is False and pk and (oid+":p") not in done and (oid in done or pf is not None):
             done[oid+":p"]=now          # courier collected → drink hand-over frames
             threading.Thread(target=_packev_capture,args=(dict(b),"pickup"),daemon=True).start()
+            _packrec_note_picked(b)     # and cut this order's clip out of the rolling recording
     for oid in [k for k in seen if k not in live]: seen.pop(oid,None)
     for oid in [k for k,t in done.items() if now-t>86400]: done.pop(oid,None)
+    try: _packrec_sweep()               # orders that never register as collected still get their clip
+    except Exception as e: print("packrec sweep:",str(e)[:90])
 def _packev_payload():
     a=PACKEV.get("alert")
     return {"on":bool(_packev_cfg().get("enabled")),"alert":bool(a),"desc":(a or {}).get("desc",""),
@@ -7361,6 +7365,239 @@ def api_bagtag_test():
         return jsonify({"ok":True,"num":int(num),"preview":prev,"printed":not d.get("preview_only")})
     except Exception as ex:
         return jsonify({"ok":False,"error":str(ex)[:180]})
+# ── CONTINUOUS PACK RECORDER (rolling buffer → one clip per delivery order) ─────────────────────────
+# The 60-second burst only covers the packing. Marcel, 24 Sep 2026: the courier hand-over is the moment
+# that decides a drinks claim, and it happens minutes later — by then nothing is recorded and the moment
+# is gone for good (proved live on order "Paul C.": bag collected, no footage of it).
+# So the bench camera is now recorded CONTINUOUSLY into a rolling ring buffer on disk. When a delivery
+# order is bumped we remember the moment; when the courier collects it (or after a cutoff) we cut the
+# stretch from a few minutes BEFORE the bump to just after collection into one clip for that order —
+# which is the backward-tracking Marcel asked for: the bag is identified by its printed tag, then the
+# footage is walked back to before anything went in it. Clips are kept keep_days (14) and pruned.
+PACKREC={"frames":0,"clips":0,"err":"","last":0.0,"cutting":{},"pending":{}}
+PACKREC_DIR=os.path.join(BASE_DIR,"pack_rec")
+_REC_RING=os.path.join(PACKREC_DIR,"ring")
+_REC_CLIPS=os.path.join(PACKREC_DIR,"clips")
+for _d in (PACKREC_DIR,_REC_RING,_REC_CLIPS):
+    try: os.makedirs(_d,exist_ok=True)
+    except Exception: pass
+def _packrec_cfg():
+    c=dict(db.get("packrec",{}) or {})
+    c.setdefault("enabled",False)
+    c.setdefault("cam","")                 # blank = follow the pack-evidence camera
+    c.setdefault("every",2)                # seconds between frames
+    c.setdefault("ring_min",25)            # how far back the rolling buffer reaches
+    c.setdefault("pre",180)                # seconds of footage kept BEFORE the bump
+    c.setdefault("post",45)                # seconds kept after collection
+    c.setdefault("max_wait",900)           # cut anyway this long after the bump if collection never registers
+    c.setdefault("keep_days",14)
+    c.setdefault("width",960)
+    c.setdefault("mp4",True)               # encode to mp4 with ffmpeg; falls back to keeping the stills
+    c.setdefault("start_hour",9); c.setdefault("end_hour",22)
+    return c
+def _packrec_cam(cfg=None):
+    cfg=cfg or _packrec_cfg()
+    return (cfg.get("cam") or "").strip() or (_packev_cfg().get("cam") or "")
+def _packrec_open_now(cfg):
+    try:
+        h=datetime.now().hour
+        return int(cfg.get("start_hour",9))<=h<int(cfg.get("end_hour",22))
+    except Exception: return True
+def _packrec_ring_files():
+    try: return sorted(f for f in os.listdir(_REC_RING) if f.endswith(".jpg"))
+    except Exception: return []
+def _packrec_prune_ring(cfg):
+    cutoff=(time.time()-max(2,int(cfg.get("ring_min",25)))*60)*1000
+    for f in _packrec_ring_files():
+        try:
+            if int(f[:-4])<cutoff: os.remove(os.path.join(_REC_RING,f))
+        except Exception: pass
+def _packrec_prune_clips(cfg=None):
+    cfg=cfg or _packrec_cfg()
+    cutoff=time.time()-max(1,int(cfg.get("keep_days",14)))*86400
+    for base in (_REC_CLIPS,):
+        try:
+            for f in os.listdir(base):
+                p=os.path.join(base,f)
+                try:
+                    if os.path.getmtime(p)<cutoff:
+                        os.remove(p) if os.path.isfile(p) else shutil.rmtree(p,ignore_errors=True)
+                except Exception: pass
+        except Exception: pass
+def packrec_loop():
+    """Grab a frame every `every` seconds into the ring. Never raises out of the loop."""
+    time.sleep(20)
+    while True:
+        cfg=_packrec_cfg(); iv=max(1,int(cfg.get("every",2) or 2))
+        t0=time.time()
+        try:
+            if not (cfg.get("enabled") and _packrec_open_now(cfg)):
+                time.sleep(max(5,iv)); continue
+            cam=_cam_by_id(_packrec_cam(cfg))
+            if not cam:
+                PACKREC["err"]="camera not found"; time.sleep(10); continue
+            jpeg,err=_snap_from(cam,timeout=12)
+            if jpeg:
+                try:
+                    with open(os.path.join(_REC_RING,"%d.jpg"%int(time.time()*1000)),"wb") as f:
+                        f.write(_downscale_jpeg(jpeg,int(cfg.get("width",960))))
+                    PACKREC["frames"]=PACKREC.get("frames",0)+1; PACKREC["last"]=time.time(); PACKREC["err"]=""
+                except Exception as e: PACKREC["err"]=("save: "+str(e))[:120]
+            else: PACKREC["err"]=(err or "no frame")[:120]
+            if PACKREC.get("frames",0)%30==0: _packrec_prune_ring(cfg)
+        except Exception as e:
+            PACKREC["err"]=str(e)[:140]; print("packrec_loop:",PACKREC["err"])
+        time.sleep(max(0.2,iv-(time.time()-t0)))
+def _packrec_cut(oid,key,bump_ms,end_ms,reason="collected"):
+    """Copy the ring frames covering this order into one clip and attach it to the evidence entry."""
+    cfg=_packrec_cfg()
+    try:
+        start=bump_ms-int(cfg.get("pre",180))*1000
+        end=end_ms+int(cfg.get("post",45))*1000
+        picked=[]
+        for f in _packrec_ring_files():
+            try: ts=int(f[:-4])
+            except ValueError: continue
+            if start<=ts<=end: picked.append((ts,os.path.join(_REC_RING,f)))
+        if not picked:
+            PACKREC["err"]="no ring frames for %s"%key[:8]; return
+        out_mp4=os.path.join(_REC_CLIPS,"%s.mp4"%key)
+        made=None
+        if cfg.get("mp4"):
+            tmp=os.path.join(_REC_CLIPS,"_seq_"+key)
+            shutil.rmtree(tmp,ignore_errors=True); os.makedirs(tmp,exist_ok=True)
+            for i,(_ts,p) in enumerate(picked): shutil.copyfile(p,os.path.join(tmp,"%05d.jpg"%i))
+            try:
+                fps=max(1,round(1.0/max(1,int(cfg.get("every",2)))*4))   # play back ~4x real time
+                r=subprocess.run(["ffmpeg","-nostdin","-y","-framerate",str(fps),"-i",os.path.join(tmp,"%05d.jpg"),
+                                  "-c:v","libx264","-preset","veryfast","-crf","28","-pix_fmt","yuv420p",out_mp4],
+                                 capture_output=True,timeout=180)
+                if r.returncode==0 and os.path.exists(out_mp4) and os.path.getsize(out_mp4)>1000: made="mp4"
+                else: PACKREC["err"]=("ffmpeg: "+(r.stderr.decode(errors="ignore")[-120:] if r.stderr else "failed"))
+            except Exception as e: PACKREC["err"]=("ffmpeg: "+str(e))[:120]
+            shutil.rmtree(tmp,ignore_errors=True)
+        if made is None:      # no ffmpeg / encode failed → keep the stills so the evidence still exists
+            d=os.path.join(_REC_CLIPS,key); shutil.rmtree(d,ignore_errors=True); os.makedirs(d,exist_ok=True)
+            for ts,p in picked: shutil.copyfile(p,os.path.join(d,"%d.jpg"%ts))
+            made="stills"
+        PACKREC["clips"]=PACKREC.get("clips",0)+1
+        meta={"kind":made,"frames":len(picked),"from":picked[0][0],"to":picked[-1][0],
+              "secs":int((picked[-1][0]-picked[0][0])/1000),"reason":reason,
+              "size":(os.path.getsize(out_mp4) if made=="mp4" and os.path.exists(out_mp4) else 0)}
+        with _PACKEV_LOCK:
+            for e in _packev_idx():
+                if e.get("oid")==oid: e["clip"]=meta; _packev_idx_save(); break
+        _packrec_prune_clips(cfg)
+    except Exception as e:
+        PACKREC["err"]=str(e)[:140]; print("packrec_cut:",PACKREC["err"])
+    finally:
+        PACKREC.get("cutting",{}).pop(oid,None)
+def _packrec_note_bump(b):
+    if not _packrec_cfg().get("enabled"): return
+    PACKREC.setdefault("pending",{})[b.get("id")]={"t":time.time()*1000,"key":re.sub(r'[^A-Za-z0-9_-]','',str(b.get("id") or ""))[:48]}
+def _packrec_note_picked(b,reason="collected"):
+    cfg=_packrec_cfg()
+    if not cfg.get("enabled"): return
+    oid=b.get("id"); p=(PACKREC.get("pending") or {}).pop(oid,None)
+    if not p or oid in PACKREC.get("cutting",{}): return
+    PACKREC.setdefault("cutting",{})[oid]=True
+    def _later():
+        time.sleep(max(2,int(cfg.get("post",45))))      # let the hand-over land in the ring first
+        _packrec_cut(oid,p["key"],int(p["t"]),int(time.time()*1000),reason)
+    threading.Thread(target=_later,daemon=True).start()
+def _packrec_sweep():
+    """Orders that never register as collected still get their clip, once max_wait has passed."""
+    cfg=_packrec_cfg()
+    if not cfg.get("enabled"): return
+    now=time.time()*1000; mw=int(cfg.get("max_wait",900))*1000
+    for oid,p in list((PACKREC.get("pending") or {}).items()):
+        if now-p["t"]>mw and oid not in PACKREC.get("cutting",{}):
+            PACKREC["pending"].pop(oid,None); PACKREC.setdefault("cutting",{})[oid]=True
+            threading.Thread(target=_packrec_cut,args=(oid,p["key"],int(p["t"]),int(now),"timeout"),daemon=True).start()
+@app.route("/api/packrec_status")
+def api_packrec_status():
+    cfg=_packrec_cfg(); ring=_packrec_ring_files()
+    span=0
+    if len(ring)>1:
+        try: span=int((int(ring[-1][:-4])-int(ring[0][:-4]))/1000)
+        except Exception: pass
+    try: mb=int(sum(os.path.getsize(os.path.join(_REC_RING,f)) for f in ring)/1048576)
+    except Exception: mb=0
+    try: cmb=int(sum(os.path.getsize(os.path.join(_REC_CLIPS,f)) for f in os.listdir(_REC_CLIPS) if f.endswith(".mp4"))/1048576)
+    except Exception: cmb=0
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled")),"cam":_packrec_cam(cfg),
+                    "every":int(cfg.get("every",2)),"ring_min":int(cfg.get("ring_min",25)),
+                    "pre":int(cfg.get("pre",180)),"post":int(cfg.get("post",45)),
+                    "keep_days":int(cfg.get("keep_days",14)),"mp4":bool(cfg.get("mp4")),
+                    "ring_frames":len(ring),"ring_secs":span,"ring_mb":mb,"clips_mb":cmb,
+                    "frames":PACKREC.get("frames",0),"clips":PACKREC.get("clips",0),
+                    "pending":len(PACKREC.get("pending") or {}),"err":PACKREC.get("err",""),
+                    "age":(int(time.time()-PACKREC["last"]) if PACKREC.get("last") else None)})
+@app.route("/api/packrec_config",methods=["POST"])
+def api_packrec_config():
+    d=request.get_json(silent=True) or {}; cur=dict(_packrec_cfg())
+    for k in ("enabled","mp4"):
+        if k in d: cur[k]=bool(d[k])
+    if "cam" in d: cur["cam"]=str(d["cam"] or "").strip()
+    for k,lo,hi in (("every",1,30),("ring_min",2,180),("pre",0,900),("post",0,600),
+                    ("max_wait",60,7200),("keep_days",1,120),("width",320,1920),
+                    ("start_hour",0,23),("end_hour",1,24)):
+        if k in d:
+            try: cur[k]=max(lo,min(hi,int(d[k])))
+            except Exception: pass
+    with data_lock: db["packrec"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":cur})
+@app.route("/api/packrec_clip.mp4")
+def api_packrec_clip():
+    key=re.sub(r'[^A-Za-z0-9_-]','',request.args.get("key",""))[:48]
+    p=os.path.join(_REC_CLIPS,"%s.mp4"%key) if key else ""
+    if not p or not os.path.exists(p): return ("no clip",404)
+    return send_file(p,mimetype="video/mp4",conditional=True)
+@app.route("/api/packrec_clip_frame.jpg")
+def api_packrec_clip_frame():
+    key=re.sub(r'[^A-Za-z0-9_-]','',request.args.get("key",""))[:48]
+    ts=re.sub(r'[^0-9]','',request.args.get("ts",""))
+    p=os.path.join(_REC_CLIPS,key,"%s.jpg"%ts) if (key and ts) else ""
+    if not p or not os.path.exists(p): return ("no frame",404)
+    return send_file(p,mimetype="image/jpeg")
+@app.route("/api/packrec_cut",methods=["POST"])
+def api_packrec_cut():
+    """Cut a clip on demand for an order already in the evidence store (e.g. a claim arrives late)."""
+    d=request.get_json(silent=True) or {}; oid=str(d.get("oid") or "")
+    with _PACKEV_LOCK: e=next((x for x in _packev_idx() if x.get("oid")==oid),None)
+    if not e: return jsonify({"ok":False,"error":"order not in the evidence store"})
+    try: mins=max(1,min(60,int(d.get("minutes") or 10)))
+    except Exception: mins=10
+    _packrec_cut(oid,e["key"],int(e["bump"]),int(e["bump"])+mins*60000,"manual")
+    with _PACKEV_LOCK: e2=next((x for x in _packev_idx() if x.get("oid")==oid),None)
+    return jsonify({"ok":True,"clip":(e2 or {}).get("clip"),"err":PACKREC.get("err","")})
+@app.route("/api/packrec_still.jpg")
+def api_packrec_still():
+    """Pull a still out of a saved clip at any second — this is how we go back through the recording
+    after a claim and grab exactly the moment we need (owner, 24 Sep)."""
+    key=re.sub(r'[^A-Za-z0-9_-]','',request.args.get("key",""))[:48]
+    try: sec=max(0.0,min(7200.0,float(request.args.get("sec","0"))))
+    except (TypeError,ValueError): sec=0.0
+    p=os.path.join(_REC_CLIPS,"%s.mp4"%key) if key else ""
+    if not p or not os.path.exists(p):
+        d=os.path.join(_REC_CLIPS,key)                    # stills fallback: nearest frame to that second
+        if key and os.path.isdir(d):
+            fs=sorted(f for f in os.listdir(d) if f.endswith(".jpg"))
+            if fs:
+                t0=int(fs[0][:-4]); want=t0+int(sec*1000)
+                best=min(fs,key=lambda f:abs(int(f[:-4])-want))
+                return send_file(os.path.join(d,best),mimetype="image/jpeg")
+        return ("no clip",404)
+    try:
+        r=subprocess.run(["ffmpeg","-nostdin","-ss",str(sec),"-i",p,"-frames:v","1","-q:v","3","-f","image2","-"],
+                         capture_output=True,timeout=30)
+        if r.returncode==0 and r.stdout[:2]==b"\xff\xd8":
+            return Response(r.stdout,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+        return ("could not read that moment",503)
+    except FileNotFoundError:
+        return ("ffmpeg is not installed on the server",503)
+    except Exception as e:
+        return (str(e)[:120],503)
 INTABLESW={"state":"clear","pend":None,"pendn":0,"clearn":0,"at":0.0,"err":"","note":"","since":0.0,"raw":"","img_at":0}
 INTABLES_DIR=os.path.join(BASE_DIR,"intables_watch")
 _INTABLES_LOG_DIR=os.path.join(INTABLES_DIR,"log")
@@ -11464,6 +11701,8 @@ if __name__=="__main__":
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
     threading.Thread(target=tables_loop,daemon=True).start()
     threading.Thread(target=_packev_prune,daemon=True).start()   # drop pack-evidence frames older than keep_days
+    threading.Thread(target=packrec_loop,daemon=True).start()    # continuous bench recording
+    threading.Thread(target=_packrec_prune_clips,daemon=True).start()
     threading.Thread(target=gem_health_loop,daemon=True).start() # Gemini key/billing ping every 6 h + email on failure/recovery
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
