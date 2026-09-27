@@ -1035,6 +1035,36 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .badge-almost{background:var(--amber-bg);color:var(--amber);}
 .badge-ready{background:var(--green-bg);color:var(--green);}
 .badge-overdone{background:var(--red-bg);color:var(--red);}
+/* ===== Probe card redesign (26 Sep 2026): full-width colour-name bar on top, neutral body,
+   min-left estimate in the probe colour, simple battery moved to the bottom row, alert flashes
+   in the PROBE's own colour instead of amber/green/red. Applies to the v2 (default) cards. ===== */
+.probe-card.p2 .p2-namebar{width:calc(100% + 34px);margin:-15px -17px 6px;padding:14px 8px;background:var(--acc,var(--amber));color:#fff;font-weight:900;font-size:clamp(20px,3vh,30px);letter-spacing:.14em;text-align:center;line-height:1;}
+.probe-card.p2.pc4 .p2-namebar{color:#241a00;}
+body.view-wall .probe-card.p2 .p2-namebar{font-size:clamp(26px,3.8vh,42px);padding:18px 8px;}
+.probe-card.p2 .p2-subname{font-size:var(--fs-sm);color:var(--muted);font-weight:600;text-align:center;margin:-2px 0 2px;}
+.probe-card.p2{border-color:var(--border)!important;}
+.probe-card.p2::before{display:none!important;}
+.probe-card.p2 .p2-bar i,.probe-card.p2 .p2-bar i::after{background:var(--muted)!important;}
+.probe-card.p2 .p2-bar i::after{box-shadow:none!important;}
+.probe-card.p2 .p2-spark-svg polyline{stroke:var(--muted)!important;}
+.probe-card.p2 .p2-spark-svg path{fill:var(--muted)!important;}
+.probe-card.p2 .p2-mid{min-height:0;gap:0;}
+.probe-card.p2 .p2-temp{font-size:clamp(52px,9.5vh,94px);}
+body.view-wall .probe-card.p2 .p2-temp{font-size:clamp(64px,13vh,124px);}
+.p2-eta{display:inline-flex;align-items:center;gap:6px;font-size:clamp(15px,2.1vh,20px);font-weight:800;letter-spacing:.02em;color:var(--acc,var(--amber));}
+.probe-card.p2.pc4 .p2-eta{color:#e0a90a;}
+.p2-eta.muted{color:var(--muted);}
+.p2-clk{width:15px;height:15px;flex:0 0 auto;}
+body.view-wall .p2-eta{font-size:clamp(18px,2.7vh,26px);}
+.p2-batt2{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);font-weight:700;color:var(--muted);font-family:var(--font-mono);margin-right:auto;padding-left:2px;}
+.p2-batt2.low{color:var(--red);}
+.p2-battico{width:17px;height:17px;flex:0 0 auto;}
+.probe-card.p2 .p2-actions{align-items:center;}
+.probe-card.p2.almost,.probe-card.p2.ready,.probe-card.p2.overdone{animation:none!important;background:var(--card)!important;}
+.probe-card.p2.almost:not(.acked),.probe-card.p2.ready:not(.acked),.probe-card.p2.overdone:not(.acked){animation:pcflash 1s ease-in-out infinite!important;}
+.probe-card.p2.acked{border-color:var(--acc)!important;}
+.probe-card.p2.almost .p2-temp,.probe-card.p2.ready .p2-temp,.probe-card.p2.overdone .p2-temp{color:var(--text)!important;}
+@keyframes pcflash{0%,100%{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc),0 0 8px color-mix(in srgb,var(--acc) 30%,transparent);}50%{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc),0 0 30px color-mix(in srgb,var(--acc) 70%,transparent);}}
 /* Global probe alert popup — appears centred on ANY page when a probe hits a setpoint */
 #probe-alert{display:none;position:fixed;inset:0;z-index:450;background:rgba(4,5,10,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px;}
 #probe-alert.show{display:flex;}
@@ -5351,20 +5381,35 @@ function renderProbes(){
       const _rawNm=String(p.name||('Probe '+pidN));
       const _isDef=_rawNm===('Probe '+pidN);      // hide the redundant default "Probe n" \u2014 big number badge is the ID
       const _nm=_rawNm.replace(/"/g,'&quot;');
+      // colour-name identity bar (the thing you read across the kitchen); custom name shown small if set
+      const _cn=({1:'BLUE',2:'GREEN',3:'RED',4:'YELLOW'})[pidN]||('PROBE '+pidN);
+      const _nmHtml=(_isDef||!_nm)?'':`<div class="p2-subname">${_nm}</div>`;
+      // minutes-left estimate (server computes it live from the probe's own climb rate) \u2014 replaces the status word
+      const _CLK='<svg class="p2-clk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+      const _eta=(window._probeEta||{})[pidN];
+      let _etaTxt='',_etaMuted=false;
+      if(dstatus==='overdone'){_etaTxt='Overdone';}
+      else if(dstatus==='ready'){_etaTxt='Ready';}
+      else if(_eta&&typeof _eta.mins==='number'&&_eta.mins>0){_etaTxt=_eta.mins+' min left';}
+      else if(_eta&&_eta.mins===0){_etaTxt='Ready';}
+      else if(dstatus==='charging'){_etaTxt='Charging';_etaMuted=true;}
+      else if(dstatus==='none'){_etaTxt='No probe';_etaMuted=true;}
+      else if(dstatus==='standby'){_etaTxt='Standby';_etaMuted=true;}
+      const _etaHtml=_etaTxt?`<span class="p2-eta${_etaMuted?' muted':''}">${_etaMuted?'':_CLK}${_etaTxt}</span>`:'';
+      const _BATTSVG='<svg class="p2-battico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7.5" width="16" height="9" rx="2"/><path d="M21.5 10.5v3"/></svg>';
+      const _batv=(_batN!==null&&dstatus!=='none')?`<span class="p2-batt2${_batN<=_BATT_LOW?' low':''}" title="probe battery">${_BATTSVG}${Math.round(_batN)}%</span>`:'';
       return `<div class="probe-card p2 pc${pidN} ${cardCls}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
-      <div class="p2-head"><span class="probe-badge">${String(pidN).padStart(2,'0')}</span>
-        <div class="p2-names"><input class="p2-name" value="${_isDef?'':_nm}" placeholder="" onchange="updateProbeName(${pidN},this.value)"></div>${batHtml}</div>
+      <div class="p2-namebar">${_cn}</div>${_nmHtml}
       <div class="p2-mid${p._lost?' lost':''}">
-        <div class="p2-ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accv,var(--acc))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg></div>
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
       ${staleHtml}${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
-      <div class="p2-statusrow"><span class="probe-status-badge ${badges[dstatus]||'badge-idle'}">${labels[dstatus]||'idle'}</span>${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
+      <div class="p2-statusrow">${_etaHtml}${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
       ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
-      <div class="p2-actions"><button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
+      <div class="p2-actions">${_batv}<button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
     }
     return `<div class="probe-card pc${pidN} ${cardCls}">
@@ -5757,7 +5802,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};window._rfxCharging=d.rfx_charging||{};
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};window._rfxCharging=d.rfx_charging||{};window._probeEta=d.eta||{};
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
