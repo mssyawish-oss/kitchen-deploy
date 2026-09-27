@@ -402,18 +402,6 @@ body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:var(--fs-l
 .rl-tag{font-size:var(--fs-sm);font-family:var(--font-body);color:var(--muted);letter-spacing:.12em;font-weight:700;text-transform:uppercase;}
 .rl-cooking{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:#0b0c10;background:linear-gradient(180deg,#fbab3e,#f3850f);font-weight:800;white-space:nowrap;padding:4px 10px;border-radius:999px;letter-spacing:.02em;box-shadow:0 1px 5px rgba(243,133,15,.45);}
 .rl-cooking .ico{width:13px;height:13px;}
-.rl-camerr{display:flex;align-items:center;gap:6px;margin-top:9px;padding:6px 10px;border-radius:var(--r-sm);background:rgba(248,113,113,.13);border:1px solid rgba(248,113,113,.4);color:#fca5a5;font-size:var(--fs-sm);line-height:1.3;}
-.rl-camerr svg{width:13px;height:13px;flex:0 0 auto;}
-#rl-cam{flex:1.4;min-width:0;}
-#rl-benchcam{flex:1.4;min-width:0;}
-.cam-min-btn{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--muted);width:24px;height:24px;font-size:var(--fs-lg);line-height:1;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
-.cam-min-btn:hover{color:var(--text);}
-#rl-benchcam .bench-mini{display:none;}
-#rot-live.bench-min #rl-cam{flex:2.2;}
-#rot-live.bench-min #rl-benchcam{flex:0 0 46px;min-width:46px;}
-#rot-live.bench-min #rl-benchcam .cam-card{display:none;}
-#rot-live.bench-min #rl-benchcam .bench-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;min-height:130px;margin-top:8px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer;color:var(--muted);padding:12px 4px;}
-.bench-mini .bm-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:var(--fs-sm);font-weight:800;letter-spacing:1px;text-transform:uppercase;}
 .bench-mini:hover{color:var(--text);border-color:var(--text);}
 .cam-card{display:flex;flex-direction:column;cursor:pointer;height:100%;}
 .cam-wrap{position:relative;flex:1;margin-top:8px;border-radius:var(--r-sm);overflow:hidden;background:#000;min-height:90px;}
@@ -797,10 +785,6 @@ body.view-wall .timer-display{font-size:clamp(30px,6vh,54px);}
    Consequence: the iPad Temp page may scroll a little. That is the better trade. */
 body.view-pad .nav-btn span{font-size:var(--fs-md);}
 body.view-pad .pd-name,body.view-pad .pc-name{font-size:var(--fs-md);}
-body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-body.view-phone .rl-actions{flex-direction:column;gap:6px;}
-body.view-phone .nav-btn span{font-size:var(--fs-sm);}
-body.view-phone .rl-step{width:44px;height:44px;}
 /* Phone: the probes grid normally splits the section height between rows so it fits without
    scrolling. On a phone that squeezes each card shorter than its own contents, so the temps
    spilled out and the cards visibly overlapped. Let the rows size to their content and scroll. */
@@ -1554,13 +1538,8 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
   .top-bar{padding:0 12px;}
   /* Stack the BBQ / Fry / Camera cards vertically */
   #rot-live{flex-direction:column;}
-  #rl-bbq,#rl-fry,#rl-live,#rl-cam,#rl-benchcam{flex:none;width:100%;}
-  #rot-live.bench-min #rl-cam{flex:none;}
-  #rot-live.bench-min #rl-benchcam{flex:none;width:100%;min-width:0;}
-  #rot-live.bench-min #rl-benchcam .bench-mini{flex-direction:row;min-height:0;height:auto;margin-top:0;padding:11px 14px;}
-  #rot-live.bench-min #rl-benchcam .bench-mini .bm-label{writing-mode:horizontal-tb;transform:none;margin-right:auto;}
+  #rl-bbq,#rl-fry,#rl-live{flex:none;width:100%;}
   .rl-card{height:auto;padding:13px;}
-  #rl-cam .cam-wrap{min-height:200px;}
   .rl-big{font-size:38px;}
   .rot-now{gap:12px;padding:11px 13px;}
   .rot-now-big{font-size:32px;min-width:44px;}
@@ -1793,7 +1772,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       </div>
       <div id="products-off-banner" class="prodoff-banner" style="display:none;"></div>
       <div id="wait-orders" style="display:none;margin-bottom:8px;"></div>
-      <div id="rot-live"><div id="rl-bbq"></div><div id="rl-cam" style="display:none;"></div><div id="rl-benchcam" style="display:none;"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
+      <div id="rot-live"><div id="rl-bbq"></div><div id="rl-fry"></div><div id="rl-live"></div></div>
       <div id="dw-tile" class="card" style="display:none;margin-bottom:8px;padding:10px 12px;"></div>
       <div id="tables-tile" class="card" style="display:none;position:fixed;right:16px;bottom:96px;width:34vw;min-width:300px;max-width:600px;padding:12px 14px;z-index:9000;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
       <div id="packev-tile" class="card" style="display:none;position:fixed;right:16px;bottom:96px;width:300px;max-width:40vw;padding:12px 14px;z-index:9001;box-shadow:0 8px 30px rgba(0,0,0,.5);background:var(--surface,#15181d);"></div>
@@ -1835,10 +1814,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div class="stock-filter-chips" id="packdown-shift-tabs"></div>
       <div id="packdown-progress"></div>
       <div id="packdown-list"></div><div id="packdown-empty" class="empty-state"><div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No tasks yet.</div>
-    </div>
-    <div class="page" id="page-service">
-      <div class="page-header"><div class="page-title">Daily Routines</div><button class="btn" onclick="openServiceAdmin()">Setup</button></div>
-      <div id="service-container"></div><div id="service-empty" class="empty-state"><div style="font-size:36px;margin-bottom:10px;"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg></div>No routines yet.</div>
     </div>
     <div class="page" id="page-recipes">
       <div class="page-header"><div class="page-title">Recipes</div><button class="btn btn-primary" onclick="openRecipeForm()">+ Add</button></div>
@@ -1946,59 +1921,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="orders-grid" class="orders-grid"></div>
       <div id="orders-empty" class="empty-state" style="display:none;padding:40px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;">No open orders</div><div style="font-size:var(--fs-md);color:var(--muted);margin-top:6px;">Tickets appear here as they come in and clear when your staff bump them on the KDS.</div></div>
     </div>
-    <div class="page" id="page-catering">
-      <div class="page-header"><div class="page-title">Catering Guides</div></div>
-      <style>
-        #page-catering .cg-wrap{padding:2px 2px 46px;max-width:840px;}
-        #page-catering h3{font-size:var(--fs-lg);color:var(--amber);margin:20px 0 8px;font-weight:700;}
-        #page-catering p.note{font-size:var(--fs-md);color:var(--muted);margin:0 0 12px;line-height:1.4;}
-        #page-catering table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:6px;}
-        #page-catering th,#page-catering td{padding:9px 12px;font-size:var(--fs-md);border-bottom:1px solid var(--border);}
-        #page-catering th{background:var(--surface2);color:var(--muted);font-weight:600;text-align:left;}
-        #page-catering th.n,#page-catering td.n{text-align:right;font-variant-numeric:tabular-nums;}
-        #page-catering td.n{color:var(--text);}
-        #page-catering td.item{color:var(--text);font-weight:600;}
-        #page-catering tr:last-child td{border-bottom:none;}
-      </style>
-      <div class="cg-wrap">
-        <p class="note">Fill salad/baked trays to <b>60&nbsp;mm</b> (~15&nbsp;mm proud of the rim, sits under the dome). Tray feeds: <b>Small ~12 · Medium ~17 · Large ~30</b> people.</p>
-        <h3>Salads &amp; Baked — grams per tray</h3>
-        <table>
-          <tr><th>Item</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Greek Salad</td><td class="n">1,578 g</td><td class="n">2,348 g</td><td class="n">3,979 g</td></tr>
-          <tr><td class="item">Slaw</td><td class="n">1,951 g</td><td class="n">2,903 g</td><td class="n">4,919 g</td></tr>
-          <tr><td class="item">Ancient Grain</td><td class="n">2,094 g</td><td class="n">3,117 g</td><td class="n">5,281 g</td></tr>
-          <tr><td class="item">Broccoli &amp; Greens</td><td class="n">1,951 g</td><td class="n">2,903 g</td><td class="n">4,919 g</td></tr>
-          <tr><td class="item">Chicken Avocado</td><td class="n">1,693 g</td><td class="n">2,519 g</td><td class="n">4,268 g</td></tr>
-          <tr><td class="item">Pumpkin &amp; Beetroot</td><td class="n">2,467 g</td><td class="n">3,672 g</td><td class="n">6,221 g</td></tr>
-          <tr><td class="item">Roast Potato &amp; Pumpkin</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-          <tr><td class="item">Mac &amp; Cheese</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-          <tr><td class="item">Scalloped Potatoes</td><td class="n">3,156 g</td><td class="n">4,697 g</td><td class="n">7,958 g</td></tr>
-        </table>
-        <h3>Dressing — served on the side</h3>
-        <table>
-          <tr><th>Salad</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Greek <span style="color:var(--muted);font-weight:400">(lemon oil)</span></td><td class="n">200 mL</td><td class="n">298 mL</td><td class="n">505 mL</td></tr>
-          <tr><td class="item">Ancient Grain <span style="color:var(--muted);font-weight:400">(honey yoghurt)</span></td><td class="n">201 g</td><td class="n">299 g</td><td class="n">507 g</td></tr>
-          <tr><td class="item">Broccoli &amp; Greens <span style="color:var(--muted);font-weight:400">(honey mustard)</span></td><td class="n">201 mL</td><td class="n">299 mL</td><td class="n">507 mL</td></tr>
-          <tr><td class="item">Pumpkin &amp; Beetroot <span style="color:var(--muted);font-weight:400">(honey mustard)</span></td><td class="n">200 mL</td><td class="n">297 mL</td><td class="n">504 mL</td></tr>
-        </table>
-        <h3>Fried — fixed weight per tray</h3>
-        <table>
-          <tr><th>Item</th><th class="n">Small</th><th class="n">Medium</th><th class="n">Large</th></tr>
-          <tr><td class="item">Chips</td><td class="n">1.5 kg</td><td class="n">2.0 kg</td><td class="n">4.0 kg</td></tr>
-          <tr><td class="item">Sweet Potato Chips</td><td class="n">1.5 kg</td><td class="n">2.5 kg</td><td class="n">3.5 kg</td></tr>
-          <tr><td class="item">Onion Rings</td><td class="n">1.5 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-          <tr><td class="item">Chicken Nuggets</td><td class="n">1.0 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-          <tr><td class="item">Popcorn Chicken</td><td class="n">1.0 kg</td><td class="n">2.0 kg</td><td class="n">3.0 kg</td></tr>
-        </table>
-        <p class="note">Chips travel in open family boxes (not domed) so they don't steam.</p>
-        <h3>Function packs</h3>
-        <p class="note"><b>The Feed</b> = 2 sides · <b>The Spread</b> = 3 sides · <b>The Works</b> = 3 sides + a slider per guest, all + gravy + dinner rolls. Chicken: <b>1 whole bird per 4 guests</b> (round up). Side quantity scales with headcount — use the tray weights above.</p>
-      </div>
-    </div>
-  </div>
-  <div id="order-alert"><div class="oa-inner"><div id="order-alert-cards"></div></div></div>
   <nav class="bottom-nav" id="bottom-nav">
     <button class="nav-btn active" data-page="probes" onclick="navTo('probes',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.4V5a2 2 0 1 1 4 0v8.4a4 4 0 1 1-4 0Z"/><path d="M12 9.5V13"/></svg><span>Temp</span></div></button>
     <button class="nav-btn" data-page="stock" onclick="navTo('stock',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Stock</span></div><div class="nav-badge" id="stock-badge">!</div></button>
@@ -2011,7 +1933,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
-    <button class="nav-btn" data-page="catering" onclick="navTo('catering',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Catering</span></div></button>
   </nav>
   </div>
 </div>
@@ -2328,19 +2249,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
   </div>
 </div>
 
-<!-- Rotisserie camera live feed -->
-<div class="modal-overlay" id="rotcam-modal" onclick="closeRotcam()">
-  <div class="modal" style="max-width:780px;" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <div class="modal-title"><b style="color:var(--red);">&#9679;</b> Rotisserie camera &middot; live</div>
-      <button class="modal-close" onclick="closeRotcam()">&#10005;</button>
-    </div>
-    <div style="position:relative;background:#000;border-radius:var(--radius);overflow:hidden;min-height:200px;">
-      <img id="rotcam-big" style="width:100%;display:block;" alt="">
-      <div id="rotcam-big-msg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:var(--fs-md);text-align:center;padding:24px;"></div>
-    </div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Refreshes every few seconds. Tap outside to close.</div>
-  </div>
 </div>
 
 <!-- Settings modal -->
@@ -2796,96 +2704,12 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="row-between" style="margin-top:12px;"><div class="label" style="margin:0;">Change log <span style="color:var(--muted);font-weight:400;">(every confirmed low/empty, with the crop that caused it)</span></div><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="dwLogLoad()">Refresh</button></div>
     <div id="dw-log" style="margin-top:8px;"></div>
     <div class="divider"></div>
-    <div class="section-title">Rotisserie Auto-Count (camera + AI)</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Watches the rotisserie camera and counts rows of chickens with AI. When a cooked row comes off, it auto-adds to available stock. Uses Google Gemini's free tier. Needs <b>ffmpeg</b> installed on this machine.</div>
-    <div class="label" style="margin-bottom:4px;">Features (turn each on/off)</div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-enabled" style="width:18px;height:18px;"> Auto-count rows &rarr; stock (uses AI)</label>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-feed" style="width:18px;height:18px;"> Live camera feed on Temp screen</label>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="rc-spin" style="width:18px;height:18px;"> Spinning / "not spinning" alarm</label>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-md);margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-doneness" style="width:18px;height:18px;"> Read each row's doneness (not&nbsp;ready / almost / ready / overdone) &amp; auto-collect on-spit training crops</label>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:var(--fs-md);font-weight:600;margin-bottom:6px;">Count cooked chickens by</div>
-      <div id="rot-mode-seg" style="display:flex;gap:8px;">
-        <button type="button" class="pt-seg on" data-m="camera" onclick="setRotStockMode('camera')">Camera</button>
-        <button type="button" class="pt-seg" data-m="probe" onclick="setRotStockMode('probe')">Probes</button>
-      </div>
-      <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;line-height:1.4;"><b>Probes</b> (experimental): when a probe hits cooked temp then its reading drops sharply, the chicken is treated as pulled and one row (<span id="rot-mode-bpr">4</span> birds) is added to stock. The camera stops counting while this is on.</div>
-    </div>
-    <label style="display:flex;align-items:flex-start;gap:8px;font-size:var(--fs-md);margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-autocount" style="width:18px;height:18px;margin-top:2px;"> <span>Let the camera auto-count cooked rows into stock <span style="color:var(--muted);font-size:var(--fs-sm);">(experimental — can be inaccurate through glare/swaps; off = count manually with the + Cooked row button)</span></span></label>
-    <label style="display:flex;align-items:flex-start;gap:8px;font-size:var(--fs-md);margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="rc-bench" style="width:18px;height:18px;margin-top:2px;"> <span>Auto-count cooked rows onto stock <span style="color:var(--muted);font-size:var(--fs-sm);">(uses the side bench camera below if set — it always sees the bench; otherwise crops the front camera, which can over-count)</span></span></label>
-    <div class="grid-2"><div><div class="label">Camera IP</div><input class="input" id="rc-ip" placeholder="e.g. 192.168.0.120"></div><div><div class="label">Stream</div><select class="input" id="rc-stream" style="background:var(--surface2);"><option value="stream1">stream1 (HD)</option><option value="stream2">stream2 (low-res)</option></select></div></div>
-    <div class="grid-2 mt-8"><div><div class="label">Camera-account user</div><input class="input" id="rc-user" placeholder="Tapo camera account"></div><div><div class="label">Camera-account password</div><input class="input" id="rc-pass" type="password"></div></div>
-    <div class="grid-2 mt-8"><div><div class="label">Gemini API key</div><input class="input" id="rc-key" type="password" placeholder="AIza…"></div><div><div class="label">Check every (seconds)</div><input class="input" id="rc-interval" type="number" min="20" placeholder="60"></div></div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">Free key: aistudio.google.com &#8594; "Get API key" (no card). In the Tapo app set a <b>Camera Account</b> (Settings &#8594; Advanced) for the RTSP login above.</div>
-    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="saveRotcam()">Save</button><button class="btn" style="flex:1;" onclick="testRotcam()">Test count <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button></div>
+    <div class="section-title">AI key (Gemini) &mdash; shared by the camera watches</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">One key for every camera + AI watch (customer waiting, outside tables, delivery pack check, oven door). The rotisserie camera auto-count was removed on 27 Sep 2026 &mdash; its code is archived in the repo under <code>archive/</code> if it is ever wanted back.</div>
+    <div class="grid-2"><div><div class="label">Gemini API key</div><input class="input" id="rc-key" type="password" placeholder="AIza&hellip;"></div><div><div class="label">Model</div><input class="input" id="rc-model" placeholder="gemini-2.5-flash"></div></div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">Key: aistudio.google.com &#8594; "Get API key". Leave the key box blank to keep the saved key.</div>
+    <div class="row" style="gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="saveRotcam()">Save</button><button class="btn" onclick="gemHealthLoad(true)">Check key now</button></div>
     <div id="rc-status" style="font-size:var(--fs-sm);margin-top:8px;min-height:16px;"></div>
-    <div id="rc-preview" style="margin-top:8px;"></div>
-    <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px;">
-      <div class="label" style="margin-bottom:2px;">Shelf box calibration</div>
-      <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;"><b>Drag</b> a green box to move it; <b>drag a corner handle</b> to resize. Each box is independent. Zoom in to line them up exactly, then Save.</div>
-      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-        <span style="font-size:var(--fs-sm);color:var(--muted);">Zoom</span>
-        <button class="btn" onclick="calZoom(-1)">&minus;</button>
-        <span id="rc-zoom-lbl" style="font-size:var(--fs-sm);min-width:42px;text-align:center;">100%</span>
-        <button class="btn" onclick="calZoom(1)">+</button>
-        <span style="font-size:var(--fs-sm);color:var(--muted);margin-left:6px;">drag the photo to pan when zoomed in</span>
-      </div>
-      <div id="rc-cal-wrap" style="position:relative;overflow:auto;max-height:62vh;border:1px solid var(--border2);border-radius:var(--r-sm);background:#111;-webkit-overflow-scrolling:touch;">
-        <div id="rc-cal-stage" style="position:relative;width:100%;min-height:180px;transform-origin:0 0;">
-          <img id="rc-cal-img" draggable="false" style="display:block;width:100%;user-select:none;-webkit-user-drag:none;">
-        </div>
-      </div>
-      <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0;">
-        <span style="font-size:var(--fs-sm);color:var(--muted);">Fine-tune row:</span>
-        <select class="input" id="rc-cal-row" style="width:auto;background:var(--surface2);" onchange="_calHi()">
-          <option value="0">Row 1</option><option value="1">Row 2</option><option value="2">Row 3</option><option value="3">Row 4</option><option value="4">Row 5</option><option value="5">Row 6</option>
-        </select>
-        <button class="btn" onclick="calNudge(0,-1)">&#9650;</button><button class="btn" onclick="calNudge(0,1)">&#9660;</button><button class="btn" onclick="calNudge(-1,0)">&#9664;</button><button class="btn" onclick="calNudge(1,0)">&#9654;</button>
-      </div>
-      <div class="row" style="gap:6px;margin-top:10px;"><button class="btn" onclick="calReset()">Reset to default</button><button class="btn" onclick="_startCalLive()">↻ Restart live</button><button class="btn btn-primary" style="margin-left:auto;" onclick="saveCal()">Save calibration</button></div>
-    </div>
-    <div class="divider"></div>
-    <div class="label" style="margin-bottom:2px;">✏️ Correct the AI — edit its instructions</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;line-height:1.5;">Each box is exactly what the AI is told to look for. Tap one to open it, tweak the wording (e.g. add a rule like <i>"never count a row off shelves 4–6"</i>), then Save — it applies to every read from then on. This is the simple way to correct it. <b>Reset to default</b> undoes your edits.</div>
-    <div id="rc-prompts" style="margin-bottom:6px;"></div>
-    <div class="divider"></div>
-    <div class="label" style="margin-bottom:2px;">🔬 AI Debug — what the camera sees on every check</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;line-height:1.5;">A live trace of every analysis: the exact frame, the AI's raw reply, what we read per shelf, and the decision the logic made — so you can see precisely where it's going wrong and what to adjust.</div>
-    <div class="row" style="gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-      <button class="btn btn-primary" id="rc-trace-btn" onclick="_notBuilt('Live trace')">&#9654; Start live trace</button>
-      <span id="rc-trace-model" style="font-size:var(--fs-sm);color:var(--muted);font-family:var(--font-mono);"></span>
-    </div>
-    <div class="trace-cols">
-    <div id="rc-live-wrap" style="display:none;margin-bottom:12px;">
-      <div id="rc-live-box" style="position:relative;border-radius:var(--radius);overflow:hidden;background:#000;border:1px solid var(--border2);">
-        <img id="rc-live" alt="" style="width:100%;display:block;max-height:320px;object-fit:contain;background:#000;">
-        <span style="position:absolute;top:8px;left:8px;background:rgba(220,38,38,.92);color:#fff;font-size:var(--fs-sm);font-weight:800;padding:3px 9px;border-radius:var(--r-sm);letter-spacing:.04em;">● LIVE</span>
-        <button class="btn btn-primary" style="position:absolute;bottom:8px;right:8px;font-size:var(--fs-md);padding:9px 14px;" onclick="_notBuilt('Grab & correct now')">&#128247; Grab &amp; correct now</button>
-      </div>
-      <div id="rc-capstrip-lbl" style="font-size:var(--fs-sm);color:var(--muted);margin:8px 2px 4px;">Recent frames (~½s apart) — tap the exact one where a row came off to correct it:</div>
-      <div id="rc-capstrip" style="display:flex;gap:5px;overflow-x:auto;padding-bottom:5px;"></div>
-      <canvas id="rc-capcanvas" style="display:none;"></canvas>
-    </div>
-    <div id="rc-trace"></div>
-    </div>
-    <div class="divider"></div>
-    <div class="label" style="margin-bottom:2px;">🤖 Auto-AI captures — every row the camera counted off by itself</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;line-height:1.5;">Each time the AI decides a row came off, it records a <b>full trace at that exact moment</b> (frame 1) and then re-reads the scene <b>continuously</b> (a fresh read every ~2–3&nbsp;seconds) for ~30&nbsp;seconds after — each frame shows what it saw and what it did, just like the live trace, and each can be corrected. These are <b>saved on the server</b> and survive restarts (most recent 20 events). Every correction you make — here or on the live trace — is fed back into every future read.</div>
-    <div class="row" style="gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-      <button class="btn" id="rc-auto-btn" onclick="_notBuilt('Auto-AI captures')">&#8635; Load auto-AI captures</button>
-      <span id="rc-auto-count" style="font-size:var(--fs-sm);color:var(--muted);font-family:var(--font-mono);"></span>
-    </div>
-    <div id="rc-auto"></div>
-    <div class="divider"></div>
-    <div class="label" style="margin-bottom:4px;">Bench camera — 2nd Tapo, side angle (for stock auto-count)</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:6px;">A 2nd camera aimed at the unloading bench. When set, auto-count watches <b>this</b> camera — it always sees the bench wherever it rolls, and reads rows side-by-side or stacked. Fill in its <b>Camera Account</b> login (Tapo app → Settings → Advanced), exactly like the rotisserie camera above.</div>
-    <div class="grid-2"><div><div class="label">Bench camera IP</div><input class="input" id="rc-bench-ip" placeholder="192.168.0.113"></div><div><div class="label">Stream</div><select class="input" id="rc-bench-stream" style="background:var(--surface2);"><option value="stream1">stream1 (HD)</option><option value="stream2">stream2 (low-res)</option></select></div></div>
-    <div class="grid-2 mt-8"><div><div class="label">Camera-account user</div><input class="input" id="rc-bench-user" placeholder="camera account user"></div><div><div class="label">Camera-account password</div><input class="input" id="rc-bench-pass" type="password"></div></div>
-    <div style="margin-top:8px;"><div class="label">…or full RTSP URL (advanced — only if not using the fields above)</div><input class="input" id="rc-bench-rtsp" placeholder="rtsp://user:pass@192.168.0.113:554/stream1"></div>
-    <div class="row" style="gap:6px;margin-top:8px;"><button class="btn btn-primary" style="flex:1;" onclick="saveRotcam()">Save bench cam</button><button class="btn" style="flex:1;" onclick="testBenchcam()">Test bench count</button></div>
-    <div id="rc-bench-status" style="font-size:var(--fs-sm);margin-top:6px;min-height:14px;"></div>
-    <div id="rc-bench-preview" style="margin-top:8px;"></div>
-    <div id="rc-usage" style="font-size:var(--fs-sm);color:var(--muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px;"></div>
     <div id="rc-health" style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;"></div>
     <div class="divider"></div>
     <div class="section-title" style="margin-top:6px;">Customer Order Status screen</div>
@@ -3095,18 +2919,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 </div>
 
 <!-- Service admin -->
-<div class="modal-overlay" id="service-admin-modal">
-  <div class="modal">
-    <div class="modal-header"><div class="modal-title">DAILY ROUTINES SETUP</div><button class="modal-close" onclick="closeModal('service-admin-modal')">Close</button></div>
-    <div id="service-admin-list"></div>
-    <div style="display:grid;grid-template-columns:1fr 80px 50px;gap:6px;margin-top:8px;align-items:end;"><div><div class="label">Routine Name</div><input class="input" id="new-alert-name" placeholder="Load Rotisserie"></div><div><div class="label">Time (HH:MM)</div><input class="input" id="new-alert-time" placeholder="16:00"></div><div><div class="label">Icon</div><input class="input" id="new-alert-icon" placeholder="icon" style="text-align:center;font-size:var(--fs-lg);padding:5px 3px;"></div></div>
-    <div class="form-row mt-8"><div class="label">Instructions</div><input class="input" id="new-alert-detail" placeholder="Load 12 chickens, season with rub"></div>
-    <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-alert-recur" style="background:var(--surface2);" onchange="onAlertRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
-    <div id="new-alert-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-alert-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
-    <div id="new-alert-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-alert-anchor"><div style="font-size:var(--fs-sm);color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
-    <div id="new-alert-dates-wrap" style="display:none;margin-top:8px;"><div class="label">Add the dates it should run</div><div class="row" style="gap:6px;"><input class="input" type="date" id="new-alert-date" style="flex:1;"><button class="btn" onclick="addAlertDate()">Add date</button></div><div id="new-alert-dates-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
-    <button class="btn btn-primary mt-8" id="btn-add-alert" style="width:100%;" onclick="addServiceAlert()">+ Add Routine</button>
-  </div>
 </div>
 
 <!-- Recipe form -->
@@ -3121,18 +2933,9 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 </div>
 
 <!-- Jobs admin -->
-<div class="modal-overlay" id="jobs-admin-modal">
-  <div class="modal">
-    <div class="modal-header"><div class="modal-title">QUIET JOBS SETUP</div><button class="modal-close" onclick="closeModal('jobs-admin-modal')">Close</button></div>
-    <div id="jobs-admin-list"></div>
-    <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:6px;margin-top:8px;align-items:end;"><div><div class="label">Job</div><input class="input" id="new-job-text" placeholder="Restock napkins"></div><div><div class="label">Area</div><input class="input" id="new-job-area" placeholder="Front"></div><div><div class="label">Priority</div><select class="input" id="new-job-priority" style="background:var(--surface2);"><option value="high">High</option><option value="med" selected>Med</option><option value="low">Low</option></select></div></div>
-    <div class="grid-2 mt-8"><div><div class="label">Reminder Time (optional)</div><input class="input" id="new-job-time" placeholder="14:00"></div><div><div class="label">Active days (blank = every day)</div><div class="day-pills" id="new-job-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div></div>
-    <button class="btn btn-primary mt-8" id="btn-add-job" style="width:100%;" onclick="addJob()">+ Add Job</button>
-  </div>
 </div>
 
 <script>
-const ROLE_PAGES={cashier:['packdown','service','jobs'],kitchen:['probes','stock','packdown','service','recipes','jobs'],manager:['probes','stock','packdown','service','recipes','jobs'],admin:['probes','stock','packdown','service','recipes','jobs']};
 const SETTINGS_ROLES=['manager','admin'];
 const GATED_PAGES=['cameras','sales','team'];   // sections that prompt for a code on entry (Settings is gated via the gear). Stock ungated 19 Aug — staff count stock all day; the PIN was friction, not protection.
 const GATE_GRACE_MS=300000;              // a section stays unlocked for 5 minutes after a correct code
@@ -3140,7 +2943,7 @@ let sectionUnlockedAt={};
 function gateUnlocked(key){return sectionUnlockedAt[key]&&(Date.now()-sectionUnlockedAt[key]<GATE_GRACE_MS);}
 const DNAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let currentUser=null,appData={suppliers:[],products:[],recipes:[],packdown_tasks:[],packdown_log:[],service_alerts:[],quiet_jobs:[],email_config:{},staff:[],handover_notes:[],packdown_checks:{},jobs_done:{},stock_on_hand:{},ui:{}};
-let serviceAlertsDismissed={},packdownShift='auto',packdownDueDismissed={},_routineNag={};
+let packdownShift='auto',packdownDueDismissed={},_routineNag={};
 // Reminders fire ONCE per day. This flag used to live only in page memory, so any reload (server
 // restart, UI update) wiped it and the popup fired again — the 'order reminder keeps coming back'
 // bug. Now persisted per device and pruned to today's keys.
@@ -3245,7 +3048,6 @@ const _ALARM_DEF={
  stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie/fried stock low. The amber “Cook more” pill ALWAYS shows on the card — this switch is the SOUND only.'},
  prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (opening alarm from 10:10am).'},
  timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
- rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'},
@@ -3261,9 +3063,9 @@ const _ALARM_DEF={
  ovenstep:{label:'Oven step — load the next tray',color:'#fb923c',interval:1200,desc:'The combi oven is about to move to its next program step: a big banner names the tray to load. Keeps sounding until the oven door opens (camera / cloud) or someone taps Done. Set up under Settings → Oven step alerts.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
- stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
+ stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3289,7 +3091,7 @@ function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})
   interval:(typeof c.interval==='number')?c.interval:(d.interval||1500),
   autostop:(typeof c.autostop==='number')?c.autostop:0,
   has_custom:c.has_custom===true, sound_v:c.sound_v||0, sound_preset:c.sound_preset||'' };}
-function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';return 'timer';}
+function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='prod-off')return 'prodoff';return 'timer';}
 window._customAudio=window._customAudio||{};
 function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key];if(!a||a._id!==id){a=new Audio('/api/alarm_sound/'+key+'?v='+v);a._id=id;window._customAudio[key]=a;}return a;}   // reuse ONE Audio element per alarm (was leaking a new one every interval)
 // PER-DEVICE MUTING. Every other alarm setting is shop-wide (change it once, it applies everywhere) —
@@ -3367,7 +3169,7 @@ function _devEntry(name){return ((appData.device_prefs||{})[name])||{};}
 // from any screen (incl. the Mac) via the Alarm Center device picker. Hiding a section only affects
 // THAT screen — the task keeps running everywhere else. 'probes' (Temp/home) is never hideable so a
 // screen always has somewhere safe to land.
-const _HIDEABLE=[['jobs','Prep / Tasks'],['packdown','Checklist'],['service','Routines'],['recipes','Recipes'],['stock','Stock'],['orders','Orders'],['comp','Comp'],['sales','Sales'],['team','Team'],['cameras','Cameras']];
+const _HIDEABLE=[['jobs','Prep / Tasks'],['packdown','Checklist'],['recipes','Recipes'],['stock','Stock'],['orders','Orders'],['comp','Comp'],['sales','Sales'],['team','Team'],['cameras','Cameras']];
 function _devHiddenPages(name){const e=_devEntry(name||devName());return (e&&e.hide)||{};}
 function _isPageHidden(page){return !!_devHiddenPages()[page];}
 function _applyHiddenNav(){try{
@@ -3429,7 +3231,7 @@ function _alarmSynth(key,v){
   if(key==='probeAlmost')return playAlmostTone(v);
   if(key==='probeReady')return playReadyTone(v);
   if(key==='probeOverdone')return playOverdoneTone(v);
-  playTone(960,'square',.25,.25*v);}                     // timer / rotstopped default beep
+  playTone(960,'square',.25,.25*v);}                     // timer default beep
 function playAlarm(id){if(alarms[id])return;const key=_keyForId(id);if(!_acfg(key).enabled)return;alarms[id]=true;_alarmStart[id]=Date.now();function b(){if(!alarms[id])return;const c=_acfg(key);if(c.autostop&&(Date.now()-_alarmStart[id])>c.autostop*60000){alarms[id]=false;_updateFlash();return;}_alarmHit(key);setTimeout(()=>{if(alarms[id])b();},c.interval);}b();}
 // soft, friendly recurring chime for the "products still off" warning (gentle bell, not a buzzer)
 function playProdChime(v){v=v==null?1:v;playTone(784,'sine',.45,.16*v);setTimeout(()=>playTone(988,'sine',.5,.16*v),230);setTimeout(()=>playTone(1319,'sine',.6,.13*v),470);}
@@ -4331,7 +4133,6 @@ function _activeAlarmDetails(){
       if(!alarms[id])return;
       let lab;
       if(id==='prod-off')lab='Products switched off';
-      else if(id==='rot-stopped')lab='Rotisserie not spinning';
       else lab=_alarmLabel(id);
       out.push({key:_keyForId(id),label:lab});
     });
@@ -4377,11 +4178,10 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='frontdoor'){if(typeof ackFrontdoor==='function')ackFrontdoor();}
   else if(key==='ovenstep'){if(typeof ackOven==='function')ackOven();}
   else if(key==='prodoff'){if(typeof silenceProductsOff==='function')silenceProductsOff();}
-  else if(key==='rotstopped'||key==='rot-stopped'){window._rotStopAcked=true;window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
   else{Object.keys(alarms).forEach(id=>{if(alarms[id]&&_keyForId(id)===key)stopAlarm(id);});}
   _updateFlash();if(typeof _broadcastSilence==='function')_broadcastSilence(key);}   // propagate this exact alarm type to the other dashboards
 setInterval(_updateFlash,400);
-function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(k==='rot-stopped')return "Rotisserie 'not spinning'";if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
+function _alarmLabel(k){if(k==='service')return 'Service / routine reminder';if(k==='orders-waiting')return 'Orders waiting too long';if(/^stock-/.test(k))return 'Stock low ('+k.slice(6)+')';if(/^ktimer-/.test(k)){const i=parseInt(k.split('-')[1]);return (typeof KT!=='undefined'&&KT[i]&&KT[i].label)?('Timer: '+KT[i].label):('Kitchen timer '+(i+1));}if(/^\d+$/.test(k))return 'Batch timer '+(parseInt(k)+1);return k;}
 // ── cross-screen silence: silencing on one dashboard silences them all ──
 let _silenceSeen=0,_silenceSynced=false,_applyingRemoteSilence=false;
 window._remAcks=[];
@@ -4396,7 +4196,7 @@ function _ackReminder(key,label){
   if(typeof _toast==='function')_toast('\u2713 '+(label||'Done')+' \u2014 cleared for today');
 }
 function _broadcastSilence(key){if(_applyingRemoteSilence)return;fetch('/api/silence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key||''})}).then(r=>r.json()).then(d=>{if(d&&d.ts)_silenceSeen=Math.max(_silenceSeen,d.ts);}).catch(()=>{});}
-function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._tablesAlarm||!!_tablesAlarm||!!window._ovenAlarm||!!_ovenAlarm||!!window._rotStopAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
+function _anyAlarmActive(){try{return Object.keys(alarms).some(k=>alarms[k])||!!activeAlarmId||!!_waitAlarm||!!_walkinAlarm||!!window._tablesAlarm||!!_tablesAlarm||!!window._ovenAlarm||!!_ovenAlarm||(typeof _probeAlarms==='object'&&Object.keys(_probeAlarms).length>0);}catch(e){return false;}}
 function _applyRemoteSilence(list){
   if(!Array.isArray(list)){list=(list?[{ts:list,key:''}]:[]);}   // tolerate an older server that still sends a bare ts
   const maxTs=list.reduce((m,e)=>Math.max(m,(e&&e.ts)||0),0);
@@ -4410,7 +4210,7 @@ function _applyRemoteSilence(list){
 }
 function silenceAll(){const active=[];Object.keys(alarms).forEach(k=>{if(alarms[k]){active.push(_alarmLabel(k));alarms[k]=false;if(k==='prod-off')_prodOffMuteAll();}});
   /* Silence-all must mute products-off until tomorrow even if we hit it between beeps (alarms['prod-off'] momentarily false) — otherwise the next /temps poll re-rings it. Idempotent: no-op when nothing is off. */
-  if(typeof _prodOffList!=='undefined'&&_prodOffList.length){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');if(active.indexOf(_alarmLabel('prod-off'))<0)active.push(_alarmLabel('prod-off'));}if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}if(window._rotStopAlarm){active.push(_alarmLabel('rot-stopped'));window._rotStopAlarm=false;window._rotStopAcked=true;}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm){active.push('Food left on outside table');if(typeof ackTables==='function')ackTables();}if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm){active.push('Food left on inside table');if(typeof ackIntables==='function')ackIntables();}if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm){active.push('Customer at the front door');if(typeof ackFrontdoor==='function')ackFrontdoor();}if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm){active.push('Oven — sound muted here (banner stays until the door opens)');stopOvenAlarm();window._ovenMutedSince=(document.getElementById('oven-tile')||{})._since||0;}_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
+  if(typeof _prodOffList!=='undefined'&&_prodOffList.length){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');if(active.indexOf(_alarmLabel('prod-off'))<0)active.push(_alarmLabel('prod-off'));}if(activeAlarmId){active.push(_alarmLabel('service'));silenceAlarm();}if(_waitAlarm){active.push(_alarmLabel('orders-waiting'));stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}Object.keys(_probeAlarms).forEach(p=>{active.push('Probe '+p+' '+_probeAlarms[p]);stopProbeAlarm(parseInt(p));});if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm){active.push('Food left on outside table');if(typeof ackTables==='function')ackTables();}if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm){active.push('Food left on inside table');if(typeof ackIntables==='function')ackIntables();}if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm){active.push('Customer at the front door');if(typeof ackFrontdoor==='function')ackFrontdoor();}if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm){active.push('Oven — sound muted here (banner stays until the door opens)');stopOvenAlarm();window._ovenMutedSince=(document.getElementById('oven-tile')||{})._since||0;}_updateFlash();_toast(active.length?('Silenced: '+active.join(' · ')):'No alarm was sounding');_broadcastSilence();}
 // ── Label-printer status light ──────────────────────────────────────────────────────────────────
 // The B1 Pro is only connected DURING a print (BLE, one link at a time), so there is no live
 // connection to poll — and polling it would risk knocking the FM230 probe link over. The light
@@ -4809,9 +4609,9 @@ function checkPin(){clearTimeout(_pinAutoT);const buf=pinBuf;if(buf.length<4)ret
   _pinVerify(buf).then(d=>{if(d&&d.ok){pinBuf='';updatePinDots();openDashboard();return;}
     document.getElementById('pin-error').textContent=(d&&d.error)||'Incorrect PIN';pinBuf='';updatePinDots();setTimeout(()=>document.getElementById('pin-error').textContent='',2000);});}
 // ── DEVICE VIEWS: one codebase, three layouts. Bookmark ?view=wall (21" kitchen screen),
-// ?view=pad (iPad — probes + checklist) or ?view=phone (checking in). The choice sticks on that
+// or ?view=pad (iPad). The choice sticks on that
 // device, so the bookmark keeps working. No param = pick from screen size. Same data everywhere.
-const DASH_VIEWS=['wall','pad','phone'];
+const DASH_VIEWS=['wall','pad'];   // 27 Sep: the phone layout was retired (only the Mac, iPad and kitchen kiosk are used)
 function _initView(){
   let v=null;
   try{v=new URLSearchParams(location.search).get('view');}catch(e){}
@@ -4820,12 +4620,12 @@ function _initView(){
     else v=localStorage.getItem('dashView');
   }catch(e){}
   const W=window.innerWidth;
-  const auto=(W<820)?'phone':((W<1500)?'pad':'wall');
+  const auto=(W<1500)?'pad':'wall';
   if(DASH_VIEWS.indexOf(v)<0)v=auto;
   // A stored choice is a PREFERENCE, not a straitjacket. Opening ?view=pad once on a desktop used to
   // pin the iPad layout to that machine for good — cramped cards and hidden panels on a big screen.
   // If the window is nothing like the size the stored view targets, trust the screen instead.
-  else if((v==='pad'&&(W>=1500||W<640))||(v==='phone'&&W>=820)||(v==='wall'&&W<1000)) v=auto;
+  else if((v==='pad'&&W>=1500)||(v==='wall'&&W<1000)) v=auto;
   DASH_VIEWS.forEach(x=>document.body.classList.remove('view-'+x));
   document.body.classList.add('view-'+v);
   window.DASH_VIEW=v;return v;
@@ -4835,30 +4635,14 @@ function _initView(){
 // throws a second PIN prompt and dumps you on Temp anyway.
 function _viewHome(){return 'probes';}
 try{_initView();}catch(e){}
-// NEW DESIGN, gated: nothing changes anywhere until a device opens ?style=v2. ?style=classic reverts.
-// The choice is stored per device, so the preview stays on the Mac and the kitchen stays classic.
-function _initStyle(){
-  let s=null;
-  try{s=new URLSearchParams(location.search).get('style');}catch(e){}
-  try{
-    if(s==='v2'||s==='classic')localStorage.setItem('dashStyle',s);
-    else s=localStorage.getItem('dashStyle');
-  }catch(e){}
-  // Home-screen app: iOS launches it standalone with its OWN storage, so the v2 choice made in Safari
-  // does not carry over and it fell back to classic. Default a standalone app to v2 unless told classic.
-  if(!s){
-    try{ if(window.navigator.standalone===true || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)) s='v2'; }catch(e){}
-  }
-  if(!s) s='v2';   // v2 is now the DEFAULT everywhere. A device can still opt out with ?style=classic (stored per device).
-  if(s==='v2')document.body.classList.add('style-v2');
-  window.DASH_V2=(s==='v2');
-}
+// The v2 skin is the only skin (the old 'classic' switch was retired 27 Sep 2026).
+function _initStyle(){document.body.classList.add('style-v2');window.DASH_V2=true;}
 try{_initStyle();}catch(e){}
 function openDashboard(){pinBuf='';updatePinDots();document.getElementById('lock-screen').classList.add('hidden');document.getElementById('app-shell').style.display='flex';document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('hidden'));const sb=document.getElementById('settings-btn');if(sb)sb.style.display='';clearLockBanners();updateNotesBadge();if(!window.matchMedia('(max-width:600px)').matches)document.getElementById('app-shell').classList.add('nosidebar');   // start collapsed → menu is PIN-protected from load (open it via the ☰, which asks for a Manager/Admin PIN)
 const _hp=(typeof _viewHome==='function')?_viewHome():'probes';navTo(_hp,document.querySelector('.nav-btn[data-page="'+_hp+'"]'));}
 function lockApp(){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));lockAlerts=[];sectionUnlockedAt={};document.getElementById('lock-screen').classList.remove('hidden');document.getElementById('app-shell').style.display='none';pinBuf='';updatePinDots();renderLockBanners();}
 // ── KIOSK: lock a dedicated tablet to ONE page. Open e.g.  <server>/?kiosk=checklist  (or temp/prep/routines/stock…). Persists on this device until exited. ──
-function _kioskResolve(v){v=(v||'').toLowerCase().trim();const map={checklist:'packdown',packdown:'packdown',temp:'probes',probes:'probes',prep:'jobs',jobs:'jobs',routines:'service',service:'service',stock:'stock',recipes:'recipes',sales:'sales',team:'team',cameras:'cameras'};return map[v]||null;}
+function _kioskResolve(v){v=(v||'').toLowerCase().trim();const map={checklist:'packdown',packdown:'packdown',temp:'probes',probes:'probes',prep:'jobs',jobs:'jobs',stock:'stock',recipes:'recipes',sales:'sales',team:'team',cameras:'cameras'};return map[v]||null;}
 function _kioskPage(){try{const u=new URLSearchParams(location.search);if(u.has('kiosk')){const v=(u.get('kiosk')||'').toLowerCase();if(v==='off'||v==='exit'||v==='none'){localStorage.removeItem('kioskPage');return null;}const pg=_kioskResolve(v);if(pg){localStorage.setItem('kioskPage',pg);return pg;}}return localStorage.getItem('kioskPage')||null;}catch(e){return null;}}
 function exitKiosk(){try{localStorage.removeItem('kioskPage');}catch(e){}location.href=location.origin+location.pathname;}
 let _kioskTaps=0,_kioskTapT=null;
@@ -4886,7 +4670,6 @@ function _attachPhoto(ts,photo){   // patch the photo onto whichever record (by 
   saveKeys(['packdown_checks','packdown_log','prep_today','jobs_done','service_done']);
   if(typeof renderPackdownPage==='function'&&_pageActive('packdown'))renderPackdownPage();
   if(typeof renderPrepPage==='function'&&_pageActive('jobs'))renderPrepPage();
-  if(typeof renderServicePage==='function'&&_pageActive('service'))renderServicePage();
   if(typeof renderJobsPage==='function')renderJobsPage();
 }
 let _capQueue=[],_capRunning=false;
@@ -4911,8 +4694,6 @@ function completeWithProof(title,sub,onDone,which){
     requirePin(title,sub,function(u){onDone({who:u.name,time:nowTime(),ts:_nextTs()});});
   }
 }
-function showCaptureOverlay(){let c=document.getElementById('capture-chip');if(!c){c=document.createElement('div');c.id='capture-chip';c.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:rgba(20,22,30,.96);border:1px solid var(--border2);color:var(--text);font-size:var(--fs-lg);font-weight:600;padding:14px 22px;border-radius:var(--radius);box-shadow:0 12px 44px rgba(0,0,0,.55);display:flex;align-items:center;gap:11px;pointer-events:none;';c.innerHTML='<span class="cap-spin"></span>Saving…';document.body.appendChild(c);}c.style.display='flex';}
-function hideCaptureOverlay(){const c=document.getElementById('capture-chip');if(c)c.style.display='none';const o=document.getElementById('capture-overlay');if(o)o.style.display='none';}
 function enlargePhoto(name){requirePin('Enter PIN','A PIN is needed to view task photos',function(){_enlargePhotoShow(name);},null);}
 function _enlargePhotoShow(name){let o=document.getElementById('photo-enlarge');if(!o){o=document.createElement('div');o.id='photo-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:20px;';o.onclick=function(){o.style.display='none';};document.body.appendChild(o);}o.innerHTML='<img src="/photos/'+name+'" style="max-width:92vw;max-height:90vh;border-radius:var(--radius);">';o.style.display='flex';}
 function proofHtml(state){if(!state||!state.done)return '';if(state.photo)return '<div class="task-who">&#10003; <img src="/photos/'+state.photo+'" onclick="enlargePhoto(\''+state.photo+'\')" style="width:26px;height:26px;border-radius:var(--r-sm);object-fit:cover;vertical-align:middle;cursor:pointer;border:1px solid var(--border2);"> '+(state.time||'')+'</div>';if(state.who)return '<div class="task-who">&#10003; '+state.who+' at '+(state.time||'')+'</div>';return '';}
@@ -4948,10 +4729,8 @@ function toggleSidebar(){const s=document.getElementById('app-shell');const mobi
     const _n=Date.now();['settings','stock','recipes','cameras','sales','team'].forEach(k=>sectionUnlockedAt[k]=_n);   // one code unlocks everything behind the menu
     _setSidebar(true);},SETTINGS_ROLES);}
 function closeSidebar(){document.getElementById('app-shell').classList.remove('drawer-open');}
-function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
-  sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
 function navTo(page,btn){closeSidebar();if(_isPageHidden(page)){navTo(_viewHome());return;}if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock'){if(_orunSup&&!Object.keys(_orunHave).length&&!Object.keys(_orunSkip).length&&!Object.keys(_orunAdj).length)_orunSup=null;renderStockPage();}if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
-if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
+if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
 function renderCamerasPage(){
@@ -4965,7 +4744,7 @@ function renderCamerasPage(){
   _camPageTimer=setInterval(()=>{const pg=document.getElementById('page-cameras');if(pg&&pg.classList.contains('active'))_refreshCamTiles();else{clearInterval(_camPageTimer);_camPageTimer=null;}},2000);
 }
 function _refreshCamTiles(){(appData.cameras_public||[]).forEach(c=>{const im=document.getElementById('camtile-'+c.id);if(!im)return;const n=new Image();n.onload=()=>{im.src=n.src;};n.src='/api/cam/'+c.id+'.jpg?t='+Date.now();});}
-const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent||'');
+const _isIOS=!!window._isiOS;   // same test as the <head> script — one definition
 function enlargeCam(id){
   let o=document.getElementById('cam-enlarge');
   if(!o){o=document.createElement('div');o.id='cam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:8px;';o.onclick=function(e){if(e.target!==o)return;o.style.display='none';if(window._camBigT){clearInterval(window._camBigT);window._camBigT=null;}const im=document.getElementById('cam-enlarge-img');if(im)im.src='';};document.body.appendChild(o);}
@@ -5022,7 +4801,6 @@ async function refreshShared(){
   else if(id==='page-packdown')renderPackdownPage();
   else if(id==='page-recipes'){const det=document.getElementById('recipe-detail');if(!det||det.style.display!=='block')renderRecipesPage();}  // don't close an open recipe
   else if(id==='page-jobs'){_prepView='today';renderPrepPage();}
-  else if(id==='page-service')renderServicePage();
   updateNotesBadge();
 }
 
@@ -5036,7 +4814,6 @@ const timers=[
 timers.forEach(t=>{t.total=DEFAULT_USE_BY*60;t.remaining=t.total;});
 // timers are now SHARED via the server. these helpers post the action; the /temps poll syncs all devices.
 function postTimer(id,action,value){fetch('/api/timer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action,value})}).then(()=>pollTemps());}
-function setTimerLabel(id,val){timers[id].batch=val;postTimer(id,'label',val);}
 function syncTimers(serverTimers,batchLog){
   if(!Array.isArray(serverTimers))return;
   let structural=false;
@@ -5257,29 +5034,6 @@ function _mpAnswer(yes){
 // FIT TO SCREEN (v2): shrink the Temp content UNIFORMLY so it fits whatever device it is on — same look
 // as the Mac, just smaller — with NO special URL needed. It only ever SHRINKS, and only when the content
 // genuinely overflows (>8px), so a screen that already fits (the Mac / 21" wall) is left exactly as-is.
-// Diagnostic: append ?debug=1 to the URL to show the real screen numbers in the corner. Lets me see
-// exactly what a device reports (its own dimensions can differ from any preview) and fix to those.
-function _dbgReadout(){
-  try{
-    if(new URLSearchParams(location.search).get('debug')!=='1')return;
-    let d=document.getElementById('__dbg');
-    if(!d){d=document.createElement('div');d.id='__dbg';
-      d.style.cssText='position:fixed;bottom:2px;left:2px;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:3px 6px;border:1px solid #0f0;border-radius:var(--r-sm);pointer-events:none;';
-      document.body.appendChild(d);}
-    const pg=document.getElementById('page-probes');
-    const nav=document.querySelector('.bottom-nav')||document.getElementById('bottom-nav');
-    const rl=document.getElementById('rot-live');
-    const split=document.querySelector('.pb-split');
-    const tg=document.getElementById('timers-grid');
-    const cards=document.querySelectorAll('.timer-card');
-    const lastCard=cards.length?cards[cards.length-1]:null;
-    const bot=e=>e?Math.round(e.getBoundingClientRect().bottom):0;
-    const navt=nav?Math.round(nav.getBoundingClientRect().top):0;
-    d.innerHTML='win '+innerWidth+'x'+innerHeight+' view '+(window.DASH_VIEW||'?')+' zoom '+((pg&&pg.style.zoom)||'-')
-      +'<br>rotLiveBot '+bot(rl)+' splitBot '+bot(split)+' timersGridBot '+bot(tg)+' lastCardBot '+bot(lastCard)
-      +'<br>pageAreaBot '+bot(pg)+' navTop '+navt+' | VISUAL GAP(card->nav) '+(navt-bot(lastCard));
-  }catch(e){}
-}
 function _fitPad(){
   try{
     const pg=document.getElementById('page-probes'); if(!pg)return;
@@ -5345,8 +5099,7 @@ function renderProbes(){
     const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone',charging:'badge-charging'};
     const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',charging:'&#9889; charging',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
-    const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
-    const dn=dnOn?_doneForRow(pidN):null;
+    const dn=null;   // camera doneness removed 27 Sep 2026 (rotisserie auto-count archived)
     // A stale reading must never look live: a faded "79.1" alone reads as the current temperature.
     // When the probe has gone quiet we stamp the number with how old it is, so nobody misjudges a cook.
     const _ageS=(window._rfxAge||{})[pidN];
@@ -5438,7 +5191,6 @@ function renderProbes(){
   }
   renderProbeAlerts();
   _fitPad();
-  _dbgReadout();
 }
 function renderProbeAlerts(){
   const ov=document.getElementById('probe-alert');if(!ov)return;
@@ -5492,7 +5244,6 @@ function snoozeProbe(pid,mins){
 }
 function resetProbe(pid){probeStates[pid]={status:'idle',alerted:false};stopProbeAlarm(pid);prevStatuses[pid]='idle';_tempHist[pid]=[];_saveTempHist();fetch('/reset_probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});renderProbes();}
 function updateProbeName(pid,name){probeData[pid].name=name;fetch('/set_name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid,name})});}
-function testPrint(pid){fetch('/test_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probe_id:pid})});}
 function fmt(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;if(h>0)return h+':'+String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');return String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');}
 function renderTimers(){
   const grid=document.getElementById('timers-grid');grid.classList.add('brows');
@@ -5535,7 +5286,6 @@ function renderTimers(){
   _fitPad();   // batch count changed the content height → re-balance the vertical fit
 }
 function startT(id){const t=timers[id];if(t.remaining<=0&&!t.expired)return;t.running=true;t.expired=false;renderTimers();postTimer(id,'start');}
-function pauseT(id){timers[id].running=false;renderTimers();postTimer(id,'pause');}
 function endT(id){const t=timers[id];t.running=false;t.expired=false;t.remaining=t.total;stopAlarm(id);t._alarmed=false;t._ackAt=Date.now();renderTimers();postTimer(id,'end');}
 function confirmT(id){stopAlarm(id);timers[id].expired=false;timers[id].remaining=timers[id].total;timers[id]._alarmed=false;timers[id]._ackAt=Date.now();renderTimers();postTimer(id,'confirm');}
 function adj(id,s){const t=timers[id];t.remaining=Math.max(0,t.remaining+s);t.total=Math.max(60,t.total+s);if(t.expired&&s>0){t.expired=false;stopAlarm(id);t._alarmed=false;}renderTimers();postTimer(id,'adjust',s);}
@@ -5709,82 +5459,10 @@ function gemHealthLoad(force){
       +'<br><span style="opacity:.7;">Pay-as-you-go: nothing to top up. If the card or key fails you get an email and every camera watch stops \u2014 the check runs every 6 hours.</span>';
   }).catch(()=>{el.innerHTML='Could not check.';});
 }
-function fillRotcam(){const c=appData.rotcam_public||{};const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=(v==null?'':v);};set('rc-ip',c.ip);set('rc-interval',c.interval||60);const st=document.getElementById('rc-stream');if(st)st.value=c.stream||'stream1';const en=document.getElementById('rc-enabled');if(en)en.checked=!!c.enabled;const setck=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=(v!==false);};setck('rc-feed',c.feed_enabled);setck('rc-spin',c.spin_enabled);setck('rc-doneness',c.doneness_enabled);const _ac=document.getElementById('rc-autocount');if(_ac)_ac.checked=(c.auto_count!==false);const _rb=document.getElementById('rc-bench');if(_rb)_rb.checked=(c.bench_enabled===true);document.getElementById('rc-user').value='';document.getElementById('rc-pass').value='';document.getElementById('rc-key').value='';const ph=appData.rotcam_has_key?'(saved — leave blank to keep)':'AIza…';document.getElementById('rc-key').placeholder=ph;document.getElementById('rc-pass').placeholder=appData.rotcam_public&&appData.rotcam_public.ip?'(unchanged — leave blank to keep)':'';document.getElementById('rc-status').textContent='';document.getElementById('rc-preview').innerHTML='';const _bip=document.getElementById('rc-bench-ip');if(_bip)_bip.value=c.bench_ip||'';const _bst=document.getElementById('rc-bench-stream');if(_bst)_bst.value=c.bench_stream||'stream1';const _bu=document.getElementById('rc-bench-user');if(_bu){_bu.value=c.bench_user||'';_bu.placeholder='camera account user';}const _bpw=document.getElementById('rc-bench-pass');if(_bpw){_bpw.value='';_bpw.placeholder=c.bench_has_pass?'(saved — leave blank to keep)':'enter camera account password';}const _brt=document.getElementById('rc-bench-rtsp');if(_brt){_brt.value='';_brt.placeholder='rtsp://user:pass@192.168.0.113:554/stream1';}const _bs=document.getElementById('rc-bench-status');if(_bs)_bs.textContent=c.bench_configured?'Bench camera is set.':'';const _bp=document.getElementById('rc-bench-preview');if(_bp)_bp.innerHTML='';loadRotPrompts();openCalib();fillRotStockMode();const u=appData.rotcam_usage||{};const uel=document.getElementById('rc-usage');if(uel)uel.innerHTML=(u.total!=null)?('Gemini usage (estimate): <b>'+u.today+'</b> checks today ≈ <b>$'+(u.cost_today||0).toFixed(2)+'</b> &middot; <b>'+u.total+'</b> total ≈ <b>$'+(u.cost_total||0).toFixed(2)+'</b><br><span style="opacity:.65">Rough estimate — see Google AI Studio &rarr; Spend for the exact bill.</span>'):'';}
-function loadRotPrompts(){fetch('/api/rotcam_prompts').then(r=>r.json()).then(function(d){window._rotPrompts=d.prompts||[];renderRotPrompts();}).catch(()=>{});}
-function renderRotPrompts(){const el=document.getElementById('rc-prompts');if(!el)return;const ps=window._rotPrompts||[];
-  el.innerHTML=ps.map(function(p){return '<div class="rc-prompt'+(p.custom?' edited':'')+'" id="rcrow-'+p.key+'">'
-    +'<div class="rc-prompt-head" onclick="toggleRotPrompt(\''+p.key+'\')"><span><span class="rc-chev">&#9656;</span>'+_mEsc(p.label)+(p.custom?'<span class="rc-prompt-badge">edited</span>':'')+'</span></div>'
-    +'<div class="rc-prompt-body" style="display:none;"><textarea class="rc-prompt-ta" id="rcp-'+p.key+'">'+_mEsc(p.text)+'</textarea>'
-    +'<div class="row" style="gap:6px;margin-top:6px;align-items:center;"><button class="btn btn-primary" style="font-size:var(--fs-sm);padding:6px 12px;" onclick="saveRotPrompt(\''+p.key+'\')">Save</button><button class="btn" style="font-size:var(--fs-sm);padding:6px 12px;" onclick="resetRotPrompt(\''+p.key+'\')">Reset to default</button><span id="rcp-st-'+p.key+'" style="font-size:var(--fs-sm);color:var(--muted);"></span></div></div></div>';}).join('');}
-function toggleRotPrompt(key){const row=document.getElementById('rcrow-'+key);if(!row)return;const body=row.querySelector('.rc-prompt-body');const chev=row.querySelector('.rc-chev');const open=(body.style.display==='none');body.style.display=open?'':'none';if(chev)chev.innerHTML=open?'&#9662;':'&#9656;';}
-function saveRotPrompt(key){const ta=document.getElementById('rcp-'+key);const st=document.getElementById('rcp-st-'+key);if(st){st.textContent='Saving…';st.style.color='var(--muted)';}
-  fetch('/api/rotcam_prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,text:ta.value})}).then(r=>r.json()).then(function(d){if(st){st.textContent=d.ok?'Saved ✓ — applies to every read now':'Error';st.style.color=d.ok?'var(--green)':'var(--red)';}loadRotPrompts();}).catch(()=>{if(st){st.textContent='Save failed';st.style.color='var(--red)';}});}
-function resetRotPrompt(key){_askConfirm('Reset this prompt?','Goes back to the built-in default — your edits will be lost.',function(){
-  fetch('/api/rotcam_prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,text:''})}).then(r=>r.json()).then(function(){loadRotPrompts();}).catch(()=>{});},'Reset');}
-function setRotStockMode(m){
-  m=(m==='probe')?'probe':'camera';appData.rot_stock_mode=m;
-  document.querySelectorAll('#rot-mode-seg .pt-seg').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-  fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rot_stock_mode:m})}).catch(()=>{});
-  if(typeof _toast==='function')_toast(m==='probe'?'Counting cooked chicken by PROBES (experimental)':'Counting cooked chicken by CAMERA');
-}
-function fillRotStockMode(){
-  const m=(appData.rot_stock_mode==='probe')?'probe':'camera';
-  document.querySelectorAll('#rot-mode-seg .pt-seg').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-  const bpr=(appData.rotisserie||{}).birds_per_row||4;const el=document.getElementById('rot-mode-bpr');if(el)el.textContent=bpr;
-}
-function _rotcamBody(){const body={ip:document.getElementById('rc-ip').value.trim(),stream:document.getElementById('rc-stream').value,interval:document.getElementById('rc-interval').value||60,enabled:document.getElementById('rc-enabled').checked,feed_enabled:document.getElementById('rc-feed').checked,spin_enabled:document.getElementById('rc-spin').checked,doneness_enabled:document.getElementById('rc-doneness').checked,auto_count:!!(document.getElementById('rc-autocount')||{}).checked,bench_enabled:!!(document.getElementById('rc-bench')||{}).checked};const u=document.getElementById('rc-user').value;if(u)body.user=u;const p=document.getElementById('rc-pass').value;if(p)body.pass=p;const k=document.getElementById('rc-key').value;if(k)body.gemini_key=k;
-const bip=(document.getElementById('rc-bench-ip')||{}).value;if(bip!=null)body.bench_ip=bip.trim();
-const bst=(document.getElementById('rc-bench-stream')||{}).value;if(bst)body.bench_stream=bst;
-const bu=(document.getElementById('rc-bench-user')||{}).value;if(bu&&bu.trim())body.bench_user=bu.trim();
-const bp=(document.getElementById('rc-bench-pass')||{}).value;if(bp)body.bench_pass=bp;
-const br=(document.getElementById('rc-bench-rtsp')||{}).value;if(br&&br.trim())body.bench_rtsp_url=br.trim();return body;}
-function rcStatus(m,c){const e=document.getElementById('rc-status');e.textContent=m;e.style.color='var(--'+(c||'muted')+')';}
-const _CAL_DEF_BOXES=[[0.005,0.155],[0.165,0.300],[0.328,0.453],[0.465,0.580],[0.590,0.695],[0.705,0.795]];
-const _CAL_DEF_X=[0.21,0.81];
-function _cl(v){return Math.max(0,Math.min(1,v));}
-function _calDefault6(){return _CAL_DEF_BOXES.map(p=>[_CAL_DEF_X[0],p[0],_CAL_DEF_X[1],p[1]]);}
-let _cal6=_calDefault6();let _calZoom=1;let _calDrag=null;
-function _calRow(){const s=document.getElementById('rc-cal-row');return s?parseInt(s.value):0;}
-function _legacyTo6(boxes,bx,off,skew){const out=[];for(let i=0;i<6;i++){let a=_cl(boxes[i][0]+off),b=_cl(boxes[i][1]+off);if(b<a){const t=a;a=b;b=t;}const sh=skew*(i-2.5);let x1=_cl(bx[0]+sh),x2=_cl(bx[1]+sh);if(x2<x1){const t=x1;x1=x2;x2=t;}out.push([x1,a,x2,b]);}return out;}
-function openCalib(){const c=appData.rotcam_public||{};
-  if(Array.isArray(c.boxes6)&&c.boxes6.length===6){_cal6=c.boxes6.map(r=>[+r[0],+r[1],+r[2],+r[3]]);}
-  else{const boxes=(Array.isArray(c.boxes)&&c.boxes.length===6)?c.boxes.map(p=>[+p[0],+p[1]]):JSON.parse(JSON.stringify(_CAL_DEF_BOXES));const bx=(Array.isArray(c.box_x)&&c.box_x.length===2)?[+c.box_x[0],+c.box_x[1]]:_CAL_DEF_X.slice();_cal6=_legacyTo6(boxes,bx,parseFloat(c.box_offset)||0,parseFloat(c.box_skew)||0);}
-  _calZoom=1;_startCalLive();}
-let _calLiveTimer=null,_calLiveOn=false;
-// PRELOAD each frame into a separate Image, then swap it in once fully loaded, then schedule the next.
-// (Setting img.src directly on a fixed timer cancels a still-loading 330KB frame → frozen image over Tailscale.)
-function _refreshCalBg(){if(_calDrag){return;}const img=document.getElementById('rc-cal-img'),wrap=document.getElementById('rc-cal-wrap');if(!img)return;
-  const n=new Image();
-  n.onload=function(){const note=document.getElementById('rc-cal-note');if(note)note.remove();img.src=n.src;_applyZoom();_renderCalBoxes();if(_calLiveOn)_calLiveTimer=setTimeout(_refreshCalBg,250);};
-  n.onerror=function(){if(wrap&&!img.getAttribute('src')&&!document.getElementById('rc-cal-note')){const x=document.createElement('div');x.id='rc-cal-note';x.style.cssText='padding:10px;font-size:var(--fs-sm);color:var(--muted);';x.textContent='Camera frame unavailable — retrying…';wrap.insertBefore(x,wrap.firstChild);}if(_calLiveOn)_calLiveTimer=setTimeout(_refreshCalBg,900);};
-  n.src='/api/rotcam_frame?t='+Date.now();}
-function _startCalLive(){_stopCalLive();_calLiveOn=true;_refreshCalBg();}   // self-scheduling loop: next frame fires only after this one loads
-function _stopCalLive(){_calLiveOn=false;if(_calLiveTimer){clearTimeout(_calLiveTimer);_calLiveTimer=null;}}
-function _applyZoom(){const st=document.getElementById('rc-cal-stage');if(st)st.style.width=(_calZoom*100)+'%';const l=document.getElementById('rc-zoom-lbl');if(l)l.textContent=Math.round(_calZoom*100)+'%';}
-function calZoom(d){_calZoom=Math.max(1,Math.min(4,+(_calZoom+d*0.25).toFixed(2)));_applyZoom();}
-function _renderCalBoxes(){const st=document.getElementById('rc-cal-stage');if(!st)return;st.querySelectorAll('.cal-box').forEach(x=>x.remove());const sel=_calRow();
-  for(let i=0;i<6;i++){const r=_cal6[i];const d=document.createElement('div');d.className='cal-box';d.dataset.i=i;
-    d.style.cssText='position:absolute;box-sizing:border-box;border:2px solid '+(i===sel?'#ffd23f':'#19e36b')+';background:'+(i===sel?'rgba(255,210,63,.14)':'rgba(25,227,107,.08)')+';left:'+(r[0]*100)+'%;top:'+(r[1]*100)+'%;width:'+((r[2]-r[0])*100)+'%;height:'+((r[3]-r[1])*100)+'%;touch-action:none;cursor:move;z-index:5;';
-    d.innerHTML='<span style="position:absolute;top:0;left:3px;font-size:var(--fs-sm);font-weight:700;color:#fff;text-shadow:0 0 4px #000;pointer-events:none;">'+(i+1)+'</span>';
-    ['nw','ne','sw','se'].forEach(h=>{const hd=document.createElement('div');hd.dataset.h=h;const pos={nw:'top:-8px;left:-8px;',ne:'top:-8px;right:-8px;',sw:'bottom:-8px;left:-8px;',se:'bottom:-8px;right:-8px;'}[h];hd.style.cssText='position:absolute;width:18px;height:18px;background:#fff;border:2px solid #19e36b;border-radius:var(--r-sm);'+pos+'touch-action:none;cursor:'+((h==='nw'||h==='se')?'nwse-resize':'nesw-resize')+';z-index:6;';hd.addEventListener('pointerdown',ev=>_calStart(ev,i,h));d.appendChild(hd);});
-    d.addEventListener('pointerdown',ev=>_calStart(ev,i,'move'));
-    st.appendChild(d);}}
-function _calStart(ev,i,mode){ev.preventDefault();ev.stopPropagation();const st=document.getElementById('rc-cal-stage');if(!st)return;const rect=st.getBoundingClientRect();
-  _calDrag={i:i,mode:mode,px:ev.clientX,py:ev.clientY,w:rect.width||1,h:rect.height||1,start:_cal6[i].slice()};
-  const s=document.getElementById('rc-cal-row');if(s)s.value=i;_renderCalBoxes();
-  window.addEventListener('pointermove',_calMove);window.addEventListener('pointerup',_calEnd);window.addEventListener('pointercancel',_calEnd);}
-function _calMove(ev){if(!_calDrag)return;const g=_calDrag,dx=(ev.clientX-g.px)/g.w,dy=(ev.clientY-g.py)/g.h,MIN=0.02;let r=g.start.slice();
-  if(g.mode==='move'){const w=r[2]-r[0],h=r[3]-r[1];let nx=Math.min(_cl(r[0]+dx),1-w),ny=Math.min(_cl(r[1]+dy),1-h);r=[nx,ny,nx+w,ny+h];}
-  else{if(g.mode.indexOf('w')>=0)r[0]=Math.min(_cl(r[0]+dx),r[2]-MIN);if(g.mode.indexOf('e')>=0)r[2]=Math.max(_cl(r[2]+dx),r[0]+MIN);if(g.mode.indexOf('n')>=0)r[1]=Math.min(_cl(r[1]+dy),r[3]-MIN);if(g.mode.indexOf('s')>=0)r[3]=Math.max(_cl(r[3]+dy),r[1]+MIN);}
-  _cal6[g.i]=r;const el=document.querySelector('.cal-box[data-i="'+g.i+'"]');if(el){el.style.left=(r[0]*100)+'%';el.style.top=(r[1]*100)+'%';el.style.width=((r[2]-r[0])*100)+'%';el.style.height=((r[3]-r[1])*100)+'%';}}
-function _calEnd(){if(!_calDrag)return;_calDrag=null;window.removeEventListener('pointermove',_calMove);window.removeEventListener('pointerup',_calEnd);window.removeEventListener('pointercancel',_calEnd);}
-function _calHi(){_renderCalBoxes();}
-function calNudge(dx,dy){const i=_calRow();if(i<0)return;const s=0.004;let r=_cal6[i].slice();const w=r[2]-r[0],h=r[3]-r[1];let nx=Math.min(_cl(r[0]+dx*s),1-w),ny=Math.min(_cl(r[1]+dy*s),1-h);_cal6[i]=[nx,ny,nx+w,ny+h];_renderCalBoxes();}
-function calReset(){_cal6=_calDefault6();_renderCalBoxes();}
-function saveCal(){fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes6:_cal6})}).then(r=>r.json()).then(d=>{rcStatus(d.ok?'Calibration saved.':'Error saving.',d.ok?'green':'red');loadAppData();}).catch(()=>rcStatus('Could not save calibration.','red'));}
-function saveRotcam(){rcStatus('Saving…','muted');return fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_rotcamBody())}).then(r=>r.json()).then(d=>{rcStatus(d.ok?(d.enabled?'Saved — auto-count ON.':'Saved (off — fill in camera + key, then tick on).'):'Error.',d.ok?'green':'red');loadAppData();return d;});}
-function testRotcam(){rcStatus('Grabbing a frame and counting…','muted');document.getElementById('rc-preview').innerHTML='';saveRotcam().then(()=>fetch('/api/rotcam_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.ok){rcStatus('Detected '+d.rows+' row(s) of chickens. &#10003;','green');}else rcStatus('Could not count: '+(d.error||'unknown'),'red');if(d.preview)document.getElementById('rc-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:var(--r-sm);border:1px solid var(--border2);">';}));}
-function testBenchcam(){const s=document.getElementById('rc-bench-status');if(s){s.textContent='Grabbing bench frame and counting…';s.style.color='var(--muted)';}document.getElementById('rc-bench-preview').innerHTML='';saveRotcam().then(()=>fetch('/api/benchcam_test',{method:'POST'}).then(r=>r.json()).then(d=>{if(s){if(d.ok){s.textContent='Bench: '+(d.bench_rows==null?'no clear count (blocked/empty)':d.bench_rows+' row(s) of cooked chickens')+' ✓';s.style.color='var(--green)';}else{s.textContent='Could not read bench cam: '+(d.error||'unknown');s.style.color='var(--red)';}}if(d.preview)document.getElementById('rc-bench-preview').innerHTML='<img src="'+d.preview+'" style="max-width:100%;border-radius:var(--r-sm);border:1px solid var(--border2);">';}).catch(()=>{if(s){s.textContent='Test failed.';s.style.color='var(--red)';}}));}
+function fillRotcam(){const c=appData.rotcam_public||{};const k=document.getElementById('rc-key');if(k){k.value='';k.placeholder=appData.rotcam_has_key?'(saved \u2014 leave blank to keep)':'AIza\u2026';}const m=document.getElementById('rc-model');if(m)m.value=c.model||'';if(typeof gemHealthLoad==='function')gemHealthLoad(false);}
+function rcStatus(m,c){const e=document.getElementById('rc-status');if(!e)return;e.textContent=m;e.style.color='var(--'+(c||'muted')+')';}
+function saveRotcam(){const body={};const k=(document.getElementById('rc-key')||{}).value;if(k&&k.trim())body.gemini_key=k.trim();const m=(document.getElementById('rc-model')||{}).value;if(m!=null)body.model=m.trim();rcStatus('Saving\u2026','muted');
+  return fetch('/api/rotcam_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{rcStatus(d.ok?(d.has_key?'Saved \u2014 key on file.':'Saved \u2014 no key on file.'):'Error saving.',d.ok?'green':'red');if(d.ok){appData.rotcam_has_key=!!d.has_key;const kk=document.getElementById('rc-key');if(kk)kk.value='';if(typeof gemHealthLoad==='function')gemHealthLoad(true);}}).catch(()=>rcStatus('Could not reach the server.','red'));}
 function fillNoWait(){const en=document.getElementById('nw-enabled');if(en)en.checked=!!appData.nowait_enabled;const ed=document.getElementById('nw-exclude-delivery');if(ed)ed.checked=(appData.nowait_exclude_delivery!==false);const eo=document.getElementById('nw-exclude-online');if(eo)eo.checked=(appData.nowait_exclude_online!==false);const ta=document.getElementById('nw-items');if(ta)ta.value=(appData.nowait_items&&appData.nowait_items.length?appData.nowait_items:['Salad','BBQ Chicken','Whole Chicken']).join('\n');const wt=document.getElementById('nw-wait-items');if(wt)wt.value=(appData.wait_items||[]).join('\n');const am=document.getElementById('nw-alarm-min');if(am)am.value=(appData.nowait_alarm_min!=null?appData.nowait_alarm_min:3);const wam=document.getElementById('nw-wait-alarm-min');if(wam)wam.value=(appData.wait_alarm_min!=null?appData.wait_alarm_min:10);
   const dd=document.getElementById('nw-days');if(dd){const active=(Array.isArray(appData.nowait_days)&&appData.nowait_days.length)?appData.nowait_days.map(Number):[0,1,2,3,4,5,6];dd.innerHTML=DNAMES.map((n,i)=>'<label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);cursor:pointer;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-sm);padding:6px 9px;"><input type="checkbox" class="nw-day" data-d="'+i+'" '+(active.indexOf(i)>=0?'checked':'')+' style="width:15px;height:15px;"> '+n+'</label>').join('');}
   const st=document.getElementById('nw-start');if(st)st.value=appData.nowait_start||'';const ee=document.getElementById('nw-end');if(ee)ee.value=appData.nowait_end||'';
@@ -5824,24 +5502,8 @@ _recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{prob
       // adopts it, so one tap silences the whole shop for the chosen time.
       if(st.snooze_until){const su=st.snooze_until*1000,m=_psnMap();
         if(su>Date.now()&&su>((m[p]||0)+1500)){m[p]=su;_psnSet(m);
-          if(_probeAlarms[p]){probeToken[p]++;delete _probeAlarms[p];_updateFlash();if(typeof renderProbeAlerts==='function')renderProbeAlerts();}}}});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(Array.isArray(d.reminder_acks))window._remAcks=d.reminder_acks;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotLevels=d.rot.levels||'';window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';window._rotProg=d.rot.prog||[];renderRotLive(d.rot);}renderRotcamCard();renderBenchcamCard();if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
+          if(_probeAlarms[p]){probeToken[p]++;delete _probeAlarms[p];_updateFlash();if(typeof renderProbeAlerts==='function')renderProbeAlerts();}}}});if(d.drop_times){dropTimes.bbq=d.drop_times.bbq;dropTimes.fried=d.drop_times.fried;}if(d.settings&&!window._sLoaded){window._sLoaded=true;serverSettings=d.settings;syncProbeSettingsUI(d.settings);}else if(d.settings)serverSettings=d.settings;if(Array.isArray(d.reminder_acks))window._remAcks=d.reminder_acks;if(d.timers)syncTimers(d.timers,d.batch_log);_probeConnCheck(d);renderProbes();if(typeof renderAlarmBar==='function')renderAlarmBar();if(d.rot){window._lastRotCooking=d.rot.rows_cooking||0;window._rotCPat=d.rot.cpat||'';window._rotDone=d.rot.done||'';renderRotLive(d.rot);}if(d.fry)renderFryLive(d.fry);handleWait(d.wait||{});handleWalkin(d.walkin||{});}catch(e){}}
 let _spark=[],_lsSig='';
-function renderLiveStatus(rot,fry,bleConn){
-  const el=document.getElementById('rl-live');if(!el)return;
-  const connected=!!((rot&&rot.square)||(fry&&fry.square));
-  const total=((rot&&rot.sold_today)||0)+((fry&&fry.sold_today)||0);
-  if(!_spark.length||_spark[_spark.length-1]!==total){_spark.push(total);if(_spark.length>24)_spark.shift();}
-  const sig=connected+'|'+total+'|'+_spark.length;if(sig===_lsSig)return;_lsSig=sig;
-  const pts=_spark.length>1?_spark:[total,total];
-  const min=Math.min(...pts),max=Math.max(...pts),rng=(max-min)||1,W=200,H=44;
-  const line=pts.map((v,i)=>{const x=(i/(pts.length-1))*W;const y=H-((v-min)/rng)*(H-8)-4;return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);}).join(' ');
-  const area=line+` L${W} ${H} L0 ${H} Z`;
-  el.innerHTML=`<div class="rl-card live-card">
-    <div class="ls-head"><span class="ls-dot ${connected?'on':''}"></span><span class="rl-tag">LIVE STATUS</span></div>
-    <div><div class="ls-title">Square Live</div><div class="ls-sub ${connected?'on':''}">${connected?'&#9679; Connected':'Manual / offline'}</div></div>
-    <svg class="ls-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="lsg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--green)" stop-opacity=".35"/><stop offset="1" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#lsg)"/><path d="${line}" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </div>`;
-}
 
 // STOCK
 function getTodayTarget(p){const day=(new Date().getDay()+6)%7;const targets=p.targets||{};for(let d=day;d>=0;d--){if(targets[d]!==undefined&&targets[d]!=='')return parseFloat(targets[d]);}return parseFloat(p.target||0);}
@@ -5869,14 +5531,6 @@ function orderQty(p,sel,onHand){
 }
 let stockFilter='All',stockSearch='';
 let stockStatus='all';   // 'all' | 'order' | 'count'
-function setStockStatus(s){stockStatus='all';renderStockPage();}   // status filter retired; list always shows all (category chips still filter)
-function _stockCounts(){
-  const products=appData.products||[],soh=appData.stock_on_hand||{},today=_todayIdx();
-  let order=0,count=0;
-  products.forEach(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';if(!c)count++;
-    const oh=c?parseFloat(soh[p.id]):0;if(orderQty(p,[today],oh)>0)order++;});
-  return {order,count,all:products.length};
-}
 function renderStockStatusTabs(){
   // The old To-order/To-count/All tabs were confusing (and their counts ignored the category filter).
   // Replaced with a clear "Order <supplier>" button per supplier → opens the count-and-send run.
@@ -5894,7 +5548,6 @@ function renderStockStatusTabs(){
     }).join('')+'</div>';
 }
 function setStockFilter(c){stockFilter=c;renderStockPage();}
-function setStockSearch(v){stockSearch=v;renderStockPage();}
 function _todayIdx(){return (new Date().getDay()+6)%7;}
 function stockStatusFor(p){
   const soh=appData.stock_on_hand||{};
@@ -5997,47 +5650,6 @@ function _orunLandingHide(){
   const s=document.getElementById('orun-sups'); if(s)s.style.display='flex';
   const h=document.getElementById('orun-hint'); if(h)h.style.display='flex';
 }
-function _renderStockPage_legacy(){
-  const products=appData.products||[],suppliers=appData.suppliers||[];
-  const list=document.getElementById('stock-list'),empty=document.getElementById('stock-empty');
-  if(!list)return;   // legacy stock-count list retired 7 Aug — markup removed, kept for reference
-  // build category filter chips from suppliers that actually have products
-  const cats=[];suppliers.forEach(s=>{if((products||[]).some(p=>p.supplier_id===s.id)){const c=s.category||'Uncategorised';if(!cats.includes(c))cats.push(c);}});
-  const chipBox=document.getElementById('stock-filter-chips');
-  if(chipBox){if(cats.length>0){if(stockFilter!=='All'&&!cats.includes(stockFilter))stockFilter='All';chipBox.style.display='flex';chipBox.innerHTML=['All',...cats].map(c=>`<div class="filter-chip ${stockFilter===c?'on':''}" onclick="setStockFilter(&quot;${c.replace(/"/g,'')}&quot;)">${c}</div>`).join('');}else{chipBox.style.display='none';chipBox.innerHTML='';}}
-  if(products.length===0){list.innerHTML='';empty.style.display='block';updateStockSummary();return;}
-  empty.style.display='none';
-  renderStockStatusTabs();
-  const q=stockSearch.trim().toLowerCase();const today=_todayIdx();const soh=appData.stock_on_hand||{};
-  const _passStatus=(p)=>{
-    if(stockStatus==='all')return true;
-    const counted=soh[p.id]!==undefined&&soh[p.id]!=='';
-    if(stockStatus==='count')return !counted;                                   // not counted yet
-    if(stockStatus==='order')return orderQty(p,[today],counted?parseFloat(soh[p.id]):0)>0;  // needs ordering
-    return true;
-  };
-  let html='';
-  const renderGroup=(name,cat,items)=>{
-    const matched=items.filter(p=>(!q||(p.name||'').toLowerCase().includes(q))&&_passStatus(p));
-    if(matched.length===0)return;
-    const need=matched.filter(p=>{const c=soh[p.id]!==undefined&&soh[p.id]!=='';return orderQty(p,[today],c?parseFloat(soh[p.id]):0)>0;}).length;
-    html+=`<div class="stk-sup-head"><span>${name}</span>`+(need>0?`<span class="stk-sup-need">${need} to order</span>`:`<span class="tag tag-amber">${cat}</span>`)+`</div>`;
-    html+=matched.map(stockRowHtml).join('');
-  };
-  suppliers.filter(s=>stockFilter==='All'||(s.category||'Uncategorised')===stockFilter).forEach(sup=>{
-    const items=products.filter(p=>p.supplier_id===sup.id);if(items.length===0)return;
-    renderGroup(sup.name,sup.category||'Uncategorised',items);
-  });
-  if(stockFilter==='All'){const orphan=products.filter(p=>!suppliers.find(s=>s.id===p.supplier_id));if(orphan.length)renderGroup('Other','',orphan);}
-  if(!html){
-    const msg=stockStatus==='order'?'&#10003; Nothing needs ordering right now.'
-      :stockStatus==='count'?'&#10003; Everything has been counted.'
-      :'No items match.';
-    html='<div class="empty-state" style="padding:34px 16px;font-size:var(--fs-md);">'+msg+'</div>';
-  }
-  list.innerHTML=html;
-  updateStockSummary();
-}
 let _orderAdj={};
 // ===== Order run: top-up-to-par ordering, per supplier, per order day =====
 // Each supplier has order_days (weekday indices, Mon=0..Sun=6). Each product has run_pars keyed by that
@@ -6050,9 +5662,6 @@ let _orunUnit={};   // pid -> 'base'|'alt'
 let _orunAdj={};    // pid -> manual +/- nudge on the calculated order (in base units)
 let _orunBatchOn={}, _orunBatch={}, _orunBatchRepl={};   // selected batches; per-item batch qty; per-item replace-flag
 let _orunSkip={};   // pid -> true: "not ordering this one today" — no count needed, left off the order
-function _orunNextOrderDay(days,from){ // label: which day this run lasts until (the next order day)
-  const s=[...days].sort((a,b)=>a-b); for(let i=1;i<=7;i++){const d=(from+i)%7; if(s.includes(d))return d;} return from;
-}
 // ── LEAD TIME ────────────────────────────────────────────────────────────────────────────────
 // Suppliers differ: United delivers next day, Baiada needs 2 business days (order Fri -> Mon,
 // order Tue -> Thu), so Saturday counts and Sunday does not (owner, 13 Aug). Everything a run
@@ -6469,7 +6078,6 @@ function _fmtQ(v){ // pretty fractions for the "need" line
   if(v===1.25)return '1 1/4'; if(v===1.5)return '1 1/2';
   return (Math.round(v*100)/100).toString();
 }
-function _orunToggleUnit(pid){ _orunUnit[pid]=(_orunUnit[pid]==='alt')?'base':'alt'; renderOrderRun(); }
 function _orunSetUnit(pid,which){ if(_orunUnit[pid]===which)return; _orunUnit[pid]=which; renderOrderRun(); }
 function _orunRecalc(pid){
   const p=(appData.products||[]).find(x=>x.id===pid); if(!p)return;
@@ -6629,26 +6237,6 @@ function _orunClearCounts(){
     _toast&&_toast('Counts cleared for '+sup.name+' — recount fresh.');
   },'Clear counts');
 }
-function openOrderModal(){
-  navTo('stock');return;   // one screen now — the Stock page IS the order screen
-  // (legacy chooser below, unreachable)
-  const sups=(appData.suppliers||[]).filter(s=>(appData.products||[]).some(p=>p.supplier_id===s.id));
-  if(!sups.length){_toast&&_toast('Add a supplier and products first.');return;}
-  const box=document.getElementById('order-preview');
-  document.querySelector('#order-modal .modal-title').textContent='PLACE ORDER — pick a supplier';
-  const pills=document.getElementById('order-day-pills'); if(pills)pills.style.display='none';
-  const hint=document.querySelector('#order-modal .label'); if(hint)hint.style.display='none';
-  box.innerHTML=sups.map(s=>{
-    const n=(appData.products||[]).filter(p=>p.supplier_id===s.id).length;
-    const days=(s.order_days||[]);
-    const dayStr=days.length?days.slice().sort((a,b)=>a-b).map(d=>_WD[d]).join(', ')+' orders':'set order days in Setup';
-    return '<button class="btn" style="width:100%;justify-content:space-between;display:flex;align-items:center;height:56px;margin-bottom:9px;font-size:var(--fs-md);" onclick="closeModal(\'order-modal\');'
-      +(days.length?('openOrderRun(\''+s.id+'\')'):('_orderLegacy(\''+s.id+'\')'))+'">'
-      +'<span>'+_mEsc(s.name)+' <span style="color:var(--muted);font-size:var(--fs-sm);">('+n+' items)</span></span>'
-      +'<span style="color:var(--muted);font-size:var(--fs-sm);">'+dayStr+' &rsaquo;</span></button>';
-  }).join('');
-  openModal('order-modal');
-}
 function _orderLegacy(supId){  // old day-pill flow for suppliers without order days configured
   openModal('order-modal');
   document.querySelector('#order-modal .modal-title').textContent='PLACE ORDER';
@@ -6737,7 +6325,6 @@ function setupTab(t){
   if(t==='batches')renderBatchAdmin();
   return;
 }
-function _setupTabOld(t){const isP=t==='products';document.getElementById('setup-products').style.display=isP?'':'none';document.getElementById('setup-suppliers').style.display=isP?'none':'';document.getElementById('setup-tab-products').classList.toggle('on',isP);document.getElementById('setup-tab-suppliers').classList.toggle('on',!isP);}
 function toggleSupplierForm(force){const w=document.getElementById('supplier-form-wrap');if(!w)return;const show=force===undefined?(w.style.display==='none'):force;w.style.display=show?'block':'none';const t=document.getElementById('supplier-form-toggle');if(t)t.style.display=show?'none':'block';}
 function renderSupplierAdmin(){document.getElementById('supplier-list-admin').innerHTML=(appData.suppliers||[]).map((s,i)=>{const days=(s.remind_days||[]).map(d=>DNAMES[d]).join(', ')||'Every day';const ddays=(s.delivery_days||[]).map(d=>DNAMES[d]).join(', ');return `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div class="row-between"><span style="font-size:var(--fs-md);font-weight:600;">${s.name} <span class="tag tag-amber" style="margin-left:4px;">${s.category||'Uncategorised'}</span></span><span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editSupplier(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removeSupplier(${i})">&#10005;</button></span></div>${s.email?`<div style="font-size:var(--fs-sm);color:var(--muted);">${s.email}</div>`:`<div style="font-size:var(--fs-sm);color:var(--muted);opacity:.7;">No email — order by phone/app</div>`}${s.remind_time?`<div style="font-size:var(--fs-sm);color:var(--cyan);"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${s.remind_time} | ${days}</div>`:''}${ddays?`<div style="font-size:var(--fs-sm);color:var(--green,#34d399);">Delivery: ${ddays}${s.delivery_time?` at ${_hhmm(s.delivery_time)||s.delivery_time}`:''} — &quot;put stock away&quot; reminder</div>`:''}</div>`;}).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No suppliers yet.</div>';const sel=document.getElementById('new-prod-supplier');if(sel)sel.innerHTML=(appData.suppliers||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');}
 function _prodRule(p){const pk=_pkg(p),cu=pk.countUnit;const pack=pk.split?(' · '+pk.ps+' '+cu+'/'+pk.orderUnit):'';const hasRe=p.reorder_at!==undefined&&p.reorder_at!==null&&p.reorder_at!=='';if(hasRe)return 'Reorder at '+p.reorder_at+' '+cu+' or below'+pack;const t=p.targets||{};const vals=[0,1,2,3,4,5,6].map(d=>t[d]).filter(v=>v!==undefined&&v!=='');const same=vals.length&&vals.every(v=>v===vals[0]);return 'Target '+(same?vals[0]:[0,1,2,3,4,5,6].map(d=>t[d]!==undefined?t[d]:'–').join('/'))+' '+cu+'/day'+pack;}
@@ -7233,178 +6820,6 @@ function renderPullLog(pulls){
       +'</tr></thead><tbody>'+rows+'</tbody></table>';
   }).join('');
 }
-function renderRotcamCard(){
-  const el=document.getElementById('rl-cam');if(!el)return;
-  if(!_rotcamCfgd()||(appData.rotcam_public&&appData.rotcam_public.feed_enabled===false)){el.style.display='none';return;}
-  el.style.display='';
-  if(el.dataset.built)return;            // build once — don't restart the stream on every refresh
-  el.dataset.built='1';
-  el.innerHTML=`<div class="rl-card cam-card" onclick="openRotcam(event)">
-    <div class="rl-top"><div class="rl-tag">ROTISSERIE</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span><button class="ra-toggle" onclick="toggleRotView(event)"><span id="ra-toggle-lbl">Cam view</span></button></div>
-    <div class="cam-wrap"><img id="rotcam-stream" alt=""><div class="cam-msg" id="rotcam-msg">Connecting…</div><div class="cam-stopped" id="cam-stopped">NOT SPINNING</div><div class="cam-overlay" id="cam-overlay"></div><div class="rot-anim" id="rot-anim"></div></div>
-    <div class="rl-camhint">tap to enlarge</div></div>`;
-  applyRotView();
-  const img=document.getElementById('rotcam-stream');
-  img.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};
-  if(_camIsPhone()){
-    // Phone browsers (esp. iOS Safari) won't render an MJPEG multipart stream in <img> → poll stills.
-    if(window._camPollT)clearInterval(window._camPollT);
-    const poll=()=>{const im=document.getElementById('rotcam-stream');if(!im){clearInterval(window._camPollT);window._camPollT=null;return;}const n=new Image();n.onload=()=>{im.src=n.src;const m=document.getElementById('rotcam-msg');if(m)m.style.display='none';};n.onerror=()=>{const m=document.getElementById('rotcam-msg');if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
-    poll();window._camPollT=setInterval(poll,1500);
-  }else{
-    img.onload=()=>{const m=document.getElementById('rotcam-msg');if(m)m.style.display='none';};
-    img.src='/api/rotcam_stream?t='+Date.now();   // desktop = smooth MJPEG (the original, known-good)
-  }
-}
-function renderBenchcamCard(){
-  const el=document.getElementById('rl-benchcam');if(!el)return;
-  el.style.display='none';   // bench cam removed from the dashboard — no longer used (rotisserie cam handles counting)
-  const rl=document.getElementById('rot-live');if(rl)rl.classList.remove('bench-min');
-  if(el.dataset.built){const im=document.getElementById('benchcam-stream');if(im)im.src='';if(window._benchPollT){clearInterval(window._benchPollT);window._benchPollT=null;}}
-  return;
-  // eslint-disable-next-line no-unreachable
-  const c=appData.rotcam_public||{};
-  if(!c.bench_configured||c.feed_enabled===false){el.style.display='none';applyBenchMin();return;}
-  el.style.display='';applyBenchMin();
-  if(el.dataset.built)return;
-  el.dataset.built='1';
-  el.innerHTML=`<div class="bench-mini" onclick="toggleBenchMin(event)" title="Restore bench cam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="bm-label">Bench cam</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></div>
-    <div class="rl-card cam-card" onclick="enlargeBenchcam()">
-    <div class="rl-top"><div class="rl-tag">BENCH CAM &middot; AI</div><span class="rl-cam-tag"><b>&#9679;</b>LIVE</span><button class="cam-min-btn" onclick="toggleBenchMin(event)" title="Minimise bench cam">&minus;</button></div>
-    <div class="cam-wrap"><img id="benchcam-stream" alt=""><div class="cam-msg" id="benchcam-msg">Connecting…</div></div>
-    <div class="rl-camhint">green box = a chicken the AI sees &middot; tap to enlarge</div></div>`;
-  const bim=document.getElementById('benchcam-stream');
-  bim.onerror=()=>{const m=document.getElementById('benchcam-msg');if(m){m.style.display='';m.textContent='Bench cam offline';}};
-  if(_camIsPhone()){                                   // phones can't play MJPEG in <img> → poll stills
-    if(window._benchPollT)clearInterval(window._benchPollT);
-    const poll=()=>{const im=document.getElementById('benchcam-stream');if(!im){clearInterval(window._benchPollT);window._benchPollT=null;return;}const n=new Image();n.onload=()=>{im.src=n.src;const m=document.getElementById('benchcam-msg');if(m)m.style.display='none';};n.src='/api/benchcam_frame?t='+Date.now();};
-    poll();window._benchPollT=setInterval(poll,1200);
-  }else{                                               // desktop/tablet → smooth MJPEG stream like the rotisserie cam
-    bim.onload=()=>{const m=document.getElementById('benchcam-msg');if(m)m.style.display='none';};
-    bim.src='/api/benchcam_stream?t='+Date.now();
-  }
-}
-function enlargeBenchcam(){let o=document.getElementById('benchcam-enlarge');if(!o){o=document.createElement('div');o.id='benchcam-enlarge';o.style.cssText='position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:16px;';o.onclick=function(){o.style.display='none';if(window._benchBigT){clearInterval(window._benchBigT);window._benchBigT=null;}};document.body.appendChild(o);}
-  o.innerHTML='<img id="benchcam-big-img" style="max-width:96vw;max-height:92vh;border-radius:var(--radius);background:#000;display:block;"><div id="benchcam-big-msg" style="position:absolute;color:#cbd2dc;font-size:var(--fs-md);font-weight:600;pointer-events:none;">Loading bench camera…</div>';o.style.display='flex';
-  const im=document.getElementById('benchcam-big-img');const msg=document.getElementById('benchcam-big-msg');
-  im.onload=()=>{if(msg)msg.style.display='none';};im.onerror=()=>{if(msg){msg.style.display='';msg.textContent='Bench camera not responding…';}};
-  if(_camIsPhone()){
-    const poll=()=>{const el=document.getElementById('benchcam-big-img');if(!el||o.style.display==='none'){if(window._benchBigT){clearInterval(window._benchBigT);window._benchBigT=null;}return;}el.src='/api/benchcam_frame?t='+Date.now();};
-    poll();if(window._benchBigT)clearInterval(window._benchBigT);window._benchBigT=setInterval(poll,1200);
-  }else{ im.src='/api/benchcam_stream?t='+Date.now(); }   // smooth MJPEG
-}
-function _camIsPhone(){try{return window.matchMedia('(max-width:600px)').matches;}catch(e){return false;}}
-function openRotcam(ev){if(ev)ev.stopPropagation();
-  const m=document.getElementById('rotcam-big-msg');if(m){m.style.display='';m.textContent='Connecting…';}
-  const big=document.getElementById('rotcam-big');
-  if(big){
-    big.onerror=()=>{if(m){m.style.display='';m.textContent='Camera offline';}};
-    if(_camIsPhone()){
-      if(window._camBigPollT)clearInterval(window._camBigPollT);
-      const poll=()=>{const el=document.getElementById('rotcam-big'),md=document.getElementById('rotcam-modal');if(!el||!md||!md.classList.contains('open')){clearInterval(window._camBigPollT);window._camBigPollT=null;return;}const n=new Image();n.onload=()=>{el.src=n.src;if(m)m.style.display='none';};n.onerror=()=>{if(m){m.style.display='';m.textContent='Camera offline';}};n.src='/api/rotcam_frame?t='+Date.now();};
-      poll();window._camBigPollT=setInterval(poll,1200);
-    }else{
-      big.onload=()=>{if(m)m.style.display='none';};big.src='/api/rotcam_stream?t='+Date.now();   // desktop = smooth MJPEG
-    }
-  }
-  openModal('rotcam-modal');}
-function closeRotcam(){const big=document.getElementById('rotcam-big');if(big)big.src='';if(window._camBigPollT){clearInterval(window._camBigPollT);window._camBigPollT=null;}closeModal('rotcam-modal');}
-// --- animated rotisserie panel (toggle alternative to the raw cam) ---
-try{window._rotViewMode=localStorage.getItem('rotViewMode')||'anim';}catch(e){window._rotViewMode='anim';}
-window._rowState=window._rowState||['empty','empty','empty','empty','empty','empty'];
-let _benchMin=false;try{_benchMin=localStorage.getItem('benchMin')==='1';}catch(e){}
-function applyBenchMin(){const rl=document.getElementById('rot-live');if(rl)rl.classList.toggle('bench-min',_benchMin);}
-function toggleBenchMin(ev){if(ev)ev.stopPropagation();_benchMin=!_benchMin;try{localStorage.setItem('benchMin',_benchMin?'1':'0');}catch(e){}applyBenchMin();}
-function applyRotView(){const w=document.querySelector('#rl-cam .cam-wrap');if(w)w.classList.toggle('show-anim',(window._rotViewMode||'anim')==='anim');const lbl=document.getElementById('ra-toggle-lbl');if(lbl)lbl.textContent=(window._rotViewMode==='anim'?'Cam view':'Animated');const hint=document.querySelector('#rl-cam .rl-camhint');if(hint)hint.textContent=(window._rotViewMode==='anim'?'live rotisserie status · tap to enlarge cam':'tap to enlarge');}
-function toggleRotView(ev){if(ev)ev.stopPropagation();window._rotViewMode=(window._rotViewMode==='anim'?'cam':'anim');try{localStorage.setItem('rotViewMode',window._rotViewMode);}catch(e){}applyRotView();renderRotAnim();}
-const _CHICK_SVG='<div class="ra-chk"></div>';
-function _doneFromPct(p){   // doneness label DERIVED from the cook-time % so the label and the number never disagree
-  if(p>=115)return {txt:'OVERDONE',cls:'done-over'};
-  if(p>=90)return {txt:'READY',cls:'done-ready'};
-  if(p>=70)return {txt:'Almost',cls:'done-almost'};
-  return {txt:'Not ready',cls:'done-not'};
-}
-function renderRotAnim(){
-  const host=document.getElementById('rot-anim');if(!host)return;
-  if(!host.dataset.built){let h='';for(let r=0;r<6;r++){h+='<div class="ra-row" id="ra-row-'+r+'"><div class="ra-num">'+(r+1)+'</div><div class="ra-spit" id="ra-spit-'+r+'"><span class="ra-mount l"></span><div class="ra-birds" id="ra-birds-'+r+'"></div><span class="ra-mount r"></span></div><div class="ra-tag" id="ra-tag-'+r+'"></div></div>';}host.innerHTML=h;host.dataset.built='1';}
-  const pat=window._rotLevels||'';const st=window._rowState||[];
-  for(let r=0;r<6;r++){
-    const loaded=pat.length===6?pat[r]==='1':false;
-    const state=loaded?(st[r]&&st[r]!=='empty'?st[r]:'loaded'):'empty';
-    const row=document.getElementById('ra-row-'+r);if(row&&row.getAttribute('data-state')!==state)row.setAttribute('data-state',state);
-    const birds=document.getElementById('ra-birds-'+r);const want=loaded?4:0;
-    if(birds&&birds.children.length!==want){birds.innerHTML=want?_CHICK_SVG.repeat(want):'';}
-    const prog=(window._rotProg&&window._rotProg.length===6)?window._rotProg[r]:-1;
-    let txt,cls;if(!loaded){txt='Empty';cls='empty';}
-    else if(state==='stopped'){txt='STOPPED';cls='stop';}
-    else if(prog>=0){const dn=_doneFromPct(prog);txt=dn.txt+' · '+prog+'%';cls=dn.cls;}   // label DERIVED from the cook-time % so they always agree (and respect top-down cooking)
-    else if(state==='spinning'){txt='Spinning';cls='spin';}
-    else{txt='Loaded';cls='load';}
-    const tag=document.getElementById('ra-tag-'+r);if(tag&&tag.dataset.k!==cls+'|'+txt){tag.dataset.k=cls+'|'+txt;tag.className='ra-tag '+cls;tag.innerHTML='<span class="ra-dot"></span>'+txt;}
-  }
-}
-// --- per-ROW spinning detection on the cam feed. Two key guards:
-//   (1) FROZEN-FEED: a live camera always has tiny sensor noise frame-to-frame, so the global diff is never
-//       exactly ~0. If it IS ~0 the feed is FROZEN/LAGGED (not a real stop) → never alarm. This kills the
-//       false "not spinning" that fired whenever the feed hiccuped.
-//   (2) PER-ROW: each spit band is checked on its own, so 1 row can be spinning and another flagged stopped.
-const _ROT_SPIN_BANDS=[[0.005,0.155],[0.165,0.300],[0.328,0.453],[0.465,0.580],[0.590,0.695],[0.705,0.795]];
-const _ROT_SPIN_X=[0.21,0.81];
-let _camSpinCanvas=null,_camSpinPrev=null,_camSpinStart=0,_camFeedLiveAt=0,_rowMotionAt=[0,0,0,0,0,0];
-function _camSpinCheck(){
-  const banner=document.getElementById('cam-stopped');
-  if(appData.rotcam_public&&appData.rotcam_public.spin_enabled===false){   // alarm turned off in settings
-    if(banner)banner.classList.remove('show');
-    if(window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}
-    return;}
-  const img=document.getElementById('rotcam-stream');
-  if(!img||!img.complete||!img.naturalWidth)return;
-  const W=128,H=72;
-  const c=_camSpinCanvas||(_camSpinCanvas=document.createElement('canvas'));c.width=W;c.height=H;
-  const ctx=c.getContext('2d',{willReadFrequently:true});
-  let cur;try{ctx.drawImage(img,0,0,W,H);cur=ctx.getImageData(0,0,W,H).data;}catch(e){return;}
-  const now=Date.now();
-  if(!_camSpinPrev){_camSpinPrev=cur;_camSpinStart=now;_camFeedLiveAt=now;for(let r=0;r<6;r++)_rowMotionAt[r]=now;return;}
-  let gd=0;for(let i=0;i<cur.length;i+=4)gd+=Math.abs(cur[i]-_camSpinPrev[i]);gd/=(cur.length/4);
-  const FROZEN=0.25;                                      // <this = same frame repeated = feed frozen/lagging
-  if(gd>=FROZEN)_camFeedLiveAt=now;                       // feed is genuinely live (has noise/motion)
-  const x1=Math.floor(_ROT_SPIN_X[0]*W),x2=Math.ceil(_ROT_SPIN_X[1]*W);
-  for(let r=0;r<6;r++){
-    const ya=Math.floor(_ROT_SPIN_BANDS[r][0]*H),yb=Math.ceil(_ROT_SPIN_BANDS[r][1]*H);
-    let d=0,n=0;for(let y=ya;y<yb;y++){for(let x=x1;x<x2;x++){const i=(y*W+x)*4;d+=Math.abs(cur[i]-_camSpinPrev[i]);n++;}}
-    if(n&&(d/n)>2.2)_rowMotionAt[r]=now;                  // this spit band moved
-  }
-  _camSpinPrev=cur;
-  const grace=(now-_camSpinStart)<8000;                  // settle after first frame
-  const feedFresh=(now-_camFeedLiveAt)<5000;             // saw live noise/motion recently (NOT frozen)
-  const pat=window._rotCPat||'';   // CONFIRMED occupancy (stable over 2+ reads) — a one-off glare misread must NOT trigger the alarm
-  const loaded=r=>(pat.length===6&&pat[r]==='1');
-  const stoppedRows=[];
-  window._rowState=window._rowState||[];
-  for(let r=0;r<6;r++){                                   // per-row state drives the animated panel too
-    if(!loaded(r)) window._rowState[r]='empty';
-    else if(!feedFresh||grace) window._rowState[r]='loaded';        // feed frozen/settling → can't judge spin
-    else if((now-_rowMotionAt[r])>9000){ window._rowState[r]='stopped'; stoppedRows.push(r+1); }
-    else window._rowState[r]='spinning';
-  }
-  const any=stoppedRows.length>0;
-  if(banner){banner.classList.toggle('show',any);if(any)banner.textContent=(stoppedRows.length>1?'ROWS ':'ROW ')+stoppedRows.join(', ')+' NOT SPINNING';}
-  if(any&&!window._rotStopAlarm&&!window._rotStopAcked){window._rotStopAlarm=true;if(typeof playAlarm==='function')playAlarm('rot-stopped');}
-  else if(!any){window._rotStopAcked=false;if(window._rotStopAlarm){window._rotStopAlarm=false;if(typeof stopAlarm==='function')stopAlarm('rot-stopped');}}
-}
-function _doneForRow(row){
-  const p=probeData[row],st=((probeStates[row]||{}).status)||'idle';
-  const cooked=(typeof serverSettings!=='undefined'&&serverSettings&&serverSettings.cooked_temp)||75;
-  const t=p?p.temp:null;
-  if(t==null||(st==='idle'&&t<35))return{pct:0,color:'rgba(255,255,255,.22)',lab:'no probe'};
-  const pct=Math.max(4,Math.min(100,Math.round((t/cooked)*100)));
-  if(st==='overdone')return{pct,color:'#ff5b5b',lab:'OVERDONE'};
-  if(st==='ready')return{pct,color:'#3ee0a6',lab:'READY'};
-  if(st==='almost')return{pct,color:'#fbbf24',lab:'almost'};
-  return{pct,color:'#5b9bff',lab:Math.round(t)+'°C'};
-}
-function renderCamRows(){const ov=document.getElementById('cam-overlay');if(ov)ov.innerHTML='';}  // doneness now lives on the probe cards; cam keeps only the spinning/stopped alarm
-setInterval(()=>{_camSpinCheck();renderCamRows();if(typeof renderRotAnim==='function')renderRotAnim();},1200);
 function putOnRow(){_rotSig='';fetch('/api/rot_put_on',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:1})}).then(r=>r.json()).then(renderRotLive);}
 function removeRow(){_rotSig='';fetch('/api/rot_put_on',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:-1})}).then(r=>r.json()).then(renderRotLive);}
 // quarter-bird steppers on the stock card — staff sell halves and quarters, so ±1 was never enough
@@ -7590,16 +7005,6 @@ function prodOffUnmuteG(i){
   if(appData.prodoff_mutes)g.ids.forEach(id=>{delete appData.prodoff_mutes[id];});
   saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();
 }
-function prodOffMute(id,mode){                     // legacy single-id entry point — widen it to the whole product
-  const p=_prodOffList.find(x=>x.id===id);
-  const g=p?_pdOffGroups().find(x=>x.name===p.item):null;   // resolve by NAME, not a stale index
-  appData.prodoff_mutes=appData.prodoff_mutes||{};
-  const until=(mode==='day')?_pdOffNext10():(Date.now()+3600000);
-  if(g){g.ids.forEach(x=>{appData.prodoff_mutes[x]=until;});}   // silence the whole product
-  else{appData.prodoff_mutes[id]=until;}
-  saveKeys(['prodoff_mutes']);_prodOffAfterMute();
-}
-function prodOffUnmute(id){if(appData.prodoff_mutes)delete appData.prodoff_mutes[id];saveKeys(['prodoff_mutes']);_prodOffRenderModal();checkProductsOff();}
 // Silencing products-off holds for the REST OF THE DAY (to the 10am reset), not an hour. A 1-hour mute
 // meant everything silenced together came back together an hour later — one wall of alarms mid-service.
 // Never shortens an existing longer mute. Products switched off AFTER this still alarm on their own.
@@ -7977,7 +7382,6 @@ function restartDashboard(){
 }
 function _showRestartOverlay(){let o=document.getElementById('restart-ov');if(!o){o=document.createElement('div');o.id='restart-ov';o.style.cssText='position:fixed;inset:0;z-index:700;background:rgba(5,7,10,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;text-align:center;padding:24px;';document.body.appendChild(o);}o.innerHTML='<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#f0a93a;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:var(--fs-lg);font-weight:700;">Restarting the dashboard…</div><div style="font-size:var(--fs-md);color:#9aa3b2;">This page reloads automatically when it\'s back online.</div>';o.style.display='flex';}
 function _pollBackUp(){fetch('/api/data',{cache:'no-store'}).then(r=>{if(r.ok)location.reload();else throw 0;}).catch(()=>setTimeout(_pollBackUp,2000));}
-function enableProduct(id,el){if(el){el.disabled=true;el.textContent='Turning on…';}fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json()).then(d=>{if(el){if(d.ok){el.textContent='✓ On';if(d.warn&&typeof _toast==='function')_toast('⚠ '+d.warn);const row=el.closest('.prodoff-row');if(row)row.style.opacity='.45';}else{el.disabled=false;el.textContent='Try again';if(el)el.title=d.error||'';if(d.error&&typeof _toast==='function')_toast('Square: '+d.error);}}setTimeout(checkProductsOff,1500);}).catch(()=>{if(el){el.disabled=false;el.textContent='Try again';}});}
 function checkStockPrompt(){
   if(appData.stock_prompt_enabled===false)return;   // turned off in settings
   const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;   // not on lock screen
@@ -8006,50 +7410,6 @@ function openAdjust(key){_adjKey=key;const bbq=key==='bbq';
 function adjustStep(delta){fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
 function adjustApplySet(){const n=parseFloat(document.getElementById('adjust-set').value);if(isNaN(n)||n<0){_askAlert('Enter a number (0 or more).');return;}fetch(_adjKey==='bbq'?'/api/rot_adjust':'/api/fry_adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set:n})}).then(r=>r.json()).then(s=>_adjShow(s.available));}
 function resetDayCounts(){const bbq=_adjKey==='bbq';_askConfirm('Reset '+(bbq?'rotisserie':'fryer')+' counts to fresh?','This zeroes "sold today" and available. Already-counted Square orders won\'t recount.',function(){fetch(bbq?'/api/rot_reset':'/api/fry_reset',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(s=>{if(bbq)_rotSig='';else _frySig='';_adjShow(s.available);if(typeof _toast==='function')_toast('Counts reset.');}).catch(()=>_askAlert('Reset failed — is the server updated? (needs a restart)'));},'Reset counts');}
-function renderServicePage(){const alerts=appData.service_alerts||[],container=document.getElementById('service-container'),empty=document.getElementById('service-empty');if(alerts.length===0){container.innerHTML='';empty.style.display='block';return;}empty.style.display='none';const hhmm=nowHHMM();const todayAlerts=alerts.filter(a=>_taskActiveToday(a));if(todayAlerts.length===0){container.innerHTML='<div style="color:var(--muted);padding:20px;text-align:center;">No routines scheduled for today.</div>';return;}const sd=appData.service_done||{};const clk='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';container.innerHTML=todayAlerts.map(a=>{const st=sd[a.id]||{};const done=!!st.done;const overdue=!done&&hhmm>=a.time;const days=_recurLabel(a);return `<div class="alert-card ${overdue?'active-now':''} ${done?'rt-done':''}"><div class="task-check ${done?'done':''}" onclick="toggleRoutine('${a.id}')">${done?'&#10003;':''}</div><div class="alert-icon">${a.icon||clk}</div><div style="flex:1;"><div class="alert-title ${done?'rt-strike':''}">${a.name}</div><div class="alert-sub">${a.detail||''}</div><div class="alert-time-display">${a.time}${overdue?' · DUE NOW':''}</div><div class="alert-days">${days}</div>${proofHtml(Object.assign({done:done},st))}</div></div>`;}).join('');}
-function toggleRoutine(id){
-  appData.service_done=appData.service_done||{};
-  const cur=appData.service_done[id];
-  if(cur&&cur.done){delete appData.service_done[id];delete _routineNag[id];saveKeys(['service_done']);renderServicePage();updateServiceBadge();return;}
-  const a=(appData.service_alerts||[]).find(x=>x.id===id);
-  completeWithProof('Complete Routine',a?a.name:'',function(rec){
-    appData.service_done[id]=Object.assign({done:true},rec);
-    delete _routineNag[id];
-    if(typeof silenceAlarm==='function')silenceAlarm();   // stop the nag that's ringing
-    saveKeys(['service_done']);renderServicePage();updateServiceBadge();
-  });
-}
-function updateServiceBadge(){const b=document.getElementById('service-badge');if(!b)return;const now=nowHHMM();const sd=appData.service_done||{};const due=(appData.service_alerts||[]).some(a=>_taskActiveToday(a)&&now>=a.time&&!((sd[a.id]||{}).done));b.className='nav-badge'+(due?' show':'');if(!due)document.getElementById('nav-service-btn')?.classList.remove('alarming');}
-function _routinesDailyReset(){const today=_prepToday();if(appData.service_reset_day===today)return;if(appData.service_reset_day){appData.service_done={};saveKeys(['service_done']);}appData.service_reset_day=today;saveKeys(['service_reset_day']);_routineNag={};const pg=document.getElementById('page-service');if(pg&&pg.classList.contains('active'))renderServicePage();}
-let _alertDates=[];
-function renderAlertDates(){const el=document.getElementById('new-alert-dates-list');if(!el)return;el.innerHTML=_alertDates.length?_alertDates.map(d=>`<span class="filter-chip on" style="cursor:default;">${d} <span style="cursor:pointer;margin-left:4px;" onclick="removeAlertDate('${d}')">&#10005;</span></span>`).join(''):'<span style="font-size:var(--fs-sm);color:var(--muted);">No dates added yet.</span>';}
-function addAlertDate(){const i=document.getElementById('new-alert-date'),v=i.value;if(!v)return;if(!_alertDates.includes(v))_alertDates.push(v);_alertDates.sort();i.value='';renderAlertDates();}
-function removeAlertDate(d){_alertDates=_alertDates.filter(x=>x!==d);renderAlertDates();}
-function onAlertRecurChange(){const r=document.getElementById('new-alert-recur').value;
-  document.getElementById('new-alert-days-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
-  document.getElementById('new-alert-anchor-wrap').style.display=(r==='weekly'||r==='fortnightly')?'':'none';
-  document.getElementById('new-alert-dates-wrap').style.display=(r==='dates')?'':'none';}
-function _resetAlertForm(){['new-alert-name','new-alert-time','new-alert-icon','new-alert-detail','new-alert-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-alert-recur').value='daily';document.querySelectorAll('#new-alert-days .day-pill').forEach(p=>p.classList.remove('on'));_alertDates=[];renderAlertDates();onAlertRecurChange();}
-function openServiceAdmin(){editingAlert=null;setBtn('btn-add-alert','+ Add Routine');_resetAlertForm();renderServiceAdminList();openModal('service-admin-modal');}
-function renderServiceAdminList(){document.getElementById('service-admin-list').innerHTML=(appData.service_alerts||[]).map((a,i)=>{const days=_recurLabel(a);return `<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:var(--fs-lg);">${a.icon||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>'}</span><span style="flex:1;margin:0 8px;font-size:var(--fs-md);">${a.name}</span><span style="font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--amber);">${a.time}</span><span style="font-size:var(--fs-xs);color:var(--muted);margin:0 6px;">${days}</span><span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editServiceAlert(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removeServiceAlert(${i})">&#10005;</button></span></div>`;}).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No routines yet.</div>';}
-function addServiceAlert(){const name=document.getElementById('new-alert-name').value.trim();const time=document.getElementById('new-alert-time').value.trim();const icon=document.getElementById('new-alert-icon').value.trim()||'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg>';const detail=document.getElementById('new-alert-detail').value.trim();if(!name||!time){_askAlert('Enter name and time.');return;}
-  const recur=document.getElementById('new-alert-recur').value;
-  const days=[];document.querySelectorAll('#new-alert-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));
-  const start_date=document.getElementById('new-alert-anchor').value||'';
-  const dates=_alertDates.slice();
-  if((recur==='weekly'||recur==='fortnightly')&&days.length===0){_askAlert('Pick at least one day of the week.');return;}
-  if(recur==='dates'&&dates.length===0){_askAlert('Add at least one date.');return;}
-  const fields={name,time,icon,detail,recur,days,start_date,dates};
-  appData.service_alerts=appData.service_alerts||[];
-  if(editingAlert){const ex=appData.service_alerts.find(a=>a.id===editingAlert);if(ex)Object.assign(ex,fields);editingAlert=null;setBtn('btn-add-alert','+ Add Routine');}else{appData.service_alerts.push(Object.assign({id:'alert_'+Date.now()},fields));}
-  saveAppData();renderServiceAdminList();_resetAlertForm();}
-function editServiceAlert(i){const a=(appData.service_alerts||[])[i];if(!a)return;editingAlert=a.id;
-  document.getElementById('new-alert-name').value=a.name||'';document.getElementById('new-alert-time').value=a.time||'';document.getElementById('new-alert-icon').value=a.icon||'';document.getElementById('new-alert-detail').value=a.detail||'';
-  document.getElementById('new-alert-recur').value=a.recur||((a.days&&a.days.length)?'weekly':'daily');
-  document.getElementById('new-alert-anchor').value=a.start_date||a.anchor||'';
-  setDayPills('#new-alert-days',a.days);_alertDates=(a.dates||[]).slice();renderAlertDates();onAlertRecurChange();
-  setBtn('btn-add-alert','Save Changes');document.getElementById('new-alert-name').scrollIntoView({behavior:'smooth',block:'center'});}
-function removeServiceAlert(i){appData.service_alerts.splice(i,1);saveAppData();renderServiceAdminList();}
 
 // RECIPES
 let recipeFilter='All';
@@ -8669,11 +8029,6 @@ function savePrepItem(){
 // JOBS (legacy quiet-jobs — kept for data, no longer a tab)
 function renderJobsPage(){const jd=appData.jobs_done||{};if(!document.getElementById('jobs-list'))return;document.getElementById('jobs-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="job-item ${jd[j.id]?'done':''}" onclick="completeJob('${j.id}')"><div class="job-priority ${j.priority||'med'}"></div><div><div style="font-size:var(--fs-md);font-weight:500;">${j.text}</div><div style="font-size:var(--fs-sm);color:var(--muted);">${j.area||''}</div>${j.remind_time?`<div class="job-reminder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M5 3 2.5 5.5"/><path d="M19 3l2.5 2.5"/></svg> ${j.remind_time}${j.days&&j.days.length>0?' | '+j.days.map(d=>DNAMES[d]).join(', '):''}</div>`:''}${jd[j.id]?proofHtml(Object.assign({done:true},jd[j.id])):''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-illu illu-rooster"></div>No jobs. Tap Setup.</div>';}
 function completeJob(jobId){appData.jobs_done=appData.jobs_done||{};if(appData.jobs_done[jobId]){delete appData.jobs_done[jobId];saveKeys(['jobs_done']);renderJobsPage();return;}const job=(appData.quiet_jobs||[]).find(j=>j.id===jobId);completeWithProof('Complete Job',job?job.text:'',function(rec){appData.jobs_done[jobId]=rec;saveKeys(['jobs_done']);renderJobsPage();});}
-function openJobsAdmin(){editingJob=null;setBtn('btn-add-job','+ Add Job');renderJobsAdminList();openModal('jobs-admin-modal');}
-function renderJobsAdminList(){document.getElementById('jobs-admin-list').innerHTML=(appData.quiet_jobs||[]).map((j,i)=>`<div class="row-between" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:var(--fs-md);">${j.text}</span><span style="font-size:var(--fs-xs);color:var(--cyan);margin:0 6px;">${j.remind_time||''}</span><span class="tag ${j.priority==='high'?'tag-red':j.priority==='low'?'tag-green':'tag-amber'}">${j.priority||'med'}</span><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-left:8px;" onclick="editJob(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);margin-left:4px;" onclick="removeJob(${i})">&#10005;</button></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No jobs yet.</div>';}
-function addJob(){const text=document.getElementById('new-job-text').value.trim();const area=document.getElementById('new-job-area').value.trim();const priority=document.getElementById('new-job-priority').value;const remind_time=document.getElementById('new-job-time').value.trim();const days=[];document.querySelectorAll('#new-job-days .day-pill.on').forEach(p=>days.push(parseInt(p.dataset.d)));if(!text){_askAlert('Enter a job.');return;}appData.quiet_jobs=appData.quiet_jobs||[];if(editingJob){const ex=appData.quiet_jobs.find(j=>j.id===editingJob);if(ex)Object.assign(ex,{text,area,priority,remind_time,days});editingJob=null;setBtn('btn-add-job','+ Add Job');}else{appData.quiet_jobs.push({id:'job_'+Date.now(),text,area,priority,remind_time,days});}saveAppData();renderJobsAdminList();document.getElementById('new-job-text').value='';document.getElementById('new-job-area').value='';document.getElementById('new-job-time').value='';document.querySelectorAll('#new-job-days .day-pill').forEach(p=>p.classList.remove('on'));}
-function editJob(i){const j=(appData.quiet_jobs||[])[i];if(!j)return;editingJob=j.id;document.getElementById('new-job-text').value=j.text||'';document.getElementById('new-job-area').value=j.area||'';document.getElementById('new-job-priority').value=j.priority||'med';document.getElementById('new-job-time').value=j.remind_time||'';setDayPills('#new-job-days',j.days);setBtn('btn-add-job','Save Changes');document.getElementById('new-job-text').scrollIntoView({behavior:'smooth',block:'center'});}
-function removeJob(i){appData.quiet_jobs.splice(i,1);saveAppData();renderJobsAdminList();}
 async function checkSquareActivity(){if(!document.getElementById('busy-indicator'))return;try{const r=await fetch('/api/square_activity'),d=await r.json();const ind=document.getElementById('busy-indicator');if(!d.configured){document.getElementById('busy-label').textContent='Square not connected';ind.className='busy-indicator quiet';document.getElementById('busy-sub').textContent='Add your Square token in Settings.';document.getElementById('jobs-badge').className='nav-badge';return;}document.getElementById('busy-label').textContent=d.busy?'BUSY — Keep serving!':'QUIET — Complete a job!';ind.className='busy-indicator '+(d.busy?'busy':'quiet');document.getElementById('busy-sub').textContent=d.error?('Square error: '+d.error):(d.sales_last_30min+' sale(s) in last 30 min');document.getElementById('jobs-badge').className='nav-badge'+(d.busy?'':' show');}catch(e){}}
 
 // SETTINGS
@@ -9119,7 +8474,7 @@ function checkAllReminders(){
   // Recurring items (the old Routines) keep the routine behaviour: alarm at the time,
   // then re-alarm every 15 min until ticked off. One-off items alarm once.
   try{(function(){
-    if(typeof _migrateRoutinesToPrep==='function')_migrateRoutinesToPrep();
+    if(!window._routinesMigrated){window._routinesMigrated=true;if(typeof _migrateRoutinesToPrep==='function')_migrateRoutinesToPrep();}   // one-time migration, once per page load
     if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();
     if(typeof _mergeRecurringPrep==='function')_mergeRecurringPrep();   // recurring items land on the list even if nobody opens the page
     const pt=appData.prep_today||{};
@@ -9135,13 +8490,10 @@ function checkAllReminders(){
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
     });
   })();}catch(e){}
-  if(document.getElementById('page-service').classList.contains('active'))renderServicePage();
   if(document.getElementById('page-packdown').classList.contains('active'))renderPackdownPage();
   updatePrepBadge();
   updatePackdownBadge();
   if(typeof _packdownDailyReset==='function')_packdownDailyReset();   // clear the checklist each new day (the photo log keeps what was done)
-  if(typeof _routinesDailyReset==='function')_routinesDailyReset();   // clear routine completions each new day
-  if(typeof updateServiceBadge==='function')updateServiceBadge();
   if(typeof _promoteScheduledPrep==='function')_promoteScheduledPrep();   // a prep list scheduled for today becomes today's list
 
 }
