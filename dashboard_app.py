@@ -391,8 +391,10 @@ def reminder_loop():
                 days=sup.get("remind_days") or []
                 if days and dow not in days: continue
                 msg="Order reminder: place stock order with "+(sup.get("name") or "supplier")+" now."
-                if cfg.get("smtp_user"): _send_reminder_once(sup.get("remind_email"),msg,"Bruno's — Order Reminder")
-                _send_sms_reminder_once(sup.get("remind_sms"),msg)   # text reminder too — sends as "Brunos"
+                # Master switches (Setup → Suppliers). OFF unless explicitly turned on — owner, 28 Sep:
+                # "don't need SMS reminders anymore, leave the setting there but have it off".
+                if db.get("sup_remind_email_enabled") and cfg.get("smtp_user"): _send_reminder_once(sup.get("remind_email"),msg,"Bruno's — Order Reminder")
+                if db.get("sup_remind_sms_enabled"): _send_sms_reminder_once(sup.get("remind_sms"),msg)   # sends as "Brunos"
         except Exception as e: print(f"reminder_loop:{e}")
         time.sleep(20)
 
@@ -5294,7 +5296,7 @@ def api_cam_test():
 def api_features():
     d=request.get_json(silent=True) or {}
     with data_lock:
-        for k in ("stock_alarm_enabled","probe_alarm_enabled","stock_prompt_enabled","products_off_enabled","fried_enabled"):
+        for k in ("stock_alarm_enabled","probe_alarm_enabled","stock_prompt_enabled","products_off_enabled","fried_enabled","sup_remind_sms_enabled","sup_remind_email_enabled"):
             if k in d: db[k]=bool(d[k])
         if "stock_prompt_hours" in d:
             try: db["stock_prompt_hours"]=max(1,min(8,int(d["stock_prompt_hours"])))
