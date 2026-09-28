@@ -11364,6 +11364,102 @@ def api_chicken_cat_preview():
     c=_chk_cat_refresh(force=True)
     return jsonify({"ok":True,"category_ids":sorted(c["ids"]),"count":len(c["names"]),"items":c["names"],"variation_count":len(c["vids"])})
 
+# One little slip per chicken line-item UNIT, printed to the Star printer as the order lands (replaces the
+# chicken KDS). Membership = the live Square CHICKEN category (above). Server-only so the Mac never double-prints.
+CHK_STATE=os.path.join(BASE_DIR,"chicken_slip_state.json")
+CHK_POLL=10
+def _chk_printer_ip(): return (db.get("chicken_printer_ip") or "192.168.0.179").strip()
+def _chk_units(order):
+    vids=(_chk_cat_refresh().get("vids") or set());units=[]
+    for li in order.get("line_items") or []:
+        if (li.get("catalog_object_id") or "") in vids:
+            try: q=max(1,int(float(li.get("quantity") or 1)))
+            except Exception: q=1
+            units+=[li]*q
+    return units
+def _chk_slip_bytes(number,src,tm,idx,total,li):
+    E=_SLIP_ESC;G=_SLIP_GS
+    def t(s): return (s or "").encode("ascii","replace")
+    o=bytearray();o+=E+b"@"+E+b"\x61\x01"
+    o+=G+b"\x21\x11"+E+b"\x45\x01"+t(number)+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"                    # big order number/name
+    o+=E+b"\x61\x00"+t("-"*42)+b"\n"
+    o+=G+b"\x21\x01"+E+b"\x45\x01"+t(_slip_label(li))+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"           # item + variation, big
+    for m in (li.get("modifiers") or []):
+        if m.get("name"): o+=t("  - "+m["name"].lower())+b"\n"
+    if (li.get("note") or "").strip(): o+=t("  ! "+li["note"].strip())+b"\n"
+    tag=("%d of %d"%(idx,total)) if total>1 else ""
+    o+=E+b"\x61\x01"+E+b"M\x01"+E+b"\x45\x01"+t(tag)+E+b"\x45\x00"+t((("  " if tag else "")+src+" "+tm).strip())+E+b"M\x00"+b"\n"
+    o+=E+b"J\x14"+G+b"\x56\x41\x00"+E+b"e\x06"                                                    # feed, cut, reverse-feed
+    return bytes(o)
+def _chk_print(payload):
+    ip=_chk_printer_ip();last=None
+    for attempt in range(1,4):
+        try:
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+                s.settimeout(6);s.connect((ip,PRINTER_PORT));s.sendall(payload)
+            return True
+        except Exception as e:
+            last=e;print(f"chicken slip attempt {attempt}/3 failed: {e}");time.sleep(1.2*attempt)
+    print(f"CHICKEN PRINTER UNREACHABLE ({ip}): {last}");return False
+def _chk_state_load():
+    try:
+        with open(CHK_STATE,encoding="utf-8") as f: s=json.load(f);s.setdefault("printed",[]);s.setdefault("progress",{});return s
+    except Exception: return {"printed":[],"progress":{}}
+def _chk_state_save(st):
+    st["printed"]=st["printed"][-5000:]
+    if isinstance(st.get("progress"),dict) and len(st["progress"])>200: st["progress"]=dict(list(st["progress"].items())[-200:])
+    tmp=CHK_STATE+".tmp"
+    with open(tmp,"w",encoding="utf-8") as f: json.dump(st,f)
+    os.replace(tmp,CHK_STATE)
+def _chk_process(order,start_at=1):
+    units=_chk_units(order)
+    if not units: return 0,0,True
+    num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);total=len(units);sent=0;last_ok=start_at-1
+    for i,li in enumerate(units,1):
+        if i<start_at: continue
+        if _chk_print(_chk_slip_bytes(num,src,tm,i,total,li)): sent+=1;last_ok=i
+        else: return sent,last_ok,False
+    return sent,last_ok,True
+def chicken_slip_loop():
+    if not (sys.platform=="win32" or os.environ.get("DASH_SLIPS")=="1"):
+        print("chicken slip printer: off on this machine");return
+    st=_chk_state_load();printed=set(st["printed"]);first=True
+    try: _chk_cat_refresh(force=True)
+    except Exception: pass
+    print(f"chicken slip printer ON -> {_chk_printer_ip()} (known orders: {len(printed)})")
+    while True:
+        try:
+            paused=(db.get("chicken_slips_enabled") is False)          # owner switch: pause printing, keep tracking
+            for o in _slip_orders(15):
+                oid=o.get("id")
+                if not oid or oid in printed: continue
+                if first or paused: printed.add(oid);continue           # startup/paused: mark seen, print nothing
+                prog=st.setdefault("progress",{})
+                try:
+                    n,last_ok,done=_chk_process(o,int(prog.get(oid,0))+1)
+                    if n: print(f"chicken slips: order {_slip_number(o)} -> {n} slip(s)")
+                except Exception as e:
+                    print(f"chicken slips: order {oid} FAILED: {e}");continue
+                if not done:
+                    prog[oid]=last_ok;_chk_state_save(st);continue        # printer died part-way — resume, don't reprint
+                prog.pop(oid,None);printed.add(oid);st["printed"]=list(printed);_chk_state_save(st)
+            if first: st["printed"]=list(printed);_chk_state_save(st);first=False
+        except Exception as e: print(f"chicken_slip_loop: {e}")
+        time.sleep(CHK_POLL)
+
+@app.route("/api/chicken_slips",methods=["GET","POST"])
+def api_chicken_slips():
+    """Status + toggle for the chicken-pack printer (on/off, printer IP)."""
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            if "enabled" in d: db["chicken_slips_enabled"]=bool(d["enabled"])
+            if "ip" in d: db["chicken_printer_ip"]=re.sub(r"[^0-9.]","",str(d.get("ip") or ""))[:20] or "192.168.0.179"
+            save_data(db)
+    c=_chk_cat_refresh()
+    return jsonify({"ok":True,"enabled":(db.get("chicken_slips_enabled") is not False),"ip":_chk_printer_ip(),
+                    "matched_items":len(c["names"]),"variation_count":len(c["vids"]),"printed_known":len(_chk_state_load()["printed"])})
+
 # ===== COMBO BOX SLIPS — one slip per combo, auto-printed to the kitchen thermal printer =====
 # A combo rings as its COMPONENT items: a chicken line followed by its 1-2 "SIDE ..." lines
 # (the SIDE products exist ONLY inside combos, so any SIDE line is part of one). Two identical
@@ -11751,6 +11847,7 @@ if __name__=="__main__":
     threading.Thread(target=pl_report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
+    threading.Thread(target=chicken_slip_loop,daemon=True).start()                 # chicken-pack slips -> Star printer (self-gates to server only)
     # morning auto-switch-on writes to LIVE Square — server only, never a dev copy
     if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
