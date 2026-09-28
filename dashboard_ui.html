@@ -1038,9 +1038,9 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 /* ===== Probe card redesign (26 Sep 2026): full-width colour-name bar on top, neutral body,
    min-left estimate in the probe colour, simple battery moved to the bottom row, alert flashes
    in the PROBE's own colour instead of amber/green/red. Applies to the v2 (default) cards. ===== */
-.probe-card.p2 .p2-namebar{width:calc(100% + 34px);margin:-15px -17px 6px;padding:14px 8px;background:var(--acc,var(--amber));color:#fff;font-weight:900;font-size:clamp(20px,3vh,30px);letter-spacing:.14em;text-align:center;line-height:1;}
+.probe-card.p2 .p2-namebar{width:calc(100% + 34px);margin:-15px -17px 4px;padding:9px 8px;background:var(--acc,var(--amber));color:#fff;font-weight:900;font-size:clamp(17px,2.5vh,26px);letter-spacing:.14em;text-align:center;line-height:1;}
 .probe-card.p2.pc4 .p2-namebar{color:#241a00;}
-body.view-wall .probe-card.p2 .p2-namebar{font-size:clamp(26px,3.8vh,42px);padding:18px 8px;}
+body.view-wall .probe-card.p2 .p2-namebar{font-size:clamp(22px,3.2vh,36px);padding:13px 8px;}
 .probe-card.p2 .p2-subname{font-size:var(--fs-sm);color:var(--muted);font-weight:600;text-align:center;margin:-2px 0 2px;}
 .probe-card.p2{border-color:var(--border)!important;}
 .probe-card.p2::before{display:none!important;}
@@ -1049,9 +1049,9 @@ body.view-wall .probe-card.p2 .p2-namebar{font-size:clamp(26px,3.8vh,42px);paddi
 .probe-card.p2 .p2-spark-svg polyline{stroke:var(--muted)!important;}
 .probe-card.p2 .p2-spark-svg path{fill:var(--muted)!important;}
 .probe-card.p2 .p2-mid{min-height:0;gap:0;}
-.probe-card.p2 .p2-temp{font-size:clamp(52px,9.5vh,94px);}
-body.view-wall .probe-card.p2 .p2-temp{font-size:clamp(64px,13vh,124px);}
-.p2-eta{display:inline-flex;align-items:center;gap:6px;font-size:clamp(15px,2.1vh,20px);font-weight:800;letter-spacing:.02em;color:var(--acc,var(--amber));}
+.probe-card.p2 .p2-temp{font-size:clamp(44px,8vh,80px);}
+body.view-wall .probe-card.p2 .p2-temp{font-size:clamp(56px,11vh,108px);}
+.p2-eta{display:inline-flex;align-items:center;gap:6px;font-size:clamp(14px,1.9vh,18px);font-weight:800;letter-spacing:.02em;color:var(--acc,var(--amber));}
 .probe-card.p2.pc4 .p2-eta{color:#e0a90a;}
 .p2-eta.muted{color:var(--muted);}
 .p2-clk{width:15px;height:15px;flex:0 0 auto;}
@@ -1060,6 +1060,14 @@ body.view-wall .p2-eta{font-size:clamp(18px,2.7vh,26px);}
 .p2-batt2.low{color:var(--red);}
 .p2-battico{width:17px;height:17px;flex:0 0 auto;}
 .probe-card.p2 .p2-actions{align-items:center;}
+.probe-card.p2 .p2-actions .probe-btn{height:34px;font-size:var(--fs-sm);}
+/* Alarm sounding: the Silence 1m/5m/10m row must always be on the card without scrolling (owner, 28 Sep).
+   Drop the decorative sparkline + progress bar while it sounds so the buttons take their place. */
+.p2-silence{display:flex;gap:5px;flex-shrink:0;}
+.p2-silence .probe-ack-btn{flex:1;min-width:0;padding:0 4px;height:38px;font-size:var(--fs-sm);white-space:nowrap;}
+.probe-card.p2.sounding .p2-spark,.probe-card.p2.sounding .p2-bar{display:none;}
+.probe-card.p2.sounding .p2-temp{font-size:clamp(40px,7vh,72px);}
+body.view-wall .probe-card.p2.sounding .p2-temp{font-size:clamp(50px,9.5vh,96px);}
 .probe-card.p2.almost,.probe-card.p2.ready,.probe-card.p2.overdone{animation:none!important;background:var(--card)!important;}
 .probe-card.p2.almost:not(.acked),.probe-card.p2.ready:not(.acked),.probe-card.p2.overdone:not(.acked){animation:pcflash 1s ease-in-out infinite!important;}
 .probe-card.p2.acked{border-color:var(--acc)!important;}
@@ -5398,7 +5406,7 @@ function renderProbes(){
       const _etaHtml=_etaTxt?`<span class="p2-eta${_etaMuted?' muted':''}">${_etaMuted?'':_CLK}${_etaTxt}</span>`:'';
       const _BATTSVG='<svg class="p2-battico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7.5" width="16" height="9" rx="2"/><path d="M21.5 10.5v3"/></svg>';
       const _batv=(_batN!==null&&dstatus!=='none')?`<span class="p2-batt2${_batN<=_BATT_LOW?' low':''}" title="probe battery">${_BATTSVG}${Math.round(_batN)}%</span>`:'';
-      return `<div class="probe-card p2 pc${pidN} ${cardCls}">
+      return `<div class="probe-card p2 pc${pidN} ${cardCls}${showAck?' sounding':''}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-namebar">${_cn}</div>${_nmHtml}
       <div class="p2-mid${p._lost?' lost':''}">
@@ -5408,7 +5416,7 @@ function renderProbes(){
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
       <div class="p2-statusrow">${_etaHtml}${offHtml}${p._lost?`<span class="probe-lost">\u26A0 connection lost</span>`:''}</div>
-      ${showAck?`<span style="display:flex;gap:5px;"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
+      ${showAck?`<span class="p2-silence"><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},1)">Silence 1m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},5)">5m</button><button class="probe-ack-btn" onclick="snoozeProbe(${pidN},10)">10m&hellip;</button></span>`:''}
       <div class="p2-actions">${_batv}<button class="probe-btn" onclick="resetProbe(${pidN})">Reset</button></div>
       </div>`;
     }
