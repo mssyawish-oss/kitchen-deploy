@@ -7671,7 +7671,6 @@ function _poSummary(lg){
   if(n(lg.skipped))bits.push(n(lg.skipped)+' left off');
   if(n(lg.addons))bits.push('<span style="color:var(--amber);">'+n(lg.addons)+' add-on'+(n(lg.addons)>1?'s':'')+' need the Square app</span>');
   if(n(lg.failed))bits.push('<span style="color:var(--red);">'+n(lg.failed)+' failed</span>');
-  if((lg.scheduled||[]).length)bits.push('<div style="color:#67e8f9;">On a Square timer — switch back on by themselves: '+lg.scheduled.map(_mEsc).join(', ')+'</div>');
   const t=new Date(lg.at||Date.now()).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   _poStatus(bits.length?(t+' &middot; '+bits.join(' &middot; ')):'');
 }
@@ -9450,7 +9449,9 @@ async function init(){
   // Idle auto-close: an open menu or Settings shuts itself after 30s untouched, and the unlock lapses
   // with it — walking away from an open admin surface must not leave it open for the next person.
   window._uiIdleLast=Date.now();
-  // Count ANY interaction as activity (feeds the 5-min kiosk return-to-home timer below).
+  // Count ANY interaction as activity — incl. finger-scrolling (touchmove), mouse movement, scrolling and
+  // typing in a field — so Settings only closes after 30s of GENUINELY doing nothing, not while you're
+  // reading/scrolling it. (Previously only touchstart counted, so scrolling a long page let it time out.)
   ['pointerdown','keydown','touchstart','touchmove','mousemove','wheel','scroll','input','change'].forEach(ev=>document.addEventListener(ev,()=>{window._uiIdleLast=Date.now();},true));
   // Type the PIN on a keyboard (not just the on-screen pad): digits enter, Backspace deletes, Enter submits,
   // Esc cancels. Works for the Settings/confirm prompt AND the lock screen; the confirm prompt takes priority.
@@ -9464,8 +9465,19 @@ async function init(){
     else if(e.key==='Enter'){e.preventDefault();confirmOpen?checkCPin():checkPin();}
     else if(e.key==='Escape'&&confirmOpen){e.preventDefault();closeModal('pin-confirm-modal');}
   });
-  // (Removed 26 Sep at Marcel's request: the 30-s idle auto-close of Settings + side menu and its
-  //  'Menu closed — idle for 30s' toast. Settings now stays open until closed by hand.)
+  setInterval(()=>{
+    if(Date.now()-window._uiIdleLast<30000)return;
+    const s=document.getElementById('app-shell');if(!s)return;
+    const mobile=window.matchMedia('(max-width:820px)').matches;
+    const sideOpen=mobile?s.classList.contains('drawer-open'):!s.classList.contains('nosidebar');
+    const sm=document.getElementById('settings-modal');
+    const setOpen=!!(sm&&sm.classList.contains('open'));
+    if(!sideOpen&&!setOpen)return;
+    if(setOpen)closeModal('settings-modal');
+    if(sideOpen)_setSidebar(false);
+    sectionUnlockedAt={};
+    if(typeof _toast==='function')_toast('Menu closed — idle for 30s');
+  },5000);   // self-update: auto-reload when a new screen build is deployed
   // Kiosk auto-return: after 5 min with NO interaction, snap back to the temperature (home) page from
   // whatever page was left open, so the screen resets itself for the next person. Any touch/scroll/keypress
   // resets the timer (shared _uiIdleLast). Skipped while a modal or the lock screen is up, so it never
@@ -9485,3 +9497,4 @@ init();
 </script>
 </body>
 </html>
+  if((lg.scheduled||[]).length)bits.push('<div style="color:#67e8f9;">On a Square timer — switch back on by themselves: '+lg.scheduled.map(_mEsc).join(', ')+'</div>');
