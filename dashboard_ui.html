@@ -3273,13 +3273,8 @@ function _migrateProbeAlarms(){
     saveKeys(['alarm_cfg']);
   }catch(e){}
 }
-function _legacyEnabled(key){
-  // 26 Sep (owner): sound defaults ON only for the probes and the oven step. Every other alarm is
-  // visual-only until it is explicitly switched on in the Alarm Center (the shop DB already had them off).
-  if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;
-  if(key==='ovenstep')return true;
-  if(key==='stock')return appData.stock_alarm_enabled===true;if(key==='prodoff')return appData.products_off_enabled===true;
-  return false;}
+function _legacyEnabled(key){if(key==='probeoffline')return false;   // visual-only until the owner opts in
+  if(key==='probe'||key==='probeAlmost'||key==='probeReady'||key==='probeOverdone')return appData.probe_alarm_enabled!==false;if(key==='stock')return appData.stock_alarm_enabled!==false;if(key==='prodoff')return appData.products_off_enabled!==false;return true;}
 function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})[key])||{};return {
   enabled:(c.enabled!==undefined)?(c.enabled!==false):_legacyEnabled(key),
   popup:c.popup!==false,   // reminders group only: show the on-screen card/banner (independent of sound)
@@ -9101,7 +9096,17 @@ function checkAllReminders(){
     triggerAlarm('DELIVERY \u2014 PUT STOCK AWAY',sup.name+' delivery is due \u2014 check it in and put the stock away.',
       {label:'\u2713 PUT AWAY \u2014 DONE',fn:(function(k,n){return function(){_ackReminder(k,n+' delivery');};})(key,sup.name)});
   });}catch(e){}
-  // (26 Sep: the old Daily Routines "routine due" popup is gone — routines were migrated into Prep.)
+  try{(appData.service_alerts||[]).forEach(a=>{
+    if(!_taskActiveToday(a))return;   // daily / weekly / fortnightly / specific dates
+    if((appData.service_done||{})[a.id]&&appData.service_done[a.id].done){delete _routineNag[a.id];return;}
+    if(now<(_hhmm(a.time)||a.time))return;             // not due yet
+    const nowMs=Date.now(),last=_routineNag[a.id]||0;
+    if(nowMs-last<15*60*1000)return;  // alarm at due time, then re-alarm every 15 min until it's ticked off
+    _routineNag[a.id]=nowMs;
+    triggerAlarmKey('preptasks',((a.icon&&a.icon.indexOf('<')<0)?(a.icon+' '):'')+a.name,a.detail||'');   // daily tasks are kitchen business
+    document.getElementById('service-badge')?.classList.add('show');
+    document.getElementById('nav-service-btn')?.classList.add('alarming');
+  });}catch(e){}
   try{(appData.packdown_tasks||[]).forEach(t=>{
     if(!t.remind_at||!_dueWithin(t.remind_at,now,_REMIND_GRACE))return;
     if(!_taskActiveToday(t))return;   // weekly / fortnightly / set-date scheduling
@@ -9114,7 +9119,15 @@ function checkAllReminders(){
       if(_sc.popup&&!_devPopMuted('checklist'))showLockBanner('TASK DUE',t.name);}
     document.getElementById('packdown-badge')?.classList.add('show');
   });}catch(e){}
-  // (26 Sep: the legacy quiet_jobs JOB REMINDER popup is gone — that feature has no page any more.)
+  try{(appData.quiet_jobs||[]).forEach(j=>{
+    if(!j.remind_time||!_dueWithin(j.remind_time,now,_REMIND_GRACE))return;
+    const days=j.days||[];if(days.length>0&&!days.includes(todayDay))return;
+    if((appData.jobs_done||{})[j.id])return;
+    const key='job-'+j.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
+    triggerAlarm('JOB REMINDER',j.text+(j.area?' ('+j.area+')':''));
+    document.getElementById('jobs-badge')?.classList.add('show');
+    document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
+  });}catch(e){}
   // Today's Prep — per-item reminders (the prep preset carries a `remind` HH:MM).
   // Recurring items (the old Routines) keep the routine behaviour: alarm at the time,
   // then re-alarm every 15 min until ticked off. One-off items alarm once.
@@ -9126,10 +9139,15 @@ function checkAllReminders(){
     const presets=appData.prep_presets||[];const doneMap=pt.done||{};
     (pt.items||[]).forEach(iid=>{const p=presets.find(x=>x.id===iid);if(!p||!p.remind)return;
       if(doneMap[iid]){delete _routineNag['prep_'+iid];return;}
-      // 26 Sep (owner: too many popups): every prep reminder pops ONCE at its time, recurring or not.
-      // The Prep nav badge keeps flashing until the item is ticked — no more 15-minute re-nag cards.
-      if(!_dueWithin(p.remind,now,_REMIND_GRACE))return;
-      const key='prep-'+iid+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
+      if(p.recur){                                   // routine-style nag
+        if(now<(_hhmm(p.remind)||p.remind))return;
+        const nowMs=Date.now(),last=_routineNag['prep_'+iid]||0;
+        if(nowMs-last<15*60*1000)return;
+        _routineNag['prep_'+iid]=nowMs;
+      }else{                                          // one-off: fire once, catching up if the minute was missed
+        if(!_dueWithin(p.remind,now,_REMIND_GRACE))return;
+        const key='prep-'+iid+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
+      }
       triggerAlarmKey('preptasks','PREP DUE',p.name+(p.detail?(' — '+p.detail):''));
       document.getElementById('jobs-badge')?.classList.add('show');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
