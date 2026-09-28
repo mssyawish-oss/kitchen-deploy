@@ -674,16 +674,20 @@ _first_sweep=False   # on startup, sweep all of TODAY's sales once to catch up; 
 def _rot_cfg():
     r=db.get("rotisserie") or {}
     return {"open_rows":r.get("open_rows",2),"bpr":r.get("birds_per_row",4)}
-def _hm_to_min(s,d):
-    try: h,m=str(s).split(":"); return int(h)*60+int(m)
-    except Exception: return d
-def _rot_mode():   # how cooked-chicken stock is counted onto 'available'. 27 Sep 2026: the camera auto-count module was removed → always "probe"
-    return "probe"
+def _rot_mode():   # how cooked-chicken stock is counted onto 'available': "camera" (default) or "probe" (experimental)
+    return "probe" if str(db.get("rot_stock_mode") or "camera").lower()=="probe" else "camera"
 def _rot_cook_secs():   # average full cook time → ONLY drives the rough "how cooked %" progress gauge (NOT doneness — colour does that; probes are the accurate check). Varies with oven heat / burners; 65 min is the average.
     try: return max(60,int((db.get("rotisserie") or {}).get("cook_min",65)))*60
     except Exception: return 65*60
 def _rot_save():       # persist live counts so a server restart doesn't reset them
     with rot_lock: snap={k:ROT_LIVE.get(k) for k in ("day","available","sold_today","seen","shadow")}
+    try:    # also persist the camera's per-shelf cook timers so a restart doesn't reset crediting progress
+        snap["shelf_loaded_at"]=list(ROTCAM.get("shelf_loaded_at") or [])
+        snap["shelf_off_at"]=list(ROTCAM.get("shelf_off_at") or [])
+        snap["shelf_cooked"]=list(ROTCAM.get("shelf_cooked") or [])
+        snap["shelf_max_rank"]=list(ROTCAM.get("shelf_max_rank") or [])
+        snap["shelf_saved_at"]=time.time()
+    except Exception: pass
     try:
         with data_lock: db["rot_live"]=snap; save_data(db)
     except Exception: pass
@@ -703,13 +707,16 @@ def rot_reset_counts():   # manual "start fresh" — zero today's tallies but KE
 def rot_state():
     with rot_lock:
         _rot_reset_if_needed()
-        # 27 Sep 2026: the camera auto-count module was removed. The camera-derived fields (prog/levels/done/cpat/
-        # rows_cooking/cam) are static placeholders because the UI still reads these keys; stock is credited by the probes.
-        return {"available":round(ROT_LIVE["available"],2),"shadow":round(ROT_LIVE.get("shadow",0.0),2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":[-1]*6,
+        lv=ROTCAM.get("levels","") or ""; la=ROTCAM.get("shelf_loaded_at") or []; ck=_rot_cook_secs(); nowt=time.time()
+        prog=[(min(125,int(round((nowt-la[i])/ck*100))) if (i<len(lv) and lv[i]=="1" and i<len(la) and la[i]>0) else -1) for i in range(6)]
+        # rows cook TOP-DOWN (row 1 loaded first) → a lower shelf can NEVER read more cooked than the shelf above it
+        for i in range(1,6):
+            if prog[i]>=0 and prog[i-1]>=0 and prog[i]>prog[i-1]: prog[i]=prog[i-1]
+        return {"available":round(ROT_LIVE["available"],2),"shadow":round(ROT_LIVE.get("shadow",0.0),2),"sold_today":round(ROT_LIVE["sold_today"],2),"prog":prog,
                 "square":bool((db.get("square_config",{}) or {}).get("access_token") and (db.get("square_config",{}) or {}).get("location_id")),
-                "rows_cooking":0,"cam":False,"cam_err":"","levels":"","done":"","cpat":"",
-                "mode":"probe",   # the only stock-crediting method now
-                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:],   # credit audit trail (newest last) for the on-screen log
+                "rows_cooking":ROTCAM.get("cooking",0),"cam":bool((db.get("rotcam_config") or {}).get("enabled")),"cam_err":ROTCAM.get("error",""),"levels":ROTCAM.get("levels",""),"done":ROTCAM.get("done",""),"cpat":ROTCAM.get("cooking_pat",""),
+                "mode":_rot_mode(),   # "camera" or "probe" — which method is currently crediting stock
+                "credit_log":(db.get("rotcam_credit_log",[]) or [])[-12:],   # credit audit trail (newest last) for the on-screen log + debug shots
                 "pulls":[e for e in (db.get("pull_log",[]) or []) if e.get("kind") in (None,"pull","row_add")][-15:]}   # card line + stale-warning: real stock arrivals only, adjustments excluded
 def rot_put_on(rows,batch=True):   # a finished row went into the warmer → add straight to available
     # batch=False when the caller's event ALREADY started a use-by timer (a probe pull calls both
@@ -3983,6 +3990,26 @@ def api_books_summary():
                     "sales":round(sales,2),"cogs":round(cogs,2),"wages":round(wtot,2),"other":round(other,2),"net":round(net,2),
                     "gross":round(sales-cogs,2),"warn":warn,"income_missing":bool(warn)})
 
+@app.route("/api/rotcam_prompts",methods=["GET","POST"])
+def api_rotcam_prompts():
+    # Owner-editable AI instructions for the rotisserie camera. GET returns each prompt's current text +
+    # its built-in default; POST saves one (blank text resets it to default).
+    if request.method=="GET":
+        cust=(_rotcam_cfg().get("prompts") or {})
+        out=[{"key":k,"label":_ROT_PROMPT_LABELS.get(k,k),"text":_rot_prompt(k),
+              "default":_ROT_PROMPT_DEFAULTS.get(k,""),"custom":bool(isinstance(cust.get(k),str) and cust.get(k).strip())}
+             for k in ("doneness","occupancy","bench","whole","bench_count")]
+        return jsonify({"prompts":out})
+    j=request.get_json(force=True,silent=True) or {}
+    key=str(j.get("key") or ""); text=j.get("text")
+    if key not in _ROT_PROMPT_DEFAULTS: return jsonify({"ok":False,"error":"unknown prompt"})
+    with data_lock:
+        cfg=db.get("rotcam_config",{}) or {}; pr=dict(cfg.get("prompts") or {})
+        if isinstance(text,str) and text.strip(): pr[key]=text.strip()
+        else: pr.pop(key,None)   # blank → reset to the built-in default
+        cfg["prompts"]=pr; db["rotcam_config"]=cfg; save_data(db)
+    return jsonify({"ok":True,"custom":bool(text and text.strip())})
+
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # PROFIT REPORTS — daily / weekly / monthly P&L computed ON THE SERVER and emailed (9 Sep).
@@ -5442,10 +5469,19 @@ def serve_photo(name):
     resp.headers["Cache-Control"]=("public, max-age=86400" if name.startswith("prep_") else "public, max-age=31536000, immutable")
     return resp
 
-# ── Gemini usage meter (shared by every AI camera watcher). 27 Sep 2026: the rotisserie camera auto-count module
-# that used to live here was removed (see archive/rotcam_autocount_server_2026-09-27.py.txt). ROTCAM now only holds
-# the call counters that _gem_count_call / _gem_health / the profit report / /api/data read.
-ROTCAM={"calls_today":0,"calls_day":"","calls_total":0}
+# ── Rotisserie auto-count: grab a frame from the Tapo camera (RTSP) and count rows of chickens with Gemini ──
+ROTCAM={"cooking":0,"hist":[],"last_count":None,"last_ts":0,"error":""}
+# restore per-shelf cook timers from a recent save so a quick restart doesn't reset crediting progress.
+# only if the save is fresh (<30 min) — stale timers from a long downtime would mis-credit, so let those rebuild.
+try:
+    _rls=db.get("rot_live") or {}
+    if _rls.get("shelf_saved_at") and (time.time()-float(_rls["shelf_saved_at"]))<1800:
+        _la=_rls.get("shelf_loaded_at"); _oa=_rls.get("shelf_off_at"); _ck=_rls.get("shelf_cooked"); _mr=_rls.get("shelf_max_rank")
+        if isinstance(_la,list) and len(_la)==6: ROTCAM["shelf_loaded_at"]=[float(x) for x in _la]
+        if isinstance(_oa,list) and len(_oa)==6: ROTCAM["shelf_off_at"]=[float(x) for x in _oa]
+        if isinstance(_ck,list) and len(_ck)==6: ROTCAM["shelf_cooked"]=[bool(x) for x in _ck]
+        if isinstance(_mr,list) and len(_mr)==6: ROTCAM["shelf_max_rank"]=[int(x) for x in _mr]
+except Exception: pass
 # --- Gemini usage tracking (rough estimate; Google's Spend page is the source of truth) ---
 _GEM_COST_PER_CALL=0.0002   # ~one downscaled image + prompt on gemini-2.5-flash (estimate, USD)
 _gem_u=db.get("rotcam_usage") or {}
@@ -5551,6 +5587,342 @@ def _downscale_jpeg(jpeg,maxw=640):
     except Exception:
         return jpeg   # Pillow missing/error → send original (still works, just costs a little more)
 def _rotcam_cfg(): return db.get("rotcam_config",{}) or {}
+def _rotcam_rtsp():
+    cfg=_rotcam_cfg()
+    if (cfg.get("rtsp_url") or "").strip(): return cfg["rtsp_url"].strip()
+    ip=(cfg.get("ip") or "").strip()
+    if not ip: return ""
+    user=(cfg.get("user") or "").strip(); pw=(cfg.get("pass") or "").strip()
+    stream=(cfg.get("stream") or "stream1").strip()
+    auth=(urllib.parse.quote(user)+":"+urllib.parse.quote(pw)+"@") if user else ""
+    return "rtsp://%s%s:554/%s"%(auth,ip,stream)
+def _rotcam_grab():
+    import subprocess
+    url=_rotcam_rtsp()
+    if not url: return None,"No rotisserie camera configured"
+    try:
+        p=subprocess.run(["ffmpeg","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+                         capture_output=True,timeout=25)
+        if p.returncode!=0 or not p.stdout:
+            return None,"Couldn't read the camera stream (check the RTSP/camera-account login, or ffmpeg)."
+        return p.stdout,None
+    except FileNotFoundError:
+        return None,"ffmpeg is not installed on this machine."
+    except Exception as e:
+        return None,str(e)
+_ROT_PROMPT=("This is a vertical rotisserie chicken oven seen at a downward angle through a glass door. It has 6 horizontal "
+             "spit levels stacked top to bottom (level 1 = top, level 6 = bottom, just above a stainless-steel bench). "
+             "Examine EACH level one at a time, from level 1 down to level 6, and decide whether that level currently has any "
+             "chickens on it. Notes for THIS oven: a bright glare/reflection strip along the very top is NOT a level; the two "
+             "black door-stop bars near the top-centre are NOT chickens; bare metal spit rods with no chickens are empty; do NOT "
+             "treat the stainless bench at the bottom as a level; the top level may be partly cut off at the top edge — if "
+             "chickens are visible there it still counts as loaded. Reply with EXACTLY 6 characters and nothing else: one digit "
+             "per level from top (level 1) to bottom (level 6), '1' if that level has chickens or '0' if it is empty. "
+             "Write the 6 characters JOINED TOGETHER with NO spaces, commas or separators. "
+             "Example: 111100 means levels 1-4 have chickens and levels 5-6 are empty.")
+# --- LOCKED box positions for THIS camera (fractions of frame H; x = 21%..81% of W). Boxes get
+#     shorter toward the bottom because of the downward angle. Set 2026-06-13 with the owner. ---
+_ROT_BOXES=[(0.005,0.155),(0.165,0.300),(0.328,0.453),(0.465,0.580),(0.590,0.695),(0.705,0.795)]
+_ROT_BOX_X=(0.21,0.81)
+_ROT_BOX_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, each numbered 1-6 (green number, top-left of "
+                 "each strip). Every strip is a close-up of ONE shelf of a rotisserie chicken oven: strip 1 = top shelf, "
+                 "strip 6 = bottom shelf. For EACH strip decide: does it contain chicken (whole roast chickens / chicken "
+                 "meat) = 1, OR is it empty/bare (you see only metal spit rods, a wire grid, glass, empty dark space, or the "
+                 "two ROUND BLACK KNOBS / handles of the oven — none of which are chicken) = 0. A bare metal spit with no chickens on it is EMPTY (0). If a strip shows only the bottoms/legs of chickens dangling from the shelf ABOVE while its own spit is bare, that is EMPTY (0) too. Reply with EXACTLY 6 digits and nothing else, one per strip from top (strip 1) to bottom "
+                 "(strip 6), JOINED TOGETHER with NO spaces or separators. Example: 111110 means strips 1-5 have chicken and strip 6 is empty. "
+                 "IMPORTANT: if a PERSON or large object is blocking the view of ANY strip so you cannot clearly see the "
+                 "shelf behind them, reply with exactly the single word BLOCKED (instead of digits) — do not guess.")
+# Combined occupancy + DONENESS read (one call). Each strip → one letter by the chickens' colour, allowing for the
+# bright glare off the heating elements. Trained-eye criteria from the owner's labelled on-spit photos.
+_ROT_DONE_PROMPT=("This image shows 6 horizontal strips stacked top to bottom, numbered 1-6 (green number, top-left of each "
+                  "strip). Each strip is a close-up of ONE shelf of a rotisserie chicken oven (strip 1 = top). There is a "
+                  "bright white glare from the heating elements behind the chickens — judge the chickens themselves, not the "
+                  "glare. For EACH strip output ONE character for its cooking state by colour:\n"
+                  "0 = EMPTY (no chicken: only metal spit rods, wire grid, glass, dark/empty space, or the two ROUND BLACK KNOBS/handles of the oven)\n"
+                  "N = NOT READY (raw/early: pale, white or pinkish, glossy skin, little or no browning)\n"
+                  "A = ALMOST READY (partly cooked: patchy light-to-medium browning developing, still uneven)\n"
+                  "R = READY (cooked: even golden-brown skin across the whole chicken)\n"
+                  "O = OVERDONE (very dark brown / mahogany, with charred or blackened patches on the ridges)\n"
+                  "IMPORTANT: the bright glare can make RAW chicken look golden. If a strip's chickens look pale, white or pink "
+                  "ANYWHERE, it is NOT ready — use N or A, never R. Only answer R when the skin is clearly an EVEN golden-brown "
+                  "all over with NO pale or pink areas. When unsure between two states, choose the LESS cooked one. "
+                  "TOP-LIGHT NOTE: a lamp above the oven lights the TOP strips (1 and 2) more strongly, so their cooked "
+                  "skin can look pale or washed-out — that paleness is from the bright LIGHT, not from being raw. Judge the "
+                  "brown COLOUR through the brightness: golden-brown skin under strong light is still READY. The top shelf "
+                  "is closest to the heat and cooks FASTEST, so it should rarely read LESS cooked than the strip directly "
+                  "below it. Only call a TOP strip not-ready if it is genuinely PINK or WHITE with NO browning at all. "
+                  "COOKING ORDER (very important): chickens are ALWAYS loaded from the TOP shelf downward and the top cooks "
+                  "first, so doneness ALWAYS decreases from strip 1 (most cooked) down to strip 6 (least cooked). A lower "
+                  "strip is NEVER more cooked than a strip above it. If a lower strip looks more browned than a higher one, "
+                  "you have mis-read one of them — re-judge so the cooked order runs 1 >= 2 >= 3 >= 4 >= 5 >= 6 (empty shelves aside). "
+                  "Judge ONLY chickens sitting on THIS strip's own spit: if a strip shows just the bottoms/legs of chickens "
+                  "hanging DOWN from the shelf above while its own spit rod is bare, that strip is EMPTY = 0. "
+                  "Reply with EXACTLY 6 characters, one per strip from top (strip 1) to bottom (strip 6), each being one of "
+                  "0 N A R O, JOINED TOGETHER with NO spaces, commas or separators, and NOTHING else. Example: RRANO0 (strip1 ready, strip2 ready, strip3 almost, strip4 not-ready, "
+                  "strip5 overdone, strip6 empty). Someone may be standing in front of the oven, but the LEFT and RIGHT "
+                  "ends of every shelf almost always stay visible past them — judge each strip from whatever part you CAN "
+                  "see (the visible ends alone clearly show whether that shelf is EMPTY or has chickens on it). Do NOT reply "
+                  "BLOCKED just because a person, hand or arm is partly in the way. ONLY reply with the single word BLOCKED "
+                  "if the ENTIRE image is so completely obscured that you cannot see ANY part of ANY shelf.")
+_DONE_LABELS={"N":"not_ready","A":"almost_ready","R":"ready","O":"overdone"}
+def _rotcam_save_crops(jpeg,donepat):
+    # auto-build the on-spit training set: save each loaded row's strip into rotcam_dataset/<class>/, throttled per
+    # class so the rare-but-important READY/OVERDONE shots get collected without drowning in NOT_READY frames.
+    if not jpeg or not donepat or len(donepat)!=6: return
+    try:
+        from PIL import Image; import io
+        now=time.time(); seen=ROTCAM.setdefault("crop_ts",{})
+        im=None; cal=None
+        for i in range(6):
+            cls=_DONE_LABELS.get(donepat[i].upper())
+            if not cls: continue
+            gap=60 if cls in ("ready","overdone") else 240   # collect ready/overdone every 1 min, others every 4 min
+            if now-seen.get(cls,0)<gap: continue
+            if im is None:
+                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; cal=_rot_cal6()
+            x1,y1,x2,y2=_rot_rect_px(cal[i],W,H)
+            if x2-x1<2 or y2-y1<2: continue
+            seen[cls]=now
+            d=os.path.join(BASE_DIR,"rotcam_dataset",cls); os.makedirs(d,exist_ok=True)
+            im.crop((x1,y1,x2,y2)).save(os.path.join(d,"row%d_%d.jpg"%(i+1,int(now))),"JPEG",quality=82)
+    except Exception: pass
+def _clamp01(v):
+    try: return max(0.0,min(1.0,float(v)))
+    except Exception: return 0.0
+def _rot_cal():
+    # the owner's box calibration: per-row [top,bottom] bands, shared [x1,x2], a uniform vertical offset, and a
+    # diagonal skew (each row nudged sideways to follow the camera angle). Falls back to the locked defaults.
+    rc=db.get("rotcam_config") or {}
+    boxes=rc.get("boxes")
+    if not (isinstance(boxes,list) and len(boxes)==6 and all(isinstance(p,(list,tuple)) and len(p)==2 for p in boxes)):
+        boxes=[list(b) for b in _ROT_BOXES]
+    bx=rc.get("box_x")
+    if not (isinstance(bx,list) and len(bx)==2): bx=list(_ROT_BOX_X)
+    try: off=max(-0.3,min(0.3,float(rc.get("box_offset") or 0)))
+    except Exception: off=0.0
+    try: skew=max(-0.3,min(0.3,float(rc.get("box_skew") or 0)))
+    except Exception: skew=0.0
+    return boxes,bx,off,skew
+def _rot_box_px(i,W,H,boxes,bx,off,skew):
+    a=_clamp01(boxes[i][0]+off); b=_clamp01(boxes[i][1]+off)
+    if b<a: a,b=b,a
+    sh=skew*(i-2.5)                       # rows above centre lean one way, below the other
+    x1=_clamp01(bx[0]+sh); x2=_clamp01(bx[1]+sh)
+    if x2<x1: x1,x2=x2,x1
+    return int(W*x1),int(H*a),int(W*x2),int(H*b)
+def _rot_cal6():
+    # 6 fully-independent shelf rectangles [x1,y1,x2,y2] in fractions. If the owner has dragged/resized them
+    # (rotcam_config.boxes6) use those; otherwise derive them from the legacy per-row/offset/skew calibration.
+    rc=db.get("rotcam_config") or {}
+    b6=rc.get("boxes6")
+    if isinstance(b6,list) and len(b6)==6 and all(isinstance(r,(list,tuple)) and len(r)==4 for r in b6):
+        return [[_clamp01(r[0]),_clamp01(r[1]),_clamp01(r[2]),_clamp01(r[3])] for r in b6]
+    boxes,bx,off,skew=_rot_cal(); out=[]
+    for i in range(6):
+        a=_clamp01(boxes[i][0]+off); b=_clamp01(boxes[i][1]+off)
+        if b<a: a,b=b,a
+        sh=skew*(i-2.5)
+        x1=_clamp01(bx[0]+sh); x2=_clamp01(bx[1]+sh)
+        if x2<x1: x1,x2=x2,x1
+        out.append([x1,a,x2,b])
+    return out
+def _rot_rect_px(r,W,H):
+    x1=_clamp01(r[0]); y1=_clamp01(r[1]); x2=_clamp01(r[2]); y2=_clamp01(r[3])
+    if x2<x1: x1,x2=x2,x1
+    if y2<y1: y1,y2=y2,y1
+    return int(W*x1),int(H*y1),int(W*x2),int(H*y2)
+def _rot_boxes():   # legacy helper kept for any other callers: per-shelf (top,bottom) with the vertical offset
+    boxes,bx,off,skew=_rot_cal()
+    return [(_clamp01(a+off),_clamp01(b+off)) for (a,b) in boxes]
+def _rotcam_boxes_composite(jpeg):
+    # crop the 6 calibrated shelf boxes and stack them into one labelled image so the AI judges each shelf alone.
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        cal=_rot_cal6(); cw=640; gap=6; strips=[]
+        for i in range(6):
+            x1,y1,x2,y2=_rot_rect_px(cal[i],W,H)
+            c=im.crop((x1,y1,x2,y2))
+            if c.width<2 or c.height<2: c=Image.new("RGB",(cw,8),(15,15,15))
+            c=c.resize((cw,max(1,int(c.height*cw/max(1,c.width)))))
+            strips.append(c)
+        # Even out the top-light wash-out: a lamp above makes the TOP shelves brighter, so cooked chicken up
+        # there looks pale/raw to the camera while the dimmer bottom shelves look more done. Normalise each
+        # strip's brightness toward the median so the AI compares cook COLOUR fairly, not lighting.
+        if (db.get("rotcam_config") or {}).get("even_lighting",True) and len(strips)>=2:
+            try:
+                from PIL import ImageEnhance, ImageStat
+                means=[max(1.0,ImageStat.Stat(s.convert("L")).mean[0]) for s in strips]
+                tgt=sorted(means)[len(means)//2]                       # median brightness across the shelves
+                for i,s in enumerate(strips):
+                    f=max(0.7,min(1.4,tgt/means[i]))                   # clamp so we never over-correct
+                    if abs(f-1.0)>0.05: strips[i]=ImageEnhance.Brightness(s).enhance(f)
+            except Exception: pass
+        comp=Image.new("RGB",(cw,sum(s.height for s in strips)+gap*(len(strips)+1)),(15,15,15))
+        dr=ImageDraw.Draw(comp); y=gap
+        for i,s in enumerate(strips,1):
+            comp.paste(s,(0,y)); dr.rectangle([0,y,cw-1,y+s.height-1],outline=(0,255,0),width=2)
+            dr.text((5,y+3),str(i),fill=(0,255,0)); y+=s.height+gap
+        out=io.BytesIO(); comp.save(out,"JPEG",quality=78); return out.getvalue()
+    except Exception:
+        return None
+_DONE_PCT={"0":0,"N":10,"A":50,"R":90,"O":100}
+def _rotcam_corr_guidance():
+    # Turn the owner's saved ground-truth corrections into a short instruction the model reads on every call —
+    # this is how the saved labels actually get USED: systematic bias + a couple of recent worked examples.
+    try:
+        cors=(db.get("rotcam_corrections",[]) or [])[-12:]
+        if not cors: return ""
+        derr=[]; focc=0; ftot=0
+        for c in cors:
+            sh=c.get("shelves") or []; aidn=(c.get("ai_done") or ""); ailv=(c.get("ai_levels") or "")
+            for i,s in enumerate(sh):
+                tocc=1 if (s or {}).get("occ")=="loaded" else 0
+                aocc=1 if (i<len(ailv) and ailv[i]=="1") else 0
+                if tocc!=aocc: focc+=1
+                ftot+=1
+                if tocc and i<len(aidn) and aidn[i] in _DONE_PCT:
+                    derr.append(_DONE_PCT[aidn[i]]-int((s or {}).get("cooked_pct",0)))   # +ve = AI over-stated doneness
+        lines=["OPERATOR FEEDBACK — the human has corrected your past reads %d times; do not repeat these mistakes:"%len(cors)]
+        if derr:
+            avg=sum(derr)/len(derr)
+            if avg>=12: lines.append("- You tend to OVER-state how cooked rows are. Read doneness LOWER / more conservatively.")
+            elif avg<=-12: lines.append("- You tend to UNDER-state how cooked rows are. Read doneness HIGHER.")
+        if ftot and focc/ftot>=0.2: lines.append("- You sometimes misjudge whether a shelf is loaded. Look at the spit ends past any person; only call a shelf empty when the rod is clearly bare.")
+        ex=[]
+        for c in reversed(cors):
+            a=(c.get("activity") or "").strip(); n=(c.get("notes") or "").strip()
+            if c.get("rows_off"): ex.append("truth: %d row(s) came OFF that time%s"%(c.get("rows_off"),(" ("+a+")" if a else "")))
+            elif n: ex.append("note: "+n[:90])
+            if len(ex)>=2: break
+        for e in ex: lines.append("- "+e)
+        return "\n".join(lines) if len(lines)>1 else ""
+    except Exception: return ""
+
+def _rotcam_gemini_read(jpeg):
+    # PURE read — sends the frame to Gemini and parses it, WITHOUT touching shared ROTCAM counting state.
+    # Safe to call from many threads at once (parallel auto-trace reads). Returns a result dict.
+    out={"raw":"","levels":"","done":"","count":None,"blocked":False,"comp_b64":None,"err":None}
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key: out["err"]="No Gemini API key configured"; return out
+    _gem_count_call()                 # track usage/cost (thread-safe)
+    comp=_rotcam_boxes_composite(jpeg)
+    done_mode=bool(cfg.get("doneness_enabled")) and comp is not None   # read colour/doneness per row in the same call
+    if comp is not None:
+        img=comp; prompt=(_rot_prompt("doneness") if done_mode else _rot_prompt("occupancy"))   # per-box strips (preferred) — owner-editable
+        out["comp_b64"]="data:image/jpeg;base64,"+__import__("base64").b64encode(comp).decode()
+    else:
+        img=_downscale_jpeg(jpeg); prompt=_rot_prompt("whole")   # fallback: whole frame — owner-editable
+    _gd=_rotcam_corr_guidance()
+    if _gd: prompt=(prompt or "")+"\n\n"+_gd   # feed the owner's saved corrections back into every read
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":64}
+    if "2.5" in model or "thinking" in model.lower():
+        gencfg["thinkingConfig"]={"thinkingBudget":0}   # 2.5 is a "thinking" model — skip reasoning, just answer
+    body={"contents":[{"parts":[{"text":prompt},
+          {"inline_data":{"mime_type":"image/jpeg","data":__import__("base64").b64encode(img).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        cand=(data.get("candidates") or [{}])[0]
+        parts=((cand.get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
+        out["raw"]=(txt or "").strip()
+        if not txt: out["err"]="Gemini returned no answer (finish: %s)"%cand.get("finishReason","?"); return out
+        txtc=re.sub(r"[\s,;/|.\-]+","",txt)          # collapse spaces/separators: the model sometimes replies "O R A N N N"
+        if done_mode:                                # combined occupancy+doneness: 6 chars of 0/N/A/R/O
+            dm=re.search(r"[0NAROnaro]{6}",txtc)
+            if "block" in txt.lower() and not dm: out["blocked"]=True; out["err"]="view blocked — someone at the oven"; return out
+            if dm:
+                out["done"]=dm.group().upper()
+                out["levels"]="".join("0" if c=="0" else "1" for c in out["done"])   # derive occupancy from doneness
+                out["count"]=out["levels"].count("1"); return out
+            # no doneness pattern parsed → fall through to plain occupancy parsing below
+        mm=re.search(r"[01]{6}",txtc)                # per-level pattern e.g. 111100 → count the loaded levels
+        if "block" in txt.lower() and not mm:        # someone standing in front → skip this read, don't touch stock
+            out["blocked"]=True; out["err"]="view blocked — someone at the oven"; return out
+        if mm: out["levels"]=mm.group(); out["count"]=mm.group().count("1"); return out
+        m=re.search(r"\d+",txt)                       # fallback: a plain count
+        if not m: out["err"]="Gemini reply had no count: "+txt[:40]; return out
+        out["count"]=int(m.group()); return out
+    except Exception as e:
+        rd=getattr(e,"read",None)
+        if rd:
+            try: out["err"]="Gemini error: "+e.read().decode()[:140]; return out
+            except Exception: pass
+        out["err"]=str(e); return out
+
+def _rotcam_count(jpeg):
+    # Stateful wrapper for the MAIN counter: do a read, then apply it to shared ROTCAM state (as before).
+    r=_rotcam_gemini_read(jpeg)
+    if r.get("comp_b64") is not None: ROTCAM["last_comp"]=r["comp_b64"]
+    ROTCAM["last_raw"]=r.get("raw","")   # always reflect the latest reply (even empty) — matches the old behaviour
+    if r.get("blocked"): ROTCAM["last_blocked_ts"]=time.time()
+    if r.get("err"): return None,r["err"]
+    if r.get("done"):
+        ROTCAM["done"]=r["done"]; ROTCAM["levels"]=r["levels"]
+        _rotcam_save_crops(jpeg,r["done"])           # auto-collect on-spit training crops, labelled by doneness
+        return r["count"],None
+    if r.get("levels"): ROTCAM["levels"]=r["levels"]; return r["count"],None
+    if r.get("count") is not None: return r["count"],None
+    return None,"no read"
+# ===== UNLOADING-BENCH WATCHER =====================================================
+# Cooked rows are ALWAYS placed on the stainless bench (bottom of frame) before going to
+# the warmer. Counting loaded shelves can't catch removals (staff slide rows up + stand in
+# front), but the bench always shows the cooked row. So: watch the bench; when a fresh row
+# of cooked chickens appears (confirmed over 2 reads) → +birds_per_row to available. The
+# bench clearing (moved to warmer) is ignored — those birds are still available stock.
+_BENCH_BOX=(0.0,1.0,0.78,1.0)   # FULL bottom strip — bench is on wheels & shifts left/right/partial; top kept just below the oven so the bottom shelf isn't counted
+_BENCH_PROMPT=("This is the bottom strip of a rotisserie chicken shop, below the oven. It shows the stainless "
+               "unloading bench, which is on WHEELS and may be shifted left, right, centre, or only partly in "
+               "view. A 'row' is a group of roasted chickens (about 4) placed together when pulled off the spit. "
+               "How many rows of cooked, GOLDEN/BROWN WHOLE CHICKENS are resting on the bench right now? "
+               "IMPORTANT: ignore bare steel, floor tiles, metal spikes, wire frames/cages, tongs, trays, the "
+               "fryer baskets (often on the right), and any PEOPLE (heads, bodies, arms, gloved hands) — count "
+               "ONLY whole, intact, rounded roasted chickens sitting on the bench surface, wherever along the "
+               "strip they are. Do NOT count BUTTERFLIED / flattened / spatchcocked / split-open / halved or "
+               "quartered chickens — those are a different product and must be ignored; count only plump WHOLE "
+               "birds. If the bench is rolled out of view or completely blocked, reply the single word BLOCKED. "
+               "Otherwise reply ONLY one digit: 0, 1, 2 or 3.")
+def _rotcam_bench_crop(jpeg):
+    try:
+        from PIL import Image; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        x1,x2,y1,y2=_BENCH_BOX
+        c=im.crop((int(W*x1),int(H*y1),int(W*x2),int(H*y2)))
+        if c.width>720: c=c.resize((720,max(1,int(c.height*720/c.width))))
+        out=io.BytesIO(); c.save(out,"JPEG",quality=78); return out.getvalue()
+    except Exception:
+        return None
+def _rotcam_bench_count(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key: return None
+    crop=_rotcam_bench_crop(jpeg)
+    if crop is None: return None
+    _gem_count_call()
+    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+__import__("base64").b64encode(crop).decode()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":32}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_BENCH_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":__import__("base64").b64encode(crop).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        cand=(data.get("candidates") or [{}])[0]
+        parts=((cand.get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict))
+        if not txt: return None
+        if "block" in txt.lower() and not re.search(r"\d",txt): return None   # bench fully hidden → skip
+        m=re.search(r"\d",txt)
+        if not m: return None
+        return max(0,min(3,int(m.group())))
+    except Exception:
+        return None
 # ===== WALK-IN WATCH — "a customer is waiting and nobody is serving" =========================
 # Two cameras ARE the two zones (no zone-drawing needed): the CUSTOMER camera (dining/counter side)
 # and the STAFF camera (behind the servery). Alert only when a person is seen on the customer cam AND
@@ -7638,13 +8010,908 @@ def api_frontdoor_log_clear():
     except Exception: pass
     return jsonify({"ok":True})
 
+_ROW_WINDOW=180   # seconds to pair a "row left the spit" (front cam) with a "new row on the bench" (side cam)
+def _try_credit():
+    if _rot_mode()=="probe": return               # probes are counting stock this session → ignore camera credits
+    # The COUNT comes from the ROTISSERIE (each shelf-row that leaves the spit = one row of birds).
+    # The BENCH only CONFIRMS a chicken actually landed recently — it never decides the NUMBER (it sees
+    # individual chickens, not clean rows, so counting bench items over-counts). So: a rotisserie misread
+    # alone can't add stock (needs bench confirmation), and bench fluctuation alone can't add stock (needs
+    # a real shelf-row to have left).
+    off=ROTCAM.get("off_credits",0)
+    bench_ok=(time.time()-ROTCAM.get("rise_ts",0))<_ROW_WINDOW and ROTCAM.get("bench_rises",0)>0
+    if off>0 and bench_ok:
+        rot_put_on(off)                                     # +birds_per_row per row the rotisserie saw leave
+        ROTCAM["off_credits"]=0; ROTCAM["bench_rises"]=0    # consume both sides
+def _note_row_off(k):
+    # front camera saw k shelf-rows go empty → k rows came off the spit (await bench confirmation)
+    if k<=0: return
+    now=time.time()
+    if now-ROTCAM.get("off_ts",0)>_ROW_WINDOW: ROTCAM["off_credits"]=0   # stale → reset
+    ROTCAM["off_credits"]=ROTCAM.get("off_credits",0)+k; ROTCAM["off_ts"]=now
+    _try_credit()
+def _rotcam_bench_apply(n):
+    if n is None: return                                   # blocked/error → hold, don't touch stock
+    # DEBOUNCE: the bench is on wheels — a frame caught mid-move, motion-blurred, or with the bench
+    # half out of view can misread for ONE read. Require two CONSECUTIVE equal reads before we trust a
+    # count, so a transient blip never moves stock.
+    last=ROTCAM.get("bench_raw_last"); ROTCAM["bench_raw_last"]=n
+    if n!=last: return                                     # not confirmed yet — wait for the next read to agree
+    settled=ROTCAM.get("bench_rows",0)
+    if n==settled: return                                  # confirmed, but no change
+    if isinstance(n,int) and n>settled:                    # confirmed NEW row(s) on the bench
+        now=time.time()
+        if now-ROTCAM.get("rise_ts",0)>_ROW_WINDOW: ROTCAM["bench_rises"]=0
+        ROTCAM["bench_rises"]=ROTCAM.get("bench_rises",0)+(n-settled); ROTCAM["rise_ts"]=now
+        ROTCAM["force_shelf"]=True   # bench saw a row land → check the spit IMMEDIATELY (don't wait for the timer)
+        _try_credit()    # credits stock ONLY if the rotisserie cam recently saw a row come off (else: a warmer
+                         # chicken being cut on the bench — NOT new stock — so it's ignored)
+    ROTCAM["bench_rows"]=n                                  # update the settled count (rises and falls)
+# --- DEDICATED SIDE-ANGLE BENCH CAMERA (2nd Tapo) -----------------------------------
+# A second camera mounted to the side keeps the unloading bench in full view wherever it
+# rolls, and can see rows placed side-by-side or stacked. When configured, the bench watcher
+# pulls from THIS camera (whole frame, no crop) instead of cropping the front camera.
+def _bench_rtsp():
+    cfg=_rotcam_cfg()
+    ip=(cfg.get("bench_ip") or "").strip()
+    if ip:    # structured fields take priority — password gets URL-encoded (handles special chars ffmpeg chokes on)
+        user=(cfg.get("bench_user") or "").strip(); pw=(cfg.get("bench_pass") or "").strip()
+        stream=(cfg.get("bench_stream") or "stream1").strip()
+        auth=(urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw,safe="")+"@") if user else ""
+        return "rtsp://%s%s:554/%s"%(auth,ip,stream)
+    raw=(cfg.get("bench_rtsp_url") or "").strip()
+    if raw:
+        try:    # re-encode the embedded login so ffmpeg parses it like VLC does (handles special chars)
+            from urllib.parse import urlsplit
+            p=urlsplit(raw)
+            if p.hostname and p.username is not None:
+                host=p.hostname+(":%d"%p.port if p.port else "")
+                q=("?"+p.query) if p.query else ""
+                return "rtsp://%s:%s@%s%s%s"%(urllib.parse.quote(p.username,safe=""),
+                                              urllib.parse.quote(p.password or "",safe=""),host,p.path or "",q)
+        except Exception: pass
+        return raw
+    return ""
+def _bench_grab():
+    import subprocess
+    url=_bench_rtsp()
+    if not url: return None,"No bench camera configured"
+    try:
+        p=subprocess.run(["ffmpeg","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+                         capture_output=True,timeout=25)
+        if p.returncode!=0 or not p.stdout:
+            err=(p.stderr or b"").decode("latin1","ignore")
+            hint=""
+            low=err.lower()
+            if "401" in err or "unauthor" in low: hint=" — 401 Unauthorized: wrong RTSP login. Set a Camera Account in the Tapo app (Settings → Advanced) and use that user/pass."
+            elif "404" in err or "not found" in low: hint=" — stream path not found: try /stream2 instead of /stream1."
+            elif "timed out" in low or "timeout" in low: hint=" — connection timed out."
+            tail=err.strip().splitlines()[-1] if err.strip() else ""
+            return None,"Couldn't read the bench camera"+hint+((" ["+tail[:120]+"]") if tail else "")
+        return p.stdout,None
+    except FileNotFoundError: return None,"ffmpeg is not installed."
+    except Exception as e: return None,str(e)
+_BENCH_DETECT_PROMPT=("This is a SIDE-ANGLE view of the wheeled stainless-steel UNLOADING BENCH in a rotisserie chicken shop, where "
+                    "cooked chickens are placed after coming off the spit. The bench is ON WHEELS and may be parked in front of "
+                    "the rotisserie (left), in the middle, or rolled in front of the glass warming cabinet (right) — find the flat "
+                    "open stainless bench wherever it is. DETECT each individual cooked, GOLDEN/BROWN WHOLE roasted CHICKEN "
+                    "resting ON TOP of the flat open bench surface — put ONE box around EACH whole chicken (not around groups). "
+                    "CRITICAL: only chickens sitting DIRECTLY on the open stainless bench top. Do NOT box chickens inside or on the "
+                    "HOT-HOLDING / DISPLAY / WARMER CABINET (the glass-fronted cabinet along one side, holding chickens behind "
+                    "glass on wire racks) — those are display stock, ignore them entirely. Also ignore bare steel, trays, tongs, "
+                    "wire frames, fryer baskets, people, and BUTTERFLIED/flattened/halved/quartered chickens — only plump WHOLE "
+                    "birds. ALSO do NOT box a chicken being CUT / CARVED / PORTIONED / SERVED: if a knife, cleaver, tongs or hands "
+                    "are on or over it, or it is split open / on a chopping board, IGNORE it. Return ONLY a JSON array, one object "
+                    "per whole chicken, each as {\"box_2d\":[ymin,xmin,ymax,xmax]} with integer coordinates normalised 0-1000 "
+                    "(origin top-left). If there are no whole chickens on the open bench, return [].")
+# ── Editable AI prompts: the owner can edit the AI's instructions in Settings (the simple way to correct it).
+#    Custom text lives in rotcam_config['prompts'][key]; falls back to the built-in default when blank. ──
+_ROT_PROMPT_DEFAULTS={
+    "doneness":_ROT_DONE_PROMPT,       # reads each shelf: empty / raw / almost / ready / overdone (when doneness is ON)
+    "occupancy":_ROT_BOX_PROMPT,       # reads each shelf: loaded or empty (when doneness is OFF)
+    "whole":_ROT_PROMPT,               # whole-oven fallback (if the per-shelf crop can't be built)
+    "bench":_BENCH_DETECT_PROMPT,      # side bench camera: box each cooked chicken that landed
+    "bench_count":_BENCH_PROMPT,       # front-cam bench crop: how many cooked rows (older path)
+}
+_ROT_PROMPT_LABELS={
+    "doneness":"Shelf read + doneness (the main one)","occupancy":"Shelf read — loaded/empty only",
+    "whole":"Whole-oven fallback","bench":"Bench camera — detect cooked chickens","bench_count":"Bench count (older)",
+}
+def _rot_prompt(key):
+    cust=(_rotcam_cfg().get("prompts") or {}).get(key)
+    if isinstance(cust,str) and cust.strip(): return cust
+    if key=="occupancy":   # back-compat with the old single custom-prompt field
+        old=_rotcam_cfg().get("prompt")
+        if isinstance(old,str) and old.strip(): return old
+    return _ROT_PROMPT_DEFAULTS.get(key,"")
+
+_BENCH_ZONE=(0.08,0.15,0.53,0.96)   # x1,y1,x2,y2 fraction — the unloading bench area on the LEFT (cuts off before the warmer cabinet on the right). Tunable via rotcam_config['bench_zone'].
+def _bench_zone():
+    z=_rotcam_cfg().get("bench_zone")
+    if isinstance(z,(list,tuple)) and len(z)==4:
+        try:
+            v=[float(x) for x in z]
+            if all(0<=x<=1 for x in v) and v[0]<v[2] and v[1]<v[3]: return (v[0],v[1],v[2],v[3])
+        except Exception: pass
+    return _BENCH_ZONE
+def _bench_annotate(jpeg,boxes):
+    # draw the detection ZONE (cyan) + a green box per detected row, on the given frame
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        dr=ImageDraw.Draw(im)
+        zx1,zy1,zx2,zy2=_bench_zone()
+        dr.rectangle([int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)],outline=(0,190,255),width=2)
+        for i,b in enumerate(boxes,1):
+            try:
+                ymin,xmin,ymax,xmax=b[0],b[1],b[2],b[3]
+                x1=int(min(xmin,xmax)/1000.0*W); y1=int(min(ymin,ymax)/1000.0*H)
+                x2=int(max(xmin,xmax)/1000.0*W); y2=int(max(ymin,ymax)/1000.0*H)
+                dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                dr.text((x1+4,max(0,y1+3)),"chicken %d"%i,fill=(0,255,0))
+            except Exception: pass
+        out=io.BytesIO(); im.save(out,"JPEG",quality=82); return out.getvalue()
+    except Exception:
+        return jpeg
+def _benchcam_count(jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None
+    import base64 as _b
+    img=_downscale_jpeg(jpeg,1100)                 # keep detail — we send only a cropped sub-region
+    zx1,zy1,zx2,zy2=_bench_zone()
+    crop_jpeg=img; cropped=False
+    try:                                           # crop to the bench zone so the AI never sees the cabinet/counter
+        from PIL import Image; import io
+        full=Image.open(io.BytesIO(img)).convert("RGB"); W,H=full.size
+        crop=full.crop((int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)))
+        if crop.width>760: crop=crop.resize((760,max(1,int(crop.height*760/crop.width))))
+        cb=io.BytesIO(); crop.save(cb,"JPEG",quality=82); crop_jpeg=cb.getvalue(); cropped=True
+    except Exception: cropped=False
+    _gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":700}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_rot_prompt("bench")},
+          {"inline_data":{"mime_type":"image/jpeg","data":_b.b64encode(crop_jpeg).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    raw=[]
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        cand=(data.get("candidates") or [{}])[0]
+        txt="".join(p.get("text","") for p in (((cand.get("content") or {}).get("parts")) or []) if isinstance(p,dict))
+        if not txt: return None
+        mt=re.search(r"\[.*\]",txt,re.S)
+        if mt:
+            for o in (json.loads(mt.group()) or []):
+                bb=o.get("box_2d") if isinstance(o,dict) else (o if isinstance(o,list) else None)
+                if bb and len(bb)>=4:
+                    try: raw.append([float(bb[0]),float(bb[1]),float(bb[2]),float(bb[3])])
+                    except Exception: pass
+    except Exception:
+        return None
+    boxes=[]                                       # remap crop-relative coords back to the FULL frame
+    for ymin,xmin,ymax,xmax in raw[:8]:
+        if cropped:
+            boxes.append([ (zy1+(ymin/1000.0)*(zy2-zy1))*1000, (zx1+(xmin/1000.0)*(zx2-zx1))*1000,
+                           (zy1+(ymax/1000.0)*(zy2-zy1))*1000, (zx1+(xmax/1000.0)*(zx2-zx1))*1000 ])
+        else:
+            boxes.append([ymin,xmin,ymax,xmax])
+    ROTCAM["bench_boxes"]=boxes; ROTCAM["bench_boxes_ts"]=time.time()
+    annotated=_bench_annotate(img,boxes)
+    ROTCAM["bench_frame"]=annotated; ROTCAM["bench_frame_ts"]=time.time()
+    ROTCAM["bench_comp"]="data:image/jpeg;base64,"+_b.b64encode(annotated).decode()
+    return len(boxes)
+# ===================================================================================
+def _rotcam_read():
+    fr=ROTCAM.get("frame")                                   # reuse the live-feed frame if fresh
+    if fr and (time.time()-ROTCAM.get("frame_ts",0))<8:      # (avoids a 2nd camera connection)
+        jpeg=fr
+    else:
+        jpeg,err=_rotcam_grab()
+        if err: return None,None,err
+    rows,err=_rotcam_count(jpeg)
+    return rows,jpeg,err
+def _rot_min_cook_secs():
+    try: return max(0,int((db.get("rotisserie") or {}).get("min_cook_min",35)))*60
+    except Exception: return 35*60
+_ROT_OFF_CONFIRM=12   # a shelf must read EMPTY continuously for this long before we treat it as a real removal (kills flicker)
+_ROT_SWAP_CONFIRM=3   # a shelf must read RAW for this many reads after being cooked before we count a fast-swap (kills colour flicker)
+_ROT_REMOVAL_WINDOW=240  # a real removal = a person was at the oven (view BLOCKED) within this many seconds of the shelf emptying
+_ROT_AFTER_SECS=30       # after the AI auto-counts a row OFF, keep reading the scene for this long so the owner sees what happened next
+# (after-window read cadence is _ROT_AFTER_GRAB; reads run in parallel — see _rotcam_auto_session)
+def _rotcam_apply(rows):
+    ROTCAM["last_count"]=rows; ROTCAM["last_ts"]=time.time()
+    pat=ROTCAM.get("levels","")
+    if not (isinstance(pat,str) and len(pat)==6 and set(pat)<=set("01")):
+        # no valid per-shelf pattern → just track the cooking count for display; do NOT credit (too unreliable)
+        h=ROTCAM["hist"]; h.append(rows); ROTCAM["hist"]=h[-4:]
+        if len(h)>=2 and h[-1]==h[-2]: ROTCAM["cooking"]=h[-1]
+        ROTCAM["last_decision"]="no clean 6-shelf read this frame — not counting"
+        return
+    # per-shelf: confirm the pattern over two reads (ignore one-off misreads), then run a per-shelf DWELL state
+    # machine. A row only credits if it was loaded continuously long enough to be a real cook (>= min_cook) AND
+    # is then sustained-empty (not a momentary glare/occlusion flicker). This stops the over-count (e.g. 72).
+    ph=ROTCAM.get("pat_hist",[]); ph.append(pat); ROTCAM["pat_hist"]=ph[-3:]
+    if not (len(ph)>=2 and ph[-1]==ph[-2]):
+        ROTCAM["last_decision"]="read "+pat+" — waiting for the next read to agree before acting (anti-flicker)"
+        return       # wait for two matching reads
+    confirmed=ph[-1]; now=time.time()
+    ROTCAM["cooking_pat"]=confirmed; ROTCAM["cooking"]=confirmed.count("1")
+    la=ROTCAM.setdefault("shelf_loaded_at",[0,0,0,0,0,0])   # when each shelf first went loaded
+    oa=ROTCAM.setdefault("shelf_off_at",[0,0,0,0,0,0])      # when each shelf first read empty (after being loaded)
+    ck=ROTCAM.setdefault("shelf_cooked",[False,False,False,False,False,False])  # has this shelf visibly reached cooked (R/O) this load?
+    mr=ROTCAM.setdefault("shelf_max_rank",[0,0,0,0,0,0])    # highest doneness rank seen this load (cooking only goes up)
+    if len(la)!=6: la=ROTCAM["shelf_loaded_at"]=[0,0,0,0,0,0]
+    if len(oa)!=6: oa=ROTCAM["shelf_off_at"]=[0,0,0,0,0,0]
+    if len(ck)!=6: ck=ROTCAM["shelf_cooked"]=[False,False,False,False,False,False]
+    if len(mr)!=6: mr=ROTCAM["shelf_max_rank"]=[0,0,0,0,0,0]
+    sw=ROTCAM.setdefault("shelf_swap_streak",[0,0,0,0,0,0])  # consecutive "raw after cooked" reads (swap confirmation)
+    if len(sw)!=6: sw=ROTCAM["shelf_swap_streak"]=[0,0,0,0,0,0]
+    done=ROTCAM.get("done","") or ""                       # per-shelf doneness letters 0/N/A/R/O (if doneness read on)
+    _RANK={"N":1,"A":2,"R":3,"O":4}                         # chickens only cook FORWARD, so rank only goes up
+    min_cook=_rot_min_cook_secs(); credit=0; changed=False; events=[]
+    for i in range(6):
+        if confirmed[i]=="1":                              # loaded
+            oa[i]=0
+            rank=_RANK.get(done[i] if i<len(done) else "",0)
+            if la[i]==0:                                   # newly loaded
+                la[i]=now; mr[i]=rank; sw[i]=0; changed=True
+            else:
+                if rank>mr[i]: mr[i]=rank; changed=True
+                if mr[i]>=3 and rank==1:                    # was Ready/Overdone, now reads raw.
+                    sw[i]+=1; changed=True                  # doneness is too noisy (glare flips R<->N) to CREDIT a swap;
+                    if sw[i]>=_ROT_SWAP_CONFIRM:            # if raw holds, just treat it as a fresh raw row and
+                        la[i]=now; mr[i]=rank; ck[i]=False; sw[i]=0   # restart its cook dwell — NO credit here
+                elif rank>=2:                               # back to cooked-ish → that was just a flicker, not a swap
+                    sw[i]=0
+            if rank>=3 and not ck[i]: ck[i]=True; changed=True  # row visibly reached cooked
+        elif la[i]>0:                                      # empty, and it was loaded → candidate removal
+            if oa[i]==0: oa[i]=now; changed=True           # start the "off" timer
+            elif now-oa[i]>=_ROT_OFF_CONFIRM:              # sustained empty → real removal, not a flicker
+                # Credit ONLY when it's genuinely a person removing a cooked row — all three must hold:
+                #  (1) the shelf cooked long enough to be real (loaded >= min_cook),
+                #  (2) it then actually emptied and stayed empty (>= off-confirm, handled above), and
+                #  (3) a PERSON was at the oven (view BLOCKED) just before it emptied — a real removal, not glare.
+                # This is what the owner asked for: "person in front + door open + top row gone => +4 (one row)".
+                cooked_long=(oa[i]-la[i]>=min_cook)
+                top_shelf=(i<=2)                               # OWNER RULE: cooked rows ONLY ever come off the TOP shelves (1, 2, 3) — never 4/5/6 (we don't finish-cook down there)
+                done_on=(isinstance(done,str) and len(done)==6)# is a colour/doneness read available this frame?
+                visibly_cooked=(ck[i] or not done_on)          # if we can see colour, REQUIRE the row actually went golden — a white/raw row is not a cooked row coming off
+                if top_shelf and cooked_long and visibly_cooked:
+                    credit+=1; events.append({"shelf":i,"credited":True,"reason":"counted — cooked (golden) row left a top shelf (1-3) after a full cook"})
+                elif not top_shelf:
+                    events.append({"shelf":i,"credited":False,"reason":"not counted — shelf %d: cooked rows only come off the top shelves (1-3), never 4/5/6"%(i+1)})
+                elif done_on and not ck[i]:
+                    events.append({"shelf":i,"credited":False,"reason":"not counted — shelf %d never turned golden this load (read raw/white), so it wasn't a cooked row"%(i+1)})
+                else:                                          # emptied too soon to be a finished cook — log it (with the real minutes) so early-pulls/misreads are visible
+                    mins=int(max(0,oa[i]-la[i])/60)
+                    events.append({"shelf":i,"credited":False,"reason":"shelf had only been loaded ~%d min (needs ~%d min to count as a finished cook)"%(mins,int(min_cook/60))})
+                la[i]=0; oa[i]=0; ck[i]=False; mr[i]=0; sw[i]=0; changed=True  # consume this shelf
+    # Only move stock if the owner has explicitly turned camera auto-counting ON. Off by default —
+    # camera counting through glare/swaps is unreliable, so manual + Cooked row is the trustworthy default.
+    auto=bool((db.get("rotcam_config") or {}).get("auto_count",True))
+    if _rot_mode()=="probe": auto=False           # probes are counting stock this session → camera must not also credit
+    if credit>0 and auto: rot_put_on(credit)
+    if changed or credit>0: _rot_save()                    # persist timers so a restart keeps crediting progress
+    bpr=_rot_cfg().get("bpr",4)
+    if events:
+        ROTCAM["last_decision"]="; ".join((("✓ COUNTED shelf %d (+%d)"%(e["shelf"]+1,bpr)) if e["credited"] else ("✗ skipped shelf %d"%(e["shelf"]+1))) for e in events)
+    else:
+        ROTCAM["last_decision"]="confirmed read "+confirmed+" — no shelf completed a removal this frame"
+    return events if auto else []   # the loop logs+screenshots every detected removal (counted or skipped) so misses are visible
+def _rotcam_log_event(ev,jpeg):
+    # Log EVERY detected shelf-removal (counted OR skipped) with a few screenshots, so the owner sees each
+    # row that comes off — and when it isn't counted, exactly why. Saves into rotcam_credits/<id>/.
+    try:
+        from PIL import Image, ImageDraw; import io, base64
+        c=_rot_cfg(); bpr=c["bpr"]; now=time.time(); shelf=int(ev.get("shelf",0)); credited=bool(ev.get("credited"))
+        eid=int(now)*10+shelf                                    # unique per shelf so two emptying at once don't collide
+        d=os.path.join(BASE_DIR,"rotcam_credits",str(eid)); os.makedirs(d,exist_ok=True); shots=[]
+        comp=ROTCAM.get("last_comp")                             # the 6-strip the AI actually judged
+        if isinstance(comp,str) and comp.startswith("data:"):
+            try: open(os.path.join(d,"comp.jpg"),"wb").write(base64.b64decode(comp.split(",",1)[1])); shots.append({"n":"comp.jpg","ts":int(now)})
+            except Exception: pass
+        if jpeg:                                                 # full frame with the boxes; this shelf amber if counted, red if skipped
+            try:
+                im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; dr=ImageDraw.Draw(im); cal=_rot_cal6()
+                hotcol=(255,170,30) if credited else (255,95,95)
+                for i in range(6):
+                    x1,y1,x2,y2=_rot_rect_px(cal[i],W,H); hot=(i==shelf); col=hotcol if hot else (0,255,0)
+                    dr.rectangle([x1,y1,x2,y2],outline=col,width=5 if hot else 2)
+                    lbl=("shelf %d  +%d"%(i+1,bpr)) if (hot and credited) else (("shelf %d  (not counted)"%(i+1)) if hot else ("shelf %d"%(i+1)))
+                    dr.text((x1+6,y1+4),lbl,fill=col)
+                if im.width>1100: im=im.resize((1100,int(im.height*1100/im.width)))
+                bo=io.BytesIO(); im.save(bo,"JPEG",quality=80); open(os.path.join(d,"boxes.jpg"),"wb").write(bo.getvalue()); shots.append({"n":"boxes.jpg","ts":int(now)})
+            except Exception: pass
+        ring=ROTCAM.get("frame_ring",[])                         # recent frames spanning the removal (each keeps its real capture time)
+        picks=([ring[0],ring[len(ring)//2],ring[-1]] if len(ring)>=3 else list(ring))
+        for n,item in enumerate(picks,1):
+            try: open(os.path.join(d,"seq%d.jpg"%n),"wb").write(item[1]); shots.append({"n":"seq%d.jpg"%n,"ts":int(item[0])})
+            except Exception: pass
+        entry={"id":eid,"ts":int(now),"credited":credited,"shelf":shelf+1,"shelves":[shelf+1],
+               "auto":bool(credited),"source":("auto-ai" if credited else "skip"),   # credited = the AI decided a row came off by itself
+               "rows":(1 if credited else 0),"birds":(bpr if credited else 0),"reason":ev.get("reason",""),
+               "person":(now-ROTCAM.get("last_blocked_ts",0))<=_ROT_REMOVAL_WINDOW,"levels":ROTCAM.get("levels",""),
+               "done":ROTCAM.get("done",""),"avail_after":round(ROT_LIVE.get("available",0),2),"shots":shots}
+        with rot_lock:
+            seq=int(db.get("rotcam_credit_seq",0))+1; db["rotcam_credit_seq"]=seq; entry["num"]=seq   # stable, ever-increasing # the owner can quote ("box #47 read wrong")
+            log=list(db.get("rotcam_credit_log",[]) or []); log.append(entry); db["rotcam_credit_log"]=log[-60:]; keep=set(str(e["id"]) for e in db["rotcam_credit_log"])   # copy-on-write (parallel saves)
+        try:                                                     # prune screenshot folders that fell off the log
+            import shutil; base=os.path.join(BASE_DIR,"rotcam_credits")
+            for nm in os.listdir(base):
+                if nm not in keep: shutil.rmtree(os.path.join(base,nm),ignore_errors=True)
+        except Exception: pass
+        save_data(db)
+        if credited:   # the AI counted a row off ON ITS OWN → log frame #1 (the moment), then a PARALLEL read session for 30s after
+            _rotcam_auto_trace_add(eid,1,0,jpeg,"✓ AUTO-COUNTED shelf %d (+%d) — %s"%(shelf+1,bpr,ev.get("reason","")),[{"shelf":shelf,"credited":True}])
+            threading.Thread(target=_rotcam_auto_session,args=(eid,shelf+1,now),daemon=True).start()
+    except Exception: pass
+
+def _rotcam_trace_shelves_from(lv,dn,events):
+    # Build the per-shelf read display from EXPLICIT levels/doneness strings (so a parallel read uses ITS OWN
+    # result, not shared ROTCAM state). Cooking-time notes read ROTCAM timing arrays (read-only, fine).
+    now=time.time(); lv=lv or ""; dn=dn or ""
+    la=ROTCAM.get("shelf_loaded_at",[0]*6); oa=ROTCAM.get("shelf_off_at",[0]*6)
+    _DN={"0":"empty","N":"raw","A":"almost","R":"ready","O":"overdone"}
+    cred={e["shelf"] for e in (events or []) if e.get("credited")}
+    skip={e["shelf"] for e in (events or []) if not e.get("credited")}
+    bpr=_rot_cfg().get("bpr",4); shelves=[]
+    for i in range(6):
+        occ=("loaded" if (i<len(lv) and lv[i]=="1") else ("empty" if lv else "?"))
+        done=_DN.get(dn[i],"") if i<len(dn) else ""
+        note=""
+        if occ=="loaded" and i<len(la) and la[i]: note="cooking %dm"%int((now-la[i])/60)
+        elif occ=="empty" and i<len(oa) and oa[i]: note="empty %ds"%int(now-oa[i])
+        if i in cred: note="✓ COUNTED +%d"%bpr
+        elif i in skip: note="✗ not counted"
+        shelves.append({"i":i+1,"occ":occ,"done":done,"note":note})
+    return shelves
+def _rotcam_trace_shelves(events):
+    lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""
+    return _rotcam_trace_shelves_from(lv,dn,events),lv,dn
+
+def _rotcam_auto_trace_add(eid,n,after,jpeg,decision,events=None,lv=None,dn=None,raw=None):
+    # One PERSISTENT auto-trace frame: same shape as a live-trace record (id/raw/levels/done/shelves/decision),
+    # plus eid/n/after so the inspector can show the ordered reel. Image saved to disk → survives restarts.
+    # When lv/dn/raw are passed (parallel reads) the frame reflects THAT read; otherwise it uses ROTCAM state.
+    try:
+        now=time.time()
+        if lv is None: lv=ROTCAM.get("levels","") or ""; dn=ROTCAM.get("done","") or ""; raw=ROTCAM.get("last_raw","") or ""
+        shelves=_rotcam_trace_shelves_from(lv,dn,events)
+        with _gem_lock:                                  # atomic id allocation across parallel reads
+            tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        rec={"id":tid,"eid":int(eid),"n":int(n),"after":int(after),"ts":int(now),
+             "raw":(raw or "")[:140],"levels":lv or "","done":dn or "",
+             "decision":decision,"shelves":shelves,"img":"auto%d.jpg"%int(n)}
+        d=os.path.join(BASE_DIR,"rotcam_credits",str(int(eid))); os.makedirs(d,exist_ok=True)
+        if jpeg:
+            from PIL import Image as _I; import io as _io
+            im=_I.open(_io.BytesIO(jpeg)).convert("RGB")
+            if im.width>640: im=im.resize((640,int(im.height*640/im.width)))
+            bo=_io.BytesIO(); im.save(bo,"JPEG",quality=72); open(os.path.join(d,rec["img"]),"wb").write(bo.getvalue())
+            ROTCAM.setdefault("trace_img",{})[tid]=bo.getvalue()   # fast in-memory serve; disk is the durable copy
+        with rot_lock:
+            at=list(db.get("rotcam_auto_trace",[]) or []); at.append(rec); db["rotcam_auto_trace"]=at[-600:]   # copy-on-write so a concurrent save dump never sees a mutating list
+            save_data(db)
+        return tid
+    except Exception: return None
+
+_ROT_AFTER_GRAB=1.0      # during the after-window, dispatch a fresh read this often; PARALLEL pool absorbs the per-read latency
+_ROT_READ_WORKERS=6      # concurrent Gemini reads in the auto-trace pool (cost is not a concern per owner; capped to avoid 429s)
+_ROT_READ_POOL_REF=[None]
+def _rot_read_pool():
+    if _ROT_READ_POOL_REF[0] is None:
+        import concurrent.futures
+        _ROT_READ_POOL_REF[0]=concurrent.futures.ThreadPoolExecutor(max_workers=_ROT_READ_WORKERS,thread_name_prefix="rotread")
+    return _ROT_READ_POOL_REF[0]
+def _rotcam_session_frame(eid,n,after,jpeg,shelf):
+    # One PARALLEL follow-up read: pure Gemini read (no shared-state writes) → persist as an ordered auto-trace frame.
+    try:
+        r=_rotcam_gemini_read(jpeg)
+        lv=r.get("levels") or ""; dn=r.get("done") or ""
+        if r.get("err") and not lv: dec="watching +%ds after auto-count of shelf %s — %s"%(after,shelf,r.get("err"))
+        else: dec="watching +%ds after auto-count of shelf %s — AI reads %s"%(after,shelf,lv or "?")
+        _rotcam_auto_trace_add(eid,n,after,jpeg,dec,None,lv,dn,(r.get("raw") or ""))
+    except Exception: pass
+def _rotcam_auto_session(eid,shelf,start_ts):
+    # Own thread for _ROT_AFTER_SECS after a row is counted off: densely grab UNIQUE camera frames and read them
+    # IN PARALLEL, so frame density beats the single-call Gemini latency. Reads are pure → main counter untouched.
+    try:
+        pool=_rot_read_pool(); futs=[]; n=1; seen=set()
+        end=start_ts+_ROT_AFTER_SECS; nxt=start_ts+_ROT_AFTER_GRAB
+        while time.time()<end:
+            now=time.time()
+            if now>=nxt:
+                frame=ROTCAM.get("frame"); fts=ROTCAM.get("frame_ts",0)
+                if frame and (now-fts)<10 and fts not in seen:   # one read per real camera frame; skip duplicates
+                    seen.add(fts); n+=1
+                    futs.append(pool.submit(_rotcam_session_frame,eid,n,int(now-start_ts),frame,shelf))
+                nxt=now+_ROT_AFTER_GRAB
+            time.sleep(0.12)
+        for f in futs:                                           # let in-flight reads finish writing
+            try: f.result(timeout=45)
+            except Exception: pass
+    except Exception: pass
+def _rotcam_add_trace(jpeg,events,cerr):
+    # Per-frame debug record for the Settings inspector: the frame + exactly what the AI replied + what we
+    # parsed per shelf + the decision the logic made. Lets the owner see WHERE the AI is going wrong.
+    try:
+        now=time.time()
+        with _gem_lock: tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid   # shared counter (parallel auto reads)
+        shelves,lv,dn=_rotcam_trace_shelves(events)
+        rec={"id":tid,"ts":int(now),"raw":(ROTCAM.get("last_raw","") or "")[:140],
+             "levels":lv,"done":dn,"decision":(cerr or ROTCAM.get("last_decision","")),"shelves":shelves}
+        tr=ROTCAM.setdefault("trace",[]); tr.append(rec); ROTCAM["trace"]=tr[-60:]
+        if jpeg:
+            from PIL import Image; import io
+            im=Image.open(io.BytesIO(jpeg)).convert("RGB")
+            if im.width>520: im=im.resize((520,int(im.height*520/im.width)))
+            bo=io.BytesIO(); im.save(bo,"JPEG",quality=68)
+            imgs=ROTCAM.setdefault("trace_img",{}); imgs[tid]=bo.getvalue()
+            keep={r["id"] for r in ROTCAM["trace"]}
+            for k in list(imgs.keys()):
+                if k not in keep: imgs.pop(k,None)
+    except Exception: pass
+def _hm_to_min(s,d):
+    try: h,m=str(s).split(":"); return int(h)*60+int(m)
+    except Exception: return d
+def rotcam_loop():
+    while True:
+        cfg=_rotcam_cfg()
+        try: iv=max(1,int(cfg.get("interval",120) or 120))            # shelf-count cadence (rows-cooking display) — allow fast sampling to catch rows coming off
+        except Exception: iv=120
+        try: bench_iv=max(1,int(cfg.get("bench_interval",6) or 6))     # loop wake cadence (also bench)
+        except Exception: bench_iv=6
+        nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
+        a=_hm_to_min(cfg.get("active_start"),595)   # default 09:55
+        b=_hm_to_min(cfg.get("active_end"),1200)    # default 20:00
+        open_now=a<=mins<b   # only count during the active window → controls cost
+        if cfg.get("enabled") and open_now and (cfg.get("gemini_key") or "").strip() and _rotcam_rtsp():
+            try:
+                jpeg=ROTCAM.get("frame")                                # reuse the persistent puller's in-memory frame (instant)
+                if not (jpeg and (time.time()-ROTCAM.get("frame_ts",0))<8):
+                    if _rotcam_analysis_active():                       # puller owns the single camera connection — don't open a 2nd; wait for its next frame
+                        jpeg=None; time.sleep(0.3)
+                    else:
+                        jpeg,gerr=_rotcam_grab()
+                        if gerr:
+                            ROTCAM["error"]=gerr; jpeg=None
+                            if "429" in gerr or "quota" in gerr.lower(): time.sleep(60); continue
+                if jpeg:
+                    ROTCAM["error"]=""
+                    if cfg.get("bench_enabled",False) and time.time()-ROTCAM.get("last_bench_ts",0)>=bench_iv:   # BENCH auto-count on its OWN slower timer (don't run it every fast shelf pass)
+                        ROTCAM["last_bench_ts"]=time.time()
+                        try:
+                            if _bench_rtsp():                           # dedicated side-angle bench camera (always sees the bench)
+                                # Tapo allows ONE connection. Reuse the live-feed stream frame if it's fresh
+                                # (a viewer is watching); only open our own grab when the feed stream is idle.
+                                bframe=ROTCAM.get("bench_live") if (ROTCAM.get("bench_live") and (time.time()-ROTCAM.get("bench_live_ts",0))<8) else None
+                                watching=(time.time()-ROTCAM.get("bench_want",0))<20
+                                if bframe is None and not watching:
+                                    bframe,berr=_bench_grab()
+                                    if berr: ROTCAM["bench_error"]=berr
+                                if bframe: _rotcam_bench_apply(_benchcam_count(bframe))
+                            else:                                       # fallback: crop the bottom of the front camera frame
+                                _rotcam_bench_apply(_rotcam_bench_count(jpeg))
+                        except Exception: pass
+                    if ROTCAM.pop("force_shelf",False) or time.time()-ROTCAM.get("last_shelf_ts",0)>=iv:   # SHELF count: on the timer, OR immediately when the bench just saw a row land
+                        ROTCAM["last_shelf_ts"]=time.time()
+                        try:                                       # roll a short buffer of recent frames for credit screenshots
+                            from PIL import Image as _Im; import io as _io
+                            _im=_Im.open(_io.BytesIO(jpeg)).convert("RGB")
+                            if _im.width>800: _im=_im.resize((800,int(_im.height*800/_im.width)))
+                            _bo=_io.BytesIO(); _im.save(_bo,"JPEG",quality=70)
+                            _rg=ROTCAM.setdefault("frame_ring",[]); _rg.append((time.time(),_bo.getvalue())); ROTCAM["frame_ring"]=_rg[-16:]
+                        except Exception: pass
+                        rows,cerr=_rotcam_count(jpeg)
+                        evs=[]
+                        if not cerr:
+                            evs=_rotcam_apply(rows) or []
+                            for ev in evs: _rotcam_log_event(ev,jpeg)   # log every detected removal (counted or skipped)
+                        _rotcam_add_trace(jpeg,evs,cerr)   # per-frame debug trace → Settings inspector
+                        if cerr and ("429" in cerr or "quota" in cerr.lower()): time.sleep(60); continue
+            except Exception as e: ROTCAM["error"]=str(e)
+        # after-count capture now runs in its OWN parallel thread per credited row (_rotcam_auto_session) — not here
+        # while actively counting, the Gemini call already paces the loop (~2-3s) — don't add a full extra
+        # second on top; just yield briefly. Only sleep the full cadence when idle (window closed / disabled).
+        time.sleep(0.1 if (open_now and cfg.get("enabled") and (cfg.get("gemini_key") or "").strip()) else max(1,min(iv,bench_iv)))
+
 @app.route("/api/rotcam_config",methods=["POST"])
-def api_rotcam_config():   # slimmed 27 Sep: the camera auto-count module was removed; this now only stores the shared Gemini key + model
+def api_rotcam_config():
     d=request.get_json(silent=True) or {}; cfg=db.get("rotcam_config",{}) or {}
-    for k in ("gemini_key","model"):
+    for k in ("ip","user","pass","rtsp_url","stream","gemini_key","model","prompt","active_start","active_end",
+              "bench_ip","bench_user","bench_pass","bench_rtsp_url","bench_stream"):
         if k in d: cfg[k]=str(d[k]).strip()
+    if "interval" in d:
+        try: cfg["interval"]=max(1,int(d["interval"]))
+        except Exception: pass
+    if "bench_interval" in d:
+        try: cfg["bench_interval"]=max(1,int(d["bench_interval"]))
+        except Exception: pass
+    if "box_offset" in d:
+        try: cfg["box_offset"]=max(-0.3,min(0.3,float(d["box_offset"])))
+        except Exception: pass
+    if isinstance(d.get("boxes"),list) and len(d["boxes"])==6:
+        try: cfg["boxes"]=[[max(0.0,min(1.0,float(p[0]))),max(0.0,min(1.0,float(p[1])))] for p in d["boxes"]]
+        except Exception: pass
+    if isinstance(d.get("box_x"),list) and len(d["box_x"])==2:
+        try: cfg["box_x"]=[max(0.0,min(1.0,float(d["box_x"][0]))),max(0.0,min(1.0,float(d["box_x"][1])))]
+        except Exception: pass
+    if isinstance(d.get("boxes6"),list) and len(d["boxes6"])==6 and all(isinstance(r,(list,tuple)) and len(r)==4 for r in d["boxes6"]):
+        try: cfg["boxes6"]=[[max(0.0,min(1.0,float(r[0]))),max(0.0,min(1.0,float(r[1]))),max(0.0,min(1.0,float(r[2]))),max(0.0,min(1.0,float(r[3])))] for r in d["boxes6"]]
+        except Exception: pass
+    if d.get("boxes6")=="clear": cfg.pop("boxes6",None)   # revert to legacy slider calibration
+    if "box_skew" in d:
+        try: cfg["box_skew"]=max(-0.3,min(0.3,float(d["box_skew"])))
+        except Exception: pass
+    if "bench_zone" in d and isinstance(d["bench_zone"],(list,tuple)) and len(d["bench_zone"])==4:
+        try: cfg["bench_zone"]=[max(0.0,min(1.0,float(x))) for x in d["bench_zone"]]
+        except Exception: pass
+    for bk in ("enabled","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","auto_count"):
+        if bk in d: cfg[bk]=bool(d[bk])
     with data_lock: db["rotcam_config"]=cfg; save_data(db)
-    return jsonify({"ok":True,"has_key":bool((cfg.get("gemini_key") or "").strip())})
+    return jsonify({"ok":True,"enabled":bool(cfg.get("enabled") and cfg.get("gemini_key") and _rotcam_rtsp())})
+
+@app.route("/api/rotcam_calib",methods=["GET","POST"])
+def api_rotcam_calib():
+    # live frame for the calibration editor.
+    #  - ?clean=1  → the bare frame, no boxes drawn (the drag-and-resize editor paints its own HTML boxes on top).
+    #  - otherwise → the frame with the 6 shelf boxes drawn (used by the old slider preview / fallback).
+    # POST body may carry boxes6 (6×[x1,y1,x2,y2]) to preview live edits, else legacy boxes/box_x/box_offset/box_skew.
+    d=request.get_json(silent=True) or {}
+    clean=(request.args.get("clean") in ("1","true","yes")) or bool(d.get("clean"))
+    rects=None
+    if isinstance(d.get("boxes6"),list) and len(d["boxes6"])==6:
+        try: rects=[[float(r[0]),float(r[1]),float(r[2]),float(r[3])] for r in d["boxes6"]]
+        except Exception: rects=None
+    if rects is None and not clean:
+        boxes,bx,off,skew=_rot_cal()
+        if isinstance(d.get("boxes"),list) and len(d["boxes"])==6: boxes=d["boxes"]
+        if isinstance(d.get("box_x"),list) and len(d["box_x"])==2: bx=d["box_x"]
+        try:
+            if "box_offset" in d: off=float(d["box_offset"])
+            if "box_skew" in d: skew=float(d["box_skew"])
+            if request.args.get("off") is not None: off=float(request.args.get("off"))   # backward compat
+        except Exception: pass
+        rects=[]
+        for i in range(6):
+            x1,y1,x2,y2=_rot_box_px(i,1,1,boxes,bx,off,skew)
+            rects.append([min(x1,x2),min(y1,y2),max(x1,x2),max(y1,y2)])
+    jpeg=ROTCAM.get("frame")
+    if not (jpeg and (time.time()-ROTCAM.get("frame_ts",0))<8):
+        jpeg,err=_rotcam_grab()
+        if err or not jpeg: return Response("camera error: "+(err or "no frame"),status=502)
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB"); W,H=im.size
+        if not clean and rects:
+            dr=ImageDraw.Draw(im)
+            for i in range(6):
+                x1,y1,x2,y2=_rot_rect_px(rects[i],W,H)
+                dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                dr.text((x1+5,y1+3),"shelf %d"%(i+1),fill=(0,255,0))
+        out=io.BytesIO(); im.save(out,"JPEG",quality=80)
+        return Response(out.getvalue(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    except Exception as e: return Response("render error: "+str(e),status=500)
+
+@app.route("/api/rotcam_credit_shot")
+def api_rotcam_credit_shot():
+    # serve a saved credit-event screenshot: /api/rotcam_credit_shot?id=<eventid>&n=boxes.jpg
+    eid=re.sub(r"[^0-9]","",request.args.get("id","")); nm=re.sub(r"[^a-zA-Z0-9_.]","",request.args.get("n",""))
+    if not eid or not nm or ".." in nm: return Response("bad request",status=400)
+    p=os.path.join(BASE_DIR,"rotcam_credits",eid,nm)
+    if not os.path.exists(p): return Response("not found",status=404)
+    return send_file(p,mimetype="image/jpeg")
+
+@app.route("/api/rotcam_trace")
+def api_rotcam_trace():
+    cor=db.get("rotcam_corrections",[]) or []
+    sess={}                                              # AUTO-AI: persistent ordered trace frames, grouped into one session per counted row
+    for f in (db.get("rotcam_auto_trace",[]) or []): sess.setdefault(f.get("eid"),[]).append(f)
+    auto_sessions=[]
+    for eid in sorted(sess.keys(),key=lambda x:(x or 0),reverse=True)[:20]:
+        frames=sorted(sess[eid],key=lambda x:x.get("n",0))
+        shelf=next((fr.get("shelves") for fr in frames),None)
+        auto_sessions.append({"eid":eid,"ts":frames[0].get("ts"),"shelf":frames[0].get("decision",""),"frames":frames})
+    return jsonify({"trace":(ROTCAM.get("trace") or [])[-60:],"now":int(time.time()),
+                    "model":(_rotcam_cfg().get("model") or "gemini-2.5-flash"),
+                    "corrections":len(cor),"corrected_ids":[c.get("id") for c in cor],
+                    "auto_sessions":auto_sessions})
+
+@app.route("/api/rotcam_corrections")
+def api_rotcam_corrections():
+    # the saved ground-truth labels (AI-said vs owner-truth) — for review + tuning
+    return jsonify({"corrections":(db.get("rotcam_corrections",[]) or [])[-200:]})
+
+@app.route("/api/rotcam_correct",methods=["POST"])
+def api_rotcam_correct():
+    # Save a human ground-truth label for a frame (the owner correcting what the AI saw). Stores the frame +
+    # the full scene label + what the AI had said, into rotcam_labels/ → training data for the local model + few-shot.
+    import json as _json
+    d=request.get_json(silent=True) or {}
+    try: tid=int(d.get("id",0))
+    except Exception: tid=0
+    if not tid: return jsonify({"ok":False,"error":"no frame id"})
+    try:
+        def _i(v):
+            try: return max(0,int(v))
+            except Exception: return 0
+        shelves=[]
+        for s in (d.get("shelves") or [])[:6]:
+            shelves.append({"occ":("loaded" if (s or {}).get("occ")=="loaded" else "empty"),
+                            "cooked_pct":max(0,min(100,_i((s or {}).get("cooked_pct"))))})
+        tr=next((r for r in (ROTCAM.get("trace") or []) if r.get("id")==tid),None)
+        af=None
+        if tr is None: af=next((f for f in (db.get("rotcam_auto_trace",[]) or []) if f.get("id")==tid),None); tr=af   # correcting a persistent AUTO-trace frame
+        lab={"id":tid,"ts":int(time.time()),"shelves":shelves,
+             "door_open":bool(d.get("door_open")),"person":bool(d.get("person")),"glare":bool(d.get("glare")),
+             "activity":str(d.get("activity") or "")[:50],"rows_off":_i(d.get("rows_off")),"rows_on":_i(d.get("rows_on")),
+             "notes":str(d.get("notes") or "")[:400],
+             "ai_raw":(tr or {}).get("raw",""),"ai_levels":(tr or {}).get("levels",""),"ai_done":(tr or {}).get("done","")}
+        ld=os.path.join(BASE_DIR,"rotcam_labels"); os.makedirs(ld,exist_ok=True)
+        img=(ROTCAM.get("trace_img") or {}).get(tid)
+        if img is None and af:                                 # auto-trace image lives on disk
+            p=os.path.join(BASE_DIR,"rotcam_credits",str(af.get("eid")),af.get("img",""))
+            if os.path.exists(p): img=open(p,"rb").read()
+        if img: open(os.path.join(ld,"%d.jpg"%tid),"wb").write(img)
+        open(os.path.join(ld,"%d.json"%tid),"w",encoding="utf-8").write(_json.dumps(lab,ensure_ascii=False))
+        with data_lock:
+            cl=[c for c in (db.get("rotcam_corrections",[]) or []) if c.get("id")!=tid]; cl.append(lab)
+            db["rotcam_corrections"]=cl[-500:]; save_data(db)
+        return jsonify({"ok":True,"count":len(db.get("rotcam_corrections",[]))})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
+@app.route("/api/rotcam_correct_img",methods=["POST"])
+def api_rotcam_correct_img():
+    # Save a ground-truth label for a frame the OWNER grabbed live (uploaded JPEG, no AI prediction). Same store
+    # as /api/rotcam_correct (rotcam_labels/ + db corrections) so it feeds the same training + prompt feedback loop.
+    import json as _json, base64 as _b
+    d=request.get_json(silent=True) or {}
+    img=(d.get("img") or "")
+    if not img.startswith("data:image"): return jsonify({"ok":False,"error":"no image"})
+    try: raw=_b.b64decode(img.split(",",1)[1])
+    except Exception: return jsonify({"ok":False,"error":"bad image"})
+    if not raw or len(raw)>4*1024*1024: return jsonify({"ok":False,"error":"image empty/too big"})
+    try:
+        def _i(v):
+            try: return max(0,int(v))
+            except Exception: return 0
+        with _gem_lock: tid=int(ROTCAM.get("trace_id",0))+1; ROTCAM["trace_id"]=tid
+        shelves=[]
+        for s in (d.get("shelves") or [])[:6]:
+            shelves.append({"occ":("loaded" if (s or {}).get("occ")=="loaded" else "empty"),"cooked_pct":max(0,min(100,_i((s or {}).get("cooked_pct"))))})
+        lab={"id":tid,"ts":int(time.time()),"shelves":shelves,
+             "door_open":bool(d.get("door_open")),"person":bool(d.get("person")),"glare":bool(d.get("glare")),
+             "activity":str(d.get("activity") or "")[:50],"rows_off":_i(d.get("rows_off")),"rows_on":_i(d.get("rows_on")),
+             "notes":str(d.get("notes") or "")[:400],"ai_raw":"","ai_levels":"","ai_done":"","source":"live-capture"}
+        ld=os.path.join(BASE_DIR,"rotcam_labels"); os.makedirs(ld,exist_ok=True)
+        open(os.path.join(ld,"%d.jpg"%tid),"wb").write(raw)
+        open(os.path.join(ld,"%d.json"%tid),"w",encoding="utf-8").write(_json.dumps(lab,ensure_ascii=False))
+        with data_lock:
+            cl=[c for c in (db.get("rotcam_corrections",[]) or [])]; cl.append(lab); db["rotcam_corrections"]=cl[-500:]; save_data(db)
+        return jsonify({"ok":True,"count":len(db.get("rotcam_corrections",[]))})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)})
+
+@app.route("/api/rotcam_trace_shot")
+def api_rotcam_trace_shot():
+    try: i=int(re.sub(r"[^0-9]","",request.args.get("id","0")) or 0)
+    except Exception: return Response("bad",status=400)
+    img=(ROTCAM.get("trace_img") or {}).get(i)
+    if img: return Response(img,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})   # trace_id resets on restart → must not serve a stale cached frame for a reused id
+    af=next((f for f in (db.get("rotcam_auto_trace",[]) or []) if f.get("id")==i),None)   # auto-trace frames persist on disk → serve those after a restart
+    if af:
+        p=os.path.join(BASE_DIR,"rotcam_credits",str(af.get("eid")),af.get("img",""))
+        if os.path.exists(p): return send_file(p,mimetype="image/jpeg")
+    return Response("not found",status=404)
+
+@app.route("/api/rotcam_test",methods=["POST"])
+def api_rotcam_test():
+    rows,jpeg,err=_rotcam_read()
+    out={"ok":err is None,"rows":rows,"levels":ROTCAM.get("levels","")}
+    if err: out["error"]=err
+    if ROTCAM.get("last_comp"): out["preview"]=ROTCAM["last_comp"]   # show the cropped per-shelf strips
+    elif jpeg:
+        import base64 as _b
+        out["preview"]="data:image/jpeg;base64,"+_b.b64encode(jpeg).decode()
+    if jpeg and not _bench_rtsp():                                    # front-crop bench read (only if no dedicated bench cam)
+        try: out["bench_rows"]=_rotcam_bench_count(jpeg)
+        except Exception: out["bench_rows"]=None
+        if ROTCAM.get("bench_comp"): out["bench_preview"]=ROTCAM["bench_comp"]
+    return jsonify(out)
+
+@app.route("/api/benchcam_test",methods=["POST"])
+def api_benchcam_test():
+    if not _bench_rtsp(): return jsonify({"ok":False,"error":"No bench camera configured (add its RTSP/IP first)."})
+    jpeg=ROTCAM.get("bench_live") if (ROTCAM.get("bench_live") and (time.time()-ROTCAM.get("bench_live_ts",0))<8) else None
+    if jpeg is None:                                   # reuse the live-feed frame if running (Tapo = 1 connection)
+        jpeg,err=_bench_grab()
+        if err: return jsonify({"ok":False,"error":err})
+    rows=_benchcam_count(jpeg)
+    out={"ok":True,"bench_rows":rows}
+    if ROTCAM.get("bench_comp"): out["preview"]=ROTCAM["bench_comp"]
+    else:
+        import base64 as _b; out["preview"]="data:image/jpeg;base64,"+_b.b64encode(_downscale_jpeg(jpeg,720)).decode()
+    return jsonify(out)
+
+# --- live feed: one persistent ffmpeg pulls MJPEG and keeps the latest frame ready, so
+#     requests are served instantly (no ~2s per-grab connect) → near-live, not laggy.
+#     The stream only runs while a viewer is actually watching (last_want kept fresh by polling). ---
+def _rotcam_analysis_active():
+    # true when the counting loop needs frames (camera on + inside the active window). The persistent MJPEG
+    # puller then keeps running EVEN WITH NOBODY watching the live feed, so each shelf-check reuses an in-memory
+    # frame instantly instead of opening a fresh ~8s ffmpeg connection every time.
+    cfg=_rotcam_cfg()
+    if not (cfg.get("enabled") and (cfg.get("gemini_key") or "").strip() and _rotcam_rtsp()): return False
+    nowt=datetime.now().astimezone(); mins=nowt.hour*60+nowt.minute
+    a=_hm_to_min(cfg.get("active_start"),595); b=_hm_to_min(cfg.get("active_end"),1200)
+    return a<=mins<b
+def rotcam_stream_loop():
+    import subprocess
+    while True:
+        if not _rotcam_rtsp() or ((time.time()-ROTCAM.get("last_want",0))>20 and not _rotcam_analysis_active()):
+            time.sleep(1); continue   # nobody watching AND not counting → don't burn the camera/CPU
+        url=_rotcam_rtsp(); p=None
+        try:
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
+                               stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
+            ROTCAM["error"]=""; buf=b""
+            while True:
+                if (time.time()-ROTCAM.get("last_want",0))>20 and not _rotcam_analysis_active(): break   # viewer left AND not counting → stop
+                chunk=p.stdout.read(65536)
+                if not chunk: break
+                buf+=chunk
+                # drain every COMPLETE jpeg (SOI..EOI) in order, keep the latest as the live frame.
+                # (must scan front-to-back: a partial next frame always trails the last full one.)
+                while True:
+                    s=buf.find(b"\xff\xd8")
+                    if s<0: break
+                    e=buf.find(b"\xff\xd9", s+2)
+                    if e<0: break
+                    ROTCAM["frame"]=buf[s:e+2]; ROTCAM["frame_ts"]=time.time(); buf=buf[e+2:]
+                if len(buf)>4*10**6: buf=buf[-10**6:]
+        except FileNotFoundError:
+            ROTCAM["error"]="ffmpeg is not installed on this machine."; time.sleep(5)
+        except Exception as ex:
+            ROTCAM["error"]=str(ex)
+        finally:
+            if p:
+                try: p.kill()
+                except Exception: pass
+        time.sleep(0.5)
+
+def benchcam_stream_loop():
+    # same persistent-MJPEG trick as the rotisserie cam, for the side bench camera → smooth, no per-grab lag
+    import subprocess
+    while True:
+        if (time.time()-ROTCAM.get("bench_want",0))>20 or not _bench_rtsp():
+            time.sleep(1); continue
+        url=_bench_rtsp(); p=None
+        try:
+            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+                                "-an","-r","8","-q:v","6","-f","mjpeg","-"],
+                               stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
+            buf=b""
+            while True:
+                if (time.time()-ROTCAM.get("bench_want",0))>20: break
+                chunk=p.stdout.read(65536)
+                if not chunk: break
+                buf+=chunk
+                got=False
+                while True:
+                    s=buf.find(b"\xff\xd8")
+                    if s<0: break
+                    e=buf.find(b"\xff\xd9", s+2)
+                    if e<0: break
+                    ROTCAM["bench_live"]=buf[s:e+2]; ROTCAM["bench_live_ts"]=time.time(); buf=buf[e+2:]; got=True
+                if len(buf)>4*10**6: buf=buf[-10**6:]
+                # annotate ONCE here (throttled, shared by all viewers) instead of per-frame per-viewer in the
+                # stream generator — re-encoding every frame per connection was pinning the GIL → whole app laggy.
+                nowr=time.time()
+                if got and (nowr-ROTCAM.get("bench_render_ts",0))>=0.22:
+                    ROTCAM["bench_render"]=_bench_render(ROTCAM.get("bench_live")); ROTCAM["bench_render_ts"]=nowr
+        except Exception: time.sleep(5)
+        finally:
+            if p:
+                try: p.kill()
+                except Exception: pass
+        time.sleep(0.5)
+
+@app.route("/api/rotcam_stream")
+def api_rotcam_stream():
+    # smooth MJPEG video (multipart/x-mixed-replace) — the browser <img> plays it like a webcam,
+    # no per-frame reloads, so it looks like live TV instead of a stuttering snapshot.
+    if not _rotcam_rtsp(): return Response("camera not configured",status=404)
+    def gen():
+        last_ts=0; start=time.time()
+        while True:
+            ROTCAM["last_want"]=time.time()           # keep the background puller alive while watched
+            fr=ROTCAM.get("frame"); ts=ROTCAM.get("frame_ts",0)
+            if fr and ts!=last_ts:
+                last_ts=ts
+                yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "+str(len(fr)).encode()+b"\r\n\r\n"+fr+b"\r\n"
+            else:
+                time.sleep(0.04)
+            if not ROTCAM.get("frame") and (time.time()-start)>10: break   # camera never produced a frame → end
+    return Response(gen(),mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control":"no-store","Connection":"close"})
+
+@app.route("/api/rotcam_frame")
+def api_rotcam_frame():
+    if not _rotcam_rtsp(): return Response("camera not configured",status=404)
+    ROTCAM["last_want"]=time.time()   # tell the puller a viewer is here (it refreshes ROTCAM["frame"])
+    # ALWAYS serve the last good frame instantly — even if a few seconds old — so the live view never blanks
+    # or blocks. The puller refreshes it in the background; this cheap cam only manages ~1 frame/several-sec,
+    # so a slightly-stale frame beats an 8s wait + a failing one-shot grab (which fought the puller for the
+    # camera's single RTSP connection and 503'd).
+    fr=ROTCAM.get("frame")
+    if fr: return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    for _ in range(50):               # no frame cached yet → wait briefly for the puller to spin up
+        fr=ROTCAM.get("frame")
+        if fr: return Response(fr,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+        time.sleep(0.1)
+    jpeg,err=_rotcam_grab()           # truly never produced a frame → one last try
+    if err or not jpeg: return Response(err or "no frame",status=503)
+    ROTCAM["frame"]=jpeg; ROTCAM["frame_ts"]=time.time()
+    return Response(jpeg,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+
+def _bench_render(jpeg,maxw=720):
+    # one PIL pass: downscale + draw the zone + the latest detection boxes (for the live feed)
+    try:
+        from PIL import Image, ImageDraw; import io
+        im=Image.open(io.BytesIO(jpeg)).convert("RGB")
+        if im.width>maxw: im=im.resize((maxw,max(1,int(im.height*maxw/im.width))))
+        W,H=im.size; dr=ImageDraw.Draw(im)
+        zx1,zy1,zx2,zy2=_bench_zone()
+        dr.rectangle([int(W*zx1),int(H*zy1),int(W*zx2),int(H*zy2)],outline=(0,190,255),width=2)
+        boxes=ROTCAM.get("bench_boxes") or []
+        if boxes and (time.time()-ROTCAM.get("bench_boxes_ts",0))<30:
+            for i,b in enumerate(boxes,1):
+                try:
+                    ymin,xmin,ymax,xmax=b[0],b[1],b[2],b[3]
+                    x1=int(min(xmin,xmax)/1000.0*W); y1=int(min(ymin,ymax)/1000.0*H)
+                    x2=int(max(xmin,xmax)/1000.0*W); y2=int(max(ymin,ymax)/1000.0*H)
+                    dr.rectangle([x1,y1,x2,y2],outline=(0,255,0),width=3)
+                    dr.text((x1+4,max(0,y1+3)),"chicken %d"%i,fill=(0,255,0))
+                except Exception: pass
+        out=io.BytesIO(); im.save(out,"JPEG",quality=72); return out.getvalue()
+    except Exception:
+        return jpeg
+@app.route("/api/benchcam_stream")
+def api_benchcam_stream():
+    # smooth MJPEG for the bench (like the rotisserie) — zone + boxes drawn on each frame
+    if not _bench_rtsp(): return Response("bench camera not configured",status=404)
+    def gen():
+        last_ts=0; start=time.time()
+        while True:
+            ROTCAM["bench_want"]=time.time()
+            img=ROTCAM.get("bench_render"); ts=ROTCAM.get("bench_render_ts",0)
+            now=time.time()
+            if img and ts!=last_ts:    # serve the pre-rendered frame — NO PIL here (rendering happens once in the puller loop)
+                last_ts=ts
+                yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "+str(len(img)).encode()+b"\r\n\r\n"+img+b"\r\n"
+            else:
+                time.sleep(0.04)
+            if not ROTCAM.get("bench_live") and (now-start)>10: break
+    return Response(gen(),mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control":"no-store","Connection":"close"})
+
+@app.route("/api/benchcam_frame")
+def api_benchcam_frame():
+    if not _bench_rtsp(): return Response("bench camera not configured",status=404)
+    ROTCAM["bench_want"]=time.time()                              # tell the bench streamer a viewer is here
+    for _ in range(50):                                          # wait up to ~5s for the first rendered frame
+        rnd=ROTCAM.get("bench_render")
+        if rnd and (time.time()-ROTCAM.get("bench_render_ts",0))<8:
+            return Response(rnd,mimetype="image/jpeg",headers={"Cache-Control":"no-store"})  # reuse the shared render — no per-request PIL
+        time.sleep(0.1)
+    jpeg,err=_bench_grab()                                        # fallback one-shot grab
+    if err: return Response(err,status=503)
+    return Response(_bench_render(jpeg),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
 
 @app.route("/api/mcp",methods=["POST"])
 def api_mcp():
@@ -7844,7 +9111,10 @@ def get_db():
     safe["camera_cl_public"]={k:cl.get(k) for k in ("ip","port","channel","url_override","enabled","crop")}
     _gc=snap.get("google_config") or {}; safe["google_connected"]=bool(_gc.get("client_id") and _gc.get("client_secret") and _gc.get("refresh_token"))
     rc=snap.get("rotcam_config") or {}
-    safe["rotcam_public"]={"model":rc.get("model")}   # 27 Sep: camera auto-count removed — only the shared Gemini model name is public (never the key)
+    safe["rotcam_public"]={k:rc.get(k) for k in ("ip","stream","model","interval","enabled","active_start","active_end","feed_enabled","spin_enabled","doneness_enabled","bench_enabled","bench_interval","bench_ip","bench_stream","box_offset","auto_count","boxes","box_x","box_skew","boxes6")}  # no pass/key
+    safe["rotcam_public"]["bench_configured"]=bool((rc.get("bench_rtsp_url") or rc.get("bench_ip") or "").strip())
+    safe["rotcam_public"]["bench_user"]=rc.get("bench_user","")   # username is not secret — show it so it can be verified
+    safe["rotcam_public"]["bench_has_pass"]=bool((rc.get("bench_pass") or "").strip() or (rc.get("bench_rtsp_url") or "").strip())
     safe["rotcam_has_key"]=bool((rc.get("gemini_key") or "").strip())
     try: safe["backend_update_pending"]=os.path.exists(PENDING_FILE)
     except Exception: safe["backend_update_pending"]=False
@@ -10460,6 +11730,9 @@ if __name__=="__main__":
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
     threading.Thread(target=dialpad_poll_loop,daemon=True).start()                  # phone-order text-back (only acts when db['dialpad'].enabled)
     threading.Thread(target=backup_loop,daemon=True).start()                       # nightly local backup of kitchen_data.json
+    threading.Thread(target=rotcam_loop,daemon=True).start()
+    threading.Thread(target=rotcam_stream_loop,daemon=True).start()
+    threading.Thread(target=benchcam_stream_loop,daemon=True).start()
     threading.Timer(2.0,lambda:webbrowser.open("http://127.0.0.1:8080")).start()
     # The Bluetooth probe scan can hard-abort the whole process on a machine/launch context
     # that lacks Bluetooth permission (macOS kills it — Python can't catch that). Set
