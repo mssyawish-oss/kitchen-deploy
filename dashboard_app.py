@@ -11324,6 +11324,46 @@ def api_sonos_cmd():
         return jsonify({"ok":False,"error":str(e)})
 # ==================================================================================
 
+# ===== CHICKEN KDS SLIPS — items in the Square "CHICKEN" kitchen category, printed to the Star printer =====
+# Replaces the chicken KDS: membership is read LIVE from the Square "CHICKEN" category, so it always
+# matches the KDS tick-list and updates the moment the owner ticks/unticks an item in Square.
+_chk_cat={"ids":set(),"vids":set(),"names":[],"at":0}
+def _chk_cat_refresh(force=False):
+    if not force and (time.time()-_chk_cat["at"])<900 and _chk_cat["vids"]: return _chk_cat
+    hdr=_sq_headers()
+    if not hdr: return _chk_cat
+    try:
+        catids=set();cursor=None
+        for _ in range(20):
+            url=SQUARE_BASE+"/v2/catalog/list?types=CATEGORY"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r: d=json.loads(r.read().decode())
+            for o in d.get("objects") or []:
+                if ((o.get("category_data") or {}).get("name") or "").strip().upper()=="CHICKEN": catids.add(o.get("id"))
+            cursor=d.get("cursor")
+            if not cursor: break
+        vids=set();names=set();cursor=None
+        for _ in range(40):
+            url=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
+            with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r: d=json.loads(r.read().decode())
+            for o in d.get("objects") or []:
+                idata=o.get("item_data") or {}
+                if not any((c.get("id") in catids) for c in (idata.get("categories") or [])): continue
+                names.add(idata.get("name") or "?")
+                for v in idata.get("variations") or []:
+                    if v.get("id"): vids.add(v["id"])
+            cursor=d.get("cursor")
+            if not cursor: break
+        _chk_cat.update({"ids":catids,"vids":vids,"names":sorted(names),"at":time.time()})
+    except Exception as e:
+        print("chicken cat refresh:",e)
+    return _chk_cat
+
+@app.route("/api/chicken_cat_preview")
+def api_chicken_cat_preview():
+    """Read-only: the items in the Square 'CHICKEN' kitchen category (what the chicken-pack printer will fire on)."""
+    c=_chk_cat_refresh(force=True)
+    return jsonify({"ok":True,"category_ids":sorted(c["ids"]),"count":len(c["names"]),"items":c["names"],"variation_count":len(c["vids"])})
+
 # ===== COMBO BOX SLIPS — one slip per combo, auto-printed to the kitchen thermal printer =====
 # A combo rings as its COMPONENT items: a chicken line followed by its 1-2 "SIDE ..." lines
 # (the SIDE products exist ONLY inside combos, so any SIDE line is part of one). Two identical
