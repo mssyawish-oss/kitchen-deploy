@@ -1661,6 +1661,16 @@ _KDS_PROMPT=("This is a kitchen 'Expo' order-display screen showing order ticket
   "small text is instead a STAFF MEMBER'S NAME (a person's name, e.g. 'James Dryden'), the order was rung up "
   "in-store at the register, so output 'Point of Sale' for it.\n"
   "If there are NO open tickets, output the single word NONE.")
+# KDS screen words that are UI/status labels, never a real ticket name — the reader sometimes catches a
+# transient one (e.g. "Completing" mid-bump) and it would otherwise land on the customer board as a fake
+# order. Compared after stripping to lowercase letters/digits.
+_KDS_JUNK={"completing","completed","complete","recall","recallticket","allday","alldayview","done",
+           "open","closed","void","voided","paid","refund","refunded","cancel","cancelled","canceled",
+           "bump","bumped","new","newticket","ready","preparing","inprogress","pass","expo","kds",
+           "total","items","item","ticket","tickets","order","orders","view","tab","all","none"}
+def _kds_ticket_junk(nm):
+    n=re.sub(r'[^a-z0-9]','',(nm or '').lower())
+    return (not n) or n in _KDS_JUNK
 def _kds_read_tickets(jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key or not jpeg: return None,"no key/frame"
@@ -1686,7 +1696,7 @@ def _kds_read_tickets(jpeg):
             if not line or "|" not in line: continue
             nm,_,sc=line.partition("|")
             nm=nm.strip(); sc=sc.strip()
-            if nm: out.append({"name":nm,"source":sc})
+            if nm and not _kds_ticket_junk(nm): out.append({"name":nm,"source":sc})   # drop UI/status words like "Completing"
         return out,txt
     except Exception as e:
         return None,("error: "+str(e)[:120])
