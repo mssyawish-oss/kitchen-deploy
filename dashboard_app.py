@@ -5144,7 +5144,7 @@ def _rtsp_frame(url):
     # grab one JPEG from an RTSP camera (TP-Link VIGI / Tapo / ONVIF) via ffmpeg
     import subprocess
     try:
-        p=subprocess.run(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+        p=subprocess.run([_ffmpeg_bin(),"-nostdin","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
                          capture_output=True,timeout=15)
         if p.returncode==0 and p.stdout[:2]==b"\xff\xd8": return p.stdout,None
         err=(p.stderr or b"")[-160:].decode("latin1","ignore").strip()
@@ -5266,7 +5266,7 @@ def api_cam_stream(cid):
     def gen():
         p=None
         try:
-            p=subprocess.Popen(["ffmpeg","-nostdin","-rtsp_transport","tcp","-i",url,
+            p=subprocess.Popen([_ffmpeg_bin(),"-nostdin","-rtsp_transport","tcp","-i",url,
                                 "-an","-r","8","-q:v","6","-f","mjpeg","-"],
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=10**7)
             buf=b""; start=time.time(); got=False
@@ -5613,7 +5613,7 @@ def _rotcam_grab():
     url=_rotcam_rtsp()
     if not url: return None,"No rotisserie camera configured"
     try:
-        p=subprocess.run(["ffmpeg","-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
+        p=subprocess.run([_ffmpeg_bin(),"-rtsp_transport","tcp","-i",url,"-an","-frames:v","1","-q:v","4","-f","image2","-"],
                          capture_output=True,timeout=25)
         if p.returncode!=0 or not p.stdout:
             return None,"Couldn't read the camera stream (check the RTSP/camera-account login, or ffmpeg)."
