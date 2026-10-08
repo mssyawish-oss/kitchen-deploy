@@ -1605,6 +1605,16 @@ def _ffmpeg_bin():
         cands.append(os.path.join(la,"Microsoft","WinGet","Links","ffmpeg.exe"))
         try: cands+=glob.glob(os.path.join(la,"Microsoft","WinGet","Packages","Gyan.FFmpeg*","ffmpeg-*","bin","ffmpeg.exe"))
         except Exception: pass
+    # The boot task can run us with no one signed in (SYSTEM), so LOCALAPPDATA isn't the user's and a per-user winget
+    # install is invisible. Look in every profile too.
+    try:
+        cands+=glob.glob(r"C:\Users\*\AppData\Local\ffmpeg\ffmpeg.exe")+glob.glob(r"C:\Users\*\AppData\Local\ffmpeg\bin\ffmpeg.exe")
+        for root in glob.glob(r"C:\Users\*\AppData\Local\Microsoft\WinGet"):
+            cands.append(os.path.join(root,"Links","ffmpeg.exe"))
+            cands+=glob.glob(os.path.join(root,"Packages","Gyan.FFmpeg*","ffmpeg-*","bin","ffmpeg.exe"))
+            cands+=glob.glob(os.path.join(root,"Packages","BtbN.FFmpeg*","ffmpeg-*","bin","ffmpeg.exe"))
+        cands+=glob.glob(r"C:\Users\*\Downloads\ffmpeg*\bin\ffmpeg.exe")+glob.glob(r"C:\ffmpeg*\bin\ffmpeg.exe")
+    except Exception: pass
     for c in cands:
         try:
             if c and os.path.exists(c): _FFMPEG_BIN=c; return c
