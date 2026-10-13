@@ -6308,6 +6308,12 @@ def _foodw_menu(which):
     if which=="salad": return [tuple(x) for x in (c.get("salads") or _FOODW_SALADS)]
     key="tuesday" if datetime.now().weekday()==1 else "normal"
     return [tuple(x) for x in ((c.get("hot") or {}).get(key) or _FOODW_HOT[key])]
+_FOODW_HALVES=("\n\nSALAD BOWLS ARE EATEN FROM THE BACK, so a perfect-looking front strip says nothing about the back. For each "
+    "salad judge the BACK half of the bowl (the half nearer the top of the photo) and the FRONT half separately: \"back\" and "
+    "\"front\" = how much of that half is still covered with the salad itself (not lettuce garnish), 0-100 relative to "
+    "IMAGE 1 / a freshly filled bowl. A half showing bare white bowl or only lettuce leaves = 0-20. Also give "
+    "\"pct\" = (back+front)/2. Example: back bare, front nicely filled -> back 5, front 80, pct 42. "
+    "Add \"back\" and \"front\" to each dish object.")
 def _foodw_prompt(which):
     menu=_foodw_menu(which)
     lines="\n".join("- %s: %s"%(n,d) for n,d in menu)
@@ -6329,7 +6335,7 @@ def _foodw_prompt(which):
             "\"missing\" = dish not on display at all; \"unclear\" = more than about a third of it is hidden (containers or "
             "packaging on the glass, people, glare) — do NOT guess a pct for unclear/covered/missing (use null). Reply ONLY with "
             "JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\",\"state\":\"ok|covered|missing|unclear\","
-            "\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}")
+            "\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}"+(_FOODW_HALVES if which=="salad" else ""))
 def _foodw_grab(which):
     c=_foodw_cfg(); cam=_cam_by_id(c.get("salad_cam" if which=="salad" else "hot_cam"))
     if not cam: return None,"camera not found"
@@ -6376,10 +6382,14 @@ def _foodw_ask(which,jpeg):
             if n not in names: continue
             if stt in ("covered","missing","unclear"): lv=stt; pct=None
             else:
-                try: pct=max(0,min(100,int(round(float(pct)))))
+                try:
+                    if which=="salad" and d.get("back") is not None and d.get("front") is not None:
+                        pct=(float(d["back"])+float(d["front"]))/2.0   # do the averaging ourselves; the model fudges it
+                    pct=max(0,min(100,int(round(float(pct)))))
                 except Exception: continue
                 lv="empty" if pct<=emp else ("low" if pct<=low else "full")
             out[n]={"level":lv,"pct":pct,"note":str(d.get("note",""))[:80]}
+            if d.get("back") is not None: out[n]["back"]=d.get("back"); out[n]["front"]=d.get("front")
         return (out or None),("" if out else "no usable reply: "+txt[:120])
     except Exception as e:
         return None,"error: "+str(e)[:120]
@@ -6496,10 +6506,24 @@ def api_foodwatch_test():
     """Run one read of one or both displays right now (ignores hours/enabled) and return what it saw + the photo."""
     d=request.get_json(silent=True) or {}; out={}
     for which in ([d["display"]] if d.get("display") in ("salad","hot") else ["salad","hot"]):
-        jpeg,err=_foodw_grab(which)
-        if not jpeg: out[which]={"ok":False,"error":err}; continue
+        frame=""; jpeg=None; err=""
+        if d.get("file") and re.match(r"^fwt_(salad|hot)_\d{8}_\d{6}\.jpg$",str(d["file"])):
+            try:
+                with open(os.path.join(FOODW_DIR,d["file"]),"rb") as f: jpeg=f.read(); frame=d["file"]
+            except Exception as e: err=str(e)
+        elif d.get("img"):
+            try: jpeg=base64.b64decode(str(d["img"]).split(",",1)[-1])
+            except Exception: jpeg=None
+        else:
+            jpeg,err=_foodw_grab(which)
+            if jpeg:   # keep the full frame so this exact moment can be re-judged after a prompt change
+                frame="fwt_%s_%s.jpg"%(which,datetime.now().strftime("%Y%m%d_%H%M%S"))
+                try:
+                    with open(os.path.join(FOODW_DIR,frame),"wb") as f: f.write(jpeg)
+                except Exception: frame=""
+        if not jpeg: out[which]={"ok":False,"error":err or "no frame"}; continue
         reads,err=_foodw_ask(which,jpeg)
-        out[which]={"ok":bool(reads),"error":err,"reads":reads or {},
+        out[which]={"ok":bool(reads),"error":err,"reads":reads or {},"file":frame,
                     "img":"data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,1280)).decode()}
     return jsonify({"ok":True,"tuesday":datetime.now().weekday()==1,"results":out})
 @app.route("/api/foodwatch_ref",methods=["GET","POST","DELETE"])
