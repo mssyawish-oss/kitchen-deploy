@@ -6441,6 +6441,48 @@ def _foodw_check(which,force=False):
                 if old.get("img"): os.remove(os.path.join(FOODW_DIR,old["img"]))
             except Exception: pass
     return st
+FOODW_DS_DIR=os.path.join(BASE_DIR,"foodwatch_dataset")   # training photos: <day>/<display>_<HHMMSS>.jpg
+FOODW_REC={"day":"","saved_today":0,"last_at":0.0,"last_err":""}
+def _foodw_rec_open(c):
+    try:
+        now=datetime.now().strftime("%H:%M")
+        return str(c.get("rec_start","06:00"))<=now<str(c.get("rec_end","21:30"))
+    except Exception: return True
+def _foodw_rec_prune(c):
+    keep=max(1,int(c.get("rec_keep_days",7) or 7))
+    try:
+        days=sorted(d for d in os.listdir(FOODW_DS_DIR) if re.match(r"^\d{4}-\d{2}-\d{2}$",d))
+        import shutil
+        for d in days[:-keep]: shutil.rmtree(os.path.join(FOODW_DS_DIR,d),ignore_errors=True)
+    except Exception: pass
+def _foodw_record_once(c):
+    """Save one full frame of each display for training — no AI, no log entry. Big enough to judge trays
+    later (2048 px wide), small enough for days of history (~0.7 MB per display per minute, ~1.4 GB a day)."""
+    day=datetime.now().strftime("%Y-%m-%d"); hms=datetime.now().strftime("%H%M%S")
+    d=os.path.join(FOODW_DS_DIR,day); os.makedirs(d,exist_ok=True)
+    if FOODW_REC["day"]!=day: FOODW_REC["day"]=day; FOODW_REC["saved_today"]=0; _foodw_rec_prune(c)
+    errs=[]
+    for which in ("salad","hot"):
+        jpeg,err=_foodw_grab(which)
+        if not jpeg: errs.append("%s: %s"%(which,err)); continue
+        try:
+            from PIL import Image; import io
+            im=Image.open(io.BytesIO(jpeg)); im.load()
+            if im.mode!="RGB": im=im.convert("RGB")
+            if im.width>2048: im=im.resize((2048,int(im.height*2048/im.width)))
+            im.save(os.path.join(d,"%s_%s.jpg"%(which,hms)),"JPEG",quality=85)
+            FOODW_REC["saved_today"]+=1
+        except Exception as e: errs.append("%s: %s"%(which,str(e)[:80]))
+    FOODW_REC["last_at"]=time.time(); FOODW_REC["last_err"]="; ".join(errs)
+def foodwatch_rec_loop():
+    time.sleep(20)
+    while True:
+        c=_foodw_cfg(); iv=max(30,int(c.get("rec_interval",60) or 60)); t0=time.time()
+        try:
+            if c.get("record") and _foodw_rec_open(c): _foodw_record_once(c)
+        except Exception as e:
+            FOODW_REC["last_err"]=str(e)[:160]; print("foodwatch_rec_loop:",str(e)[:120])
+        time.sleep(max(5,iv-(time.time()-t0)))
 def foodwatch_loop():
     time.sleep(30)
     while True:
@@ -6468,6 +6510,9 @@ def _foodw_status():
     return {"ok":True,"enabled":bool(c.get("enabled")),"open":_foodw_open_now(c),"interval":c.get("interval"),
             "start":c.get("start"),"end":c.get("end"),"tuesday":datetime.now().weekday()==1,
             "has_ref":{w:os.path.exists(_foodw_ref_path(w)) for w in ("salad","hot")},
+            "record":{"on":bool(c.get("record")),"open":_foodw_rec_open(c),"start":c.get("rec_start","06:00"),
+                      "end":c.get("rec_end","21:30"),"saved_today":FOODW_REC["saved_today"],"last_at":FOODW_REC["last_at"],
+                      "last_err":FOODW_REC["last_err"]},
             "checks_today":FOODW.get("checks_today",0),"last_at":FOODW.get("last_at",0),"last_err":FOODW.get("last_err",""),
             "displays":disp}
 
@@ -6489,6 +6534,13 @@ def api_foodwatch_config():
         for k in ("low_pct","empty_pct"):
             if k in d:
                 try: cur[k]=max(0,min(100,int(d[k])))
+                except Exception: pass
+        if "record" in d: cur["record"]=bool(d["record"])
+        for k in ("rec_start","rec_end"):
+            if re.match(r"^\d{2}:\d{2}$",str(d.get(k,""))): cur[k]=d[k]
+        for k,lo,hi in (("rec_interval",30,900),("rec_keep_days",1,60)):
+            if k in d:
+                try: cur[k]=max(lo,min(hi,int(d[k])))
                 except Exception: pass
         if "think" in d:
             try: cur["think"]=max(0,min(8192,int(d["think"])))
@@ -6550,6 +6602,27 @@ def api_foodwatch_ref():
         if jpeg[:2]!=b"\xff\xd8": return jsonify({"ok":False,"error":"img must be a JPEG"})
     with open(p,"wb") as f: f.write(jpeg)
     return jsonify({"ok":True,"display":which,"bytes":len(jpeg)})
+@app.route("/api/foodwatch_dataset")
+def api_foodwatch_dataset():
+    """Training photos: no args -> days with counts; ?day=YYYY-MM-DD -> file names; ?day=&file= -> the photo."""
+    day=request.args.get("day",""); fn=request.args.get("file","")
+    if not day:
+        out=[]
+        try:
+            for d in sorted(os.listdir(FOODW_DS_DIR)):
+                if re.match(r"^\d{4}-\d{2}-\d{2}$",d): out.append({"day":d,"count":len(os.listdir(os.path.join(FOODW_DS_DIR,d)))})
+        except Exception: pass
+        return jsonify({"ok":True,"days":out})
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$",day): return jsonify({"ok":False,"error":"bad day"})
+    p=os.path.join(FOODW_DS_DIR,day)
+    if not fn:
+        try: files=sorted(os.listdir(p))
+        except Exception: files=[]
+        return jsonify({"ok":True,"day":day,"files":files})
+    if not re.match(r"^(salad|hot)_\d{6}\.jpg$",fn): return Response("bad name",status=400)
+    try:
+        with open(os.path.join(p,fn),"rb") as f: return Response(f.read(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    except Exception: return Response("not found",status=404)
 @app.route("/api/foodwatch_log")
 def api_foodwatch_log():
     try: since=int(request.args.get("since") or 0)
@@ -12059,6 +12132,7 @@ if __name__=="__main__":
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
     threading.Thread(target=foodwatch_loop,daemon=True).start()                     # salad+hot bar whole-display AI read, SHADOW (logs only; db['foodwatch'].enabled)
+    threading.Thread(target=foodwatch_rec_loop,daemon=True).start()                 # training photos of both displays every minute (db['foodwatch'].record)
     threading.Thread(target=tables_loop,daemon=True).start()
     threading.Thread(target=_packev_prune,daemon=True).start()   # drop pack-evidence frames older than keep_days
     threading.Thread(target=packrec_loop,daemon=True).start()    # continuous bench recording
