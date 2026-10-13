@@ -5205,7 +5205,9 @@ def _snap_from(cam,timeout=8):
     # more HTTP variants — each of those can burn 20s+ on a slow camera and tie up the request.
     if ip and user:
         au=urllib.parse.quote(user,safe="")+":"+urllib.parse.quote(pw or "",safe="")+"@"
-        for sub in (1,0):   # sub-stream first: far quicker, and ample for the AI to judge a tray
+        # sub-stream first: far quicker, and ample for the AI to judge a tray — unless the camera is set to
+        # substream=0 (HD main stream first, e.g. the 6MP hot-bar cam, ~3s per 3072x2048 frame)
+        for sub in ((0,1) if str(cam.get("substream",1))=="0" else (1,0)):
             jpeg,rerr=_rtsp_frame("rtsp://%s%s:554/cam/realmonitor?channel=%s&subtype=%d"%(au,ip,ch,sub))
             if jpeg: return jpeg,None
             last=rerr or last
@@ -5237,7 +5239,8 @@ def api_cameras():
                  "user":str(d.get("user","")).strip(),"enabled":bool(d.get("enabled",True)),
                  "pass":(pw if pw not in (None,"") else (existing or {}).get("pass","")),
                  "rtsp_url":(rtsp.strip() if isinstance(rtsp,str) and rtsp.strip() else (existing or {}).get("rtsp_url","")),
-                 "url_override":(ovr.strip() if isinstance(ovr,str) and ovr.strip() else (existing or {}).get("url_override",""))}
+                 "url_override":(ovr.strip() if isinstance(ovr,str) and ovr.strip() else (existing or {}).get("url_override","")),
+                 "substream":(0 if str(d.get("substream",(existing or {}).get("substream",1)))=="0" else 1)}
             if existing: cams=[cam if c.get("id")==cid else c for c in cams]
             else: cams.append(cam)
         db["cameras"]=cams; save_data(db)
