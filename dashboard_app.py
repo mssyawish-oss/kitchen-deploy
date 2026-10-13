@@ -5188,18 +5188,21 @@ def _snap_from(cam,timeout=8):
     b="%s://%s:%s/cgi-bin/"%(scheme,ip,port)
     primary=over or _SNAP_OK.get(cid) or (b+"snapshot.cgi?channel=%s"%ch)
     last=None
-    try:
-        d,e=_http(primary,timeout)
-        if d:
-            # Only remember a URL that names THIS channel. Never cache the no-channel/channel=0 default —
-            # on a multi-channel NVR it returns channel 1's camera for every id, which silently pins the
-            # wrong camera (the "cam 1 and cam 5 show the same feed" bug after an NVR reset).
-            if over or ("channel=%s"%ch) in primary: _SNAP_OK[cid]=primary
-            else: _SNAP_OK.pop(cid,None)
-            return d,None
-        last=e
-    except Exception as e: last=str(e)
-    if over: return None,last            # an explicit override is a deliberate choice — don't second-guess it
+    # rtsp_first: stream-only cameras whose snapshot.cgi is broken (the 6MP hot-bar cam burns ~8s on it every
+    # grab) skip straight to RTSP below; the HTTP variants stay as a last resort if RTSP fails.
+    if not (cam.get("rtsp_first") and ip and user and not over):
+        try:
+            d,e=_http(primary,timeout)
+            if d:
+                # Only remember a URL that names THIS channel. Never cache the no-channel/channel=0 default —
+                # on a multi-channel NVR it returns channel 1's camera for every id, which silently pins the
+                # wrong camera (the "cam 1 and cam 5 show the same feed" bug after an NVR reset).
+                if over or ("channel=%s"%ch) in primary: _SNAP_OK[cid]=primary
+                else: _SNAP_OK.pop(cid,None)
+                return d,None
+            last=e
+        except Exception as e: last=str(e)
+        if over: return None,last            # an explicit override is a deliberate choice — don't second-guess it
     # This camera's still endpoint failed. RTSP is the reliable route on models whose snapshot.cgi
     # answers 500/400 (the 6MP display camera does exactly that), so try it BEFORE grinding through
     # more HTTP variants — each of those can burn 20s+ on a slow camera and tie up the request.
@@ -5240,7 +5243,8 @@ def api_cameras():
                  "pass":(pw if pw not in (None,"") else (existing or {}).get("pass","")),
                  "rtsp_url":(rtsp.strip() if isinstance(rtsp,str) and rtsp.strip() else (existing or {}).get("rtsp_url","")),
                  "url_override":(ovr.strip() if isinstance(ovr,str) and ovr.strip() else (existing or {}).get("url_override","")),
-                 "substream":(0 if str(d.get("substream",(existing or {}).get("substream",1)))=="0" else 1)}
+                 "substream":(0 if str(d.get("substream",(existing or {}).get("substream",1)))=="0" else 1),
+                 "rtsp_first":bool(d.get("rtsp_first",(existing or {}).get("rtsp_first",False)))}
             if existing: cams=[cam if c.get("id")==cid else c for c in cams]
             else: cams.append(cam)
         db["cameras"]=cams; save_data(db)
