@@ -6253,6 +6253,229 @@ def _display_low_trays():
     hits.sort(key=lambda h:order.get(h["level"],9))
     return hits
 
+# ===== FOOD WATCH (salad bar + hot bar, whole-display AI read) =====
+# Shadow mode by design: it reads both displays on a timer and LOGS what it sees — nothing is shown on the
+# dash and nothing alarms. Marcel reviews the log in his Claude chat until he trusts it (13 Oct 2026).
+# Unlike display_watch (fixed per-tray crops) this sends the WHOLE display and asks the AI to find each dish
+# by its look, because staff re-space trays, pull a salad, or park the container stack on top of one.
+FOODW_DIR=os.path.join(BASE_DIR,"foodwatch_log")
+try: os.makedirs(FOODW_DIR,exist_ok=True)
+except Exception: pass
+FOODW={"last_at":0.0,"last_err":"","checks_today":0,"day":"","displays":{}}   # display key -> {at,err,dishes:{name:{level,pend,since,note}}}
+_FOODW_KEEP=1500        # log entries kept (~2 days at 1/min with changes only + 15-min snapshots)
+_FOODW_PHOTO_EVERY=900  # also keep a photo at least this often per display (s), even with no change
+_FOODW_SALADS=[
+    ("Ancient Grains Salad","red pomegranate seeds over a grain mix (farro/quinoa), parsley, almonds"),
+    ("Pumpkin & Beetroot","orange roast pumpkin cubes beside white feta and pearl couscous, some beetroot"),
+    ("Chinese Chicken Salad","green edamame and/or a strip of golden crispy noodles over shredded cabbage and carrot"),
+    ("Slaw","purple (red) cabbage strip over pale shredded white cabbage"),
+    ("Broccoli & Greens","dark green broccoli florets, kale, sugar snap peas, dark currants"),
+    ("Greek Salad","yellow capsicum strips, white feta cubes, red onion, cucumber, olives"),
+    ("Chicken Avocado","rows of sliced pale-green avocado over pulled chicken"),
+]
+_FOODW_HOT={
+    "normal":[("BBQ chicken","whole/half roast chickens on the perforated rack, far left (slot 1)"),
+              ("Butterflied chicken","flattened butterflied chicken pieces in sauce (slot 2)"),
+              ("Gravy","small pan in the BACK of slot 3 (3A), often lidded — say 'covered' if lidded"),
+              ("Fried chicken","golden crumbed fried chicken pieces, FRONT of slot 3 (3B)"),
+              ("Roast potatoes & pumpkin","roast potato chunks and orange pumpkin filling all of slot 4"),
+              ("Scallop potatoes","creamy pale-yellow layered potato bake (slot 5)"),
+              ("Mac & cheese","orange-yellow baked macaroni and cheese (slot 6)")],
+    "tuesday":[("BBQ chicken","whole/half roast chickens on the perforated rack, far left (slot 1)"),
+               ("Butterflied chicken","flattened butterflied chicken pieces in sauce (slot 2)"),
+               ("$1 wings","chicken wings in the BACK container of slot 3 (3A)"),
+               ("Fried chicken","golden crumbed fried chicken pieces in the FRONT container of slot 3 (3B)"),
+               ("Gravy","lidded pan in the BACK of slot 4 (4A) — say 'covered' if lidded"),
+               ("Roast potatoes & pumpkin","roast potato chunks and orange pumpkin, FRONT of slot 4 (4B)"),
+               ("Scallop potatoes","creamy pale-yellow layered potato bake (slot 5)"),
+               ("Mac & cheese","orange-yellow baked macaroni and cheese (slot 6)")],
+}
+def _foodw_cfg():
+    c=dict(db.get("foodwatch") or {})
+    c.setdefault("enabled",False); c.setdefault("interval",60)
+    c.setdefault("start","10:00"); c.setdefault("end","20:30")
+    c.setdefault("salad_cam","4c571296"); c.setdefault("hot_cam","d9d97792")
+    return c
+def _foodw_open_now(c):
+    try:
+        now=datetime.now().strftime("%H:%M")
+        return str(c.get("start","10:00"))<=now<str(c.get("end","20:30"))
+    except Exception: return True
+def _foodw_menu(which):
+    c=_foodw_cfg()
+    if which=="salad": return [tuple(x) for x in (c.get("salads") or _FOODW_SALADS)]
+    key="tuesday" if datetime.now().weekday()==1 else "normal"
+    return [tuple(x) for x in ((c.get("hot") or {}).get(key) or _FOODW_HOT[key])]
+def _foodw_prompt(which):
+    menu=_foodw_menu(which)
+    lines="\n".join("- %s: %s"%(n,d) for n,d in menu)
+    if which=="salad":
+        where=("This is an overhead camera photo of a takeaway shop's chilled SALAD display. Each salad sits in a white bowl "
+               "lined with cos lettuce leaves. The cos lettuce border is GARNISH, NOT salad — ignore it completely: judge only the "
+               "coloured salad strip down the middle of each bowl. Staff serve from the BACK of each bowl (the side away from the "
+               "camera's bottom edge), so bare white bowl appears at the back first. Trays may be re-spaced or moved, a salad may be "
+               "missing, and a stack of plastic takeaway containers may sit on the glass over part of a tray.")
+    else:
+        where=("This is an angled overhead camera photo of a takeaway shop's HOT food display (bain-marie). The far-right strip "
+               "is just a reflection/partition before the cold display — ignore it. A stack of white chip boxes may sit on the "
+               "glass over the left pans.")
+    return (where+"\n\nThe dishes that should be on display today:\n"+lines+
+            "\n\nFor EACH dish give its level: \"full\" = more than about half left; \"low\" = about half gone or more "
+            "(roughly half or less left, bare bowl/pan clearly showing); \"empty\" = only scraps or nothing left; "
+            "\"covered\" = lid on, can't see; \"missing\" = dish/tray not on display at all; \"unclear\" = can't judge "
+            "(blocked by containers, people, glare). Reply ONLY with JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\","
+            "\"level\":\"full|low|empty|covered|missing|unclear\",\"note\":\"<max 8 words>\"}]}")
+def _foodw_grab(which):
+    c=_foodw_cfg(); cam=_cam_by_id(c.get("salad_cam" if which=="salad" else "hot_cam"))
+    if not cam: return None,"camera not found"
+    if which=="hot":
+        # the hot-bar pans need the main stream to tell dishes apart; fall back to the normal grab
+        url=_cam_rtsp_url(cam)
+        if url:
+            jpeg,err=_rtsp_frame(re.sub(r"subtype=\d+","subtype=0",url))
+            if jpeg: return jpeg,None
+    return _snap_from(cam,timeout=25)
+def _foodw_ask(which,jpeg):
+    cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
+    if not key: return None,"no Gemini key"
+    img=_downscale_jpeg(jpeg,1600)
+    _gem_count_call()
+    model=(_foodw_cfg().get("model") or cfg.get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":800,"responseMimeType":"application/json"}
+    if "2.5" in model: gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_foodw_prompt(which)},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],"generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=40,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict)).strip()
+        txt=re.sub(r"^```(?:json)?|```$","",txt).strip()
+        names={n for n,_ in _foodw_menu(which)}; out={}
+        for d in (json.loads(txt).get("dishes") or []):
+            n=str(d.get("name","")).strip(); lv=str(d.get("level","")).strip().lower()
+            if n in names and lv in ("full","low","empty","covered","missing","unclear"):
+                out[n]={"level":lv,"note":str(d.get("note",""))[:80]}
+        return (out or None),("" if out else "no usable reply: "+txt[:120])
+    except Exception as e:
+        return None,"error: "+str(e)[:120]
+def _foodw_save_photo(which,jpeg):
+    fn="fw_%s_%s.jpg"%(which,datetime.now().strftime("%Y%m%d_%H%M%S"))
+    try:
+        with open(os.path.join(FOODW_DIR,fn),"wb") as f: f.write(_downscale_jpeg(jpeg,1280))
+        return fn
+    except Exception: return ""
+def _foodw_check(which,force=False):
+    """One read of one display. A dish's level only changes after two reads in a row agree (hands, glare,
+    a customer leaning over). Returns the display's state dict."""
+    st=FOODW["displays"].setdefault(which,{"at":0.0,"err":"","dishes":{},"photo_at":0.0})
+    jpeg,err=_foodw_grab(which)
+    if not jpeg:
+        st["err"]=err or "no frame"; st["at"]=time.time(); return st
+    reads,err=_foodw_ask(which,jpeg)
+    st["at"]=time.time(); st["err"]=err or ""
+    if not reads: return st
+    changes=[]
+    for name,_ in _foodw_menu(which):
+        r=reads.get(name);
+        if not r: continue
+        d=st["dishes"].setdefault(name,{"level":None,"pend":None,"since":0.0,"note":""})
+        d["note"]=r["note"]; d["seen"]=r["level"]
+        if r["level"]==d["level"]: d["pend"]=None; continue
+        if force or d["level"] is None or d["pend"]==r["level"]:
+            changes.append({"dish":name,"from":d["level"],"to":r["level"],"note":r["note"]})
+            d["level"]=r["level"]; d["pend"]=None; d["since"]=time.time()
+        else:
+            d["pend"]=r["level"]
+    photo=""
+    if changes or (time.time()-st.get("photo_at",0))>_FOODW_PHOTO_EVERY:
+        photo=_foodw_save_photo(which,jpeg); st["photo_at"]=time.time()
+    if changes or photo:
+        ent={"ts":int(time.time()*1000),"at":datetime.now().strftime("%a %d %b %H:%M:%S"),"display":which,
+             "changes":changes,"levels":{n:v.get("level") for n,v in st["dishes"].items()},"img":photo}
+        with data_lock:
+            log=list(db.get("foodwatch_log") or []); log.append(ent)
+            drop=log[:-_FOODW_KEEP]; db["foodwatch_log"]=log[-_FOODW_KEEP:]; save_data(db)
+        for old in drop:
+            try:
+                if old.get("img"): os.remove(os.path.join(FOODW_DIR,old["img"]))
+            except Exception: pass
+    return st
+def foodwatch_loop():
+    time.sleep(30)
+    while True:
+        c=_foodw_cfg(); iv=max(30,int(c.get("interval",60) or 60)); t0=time.time()
+        try:
+            if c.get("enabled") and _foodw_open_now(c) and (_rotcam_cfg().get("gemini_key") or "").strip():
+                for which in ("salad","hot"):
+                    _foodw_check(which)
+                day=datetime.now().date().isoformat()
+                if FOODW["day"]!=day: FOODW["day"]=day; FOODW["checks_today"]=0
+                FOODW["checks_today"]+=1; FOODW["last_at"]=time.time(); FOODW["last_err"]=""
+        except Exception as e:
+            FOODW["last_err"]=str(e)[:160]; print("foodwatch_loop:",str(e)[:120])
+        time.sleep(max(5,iv-(time.time()-t0)))
+def _foodw_status():
+    c=_foodw_cfg(); disp={}
+    for which in ("salad","hot"):
+        st=FOODW["displays"].get(which) or {}
+        disp[which]={"at":st.get("at",0),"err":st.get("err",""),
+                     "dishes":[{"name":n,"level":(st.get("dishes",{}).get(n) or {}).get("level"),
+                                "seen":(st.get("dishes",{}).get(n) or {}).get("seen"),
+                                "since":(st.get("dishes",{}).get(n) or {}).get("since",0),
+                                "note":(st.get("dishes",{}).get(n) or {}).get("note","")} for n,_ in _foodw_menu(which)]}
+    return {"ok":True,"enabled":bool(c.get("enabled")),"open":_foodw_open_now(c),"interval":c.get("interval"),
+            "start":c.get("start"),"end":c.get("end"),"tuesday":datetime.now().weekday()==1,
+            "checks_today":FOODW.get("checks_today",0),"last_at":FOODW.get("last_at",0),"last_err":FOODW.get("last_err",""),
+            "displays":disp}
+
+@app.route("/api/foodwatch_status")
+def api_foodwatch_status():
+    return jsonify(_foodw_status())
+@app.route("/api/foodwatch_config",methods=["GET","POST"])
+def api_foodwatch_config():
+    if request.method=="GET": return jsonify({"ok":True,"config":_foodw_cfg()})
+    d=request.get_json(silent=True) or {}
+    with data_lock:
+        cur=dict(db.get("foodwatch") or {})
+        if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+        if "interval" in d:
+            try: cur["interval"]=max(30,min(900,int(d["interval"])))
+            except Exception: pass
+        for k in ("start","end"):
+            if re.match(r"^\d{2}:\d{2}$",str(d.get(k,""))): cur[k]=d[k]
+        for k in ("salad_cam","hot_cam","model"):
+            if isinstance(d.get(k),str) and d[k].strip(): cur[k]=d[k].strip()
+        if isinstance(d.get("salads"),list): cur["salads"]=d["salads"]
+        if isinstance(d.get("hot"),dict): cur["hot"]=d["hot"]
+        db["foodwatch"]=cur; save_data(db)
+    return jsonify({"ok":True,"config":_foodw_cfg()})
+@app.route("/api/foodwatch_test",methods=["POST"])
+def api_foodwatch_test():
+    """Run one read of one or both displays right now (ignores hours/enabled) and return what it saw + the photo."""
+    d=request.get_json(silent=True) or {}; out={}
+    for which in ([d["display"]] if d.get("display") in ("salad","hot") else ["salad","hot"]):
+        jpeg,err=_foodw_grab(which)
+        if not jpeg: out[which]={"ok":False,"error":err}; continue
+        reads,err=_foodw_ask(which,jpeg)
+        out[which]={"ok":bool(reads),"error":err,"reads":reads or {},
+                    "img":"data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,1280)).decode()}
+    return jsonify({"ok":True,"tuesday":datetime.now().weekday()==1,"results":out})
+@app.route("/api/foodwatch_log")
+def api_foodwatch_log():
+    try: since=int(request.args.get("since") or 0)
+    except Exception: since=0
+    log=[e for e in (db.get("foodwatch_log") or []) if e.get("ts",0)>since]
+    if request.args.get("changes")=="1": log=[e for e in log if e.get("changes")]
+    return jsonify({"ok":True,"count":len(log),"entries":log[-300:]})
+@app.route("/api/foodwatch_photo/<fn>")
+def api_foodwatch_photo(fn):
+    if not re.match(r"^fw_(salad|hot)_\d{8}_\d{6}\.jpg$",fn): return Response("bad name",status=400)
+    p=os.path.join(FOODW_DIR,fn)
+    if not os.path.exists(p): return Response("not found",status=404)
+    with open(p,"rb") as f: return Response(f.read(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+
 @app.route("/api/display_status")
 def api_display_status():
     cfg=_display_cfg(); rows=[]
@@ -11747,6 +11970,7 @@ if __name__=="__main__":
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
     threading.Thread(target=display_loop,daemon=True).start()                       # hot/cold display food-level watch (only acts when db['display_watch'].enabled)
+    threading.Thread(target=foodwatch_loop,daemon=True).start()                     # salad+hot bar whole-display AI read, SHADOW (logs only; db['foodwatch'].enabled)
     threading.Thread(target=tables_loop,daemon=True).start()
     threading.Thread(target=_packev_prune,daemon=True).start()   # drop pack-evidence frames older than keep_days
     threading.Thread(target=packrec_loop,daemon=True).start()    # continuous bench recording
