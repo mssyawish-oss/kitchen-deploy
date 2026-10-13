@@ -6345,12 +6345,23 @@ def _foodw_ask(which,jpeg):
     if not key: return None,"no Gemini key"
     box=(_foodw_cfg().get(which+"_crop") or _FOODW_CROP.get(which))
     img=_downscale_jpeg(_crop_box(jpeg,box) if box else jpeg,1600)
+    ref=_foodw_ref(which)
     _gem_count_call()
     model=(_foodw_cfg().get("model") or cfg.get("model") or "gemini-2.5-flash").strip()
-    gencfg={"temperature":0,"maxOutputTokens":800,"responseMimeType":"application/json"}
-    if "2.5" in model: gencfg["thinkingConfig"]={"thinkingBudget":0}
-    body={"contents":[{"parts":[{"text":_foodw_prompt(which)},
-          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],"generationConfig":gencfg}
+    gencfg={"temperature":0,"maxOutputTokens":6000,"responseMimeType":"application/json"}
+    if "2.5" in model: gencfg["thinkingConfig"]={"thinkingBudget":int(_foodw_cfg().get("think",1024) if ref else 0)}
+    b64=lambda j:{"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(j).decode()}}
+    if ref:
+        # comparing against a photo of the same display freshly filled is far easier than judging fullness cold
+        parts=[{"text":"IMAGE 1 = REFERENCE: this same display FRESHLY FILLED — every dish in it counts as 100%."},
+               b64(_downscale_jpeg(_crop_box(ref,box) if box else ref,1600)),
+               {"text":"IMAGE 2 = NOW (the photo to judge). Trays may be in slightly different spots than in IMAGE 1. For each "
+                       "dish, compare how much food is left in IMAGE 2 with the same dish in IMAGE 1, and give pct relative to "
+                       "IMAGE 1."},
+               b64(img),{"text":_foodw_prompt(which)}]
+    else:
+        parts=[{"text":_foodw_prompt(which)},b64(img)]
+    body={"contents":[{"parts":parts}],"generationConfig":gencfg}
     url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
     try:
         req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
@@ -6372,6 +6383,11 @@ def _foodw_ask(which,jpeg):
         return (out or None),("" if out else "no usable reply: "+txt[:120])
     except Exception as e:
         return None,"error: "+str(e)[:120]
+def _foodw_ref_path(which): return os.path.join(FOODW_DIR,"ref_%s.jpg"%which)
+def _foodw_ref(which):
+    try:
+        with open(_foodw_ref_path(which),"rb") as f: return f.read()
+    except Exception: return None
 def _foodw_save_photo(which,jpeg):
     fn="fw_%s_%s.jpg"%(which,datetime.now().strftime("%Y%m%d_%H%M%S"))
     try:
@@ -6441,6 +6457,7 @@ def _foodw_status():
                                 "note":(st.get("dishes",{}).get(n) or {}).get("note","")} for n,_ in _foodw_menu(which)]}
     return {"ok":True,"enabled":bool(c.get("enabled")),"open":_foodw_open_now(c),"interval":c.get("interval"),
             "start":c.get("start"),"end":c.get("end"),"tuesday":datetime.now().weekday()==1,
+            "has_ref":{w:os.path.exists(_foodw_ref_path(w)) for w in ("salad","hot")},
             "checks_today":FOODW.get("checks_today",0),"last_at":FOODW.get("last_at",0),"last_err":FOODW.get("last_err",""),
             "displays":disp}
 
@@ -6463,6 +6480,9 @@ def api_foodwatch_config():
             if k in d:
                 try: cur[k]=max(0,min(100,int(d[k])))
                 except Exception: pass
+        if "think" in d:
+            try: cur["think"]=max(0,min(8192,int(d["think"])))
+            except Exception: pass
         for k in ("salad_crop","hot_crop"):
             if isinstance(d.get(k),dict) or d.get(k) is None and k in d: cur[k]=d[k]
         for k in ("salad_cam","hot_cam","model"):
@@ -6482,6 +6502,30 @@ def api_foodwatch_test():
         out[which]={"ok":bool(reads),"error":err,"reads":reads or {},
                     "img":"data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,1280)).decode()}
     return jsonify({"ok":True,"tuesday":datetime.now().weekday()==1,"results":out})
+@app.route("/api/foodwatch_ref",methods=["GET","POST","DELETE"])
+def api_foodwatch_ref():
+    """The 'freshly filled' reference photo per display. POST {display, img:<data-url or base64 jpeg>} sets it;
+    POST {display, capture:true} uses the live frame right now; DELETE ?display= removes it; GET ?display= shows it."""
+    d=request.get_json(silent=True) or {}
+    which=(d.get("display") or request.args.get("display") or "").strip()
+    if which not in ("salad","hot"): return jsonify({"ok":False,"error":"display must be salad or hot"})
+    p=_foodw_ref_path(which)
+    if request.method=="GET":
+        if not os.path.exists(p): return Response("no reference",status=404)
+        with open(p,"rb") as f: return Response(f.read(),mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+    if request.method=="DELETE":
+        try: os.remove(p)
+        except Exception: pass
+        return jsonify({"ok":True,"removed":which})
+    if d.get("capture"):
+        jpeg,err=_foodw_grab(which)
+        if not jpeg: return jsonify({"ok":False,"error":err})
+    else:
+        try: jpeg=base64.b64decode(str(d.get("img","")).split(",",1)[-1])
+        except Exception: jpeg=b""
+        if jpeg[:2]!=b"\xff\xd8": return jsonify({"ok":False,"error":"img must be a JPEG"})
+    with open(p,"wb") as f: f.write(jpeg)
+    return jsonify({"ok":True,"display":which,"bytes":len(jpeg)})
 @app.route("/api/foodwatch_log")
 def api_foodwatch_log():
     try: since=int(request.args.get("since") or 0)
