@@ -6264,6 +6264,8 @@ except Exception: pass
 FOODW={"last_at":0.0,"last_err":"","checks_today":0,"day":"","displays":{}}   # display key -> {at,err,dishes:{name:{level,pend,since,note}}}
 _FOODW_KEEP=1500        # log entries kept (~2 days at 1/min with changes only + 15-min snapshots)
 _FOODW_PHOTO_EVERY=900  # also keep a photo at least this often per display (s), even with no change
+_FOODW_CROP={"salad":{"x":0.22,"y":0.30,"w":0.64,"h":0.50},   # the cabinet only (fractions of the frame)
+             "hot":{"x":0.15,"y":0.30,"w":0.62,"h":0.50}}
 _FOODW_SALADS=[
     ("Ancient Grains Salad","red pomegranate seeds over a grain mix (farro/quinoa), parsley, almonds"),
     ("Pumpkin & Beetroot","orange roast pumpkin cubes beside white feta and pearl couscous, some beetroot"),
@@ -6320,11 +6322,14 @@ def _foodw_prompt(which):
                "is just a reflection/partition before the cold display — ignore it. A stack of white chip boxes may sit on the "
                "glass over the left pans.")
     return (where+"\n\nThe dishes that should be on display today:\n"+lines+
-            "\n\nFor EACH dish give its level: \"full\" = more than about half left; \"low\" = about half gone or more "
-            "(roughly half or less left, bare bowl/pan clearly showing); \"empty\" = only scraps or nothing left; "
-            "\"covered\" = lid on, can't see; \"missing\" = dish/tray not on display at all; \"unclear\" = can't judge "
-            "(blocked by containers, people, glare). Reply ONLY with JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\","
-            "\"level\":\"full|low|empty|covered|missing|unclear\",\"note\":\"<max 8 words>\"}]}")
+            "\n\nFor EACH dish estimate \"pct\" = how full it is, 0-100. 100 = freshly filled: food heaped along the WHOLE "
+            "bowl/pan from back to front with no base showing. Every patch of bare white bowl or bare pan base that shows means "
+            "that share has been eaten — e.g. food only across the front half = about 50. Judge the food itself, not garnish. Be "
+            "strict: most trays mid-service are 40-80, not 100. \"state\": \"ok\" when you can judge it; \"covered\" = lid on; "
+            "\"missing\" = dish not on display at all; \"unclear\" = more than about a third of it is hidden (containers or "
+            "packaging on the glass, people, glare) — do NOT guess a pct for unclear/covered/missing (use null). Reply ONLY with "
+            "JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\",\"state\":\"ok|covered|missing|unclear\","
+            "\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}")
 def _foodw_grab(which):
     c=_foodw_cfg(); cam=_cam_by_id(c.get("salad_cam" if which=="salad" else "hot_cam"))
     if not cam: return None,"camera not found"
@@ -6338,7 +6343,8 @@ def _foodw_grab(which):
 def _foodw_ask(which,jpeg):
     cfg=_rotcam_cfg(); key=(cfg.get("gemini_key") or "").strip()
     if not key: return None,"no Gemini key"
-    img=_downscale_jpeg(jpeg,1600)
+    box=(_foodw_cfg().get(which+"_crop") or _FOODW_CROP.get(which))
+    img=_downscale_jpeg(_crop_box(jpeg,box) if box else jpeg,1600)
     _gem_count_call()
     model=(_foodw_cfg().get("model") or cfg.get("model") or "gemini-2.5-flash").strip()
     gencfg={"temperature":0,"maxOutputTokens":800,"responseMimeType":"application/json"}
@@ -6353,10 +6359,16 @@ def _foodw_ask(which,jpeg):
         txt="".join(p.get("text","") for p in parts if isinstance(p,dict)).strip()
         txt=re.sub(r"^```(?:json)?|```$","",txt).strip()
         names={n for n,_ in _foodw_menu(which)}; out={}
+        c=_foodw_cfg(); low=float(c.get("low_pct",55)); emp=float(c.get("empty_pct",15))
         for d in (json.loads(txt).get("dishes") or []):
-            n=str(d.get("name","")).strip(); lv=str(d.get("level","")).strip().lower()
-            if n in names and lv in ("full","low","empty","covered","missing","unclear"):
-                out[n]={"level":lv,"note":str(d.get("note",""))[:80]}
+            n=str(d.get("name","")).strip(); stt=str(d.get("state","")).strip().lower(); pct=d.get("pct")
+            if n not in names: continue
+            if stt in ("covered","missing","unclear"): lv=stt; pct=None
+            else:
+                try: pct=max(0,min(100,int(round(float(pct)))))
+                except Exception: continue
+                lv="empty" if pct<=emp else ("low" if pct<=low else "full")
+            out[n]={"level":lv,"pct":pct,"note":str(d.get("note",""))[:80]}
         return (out or None),("" if out else "no usable reply: "+txt[:120])
     except Exception as e:
         return None,"error: "+str(e)[:120]
@@ -6381,7 +6393,7 @@ def _foodw_check(which,force=False):
         r=reads.get(name);
         if not r: continue
         d=st["dishes"].setdefault(name,{"level":None,"pend":None,"since":0.0,"note":""})
-        d["note"]=r["note"]; d["seen"]=r["level"]
+        d["note"]=r["note"]; d["seen"]=r["level"]; d["pct"]=r.get("pct")
         if r["level"]==d["level"]: d["pend"]=None; continue
         if force or d["level"] is None or d["pend"]==r["level"]:
             changes.append({"dish":name,"from":d["level"],"to":r["level"],"note":r["note"]})
@@ -6393,7 +6405,8 @@ def _foodw_check(which,force=False):
         photo=_foodw_save_photo(which,jpeg); st["photo_at"]=time.time()
     if changes or photo:
         ent={"ts":int(time.time()*1000),"at":datetime.now().strftime("%a %d %b %H:%M:%S"),"display":which,
-             "changes":changes,"levels":{n:v.get("level") for n,v in st["dishes"].items()},"img":photo}
+             "changes":changes,"levels":{n:v.get("level") for n,v in st["dishes"].items()},
+             "pcts":{n:v.get("pct") for n,v in st["dishes"].items()},"img":photo}
         with data_lock:
             log=list(db.get("foodwatch_log") or []); log.append(ent)
             drop=log[:-_FOODW_KEEP]; db["foodwatch_log"]=log[-_FOODW_KEEP:]; save_data(db)
@@ -6424,6 +6437,7 @@ def _foodw_status():
                      "dishes":[{"name":n,"level":(st.get("dishes",{}).get(n) or {}).get("level"),
                                 "seen":(st.get("dishes",{}).get(n) or {}).get("seen"),
                                 "since":(st.get("dishes",{}).get(n) or {}).get("since",0),
+                                "pct":(st.get("dishes",{}).get(n) or {}).get("pct"),
                                 "note":(st.get("dishes",{}).get(n) or {}).get("note","")} for n,_ in _foodw_menu(which)]}
     return {"ok":True,"enabled":bool(c.get("enabled")),"open":_foodw_open_now(c),"interval":c.get("interval"),
             "start":c.get("start"),"end":c.get("end"),"tuesday":datetime.now().weekday()==1,
@@ -6445,6 +6459,12 @@ def api_foodwatch_config():
             except Exception: pass
         for k in ("start","end"):
             if re.match(r"^\d{2}:\d{2}$",str(d.get(k,""))): cur[k]=d[k]
+        for k in ("low_pct","empty_pct"):
+            if k in d:
+                try: cur[k]=max(0,min(100,int(d[k])))
+                except Exception: pass
+        for k in ("salad_crop","hot_crop"):
+            if isinstance(d.get(k),dict) or d.get(k) is None and k in d: cur[k]=d[k]
         for k in ("salad_cam","hot_cam","model"):
             if isinstance(d.get(k),str) and d[k].strip(): cur[k]=d[k].strip()
         if isinstance(d.get("salads"),list): cur["salads"]=d["salads"]
