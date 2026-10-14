@@ -5430,7 +5430,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables","frontdoor","ovenstep","packev"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probecharge","probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables","frontdoor","ovenstep","packev"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -5468,7 +5468,12 @@ def api_alarm_settings():
 def api_alarm_sound_get(key):
     if key not in _ALARM_KEYS: return ("bad key",404)
     fn=((db.get("alarm_cfg",{}) or {}).get(key,{}) or {}).get("sound_file")
-    if not fn: return ("no custom sound",404)
+    if not fn:
+        # Alarms that ship with their own sound in the repo (static/sounds/<key>.mp3) play it until
+        # someone uploads a replacement in the Alarm Center. Owner's pick for probecharge, 15 Oct 2026.
+        bp=os.path.join(BASE_DIR,"static","sounds",key+".mp3")
+        if os.path.exists(bp): return send_file(bp,mimetype="audio/mpeg")
+        return ("no custom sound",404)
     p=os.path.join(ALARM_SOUNDS_DIR,fn)
     if not os.path.exists(p): return ("missing",404)
     import mimetypes

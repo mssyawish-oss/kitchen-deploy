@@ -3299,6 +3299,7 @@ const _ALARM_DEF={
  checklist:{label:'Checklist tasks (front of house)',color:'#60a5fa',interval:2800,desc:'Timed checklist-task reminders. Route to FOH screens: hide it on kitchen screens with the per-screen toggle.'},
  preptasks:{label:'Prep & daily tasks (kitchen)',color:'#34d399',interval:2800,desc:'Prep-item and daily-task reminders. Kitchen business: hide it on the front-of-house iPad with the per-screen toggle.'},
  prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
+ probecharge:{label:'Probe needs charging',color:'#f59e0b',interval:3000,bundled:true,flash:false,desc:'A probe is out of the chicken and NOT on the charging block (its card pulses “Put on charge”). Plays the shop’s chosen sound every 3 seconds until it goes on the block or back in a bird. Silence = quiet for 10 minutes, or until another probe is left out.'},
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'},
  display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'},
  tables:{label:'Food left on outside table',color:'#f59e0b',interval:2800,desc:'The AI spotted a food tray/plate/rubbish left behind on an outside table with nobody seated. The outside camera view pops up on the dash. Sound + popup like a probe alarm.'},
@@ -3310,7 +3311,7 @@ const _ALARM_DEF={
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3325,12 +3326,12 @@ function _legacyEnabled(key){if(key==='probeoffline')return false;   // visual-o
 function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})[key])||{};return {
   enabled:(c.enabled!==undefined)?(c.enabled!==false):_legacyEnabled(key),
   popup:c.popup!==false,   // reminders group only: show the on-screen card/banner (independent of sound)
-  flash:c.flash!==false, vibrate:c.vibrate===true,
+  flash:(c.flash!==undefined)?(c.flash!==false):(d.flash!==false), vibrate:c.vibrate===true,
   color:c.color||d.color||'#ef4444',
   volume:(typeof c.volume==='number')?c.volume:0.85,
   interval:(typeof c.interval==='number')?c.interval:(d.interval||1500),
   autostop:(typeof c.autostop==='number')?c.autostop:0,
-  has_custom:c.has_custom===true, sound_v:c.sound_v||0, sound_preset:c.sound_preset||'' };}
+  has_custom:c.has_custom===true||(!!d.bundled&&!c.sound_preset), sound_v:c.sound_v||0, sound_preset:c.sound_preset||'' };}
 function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';return 'timer';}
 window._customAudio=window._customAudio||{};
 function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key];if(!a||a._id!==id){a=new Audio('/api/alarm_sound/'+key+'?v='+v);a._id=id;window._customAudio[key]=a;}return a;}   // reuse ONE Audio element per alarm (was leaking a new one every interval)
@@ -3572,6 +3573,20 @@ let _walkinAlarm=false;
 function startWalkinAlarm(){if(!_acfg('walkin').enabled)return;if(_walkinAlarm)return;_walkinAlarm=true;const t0=Date.now();
   (function b(){if(!_walkinAlarm)return;const c=_acfg('walkin');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_walkinAlarm=false;_updateFlash();return;}_alarmHit('walkin');setTimeout(()=>{if(_walkinAlarm)b();},c.interval);})();}
 function stopWalkinAlarm(){_walkinAlarm=false;_updateFlash();}
+// ---- probe needs charging: a probe lying around (not in a bird, not on the block) - see _rfx_probe_state ----
+// Silence = quiet for 10 min, or sooner if a DIFFERENT probe is left out. Sound only; the card pulses anyway.
+let _pcAlarm=false,_pcAckAt=0,_pcAckSet=new Set();
+function _probeChargeOut(){const st=window._rfxState||{};return Object.keys(st).filter(p=>st[p]&&st[p].s==='out').map(p=>parseInt(p));}
+function _probeChargeSync(){
+  const out=_probeChargeOut();
+  if(!out.length){_pcAckSet=new Set();if(_pcAlarm){_pcAlarm=false;_updateFlash();}return;}
+  const acked=(Date.now()-_pcAckAt)<600000&&out.every(p=>_pcAckSet.has(p));
+  if(acked){if(_pcAlarm){_pcAlarm=false;_updateFlash();}return;}
+  if(_pcAlarm||!_acfg('probecharge').enabled||_devPopMuted('probecharge'))return;
+  _pcAlarm=true;const t0=Date.now();
+  (function b(){if(!_pcAlarm)return;const c=_acfg('probecharge');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_pcAlarm=false;_updateFlash();return;}_alarmHit('probecharge');setTimeout(()=>{if(_pcAlarm)b();},c.interval);})();
+  _updateFlash();}
+function ackProbeCharge(){_pcAckAt=Date.now();_pcAckSet=new Set(_probeChargeOut());_pcAlarm=false;_updateFlash();}
 // ---- outside-tables abandoned-food watch (server detects; screen follows, same alarm path as probes) ----
 let _tablesAlarm=false;
 function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)return;_tablesAlarm=true;const t0=Date.now();
@@ -4359,7 +4374,7 @@ function displayStatusPoll(){
   }).catch(()=>{});
 }
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(typeof _pcAlarm!=='undefined'&&_pcAlarm)ks.add('probecharge');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
 // Every alarm currently sounding, in plain words, with the key needed to silence just that one.
 function _activeAlarmDetails(){
   const out=[];
@@ -4380,6 +4395,7 @@ function _activeAlarmDetails(){
     if(typeof _waitAlarm!=='undefined'&&_waitAlarm)out.push({key:'orders',label:'Orders waiting too long'});
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
+    if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'BLUE',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' on charge'});}
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
@@ -4414,6 +4430,7 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='orders'){stopWaitAlarm();fetch('/api/wait_ack',{method:'POST'}).catch(()=>{});}
   else if(key==='service'){if(typeof silenceAlarm==='function')silenceAlarm();}
   else if(key==='walkin'){if(typeof ackWalkin==='function')ackWalkin();}
+  else if(key==='probecharge'){if(typeof ackProbeCharge==='function')ackProbeCharge();}
   else if(key==='tables'){if(typeof ackTables==='function')ackTables();}
   else if(key==='intables'){if(typeof ackIntables==='function')ackIntables();}
   else if(key==='frontdoor'){if(typeof ackFrontdoor==='function')ackFrontdoor();}
@@ -5869,7 +5886,7 @@ async function pollTemps(){try{const r=await fetch('/temps'),d=await r.json();
   // (iPad, wall) picks up new code without a manual refresh. Bust the cache so it really re-fetches.
   if(d.ui_ver){if(window._uiVer==null)window._uiVer=d.ui_ver;else if(d.ui_ver!==window._uiVer)window._srvRestarted=true;}
   if(window._srvRestarted&&!_uiBusy()){try{location.reload(true);}catch(e){location.reload();}return;}
-  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};window._rfxCharging=d.rfx_charging||{};window._rfxState=d.rfx_state||{};try{_probeBattMorningCheck();}catch(e){}window._probeEta=d.eta||{};
+  _applyRemoteSilence(d.alarm_silences!==undefined?d.alarm_silences:d.alarm_silence_ts);document.getElementById('ble-dot').className='status-dot '+(d.connected?'connected':'scanning');document.getElementById('ble-msg').textContent=d.connected?'FM230':'BLE';Object.entries(d.probes).forEach(([pid,temp])=>{probeData[parseInt(pid)].temp=temp;});window._rfxSensors=d.rfx_sensors||{};window._rfxBattery=d.rfx_battery||{};window._rfxAge=d.rfx_age||{};window._rfxCharging=d.rfx_charging||{};window._rfxState=d.rfx_state||{};try{_probeChargeSync();}catch(e){}try{_probeBattMorningCheck();}catch(e){}window._probeEta=d.eta||{};
 // Independent of the long render chain below: these used to sit INSIDE it, so one throw anywhere
 // killed every later call — including the walk-in indicator — inside a silent catch.
 try{handleWalkin(d.walkin||{});}catch(e){console.warn('walkin:',e);}
