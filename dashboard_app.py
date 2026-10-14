@@ -6308,34 +6308,30 @@ def _foodw_menu(which):
     if which=="salad": return [tuple(x) for x in (c.get("salads") or _FOODW_SALADS)]
     key="tuesday" if datetime.now().weekday()==1 else "normal"
     return [tuple(x) for x in ((c.get("hot") or {}).get(key) or _FOODW_HOT[key])]
-_FOODW_HALVES=("\n\nSALAD BOWLS ARE EATEN FROM THE BACK, so a perfect-looking front strip says nothing about the back. For each "
-    "salad judge the BACK half of the bowl (the half nearer the top of the photo) and the FRONT half separately: \"back\" and "
-    "\"front\" = how much of that half is still covered with the salad itself (not lettuce garnish), 0-100 relative to "
-    "IMAGE 1 / a freshly filled bowl. A half showing bare white bowl or only lettuce leaves = 0-20. Also give "
-    "\"pct\" = (back+front)/2. Example: back bare, front nicely filled -> back 5, front 80, pct 42. "
-    "Add \"back\" and \"front\" to each dish object.")
+_FOODW_LEVELS=("Levels: \"full\" = looks about as full as it should (as in the reference if there is one); \"ok\" = clearly "
+    "served from but more than about half left; \"low\" = roughly a third or less left, or a large patch of bare bowl/pan "
+    "showing - time to refill soon; \"empty\" = almost nothing left; \"covered\" = lid on; \"missing\" = not on display at all; "
+    "\"unclear\" = more than about a third of it is hidden (containers, people, packaging) - don't guess.")
 def _foodw_prompt(which):
+    # 14 Oct 2026: level words instead of a pct-with-worked-example — the example ("back 5, front 80") was being parroted
+    # for every salad. Tested on recorded frames with gemini-3.8-flash: matches a human read on both displays.
     menu=_foodw_menu(which)
     lines="\n".join("- %s: %s"%(n,d) for n,d in menu)
     if which=="salad":
-        where=("This is an overhead camera photo of a takeaway shop's chilled SALAD display. Each salad sits in a white bowl "
-               "lined with cos lettuce leaves. The cos lettuce border is GARNISH, NOT salad — ignore it completely: judge only the "
-               "coloured salad strip down the middle of each bowl. Staff serve from the BACK of each bowl (the side away from the "
-               "camera's bottom edge), so bare white bowl appears at the back first. Trays may be re-spaced or moved, a salad may be "
-               "missing, and a stack of plastic takeaway containers may sit on the glass over part of a tray.")
+        where=("Overhead camera over a takeaway shop's chilled SALAD display. Each salad is a strip of salad in a white bowl lined "
+               "with cos lettuce leaves. The lettuce is GARNISH - ignore it; judge only the coloured salad strip. Staff serve from "
+               "the BACK of the bowl (top of the photo), so bare white bowl or bare lettuce shows at the back (top) end first and "
+               "the strip gets SHORTER from the top. A band of glass reflection/glare runs across the upper part of the photo - "
+               "look through it; glare is not empty bowl. Trays may move, a salad may be missing, and a stack of plastic "
+               "takeaway containers may sit on the glass over part of a tray.")
     else:
-        where=("This is an angled overhead camera photo of a takeaway shop's HOT food display (bain-marie). The far-right strip "
-               "is just a reflection/partition before the cold display — ignore it. A stack of white chip boxes may sit on the "
-               "glass over the left pans.")
-    return (where+"\n\nThe dishes that should be on display today:\n"+lines+
-            "\n\nFor EACH dish estimate \"pct\" = how full it is, 0-100. 100 = freshly filled: food heaped along the WHOLE "
-            "bowl/pan from back to front with no base showing. Every patch of bare white bowl or bare pan base that shows means "
-            "that share has been eaten — e.g. food only across the front half = about 50. Judge the food itself, not garnish. Be "
-            "strict: most trays mid-service are 40-80, not 100. \"state\": \"ok\" when you can judge it; \"covered\" = lid on; "
-            "\"missing\" = dish not on display at all; \"unclear\" = more than about a third of it is hidden (containers or "
-            "packaging on the glass, people, glare) — do NOT guess a pct for unclear/covered/missing (use null). Reply ONLY with "
-            "JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\",\"state\":\"ok|covered|missing|unclear\","
-            "\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}"+(_FOODW_HALVES if which=="salad" else ""))
+        where=("Angled overhead camera over a takeaway shop's HOT food display (bain-marie). The far-right strip is the cold "
+               "display - ignore it. A stack of white chip boxes may sit on the glass over the left pans.")
+    return (where+"\n\nDishes that should be on display:\n"+lines+"\n\n"+_FOODW_LEVELS+
+            "\nAlso give \"pct\" (0-100, how full vs the reference / a freshly filled tray; null when covered/missing/unclear) and "
+            "\"note\" = what fraction of the strip/pan still has food, max 8 words. Judge each dish independently - they empty at "
+            "different rates. Reply ONLY with JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\",\"level\":"
+            "\"full|ok|low|empty|covered|missing|unclear\",\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}")
 def _foodw_grab(which):
     c=_foodw_cfg(); cam=_cam_by_id(c.get("salad_cam" if which=="salad" else "hot_cam"))
     if not cam: return None,"camera not found"
@@ -6355,7 +6351,7 @@ def _foodw_ask(which,jpeg):
     _gem_count_call()
     model=(_foodw_cfg().get("model") or cfg.get("model") or "gemini-2.5-flash").strip()
     gencfg={"temperature":0,"maxOutputTokens":6000,"responseMimeType":"application/json"}
-    if "2.5" in model: gencfg["thinkingConfig"]={"thinkingBudget":int(_foodw_cfg().get("think",1024) if ref else 0)}
+    if not model.startswith(("gemini-1","gemini-2.0")): gencfg["thinkingConfig"]={"thinkingBudget":int(_foodw_cfg().get("think",1024))}
     b64=lambda j:{"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(j).decode()}}
     if ref:
         # comparing against a photo of the same display freshly filled is far easier than judging fullness cold
@@ -6378,18 +6374,15 @@ def _foodw_ask(which,jpeg):
         names={n for n,_ in _foodw_menu(which)}; out={}
         c=_foodw_cfg(); low=float(c.get("low_pct",55)); emp=float(c.get("empty_pct",15))
         for d in (json.loads(txt).get("dishes") or []):
-            n=str(d.get("name","")).strip(); stt=str(d.get("state","")).strip().lower(); pct=d.get("pct")
+            n=str(d.get("name","")).strip(); lv=str(d.get("level") or d.get("state") or "").strip().lower(); pct=d.get("pct")
             if n not in names: continue
-            if stt in ("covered","missing","unclear"): lv=stt; pct=None
-            else:
-                try:
-                    if which=="salad" and d.get("back") is not None and d.get("front") is not None:
-                        pct=(float(d["back"])+float(d["front"]))/2.0   # do the averaging ourselves; the model fudges it
-                    pct=max(0,min(100,int(round(float(pct)))))
-                except Exception: continue
-                lv="empty" if pct<=emp else ("low" if pct<=low else "full")
+            try: pct=max(0,min(100,int(round(float(pct)))))
+            except Exception: pct=None
+            if lv in ("covered","missing","unclear"): pct=None
+            elif lv not in ("full","ok","low","empty"):
+                if pct is None: continue
+                lv="empty" if pct<=emp else ("low" if pct<=low else "full")   # model skipped the word: fall back to pct
             out[n]={"level":lv,"pct":pct,"note":str(d.get("note",""))[:80]}
-            if d.get("back") is not None: out[n]["back"]=d.get("back"); out[n]["front"]=d.get("front")
         return (out or None),("" if out else "no usable reply: "+txt[:120])
     except Exception as e:
         return None,"error: "+str(e)[:120]
