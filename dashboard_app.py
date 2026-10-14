@@ -6363,6 +6363,7 @@ _FOODW_HOT={
                ("Scallop potatoes","creamy pale-yellow layered potato bake (slot 5)"),
                ("Mac & cheese","orange-yellow baked macaroni and cheese (slot 6)")],
 }
+_FOODW_PIECE_LOW={"BBQ chicken":1,"Butterflied chicken":1,"Fried chicken":3,"$1 wings":4}   # pieces at/below = LOW
 def _foodw_cfg():
     c=dict(db.get("foodwatch") or {})
     c.setdefault("enabled",False); c.setdefault("interval",60)
@@ -6382,7 +6383,9 @@ def _foodw_menu(which):
 _FOODW_LEVELS=("Levels: \"full\" = looks about as full as it should (as in the reference if there is one); \"ok\" = clearly "
     "served from but more than about half left; \"low\" = roughly a third or less left, or a large patch of bare bowl/pan "
     "showing - time to refill soon; \"empty\" = almost nothing left; \"covered\" = lid on; \"missing\" = not on display at all; "
-    "\"unclear\" = more than about a third of it is hidden (containers, people, packaging) - don't guess.")
+    "\"unclear\" = more than about a third of it is hidden (containers, people, packaging) - don't guess. For chicken "
+    "dishes also count the pieces you can see (\"pieces\"). A small sauce or "
+    "condiment tub sitting where a dish should be is not that dish - call the dish \"missing\".")
 def _foodw_prompt(which):
     # 14 Oct 2026: level words instead of a pct-with-worked-example — the example ("back 5, front 80") was being parroted
     # for every salad. Tested on recorded frames with gemini-3.8-flash: matches a human read on both displays.
@@ -6402,7 +6405,8 @@ def _foodw_prompt(which):
             "\nAlso give \"pct\" (0-100, how full vs the reference / a freshly filled tray; null when covered/missing/unclear) and "
             "\"note\" = what fraction of the strip/pan still has food, max 8 words. Judge each dish independently - they empty at "
             "different rates. Reply ONLY with JSON: {\"dishes\":[{\"name\":\"<exact name from the list>\",\"level\":"
-            "\"full|ok|low|empty|covered|missing|unclear\",\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\"}]}")
+            "\"full|ok|low|empty|covered|missing|unclear\",\"pct\":<0-100 or null>,\"note\":\"<max 8 words>\","
+            "\"pieces\":<chicken dishes only: pieces you can see, else null>}]}")
 def _foodw_grab(which):
     c=_foodw_cfg(); cam=_cam_by_id(c.get("salad_cam" if which=="salad" else "hot_cam"))
     if not cam: return None,"camera not found"
@@ -6453,7 +6457,16 @@ def _foodw_ask(which,jpeg):
             elif lv not in ("full","ok","low","empty"):
                 if pct is None: continue
                 lv="empty" if pct<=emp else ("low" if pct<=low else "full")   # model skipped the word: fall back to pct
+            # chicken: the model counts pieces well but won't call a pan "low" while it's still spread out, so the count
+            # decides (full pan = ~4 butterflied / ~8 fried, 15 Oct bench). pct capped so hysteresis lets it through.
+            try: pcs=int(d.get("pieces")) if d.get("pieces") is not None else None
+            except Exception: pcs=None
+            plow=dict(_FOODW_PIECE_LOW,**(c.get("piece_low") or {})).get(n)
+            if pcs is not None and plow is not None and lv in ("full","ok","low"):
+                if pcs==0: lv="empty"; pct=0
+                elif pcs<=int(plow): lv="low"; pct=min(pct if pct is not None else 25,25)
             out[n]={"level":lv,"pct":pct,"note":str(d.get("note",""))[:80]}
+            if pcs is not None: out[n]["pieces"]=pcs
         return (out or None),("" if out else "no usable reply: "+txt[:120])
     except Exception as e:
         return None,"error: "+str(e)[:120]
@@ -6484,6 +6497,12 @@ def _foodw_check(which,force=False):
         if not r: continue
         d=st["dishes"].setdefault(name,{"level":None,"pend":None,"since":0.0,"note":""})
         d["note"]=r["note"]; d["seen"]=r["level"]; d["pct"]=r.get("pct")
+        # hysteresis (15 Oct review: half-full salads flipped ok<->low ~24x in 2 h): only go LOW once pct is clearly
+        # down, and only leave LOW on a real refill — the 2-read debounce alone doesn't stop a dish sitting on the line
+        c=_foodw_cfg(); p=r.get("pct")
+        if p is not None and not force:
+            if d["level"] in ("full","ok") and r["level"]=="low" and p>int(c.get("low_enter",30)): r=dict(r,level="ok")
+            elif d["level"]=="low" and r["level"] in ("full","ok") and p<int(c.get("low_exit",50)): r=dict(r,level="low")
         if r["level"]==d["level"]: d["pend"]=None; continue
         if force or d["level"] is None or d["pend"]==r["level"]:
             changes.append({"dish":name,"from":d["level"],"to":r["level"],"note":r["note"]})
@@ -6595,7 +6614,10 @@ def api_foodwatch_config():
             except Exception: pass
         for k in ("start","end"):
             if re.match(r"^\d{2}:\d{2}$",str(d.get(k,""))): cur[k]=d[k]
-        for k in ("low_pct","empty_pct"):
+        if isinstance(d.get("piece_low"),dict):
+            try: cur["piece_low"]={str(k):max(0,min(20,int(v))) for k,v in d["piece_low"].items()}
+            except Exception: pass
+        for k in ("low_pct","empty_pct","low_enter","low_exit"):
             if k in d:
                 try: cur[k]=max(0,min(100,int(d[k])))
                 except Exception: pass
