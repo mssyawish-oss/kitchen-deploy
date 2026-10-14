@@ -9728,7 +9728,7 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     for ln in lines:
         dr.text(((W-dr.textlength(ln,font=f))//2, y), ln, font=f, fill=0); y+=lh
     return img
-def _render_drygoods_png(item,staff,packed_s,seq=0,total=1):
+def _render_drygoods_png(item,staff,packed_s,seq=0,total=1,banner="DRY GOODS"):
     """Dry-goods PACKAGING label — a compact tag (~25% shorter than the prep label):
     a DRY GOODS header, the contents big + centred (auto-sized to fit inside the
     border, wraps up to 3 lines), then PACKED date + BY name.  No use-by."""
@@ -9754,9 +9754,17 @@ def _render_drygoods_png(item,staff,packed_s,seq=0,total=1):
         return lines[:maxlines]
     M=18; CM=40                                  # CM = side padding for the contents (never touch the border)
     dr.rectangle([5,5,W-6,H-6],outline=0,width=4)                 # tag border
-    hb=64; dr.rectangle([5,5,W-6,hb],fill=0)                      # DRY GOODS header strip
-    fhd=fnt(40,True); hw=dr.textlength("DRY GOODS",font=fhd)
-    dr.text(((W-hw)//2,5+(hb-5-40)//2-2),"DRY GOODS",font=fhd,fill=255)
+    hb=64; dr.rectangle([5,5,W-6,hb],fill=0)                      # banner header strip
+    bn=((banner or "DRY GOODS").upper())
+    _bavail=W-2*M-(46 if (total>1 and seq>0) else 0)             # leave room for the n/n badge
+    fhd=fnt(40,True); _bsz=40
+    for _s in (40,36,32,28,26,24,22,20,18):                      # shrink the banner so a long category still fits
+        _f=fnt(_s,True)
+        if dr.textlength(bn,font=_f)<=_bavail: fhd=_f; _bsz=_s; break
+    else:
+        fhd=fnt(18,True); _bsz=18
+    hw=dr.textlength(bn,font=fhd)
+    dr.text(((W-hw)//2,5+(hb-5-_bsz)//2-2),bn,font=fhd,fill=255)
     if total>1 and seq>0:
         badge="%d/%d"%(seq,total); fb=fnt(26,True); bw=dr.textlength(badge,font=fb)
         dr.text((W-M-bw,5+(hb-5-26)//2-1),badge,font=fb,fill=255)
@@ -10460,8 +10468,9 @@ def api_drygoods_preview():
     staff=str(request.args.get("staff","")).strip()[:30]
     try: qty=max(1,min(50,int(request.args.get("qty",1))))
     except (TypeError,ValueError): qty=1
+    banner=str(request.args.get("banner","DRY GOODS")).strip()[:28] or "DRY GOODS"
     now=datetime.now()
-    img=_render_drygoods_png(contents,staff,_lbl_date(now),1 if qty>1 else 0,qty)
+    img=_render_drygoods_png(contents,staff,_lbl_date(now),1 if qty>1 else 0,qty,banner=banner)
     if img is None: return ("Pillow not installed on the server",500)
     import io as _io
     buf=_io.BytesIO(); img.convert("L").save(buf,format="PNG")
@@ -10475,12 +10484,13 @@ def api_drygoods_print():
     try: qty=max(1,min(50,int(d.get("qty",1))))
     except (TypeError,ValueError): qty=1
     save=d.get("save",True)
+    banner=str(d.get("banner","DRY GOODS")).strip()[:28] or "DRY GOODS"
     if not contents: return jsonify({"ok":False,"error":"Type what's in the pack first"})
     now=datetime.now(); packed_s=_lbl_date(now)          # PACKED = today's date (re-prints stamp today)
     printed=0; note=""; first_img=None
     try:
         for i in range(qty):
-            img=_render_drygoods_png(contents,staff,packed_s,seq=i+1,total=qty)
+            img=_render_drygoods_png(contents,staff,packed_s,seq=i+1,total=qty,banner=banner)
             if first_img is None: first_img=img
             try:
                 if _print_label(img,1): printed+=1
