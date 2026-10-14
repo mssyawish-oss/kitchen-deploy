@@ -230,6 +230,32 @@ async def _device_sensors(client, serial):
     return vals
 
 
+async def _device_snapshot(client, serial):
+    """Everything the dashboard needs to judge WHERE a probe is, in one read:
+    fresh = sensor readings that are still current (same as _device_sensors),
+    last  = the probe's most recent readings even if it has since gone quiet,
+    seen  = unix time of its last transmission (newest channel last_seen), or None.
+    A docked RFX probe goes completely silent (the cloud never flips its battery_state to
+    'charging'), so the only clue to "on charge" vs "lost" is what it said just before going quiet."""
+    from datetime import datetime, timezone
+    fresh, last, seen = [], [], None
+    for ch in await _read_channels(client, serial):
+        c = ch.get("value_c")
+        if c is None:
+            continue
+        last.append(c)
+        if not _is_stale(ch.get("last_seen")):
+            fresh.append(c)
+        try:
+            ts = datetime.fromisoformat(str(ch.get("last_seen")))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            seen = max(seen or 0, ts.timestamp())
+        except Exception:
+            pass
+    return {"fresh": fresh, "last": last, "seen": seen}
+
+
 async def _device_core_temp(client, serial):
     """One RFX MEAT probe has 4 internal sensors (channels). The meat's true centre is the COLDEST
     of them (the deepest point) — that's the safe 'is it cooked' reading. Return min channel °C,
@@ -281,15 +307,18 @@ async def _read_mapped(email, password, mapping):
     items = [(int(pid), _serial_of(m)) for pid, m in (mapping or {}).items()]
 
     async def one(serial):
-        if not serial: return []
-        try: return await _device_sensors(client, serial)
-        except Exception: return []
+        empty = {"fresh": [], "last": [], "seen": None}
+        if not serial: return empty
+        try: return await _device_snapshot(client, serial)
+        except Exception: return empty
 
     got = await asyncio.gather(*[one(s) for _, s in items])
     out = {}
-    for (pid, serial), v in zip(items, got):
+    for (pid, serial), snap in zip(items, got):
         b = batt.get(serial) or {}
+        v = snap["fresh"]
         out[pid] = {"core": (round(min(v), 1) if v else None), "sensors": v,
+                    "last_sensors": snap["last"], "seen": snap["seen"],
                     "battery": b.get("pct"), "charging": bool(b.get("charging"))}
     return out
 

@@ -59,7 +59,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60,"shadow_band":74.0,"shadow_drop":8.0,"shadow_climb":6.0,"shadow_floor":45.0}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60,"shadow_band":74.0,"shadow_drop":8.0,"shadow_climb":6.0,"shadow_floor":45.0,"probe_silent_secs":150,"probe_out_on":True,"probe_out_spread":1.0,"probe_out_mins":10,"probe_out_steady":0.5,"probe_out_min":12.0,"probe_out_max":38.0,"probe_hot_c":45.0,"probe_flat_pct":10}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -578,6 +578,58 @@ RFX_SENSORS={}   # {pid:[°C,°C,°C,°C]} — each RFX probe's 4 internal senso
 RFX_BATTERY={}   # {pid:percent} — wireless probes: a flat battery = silent probe, so it's surfaced + alarmed
 RFX_SEEN={}      # {pid: unix ts of the last REAL reading} → the card can say "79.1° as of 8 min ago"
 RFX_CHARGING={}  # {pid: bool} — probe sitting in its dock (cloud's battery_state), so the card says CHARGING
+RFX_LAST={}      # {pid: {"core":°C,"sensors":[..],"seen":unix}} — last thing the probe said, even after it went quiet
+RFX_HIST={}      # {pid: [(unix, core°C), ...]} — recent LIVE readings, for the "lying around, not on charge" check
+
+def _ps_num(k,default):
+    try: return float(settings.get(k,default))
+    except (TypeError,ValueError): return float(default)
+
+def _rfx_silent_secs():
+    # RFX probes check in at least every ~60s (measured 14 Oct: 46-57s apart mid-cook, saver mode on),
+    # so missing ~2 check-ins means it has gone quiet: on the block, out of range or flat.
+    return max(90.0,_ps_num("probe_silent_secs",150))
+
+def _rfx_probe_state(pid,now=None):
+    """Where is this probe? One plain answer per card, so staff never see a mix of
+    'offline' / 'no probe' / 'last seen'. The cloud has NO charging signal for a docked probe (it just goes
+    silent), so a silent probe is judged by what it said last:
+      live      sending now, nothing to flag (the card works out cooking/ready itself)
+      out       sending, but lying in open air: its 4 sensors agree, it's room temp and not moving
+                for N minutes = not in a chicken AND not on charge -> "put it on charge"
+      charging  gone quiet while cool (or cooling fast after a pull) -> on the block
+      lost      gone quiet while hot and holding/climbing -> still in a bird, radio blocked
+      flat      gone quiet with a near-empty battery
+      none      never heard from"""
+    now=now or time.time()
+    last=RFX_LAST.get(pid) or {}
+    seen=last.get("seen")
+    if RFX_CHARGING.get(pid): return {"s":"charging"}
+    if not seen: return {"s":"none"}
+    age=max(0,int(now-seen)); lt=last.get("core")
+    out={"age":age,"t":lt}
+    if age>_rfx_silent_secs():
+        bat=RFX_BATTERY.get(pid)
+        if isinstance(bat,(int,float)) and bat<=_ps_num("probe_flat_pct",10):
+            out["s"]="flat"; return out
+        h=[x for x in (RFX_HIST.get(pid) or []) if x[0]>=seen-180]
+        slope=((h[-1][1]-h[0][1])/((h[-1][0]-h[0][0])/60.0)) if len(h)>=2 and h[-1][0]-h[0][0]>=20 else 0.0
+        hot=_ps_num("probe_hot_c",45)
+        out["s"]="lost" if (lt is not None and lt>=hot and slope>-1.0) else "charging"
+        return out
+    out["s"]="live"
+    if settings.get("probe_out_on",True):
+        sens=[v for v in (last.get("sensors") or []) if isinstance(v,(int,float))]
+        mins=_ps_num("probe_out_mins",10)
+        h=[x for x in (RFX_HIST.get(pid) or []) if x[0]>=now-mins*60]
+        covered=bool(h) and (RFX_HIST.get(pid) or [(now,0)])[0][0]<=now-mins*60+30
+        if (len(sens)>=2 and lt is not None and covered
+                and max(sens)-min(sens)<=_ps_num("probe_out_spread",1.0)
+                and _ps_num("probe_out_min",12)<=lt<=_ps_num("probe_out_max",38)
+                and max(x[1] for x in h)-min(x[1] for x in h)<=_ps_num("probe_out_steady",0.5)):
+            out["s"]="out"
+    return out
+
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
     check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
@@ -585,7 +637,10 @@ def rfx_poll_loop():
         cfg=(db.get("thermoworks") or {})
         try:
             if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("email") and cfg.get("password") and cfg.get("map"):
-                rfx_bridge._STALE_SECS=1200 if cfg.get("tx_mode")=="saver" else 300   # coarse drip = long quiet stretches are normal
+                # Blank a quiet probe after ~2 missed check-ins (was 5 min, 20 in saver mode) so a probe put on
+                # the block stops showing its old temperature almost straight away. The probe's heartbeat is
+                # ~60s in BOTH modes (measured 14 Oct), so saver mode no longer needs a longer window.
+                rfx_bridge._STALE_SECS=_rfx_silent_secs()
                 temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
                 got=False
                 for pid,info in (temps or {}).items():
@@ -597,6 +652,17 @@ def rfx_poll_loop():
                     if isinstance(info,dict) and info.get("battery") is not None: RFX_BATTERY[pid]=info["battery"]
                     charging=bool(info.get("charging")) if isinstance(info,dict) else False
                     RFX_CHARGING[pid]=charging
+                    if isinstance(info,dict):
+                        _ls=[v for v in (info.get("last_sensors") or []) if isinstance(v,(int,float))]
+                        if info.get("seen"):
+                            RFX_LAST[pid]={"core":(round(min(_ls),1) if _ls else None),"sensors":_ls,"seen":float(info["seen"])}
+                        _h=RFX_HIST.setdefault(pid,[])
+                        if t is not None and not charging:
+                            _h.append((time.time(),float(t)))
+                            _keep=time.time()-max(_ps_num("probe_out_mins",10)*60+120,600)
+                            while _h and _h[0][0]<_keep: _h.pop(0)
+                        elif t is None and _h and (time.time()-_h[-1][0])>_rfx_silent_secs()+600:
+                            _h.clear()      # long silence (docked) → the next "lying around" check starts fresh
                     if charging:
                         # In the dock, not in a chicken. Whatever it reads is the charging cradle, not food —
                         # showing it would look like a cook in progress, so blank it and say CHARGING.
@@ -9382,6 +9448,7 @@ def temps():
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
 "rfx_age":({p:int(_now-ts) for p,ts in RFX_SEEN.items()} if _probe_source()=="rfx" else {}),
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
+"rfx_state":({p:_rfx_probe_state(p,_now) for p in (1,2,3,4) if str(p) in ((db.get("thermoworks") or {}).get("map") or {})} if _probe_source()=="rfx" else {}),
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
@@ -9398,15 +9465,16 @@ def set_name():
 @app.route("/set_settings",methods=["POST"])
 def set_settings():
     d=request.get_json(silent=True) or {}
-    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins","probe_pull_drop","probe_pull_rate","shadow_band","shadow_drop","shadow_climb","shadow_floor"]:
+    for k in ["cooked_temp","almost_temp","overdone_temp","probe_count_temp","probe_pull_temp","probe_offline_mins","probe_pull_drop","probe_pull_rate","shadow_band","shadow_drop","shadow_climb","shadow_floor","probe_out_spread","probe_out_steady","probe_out_min","probe_out_max","probe_hot_c"]:
         if k in d:
             try: settings[k]=float(d[k])
             except (TypeError,ValueError): pass
-    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces","probe_confirm_secs","standby_after_secs"]:
+    for k in ["use_by_minutes","quality_minutes","bbq_drop_minutes","fried_drop_minutes","bbq_pieces","fried_pieces","probe_confirm_secs","standby_after_secs","probe_silent_secs","probe_out_mins","probe_flat_pct"]:
         if k in d:
             try: settings[k]=int(d[k])
             except (TypeError,ValueError): pass
     if "standby_steady" in d: settings["standby_steady"]=bool(d["standby_steady"])
+    if "probe_out_on" in d: settings["probe_out_on"]=bool(d["probe_out_on"])
     if "printer_ip" in d: settings["printer_ip"]=str(d["printer_ip"])
     with data_lock: db["probe_settings"]=dict(settings);save_data(db)   # survive restarts
     return Response('{"ok":true}',mimetype="application/json")
