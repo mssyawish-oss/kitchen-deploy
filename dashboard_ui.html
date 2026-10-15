@@ -8035,8 +8035,8 @@ function _probeBattMorningCheck(){
       if(typeof pct==='number' && pct<=25 && !c[pid]) low.push(names[pid]+' ('+pct+'%)'); }
     window._battCheckDay=today; try{localStorage.setItem('probeBattCheck',today);}catch(e){}
     if(!low.length) return;
-    _dlg({title:'\u26A0 Probe batteries low',
-      body:'<div style="font-size:var(--fs-md);line-height:1.55;">These probes are <b>low and not charging</b>:<br><br><b>'+low.join('<br>')+'</b><br><br>If you docked them overnight, the charging block didn\u2019t charge them. Check the dock\u2019s AAA battery and wipe the contacts, then reseat firmly. A rapid / 3-blink light on the block = its AAA is flat.</div>',
+    _dlg({title:'\u26A0 Probe batteries low',   // plain text: _dlg uses textContent, HTML tags printed raw (15 Oct)
+      body:low.join(', ')+' last reported a low battery. The dash can\u2019t see whether a probe is on its block (a docked probe sends nothing), so please check they\u2019re charging: the block\u2019s light flashes red while it charges. No light, or a rapid 3-blink = the block\u2019s AAA battery is flat.',
       cancel:false, yesLabel:'Got it'});
   }catch(e){}
 }
