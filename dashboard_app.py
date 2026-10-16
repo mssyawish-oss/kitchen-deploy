@@ -645,12 +645,13 @@ _DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
 def _dock_has(pid,now=None):
     """Camera has seen this probe's ring on a dock on the last `confirm` looks, and the look is fresh.
-    SAFETY: a probe that is SENDING a hot reading is in a chicken, whatever the camera thinks - never 'docked'.
-    (16 Oct 7pm: evening light tinted the grey docks blue and BLUE showed "On the dock" while reading 85°C.)"""
+    RULE (owner, 16 Oct): a probe that is SENDING a temperature always shows that temperature - the camera only
+    gets a say once the probe has gone quiet. (7pm that day the evening light tinted the grey docks blue and BLUE
+    showed "On the dock" while reading 85°C in a chicken.)"""
     now=now or time.time()
     if not (bool(DOCK_SEEN["at"]) and (now-DOCK_SEEN["at"])<90 and pid in (DOCK_SEEN.get("pids") or [])): return False
-    last=RFX_LAST.get(pid) or {}; seen=last.get("seen"); core=last.get("core")
-    if seen and (now-seen)<=_rfx_silent_secs() and core is not None and core>=_ps_num("probe_hot_c",45): return False
+    seen=(RFX_LAST.get(pid) or {}).get("seen")
+    if seen and (now-seen)<=_rfx_silent_secs(): return False      # still sending: its reading wins
     return True
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
