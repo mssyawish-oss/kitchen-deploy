@@ -630,6 +630,48 @@ def _rfx_probe_state(pid,now=None):
             out["s"]="out"
     return out
 
+# ── Probe docks seen by camera ──────────────────────────────────────────────────────────────────────────────
+# A docked RFX probe switches OFF (ThermoWorks), so the cloud can never say "on the block". The 4 magnetic docks
+# sit on the side of the rotisserie, at the bottom-left edge of the Pack-bench camera (.220). Each probe's
+# silicone ring is a distinct colour, so: while any probe is quiet, look at the dock strip and see which ring
+# colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
+_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":12,"every":60}
+_DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
+DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":""}
+def _dock_cfg():
+    c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
+def _dock_colours(jpg,box):
+    import colorsys
+    from PIL import Image; import io
+    im=Image.open(io.BytesIO(jpg)).convert("RGB")
+    c={"red":0,"yellow":0,"green":0,"blue":0}
+    for r,g,b in im.crop(tuple(box)).getdata():
+        h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
+        if s<0.4 or v<0.2: continue
+        d=h*360
+        if d<20 or d>=330: c["red"]+=1
+        elif d<70: c["yellow"]+=1
+        elif d<170: c["green"]+=1
+        elif 190<=d<260: c["blue"]+=1
+    return c
+def dock_watch_loop():
+    time.sleep(30)
+    while True:
+        cfg=_dock_cfg()
+        try:
+            quiet=[p for p in (1,2,3,4) if (_rfx_probe_state(p).get("s") in ("charging","lost","flat"))] if _probe_source()=="rfx" else []
+            cam=_cam_by_id(cfg["cam"])
+            if quiet and cam:
+                data,err=_snap_from(cam,timeout=10)
+                if data:
+                    cnt=_dock_colours(data,cfg["box"])
+                    DOCK_SEEN.update({"at":time.time(),"counts":cnt,"err":"",
+                                      "pids":sorted(_DOCK_PID[k] for k,n in cnt.items() if n>=int(cfg["min_px"]))})
+                else: DOCK_SEEN.update({"err":str(err or "no photo")})
+        except Exception as e:
+            DOCK_SEEN["err"]=str(e)
+        time.sleep(max(20,int(cfg.get("every") or 60)))
+
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
     check_probe_status pipeline as the BLE dock, so alarms/cook/standby/stock all behave identically."""
@@ -9475,6 +9517,7 @@ def temps():
 "rfx_battery":(dict(RFX_BATTERY) if _probe_source()=="rfx" else {}),
 "rfx_age":({p:int(_now-ts) for p,ts in RFX_SEEN.items()} if _probe_source()=="rfx" else {}),
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
+"rfx_dock":({"pids":DOCK_SEEN["pids"],"age":(int(_now-DOCK_SEEN["at"]) if DOCK_SEEN["at"] else None)} if _probe_source()=="rfx" else {}),
 "rfx_state":({p:_rfx_probe_state(p,_now) for p in (1,2,3,4) if str(p) in ((db.get("thermoworks") or {}).get("map") or {})} if _probe_source()=="rfx" else {}),
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
@@ -12224,7 +12267,8 @@ if __name__=="__main__":
     if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
     threading.Thread(target=self_update_loop,daemon=True).start()                 # pull our own updates (no-op off the server)
-    threading.Thread(target=rfx_poll_loop,daemon=True).start()                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
+    threading.Thread(target=rfx_poll_loop,daemon=True).start()
+    threading.Thread(target=dock_watch_loop,daemon=True).start()                   # camera look at the probe docks while a probe is quiet                     # ThermoWorks RFX cloud probes (only acts when probe_source=='rfx')
     threading.Thread(target=clock_guard_loop,daemon=True).start()                  # ORDERMATE booted 37 min fast → probe readings all "stale"; keeps the clock honest
     threading.Thread(target=photo_restore_once,daemon=True).start()                # one-shot: pull task_photos from the old server after a migration (gated on a db key)
     threading.Thread(target=walkin_loop,daemon=True).start()                       # "customer waiting, nobody serving" watch (only acts when db['walkin'].enabled)
