@@ -59,7 +59,7 @@ probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
 ble_status={"connected":False,"message":"Scanning..."}
-settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60,"shadow_band":74.0,"shadow_drop":8.0,"shadow_climb":6.0,"shadow_floor":45.0,"probe_silent_secs":150,"probe_out_on":True,"probe_out_spread":1.0,"probe_out_mins":10,"probe_out_steady":0.5,"probe_out_min":12.0,"probe_out_max":38.0,"probe_hot_c":45.0,"probe_flat_pct":10}
+settings={"cooked_temp":80.0,"almost_temp":70.0,"overdone_temp":90.0,"use_by_minutes":90,"quality_minutes":90,"printer_ip":"192.168.0.151","bbq_drop_minutes":70,"fried_drop_minutes":15,"bbq_pieces":4,"fried_pieces":18,"probe_pull_temp":60.0,"probe_count_temp":75.0,"probe_confirm_secs":15,"probe_pull_drop":12.0,"probe_pull_rate":3.0,"probe_offline_mins":10,"standby_steady":True,"standby_after_secs":60,"shadow_band":74.0,"shadow_drop":8.0,"shadow_climb":6.0,"shadow_floor":45.0,"probe_silent_secs":90,"probe_out_on":True,"probe_out_spread":1.0,"probe_out_mins":10,"probe_out_steady":0.5,"probe_out_min":12.0,"probe_out_max":38.0,"probe_hot_c":45.0,"probe_flat_pct":10}
 probe_state={i:{"status":"idle","alerted":False,"printed":False,"peak_temp":None,"removed":False,"removal_timer":None,"cook_start":None,"low_since_pull":None,"pull_pending_at":None,"pull_min":None,"last_val":None,"last_change_at":0.0} for i in range(1,5)}
 SERVER_BOOT_ID=int(time.time())   # changes on every (re)start → clients watching this auto-reload when the server comes back, so a restart on ONE device clears the "update ready" bar + loads new code on ALL devices
 state_lock=threading.Lock()
@@ -586,9 +586,9 @@ def _ps_num(k,default):
     except (TypeError,ValueError): return float(default)
 
 def _rfx_silent_secs():
-    # RFX probes check in at least every ~60s (measured 14 Oct: 46-57s apart mid-cook, saver mode on),
-    # so missing ~2 check-ins means it has gone quiet: on the block, out of range or flat.
-    return max(90.0,_ps_num("probe_silent_secs",150))
+    # RFX probes check in at least every ~60s (16 Oct: ~300 check-ins, longest gap 69 s), so 90 s of silence
+    # means it has gone quiet: on the block, out of range or flat.
+    return max(90.0,_ps_num("probe_silent_secs",90))
 
 def _rfx_probe_state(pid,now=None):
     """Where is this probe? One plain answer per card, so staff never see a mix of
@@ -605,6 +605,7 @@ def _rfx_probe_state(pid,now=None):
     last=RFX_LAST.get(pid) or {}
     seen=last.get("seen")
     if RFX_CHARGING.get(pid): return {"s":"charging"}
+    if _dock_has(pid,now): return {"s":"docked","age":(max(0,int(now-seen)) if seen else None),"t":last.get("core")}
     if not seen: return {"s":"none"}
     age=max(0,int(now-seen)); lt=last.get("core")
     out={"age":age,"t":lt}
@@ -635,9 +636,13 @@ def _rfx_probe_state(pid,now=None):
 # sit on the side of the rotisserie, at the bottom-left edge of the Pack-bench camera (.220). Each probe's
 # silicone ring is a distinct colour, so: while any probe is quiet, look at the dock strip and see which ring
 # colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
-_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":12,"every":60}
+_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":12,"every":15,"idle_every":60,"confirm":2}
 _DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
-DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":""}
+DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
+def _dock_has(pid,now=None):
+    """Camera has seen this probe's ring on a dock on the last `confirm` looks, and the look is fresh."""
+    now=now or time.time()
+    return bool(DOCK_SEEN["at"]) and (now-DOCK_SEEN["at"])<90 and pid in (DOCK_SEEN.get("pids") or [])
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
 def _dock_colours(jpg,box):
@@ -658,19 +663,27 @@ def dock_watch_loop():
     time.sleep(30)
     while True:
         cfg=_dock_cfg()
+        # Watch the docks ALL the time (not just once a probe has gone quiet), so a probe put on its block
+        # flips to "On the dock" within ~30 s instead of waiting ~2.5 min for the cloud silence (owner, 16 Oct).
+        # Fast (15 s) while any probe is sending; slow (60 s) when every probe is already quiet.
+        wait=int(cfg.get("every") or 15)
         try:
-            quiet=[p for p in (1,2,3,4) if (_rfx_probe_state(p).get("s") in ("charging","lost","flat"))] if _probe_source()=="rfx" else []
             cam=_cam_by_id(cfg["cam"])
-            if quiet and cam:
+            if _probe_source()=="rfx" and cam:
+                if not any(_rfx_probe_state(p).get("s") in ("live","out") for p in (1,2,3,4)):
+                    wait=int(cfg.get("idle_every") or 60)
                 data,err=_snap_from(cam,timeout=10)
                 if data:
-                    cnt=_dock_colours(data,cfg["box"])
+                    cnt=_dock_colours(data,cfg["box"]); st=DOCK_SEEN.setdefault("streak",{})
+                    for k,pid in _DOCK_PID.items():
+                        st[pid]=(st.get(pid,0)+1) if cnt.get(k,0)>=int(cfg["min_px"]) else 0
+                    need=max(1,int(cfg.get("confirm") or 2))   # 2 looks in a row = a hand passing by can't trigger it
                     DOCK_SEEN.update({"at":time.time(),"counts":cnt,"err":"",
-                                      "pids":sorted(_DOCK_PID[k] for k,n in cnt.items() if n>=int(cfg["min_px"]))})
+                                      "pids":sorted(p for p,n in st.items() if n>=need)})
                 else: DOCK_SEEN.update({"err":str(err or "no photo")})
         except Exception as e:
             DOCK_SEEN["err"]=str(e)
-        time.sleep(max(20,int(cfg.get("every") or 60)))
+        time.sleep(max(10,wait))
 
 def rfx_poll_loop():
     """When probe_source=='rfx', pull temps from ThermoWorks Cloud and feed them through the SAME
@@ -705,7 +718,7 @@ def rfx_poll_loop():
                             while _h and _h[0][0]<_keep: _h.pop(0)
                         elif t is None and _h and (time.time()-_h[-1][0])>_rfx_silent_secs()+600:
                             _h.clear()      # long silence (docked) → the next "lying around" check starts fresh
-                    if charging:
+                    if charging or _dock_has(pid):
                         # In the dock, not in a chicken. Whatever it reads is the charging cradle, not food —
                         # showing it would look like a cook in progress, so blank it and say CHARGING.
                         with probe_lock: probe_temps[pid]=None
