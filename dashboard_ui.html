@@ -5446,7 +5446,7 @@ function renderProbes(){
     const _ago=s=>(s<90?(Math.round(s)+'s ago'):(s<5400?(Math.round(s/60)+' min ago'):(Math.round(s/3600)+'h ago')));
     const _wasT=(_rs&&typeof _rs.t==='number')?(' at '+_rs.t.toFixed(0)+'&#176;'):'';
     const _whereTxt=!_rs?'':(_rsS==='none'?'Not heard from yet'
-      :_onDock?'Seen on its dock by the camera'
+      :_onDock?''
       :_quiet?('Last heard '+_ago(_rs.age||0)+_wasT+(_dkFresh?' &middot; not seen on the docks':'')):'');
     const staleHtml=_whereTxt?`<div class="probe-where">${_whereTxt}</div>`
                        :(_charging?'':((_lostTag&&_ageTxt)?`<div class="probe-stale">last reading ${_ageTxt}</div>`:''));

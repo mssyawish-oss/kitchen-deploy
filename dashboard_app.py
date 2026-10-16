@@ -638,15 +638,20 @@ def _rfx_probe_state(pid,now=None):
 # colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
 # Tuned 16 Oct pm on 67 real frames: afternoon light makes the red ring duller, so the colour cut-off is looser
 # (sat>=0.3, val>=0.15) with a per-colour pixel minimum - red/yellow rings read 30-110 px docked vs <=8 px noise;
-# the grey docks throw up to ~26 px of blue/green noise, so those need more (blue/green rings not yet seen docked).
-_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":{"red":15,"yellow":15,"green":35,"blue":35},
+# the grey docks pick up a faint blue/green tint (worst in evening light), so blue/green must be properly saturated.
+_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":{"red":10,"yellow":15,"green":15,"blue":15},
            "every":15,"idle_every":60,"confirm":2,"of":3}
 _DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
 def _dock_has(pid,now=None):
-    """Camera has seen this probe's ring on a dock on the last `confirm` looks, and the look is fresh."""
+    """Camera has seen this probe's ring on a dock on the last `confirm` looks, and the look is fresh.
+    SAFETY: a probe that is SENDING a hot reading is in a chicken, whatever the camera thinks - never 'docked'.
+    (16 Oct 7pm: evening light tinted the grey docks blue and BLUE showed "On the dock" while reading 85°C.)"""
     now=now or time.time()
-    return bool(DOCK_SEEN["at"]) and (now-DOCK_SEEN["at"])<90 and pid in (DOCK_SEEN.get("pids") or [])
+    if not (bool(DOCK_SEEN["at"]) and (now-DOCK_SEEN["at"])<90 and pid in (DOCK_SEEN.get("pids") or [])): return False
+    last=RFX_LAST.get(pid) or {}; seen=last.get("seen"); core=last.get("core")
+    if seen and (now-seen)<=_rfx_silent_secs() and core is not None and core>=_ps_num("probe_hot_c",45): return False
+    return True
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
 def _dock_colours(jpg,box):
@@ -658,6 +663,7 @@ def _dock_colours(jpg,box):
         h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
         if s<0.3 or v<0.15: continue
         d=h*360
+        if 70<=d<260 and s<0.45: continue      # green/blue: ignore the faint tint the grey docks pick up in evening light
         if d<20 or d>=330: c["red"]+=1
         elif d<70: c["yellow"]+=1
         elif d<170: c["green"]+=1
