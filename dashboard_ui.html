@@ -5194,6 +5194,10 @@ let _probeOrderAt=0;
 // cook (wiping its log and re-arming its stock credit). pointerup also refreshes the hold so the click
 // event, which fires after it, still lands on the card the finger actually went down on.
 const _probeOfflineNow=new Set();
+// Is this probe sending right now? An OFFLINE probe's battery % is just the last thing it said before
+// going quiet (Yellow: 0% right before it was docked, then "low battery" warnings all next morning while it
+// sat charging - owner, 16 Oct). Battery numbers and warnings only ever use probes that are sending.
+function _probeSending(pid){const st=(window._rfxState||{})[pid];return !st||st.s==='live'||st.s==='out';}
 const _BATT_LOW=20;        // at or below this the probe pill goes red and a notice is raised
 // Deliberately NOT wired into the alarm bar: that's a sounding-siren system with silence buttons, and a
 // siren for a 19% battery would be noise during service. One toast per probe per day + the red pill on
@@ -5205,6 +5209,7 @@ function _battCheck(){
   Object.keys(b).forEach(pid=>{
     const v=b[pid];
     if(typeof v!=='number'||!isFinite(v)||v>_BATT_LOW)return;
+    if(!_probeSending(pid))return;
     if(seen[pid]===today)return;
     seen[pid]=today;
     const nm=((probeData[pid]||{}).name||'').trim()||('Probe '+pid);
@@ -5448,7 +5453,7 @@ function renderProbes(){
     // Battery is ALWAYS shown while the probe is reporting, so staff can swap one out before it dies
     // (owner, 4 Aug). Green normally, amber under 30%, red at/below _BATT_LOW. A "no probe" card still
     // shows nothing — that % would just be the cloud's last cached value.
-    const batHtml=(_batN!==null&&dstatus!=='none')
+    const batHtml=(_batN!==null&&dstatus!=='none'&&!_quiet)
       ?`<span class="probe-batt${_batN<=_BATT_LOW?' crit':(_batN<=30?' warn':' ok')}" title="probe battery">${Math.round(_batN)}%</span>`:'';
     // RFX: each probe has 4 internal sensors — show them all, small, under the main (coldest) temp.
     const _sv=((window._rfxSensors||{})[pidN]||[]).filter(v=>typeof v==='number'&&isFinite(v));
@@ -5478,7 +5483,7 @@ function renderProbes(){
       else if(dstatus==='standby'){_etaTxt='Standby';_etaMuted=true;}
       const _etaHtml=_etaTxt?`<span class="p2-eta${_etaMuted?' muted':''}">${_etaMuted?'':_CLK}${_etaTxt}</span>`:'';
       const _BATTSVG='<svg class="p2-battico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7.5" width="16" height="9" rx="2"/><path d="M21.5 10.5v3"/></svg>';
-      const _batv=(_batN!==null&&dstatus!=='none')?`<span class="p2-batt2${_batN<=_BATT_LOW?' low':''}" title="probe battery">${_BATTSVG}${Math.round(_batN)}%</span>`:'';
+      const _batv=(_batN!==null&&dstatus!=='none'&&!_quiet)?`<span class="p2-batt2${_batN<=_BATT_LOW?' low':''}" title="probe battery">${_BATTSVG}${Math.round(_batN)}%</span>`:'';
       return `<div class="probe-card p2 pc${pidN} ${cardCls}${showAck?' sounding':''}${_needCharge?' needs-charge':''}">
       ${dn?`<div class="probe-doneness" title="doneness"><i style="width:${dn.pct}%;background:${dn.color};"></i></div>`:''}
       <div class="p2-namebar">${_cn}</div>${_nmHtml}
@@ -8015,28 +8020,27 @@ function _showUpdateNudge(){
 // In-app confirm. NOT window.confirm(): kiosk browsers and installed PWAs (the big Android wall screen)
 // suppress native dialogs and return false silently, so the action just never happened — while the same
 // button worked on the iPad. This renders in the page, so it behaves identically on every device.
-// Morning battery heads-up (8 Oct 2026). The probe card already shows battery% + a CHARGING badge,
-// but staff dock probes overnight and don't notice when a flat/weak dock never actually charged them.
-// Once per calendar day (from 5am), if any MAPPED probe is low AND not charging, say so plainly.
-// Visual only (no sound), dismissible, and it won't interrupt a PIN/alarm - it retries when free.
 function _probeBattMorningCheck(){
+  // Low-battery popup, ONLY for a probe that is sending right now (so its % is real). Once per probe per day.
+  // It used to fire once each morning from whatever % the probes last reported - so a probe that went on the
+  // block at 0% kept "low battery" warnings coming while it sat there charging. Offline probes say nothing.
   try{
-    var b=window._rfxBattery||{}, c=window._rfxCharging||{};
+    var b=window._rfxBattery||{};
     if(!Object.keys(b).length) return;
-    var now=new Date(); if(now.getHours()<5) return;
-    var today=now.toISOString().slice(0,10);
-    if(window._battCheckDay===today) return;
-    var ls=null; try{ls=localStorage.getItem('probeBattCheck');}catch(e){}
-    if(ls===today){window._battCheckDay=today; return;}
     if(typeof _uiBusy==='function' && _uiBusy()) return;
+    var today=new Date().toISOString().slice(0,10);
+    var seen={}; try{seen=JSON.parse(localStorage.getItem('probeBattLowDay')||'{}');}catch(e){}
+    window._battLowSeen=window._battLowSeen||{};
     var names={1:'Blue',2:'Green',3:'Red',4:'Yellow'};
     var low=[];
     for(var pid=1; pid<=4; pid++){ var pct=b[pid];
-      if(typeof pct==='number' && pct<=25 && !c[pid]) low.push(names[pid]+' ('+pct+'%)'); }
-    window._battCheckDay=today; try{localStorage.setItem('probeBattCheck',today);}catch(e){}
+      if(typeof pct!=='number' || pct>25 || !_probeSending(pid)) continue;
+      if(seen[pid]===today || window._battLowSeen[pid]===today) continue;
+      seen[pid]=today; window._battLowSeen[pid]=today; low.push(names[pid]+' ('+pct+'%)'); }
     if(!low.length) return;
-    _dlg({title:'\u26A0 Probe batteries low',   // plain text: _dlg uses textContent, HTML tags printed raw (15 Oct)
-      body:low.join(', ')+' last reported a low battery. The dash can\u2019t see whether a probe is on its block (a docked probe sends nothing), so please check they\u2019re charging: the block\u2019s light flashes red while it charges. No light, or a rapid 3-blink = the block\u2019s AAA battery is flat.',
+    try{localStorage.setItem('probeBattLowDay',JSON.stringify(seen));}catch(e){}
+    _dlg({title:'\u26A0 Probe battery low',   // plain text: _dlg uses textContent
+      body:low.join(', ')+' is in use with a low battery. Swap it for a charged probe soon, or it may cut out mid-cook.',
       cancel:false, yesLabel:'Got it'});
   }catch(e){}
 }
