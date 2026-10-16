@@ -605,7 +605,7 @@ def _rfx_probe_state(pid,now=None):
     last=RFX_LAST.get(pid) or {}
     seen=last.get("seen")
     if RFX_CHARGING.get(pid): return {"s":"charging"}
-    if _dock_has(pid,now): return {"s":"docked","age":(max(0,int(now-seen)) if seen else None),"t":last.get("core")}
+    if _dock_has(pid,now) or _dock_stuck(pid,now): return {"s":"docked","age":(max(0,int(now-seen)) if seen else None),"t":last.get("core")}
     if not seen: return {"s":"none"}
     age=max(0,int(now-seen)); lt=last.get("core")
     out={"age":age,"t":lt}
@@ -636,10 +636,13 @@ def _rfx_probe_state(pid,now=None):
 # sit on the side of the rotisserie, at the bottom-left edge of the Pack-bench camera (.220). Each probe's
 # silicone ring is a distinct colour, so: while any probe is quiet, look at the dock strip and see which ring
 # colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
-# Tuned 16 Oct pm on 67 real frames: afternoon light makes the red ring duller, so the colour cut-off is looser
-# (sat>=0.3, val>=0.15) with a per-colour pixel minimum - red/yellow rings read 30-110 px docked vs <=8 px noise;
-# the grey docks pick up a faint blue/green tint (worst in evening light), so blue/green must be properly saturated.
-_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":{"red":10,"yellow":15,"green":15,"blue":15},
+# Docks MOVED 16 Oct ~8:40pm: higher up, turned sideways, now right beside the rotisserie's bright-blue frame
+# (x<128 in the full frame). Calibrated on 595 frames with all 4 docked (order top->bottom Yellow, Blue, Red, Green):
+# sat>=0.25 picks up red/yellow 100% and green ~95%; green is only counted right of the frame glow (x>=gx).
+# BLUE blends into the blue frame, so it is never trusted on its own: a faint blue patch in its spot (blue_box)
+# only counts when every other quiet probe is already seen on a dock (elimination - Marcel, 16 Oct).
+_DOCK_DEF={"cam":"305d1e22","box":[128,1672,205,1762],"gx":140,"sat":0.25,"val":0.12,
+           "min_px":{"red":6,"yellow":6,"green":6,"blue":15},"blue_box":[150,1692,175,1722],"blue_sat":0.18,
            "every":15,"idle_every":60,"confirm":2,"of":3}
 _DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
@@ -653,22 +656,34 @@ def _dock_has(pid,now=None):
     seen=(RFX_LAST.get(pid) or {}).get("seen")
     if seen and (now-seen)<=_rfx_silent_secs(): return False      # still sending: its reading wins
     return True
+def _dock_stuck(pid,now=None):
+    """Seen on its dock earlier and hasn't sent a single reading since -> still on the dock. A docked RFX probe is
+    switched off and starts transmitting the moment it's lifted out, so this can't hide a probe that left the dock.
+    Stops a dull ring (green/blue at the new spot) flickering between "On the dock" and "Offline"."""
+    now=now or time.time()
+    t=(DOCK_SEEN.get("sticky") or {}).get(pid)
+    seen=(RFX_LAST.get(pid) or {}).get("seen")
+    if not t or (seen and seen>t): return False                  # it has sent since -> it left the dock
+    return not (seen and (now-seen)<=_rfx_silent_secs())
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
-def _dock_colours(jpg,box):
+def _dock_colours(jpg,cfg):
     import colorsys
     from PIL import Image; import io
     im=Image.open(io.BytesIO(jpg)).convert("RGB")
     c={"red":0,"yellow":0,"green":0,"blue":0}
-    for r,g,b in im.crop(tuple(box)).getdata():
+    x0,y0,x1,y1=cfg["box"]; gx=int(cfg.get("gx") or x0); smin=float(cfg.get("sat",0.25)); vmin=float(cfg.get("val",0.12))
+    for i,(r,g,b) in enumerate(im.crop((x0,y0,x1,y1)).getdata()):
         h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
-        if s<0.3 or v<0.15: continue
+        if s<smin or v<vmin: continue
         d=h*360
-        if 70<=d<260 and s<0.45: continue      # green/blue: ignore the faint tint the grey docks pick up in evening light
         if d<20 or d>=330: c["red"]+=1
         elif d<70: c["yellow"]+=1
-        elif d<170: c["green"]+=1
-        elif 190<=d<260: c["blue"]+=1
+        elif d<170 and x0+(i%(x1-x0))>=gx: c["green"]+=1   # left edge = glow off the blue frame
+    bs=float(cfg.get("blue_sat",0.18))
+    for r,g,b in im.crop(tuple(cfg["blue_box"])).getdata():
+        h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
+        if s>=bs and v>=0.08 and 200<=h*360<260: c["blue"]+=1
     return c
 def dock_watch_loop():
     time.sleep(30)
@@ -685,15 +700,23 @@ def dock_watch_loop():
                     wait=int(cfg.get("idle_every") or 60)
                 data,err=_snap_from(cam,timeout=10)
                 if data:
-                    cnt=_dock_colours(data,cfg["box"]); st=DOCK_SEEN.setdefault("streak",{})
+                    cnt=_dock_colours(data,cfg); st=DOCK_SEEN.setdefault("streak",{})
                     mp=cfg["min_px"] if isinstance(cfg["min_px"],dict) else {}
                     win=max(1,int(cfg.get("of") or 3)); need=max(1,int(cfg.get("confirm") or 2))
+                    hit={k:cnt.get(k,0)>=int(mp.get(k,15)) for k in _DOCK_PID}
+                    # Blue by elimination only: it must be quiet, show a faint patch in its spot, and every other
+                    # quiet probe must already be seen on a dock this look.
+                    if hit.get("blue"):
+                        quiet=[p for p in (1,2,3,4) if _rfx_probe_state(p).get("s") not in ("live","out","none")]
+                        others=[p for p in quiet if p!=_DOCK_PID["blue"]]
+                        hit["blue"]=(_DOCK_PID["blue"] in quiet) and all(hit[k] for k,p in _DOCK_PID.items() if p in others)
                     for k,pid in _DOCK_PID.items():
-                        lim=int(mp.get(k,cfg["min_px"] if not mp else 15))
-                        st[pid]=((st.get(pid) or [])+[cnt.get(k,0)>=lim])[-win:]
+                        st[pid]=((st.get(pid) or [])+[bool(hit[k])])[-win:]
                     # seen on 2 of the last 3 looks: a passing hand can't trigger it, one dull frame can't drop it
-                    DOCK_SEEN.update({"at":time.time(),"counts":cnt,"err":"",
-                                      "pids":sorted(p for p,h in st.items() if sum(h)>=need)})
+                    conf=sorted(p for p,h in st.items() if sum(h)>=need)
+                    stk=DOCK_SEEN.setdefault("sticky",{})
+                    for p in conf: stk[p]=time.time()
+                    DOCK_SEEN.update({"at":time.time(),"counts":cnt,"err":"","pids":conf})
                 else: DOCK_SEEN.update({"err":str(err or "no photo")})
         except Exception as e:
             DOCK_SEEN["err"]=str(e)
@@ -732,7 +755,7 @@ def rfx_poll_loop():
                             while _h and _h[0][0]<_keep: _h.pop(0)
                         elif t is None and _h and (time.time()-_h[-1][0])>_rfx_silent_secs()+600:
                             _h.clear()      # long silence (docked) → the next "lying around" check starts fresh
-                    if charging or _dock_has(pid):
+                    if charging or _dock_has(pid) or _dock_stuck(pid):
                         # In the dock, not in a chicken. Whatever it reads is the charging cradle, not food —
                         # showing it would look like a cook in progress, so blank it and say CHARGING.
                         with probe_lock: probe_temps[pid]=None
