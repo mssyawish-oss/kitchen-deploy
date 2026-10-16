@@ -636,7 +636,11 @@ def _rfx_probe_state(pid,now=None):
 # sit on the side of the rotisserie, at the bottom-left edge of the Pack-bench camera (.220). Each probe's
 # silicone ring is a distinct colour, so: while any probe is quiet, look at the dock strip and see which ring
 # colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
-_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":12,"every":15,"idle_every":60,"confirm":2}
+# Tuned 16 Oct pm on 67 real frames: afternoon light makes the red ring duller, so the colour cut-off is looser
+# (sat>=0.3, val>=0.15) with a per-colour pixel minimum - red/yellow rings read 30-110 px docked vs <=8 px noise;
+# the grey docks throw up to ~26 px of blue/green noise, so those need more (blue/green rings not yet seen docked).
+_DOCK_DEF={"cam":"305d1e22","box":[190,1755,305,1915],"min_px":{"red":15,"yellow":15,"green":35,"blue":35},
+           "every":15,"idle_every":60,"confirm":2,"of":3}
 _DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
 def _dock_has(pid,now=None):
@@ -652,7 +656,7 @@ def _dock_colours(jpg,box):
     c={"red":0,"yellow":0,"green":0,"blue":0}
     for r,g,b in im.crop(tuple(box)).getdata():
         h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
-        if s<0.4 or v<0.2: continue
+        if s<0.3 or v<0.15: continue
         d=h*360
         if d<20 or d>=330: c["red"]+=1
         elif d<70: c["yellow"]+=1
@@ -675,11 +679,14 @@ def dock_watch_loop():
                 data,err=_snap_from(cam,timeout=10)
                 if data:
                     cnt=_dock_colours(data,cfg["box"]); st=DOCK_SEEN.setdefault("streak",{})
+                    mp=cfg["min_px"] if isinstance(cfg["min_px"],dict) else {}
+                    win=max(1,int(cfg.get("of") or 3)); need=max(1,int(cfg.get("confirm") or 2))
                     for k,pid in _DOCK_PID.items():
-                        st[pid]=(st.get(pid,0)+1) if cnt.get(k,0)>=int(cfg["min_px"]) else 0
-                    need=max(1,int(cfg.get("confirm") or 2))   # 2 looks in a row = a hand passing by can't trigger it
+                        lim=int(mp.get(k,cfg["min_px"] if not mp else 15))
+                        st[pid]=((st.get(pid) or [])+[cnt.get(k,0)>=lim])[-win:]
+                    # seen on 2 of the last 3 looks: a passing hand can't trigger it, one dull frame can't drop it
                     DOCK_SEEN.update({"at":time.time(),"counts":cnt,"err":"",
-                                      "pids":sorted(p for p,n in st.items() if n>=need)})
+                                      "pids":sorted(p for p,h in st.items() if sum(h)>=need)})
                 else: DOCK_SEEN.update({"err":str(err or "no photo")})
         except Exception as e:
             DOCK_SEEN["err"]=str(e)
