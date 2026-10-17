@@ -10947,14 +10947,37 @@ def api_print_order():
     except Exception as e: return jsonify({"ok":False,"error":str(e)})
     return jsonify({"ok":True})
 
+# Who may appear on a prep/food label. Only KITCHEN staff who are clocked in right now (open Square timecard),
+# matched by first name, plus a standing morning slot (Marcel, 18 Oct: Mark 7:00-12:30 every day). Front-of-house
+# names and the stale manual shift board are never offered: a label stamped with someone who wasn't there is a
+# food-safety record that lies. Settings override: db["label_staff"] = {"kitchen":[...], "fixed":[{name,from,to}]}.
+_LABEL_STAFF_DEFAULT={"kitchen":["bianca","leandro","deepak","toma","dhruv","druv","lia"],
+                      "fixed":[{"name":"Mark","from":"07:00","to":"12:30"}]}
+_TM_NAME_CACHE={}
+def _label_staff_cfg():
+    cfg=db.get("label_staff") or {}
+    return {"kitchen":[str(x).strip().lower() for x in (cfg.get("kitchen") or _LABEL_STAFF_DEFAULT["kitchen"]) if str(x).strip()],
+            "fixed":cfg.get("fixed") if isinstance(cfg.get("fixed"),list) else _LABEL_STAFF_DEFAULT["fixed"]}
+def _tm_name(tid,hdr):
+    # Team-member display name straight from Square, for people clocked in who aren't in the dash staff list.
+    if tid in _TM_NAME_CACHE: return _TM_NAME_CACHE[tid]
+    nm=""
+    try:
+        req=urllib.request.Request(SQUARE_BASE+"/v2/team-members/"+urllib.parse.quote(tid),headers=hdr)
+        with urllib.request.urlopen(req,timeout=10,context=SSL_CTX) as r: tm=(json.loads(r.read().decode()).get("team_member") or {})
+        nm=(" ".join(x for x in [tm.get("given_name") or "",tm.get("family_name") or ""] if x)).strip()
+    except Exception: pass
+    _TM_NAME_CACHE[tid]=nm
+    return nm
+
 @app.route("/api/clocked_on")
 def api_clocked_on():
-    # Names of staff CURRENTLY clocked in — an OPEN Square timecard (clock-in, no clock-out). Falls back to the
-    # dashboard's manual shift board, then to the full staff list, so the label picker is never empty.
-    names=[]; hdr=_sq_headers(); cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    cfg=_label_staff_cfg(); kitchen=set(cfg["kitchen"])
+    names=[]; hdr=_sq_headers(); sq=db.get("square_config",{}) or {}; loc=(sq.get("location_id") or "").strip()
     smap={}
     for s in (db.get("staff") or []):
         if s.get("square_id"): smap[s["square_id"]]=s.get("name") or ""
+    ok=False
     if hdr:
         try:
             now=datetime.now().astimezone(); mid=now.replace(hour=0,minute=0,second=0,microsecond=0)
@@ -10962,18 +10985,23 @@ def api_clocked_on():
             if loc: body["query"]["filter"]["location_ids"]=[loc]
             req=urllib.request.Request(SQUARE_BASE+"/v2/labor/timecards/search",data=json.dumps(body).encode(),headers=hdr)
             with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            ok=True
             for tc in data.get("timecards") or []:
                 if tc.get("end_at") is None and tc.get("start_at"):          # open shift = clocked in now
-                    nm=smap.get(tc.get("team_member_id") or "","")
-                    if nm and nm not in names: names.append(nm)
+                    tid=tc.get("team_member_id") or ""
+                    nm=smap.get(tid) or _tm_name(tid,hdr)
+                    first=(nm.split() or [""])[0].lower()
+                    if nm and first in kitchen and nm not in names: names.append(nm)
         except Exception: pass
-    src="square" if names else ""
-    if not names:                                                            # fallback: manual shift board
-        for s in ((db.get("labour") or {}).get("on") or []):
-            nm=(s.get("name") if isinstance(s,dict) else str(s)) or ""
-            if nm and nm not in names: names.append(nm)
-        if names: src="shiftboard"
-    return jsonify({"names":names,"source":src})
+    now=datetime.now()
+    hm=now.strftime("%H:%M")
+    for f in cfg["fixed"]:                                                   # standing slots, e.g. Mark 07:00-12:30
+        try:
+            nm=str(f.get("name") or "").strip(); fr=str(f.get("from") or "00:00"); to=str(f.get("to") or "23:59")
+            days=f.get("days")                                               # optional list of weekday ints (Mon=0)
+            if nm and fr<=hm<to and (not days or now.weekday() in days) and nm not in names: names.append(nm)
+        except Exception: pass
+    return jsonify({"names":names,"source":"square" if ok else "square-unreachable"})
 
 @app.route("/webhook/square",methods=["POST"])
 def square_webhook():
