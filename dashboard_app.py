@@ -6576,6 +6576,7 @@ def _foodw_save_photo(which,jpeg):
         with open(os.path.join(FOODW_DIR,fn),"wb") as f: f.write(_downscale_jpeg(jpeg,1280))
         return fn
     except Exception: return ""
+_FOODW_RANK={"empty":0,"low":1,"ok":2,"full":3}
 def _foodw_check(which,force=False):
     """One read of one display. A dish's level only changes after two reads in a row agree (hands, glare,
     a customer leaning over). Returns the display's state dict."""
@@ -6598,12 +6599,23 @@ def _foodw_check(which,force=False):
         if p is not None and not force:
             if d["level"] in ("full","ok") and r["level"]=="low" and p>int(c.get("low_enter",30)): r=dict(r,level="ok")
             elif d["level"]=="low" and r["level"] in ("full","ok") and p<int(c.get("low_exit",50)): r=dict(r,level="low")
-        if r["level"]==d["level"]: d["pend"]=None; continue
-        if force or d["level"] is None or d["pend"]==r["level"]:
-            changes.append({"dish":name,"from":d["level"],"to":r["level"],"note":r["note"]})
-            d["level"]=r["level"]; d["pend"]=None; d["since"]=time.time()
-        else:
-            d["pend"]=r["level"]
+        # Ratchet (19 Oct: 314 changes in 48 h, e.g. Broccoli low>empty>low>empty in 16 min). Trays only run DOWN
+        # by themselves; going back UP means staff refilled it, so it needs much stronger proof than going down.
+        cur=d["level"]; new=r["level"]
+        if new==cur: d["pend"]=None; d["pend_n"]=0; continue
+        if new=="unclear" and not force: continue                  # can't see it -> keep what we last knew
+        R=_FOODW_RANK; up=(cur in R and new in R and R[new]>R[cur])
+        key="up" if up else new
+        if d.get("pend")==key: d["pend_n"]=d.get("pend_n",0)+1
+        else: d["pend"]=key; d["pend_n"]=1; d["pend_min"]=new
+        if up and R[new]<R.get(d.get("pend_min"),9): d["pend_min"]=new
+        if up: need=2 if R[new]-R[cur]>=2 else int(_foodw_cfg().get("up_reads",4))   # big jump = obvious refill
+        elif new=="missing": need=3                                                     # pulled at close / swapped
+        else: need=2
+        if force or cur is None or d["pend_n"]>=need:
+            to=(d.get("pend_min") or new) if up else new           # a refill commits the LOWEST level seen in the streak
+            changes.append({"dish":name,"from":cur,"to":to,"note":r["note"]})
+            d["level"]=to; d["pend"]=None; d["pend_n"]=0; d["since"]=time.time()
     photo=""
     if changes or (time.time()-st.get("photo_at",0))>_FOODW_PHOTO_EVERY:
         photo=_foodw_save_photo(which,jpeg); st["photo_at"]=time.time()
@@ -6723,6 +6735,9 @@ def api_foodwatch_config():
             if k in d:
                 try: cur[k]=max(lo,min(hi,int(d[k])))
                 except Exception: pass
+        if "up_reads" in d:
+            try: cur["up_reads"]=max(2,min(10,int(d["up_reads"])))
+            except Exception: pass
         if "think" in d:
             try: cur["think"]=max(0,min(8192,int(d["think"])))
             except Exception: pass
