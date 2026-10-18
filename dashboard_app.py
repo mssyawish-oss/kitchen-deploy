@@ -640,8 +640,13 @@ def _rfx_probe_state(pid,now=None):
 # dark-navy ring was swapped for PINK (Marcel). One small window per dock, on the ring spot (full-frame coords).
 # Pink and red read almost the same hue on this camera (pink ~351 deg, sat ~0.45; red ~359 deg, sat ~0.6), so a
 # red-ish ring is split by saturation/hue, and when only one of Pink/Red is quiet the red-ish ring is that one.
-_DOCK_DEF={"cam":"305d1e22","docks":[[722,744],[752,741],[775,723],[797,702]],"r":10,
-           "min_px":{"red":20,"yellow":50,"green":25},"pink_sat":0.53,"pink_hue":-4,
+# 18 Oct pm: rings slide up and down the probe (Marcel) - a fixed spot missed GREEN docked 1.5 cm higher. Now each
+# dock is walked along its whole length from its top end; a ring = a short band crossing the probe (several coloured
+# px in the same row across), the gold shaft = a long thin line (few px per row), so only "wide" rows count and the
+# ring is the best ring_len-row window. Checked on 4 frames (navy era, pink x2, all-4 tonight): all correct.
+_DOCK_DEF={"cam":"305d1e22","docks":[[708,707],[737,688],[760,678],[780,655]],"axis":[0.33,1.0],"along":[8,125],
+           "half_w":8,"ring_len":14,"row_min":{"redish":2,"green":4,"yellow":5},
+           "min_px":{"red":12,"yellow":40,"green":25},"pink_sat":0.5,
            "every":15,"idle_every":60,"confirm":2,"of":3}
 _DOCK_PID={"pink":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
@@ -667,24 +672,36 @@ def _dock_stuck(pid,now=None):
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
 def _dock_colours(jpg,cfg):
-    """Per dock window -> what ring is on it: "yellow" | "green" | "red" | "pink" | "redish" (can't split) | None."""
-    import colorsys, statistics
+    """Per dock -> the ring on it: "yellow" | "green" | "red" | "pink" | None."""
+    import colorsys, statistics, math
     from PIL import Image; import io
     im=Image.open(io.BytesIO(jpg)).convert("RGB")
-    mp=cfg.get("min_px") or {}; r=int(cfg.get("r") or 10); out=[]
-    for cx,cy in cfg["docks"]:
-        y_=g_=0; reds=[]
-        for px in im.crop((cx-r,cy-r,cx+r+1,cy+r+1)).getdata():
-            h,s_,v=colorsys.rgb_to_hsv(px[0]/255.0,px[1]/255.0,px[2]/255.0); d=h*360
-            if v<0.15 or s_<0.3: continue
-            if (d>=330 or d<25) and s_>=0.35 and v>=0.2: reds.append(((d-360) if d>=180 else d, s_))
-            elif 30<=d<65 and s_>=0.4: y_+=1
-            elif 70<=d<170: g_+=1
-        if y_>=int(mp.get("yellow",50)): out.append("yellow")
-        elif g_>=int(mp.get("green",25)): out.append("green")
-        elif len(reds)>=int(mp.get("red",20)):
-            hs=statistics.median(x[0] for x in reds); ss=statistics.median(x[1] for x in reds)
-            out.append("pink" if (ss<float(cfg.get("pink_sat",0.53)) and hs<float(cfg.get("pink_hue",-4))) else "red")
+    ax=cfg.get("axis") or [0.33,1.0]; n=math.hypot(*ax); ux,uy=ax[0]/n,ax[1]/n; qx,qy=-uy,ux
+    t0,t1=cfg.get("along") or [8,125]; w=int(cfg.get("half_w") or 8); L=int(cfg.get("ring_len") or 14)
+    mp=cfg.get("min_px") or {}; rm=cfg.get("row_min") or {}; out=[]
+    for x0,y0 in cfg["docks"]:
+        rows=[]
+        for t in range(int(t0),int(t1)):
+            red=[]; yel=grn=0
+            for k in range(-w,w+1):
+                r,g,b=im.getpixel((int(round(x0+ux*t+qx*k)),int(round(y0+uy*t+qy*k))))
+                h,s_,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0); d=h*360
+                if v<0.15 or s_<0.3: continue
+                if (d>=330 or d<12) and s_>=0.35 and v>=0.2: red.append(s_)
+                elif 12<=d<65 and s_>=0.4: yel+=1
+                elif 70<=d<170: grn+=1
+            rows.append((red,yel,grn))
+        def best(vals,lim):
+            vals=[x if x>=lim else 0 for x in vals]
+            return max((sum(vals[i:i+L]),i) for i in range(max(1,len(vals)-L+1)))
+        rd,ri=best([len(x[0]) for x in rows],int(rm.get("redish",2)))
+        y_,_=best([x[1] for x in rows],int(rm.get("yellow",5)))
+        g_,_=best([x[2] for x in rows],int(rm.get("green",4)))
+        if g_>=int(mp.get("green",25)) and g_>=y_: out.append("green")
+        elif y_>=int(mp.get("yellow",40)) and y_>=rd: out.append("yellow")
+        elif rd>=int(mp.get("red",12)):
+            ss=[v for x in rows[ri:ri+L] for v in x[0]]
+            out.append("pink" if statistics.median(ss)<float(cfg.get("pink_sat",0.5)) else "red")
         else: out.append(None)
     return out
 def dock_watch_loop():
