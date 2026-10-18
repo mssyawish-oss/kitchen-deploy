@@ -636,15 +636,14 @@ def _rfx_probe_state(pid,now=None):
 # sit on the side of the rotisserie, at the bottom-left edge of the Pack-bench camera (.220). Each probe's
 # silicone ring is a distinct colour, so: while any probe is quiet, look at the dock strip and see which ring
 # colours are there. Calibrated 16 Oct on real frames (yellow only / red+yellow, 0 false colours).
-# Docks MOVED 16 Oct ~8:40pm: higher up, turned sideways, now right beside the rotisserie's bright-blue frame
-# (x<128 in the full frame). Calibrated on 595 frames with all 4 docked (order top->bottom Yellow, Blue, Red, Green):
-# sat>=0.25 picks up red/yellow 100% and green ~95%; green is only counted right of the frame glow (x>=gx).
-# BLUE blends into the blue frame, so it is never trusted on its own: a faint blue patch in its spot (blue_box)
-# only counts when every other quiet probe is already seen on a dock (elimination - Marcel, 16 Oct).
-_DOCK_DEF={"cam":"305d1e22","box":[128,1672,205,1762],"gx":140,"sat":0.25,"val":0.12,
-           "min_px":{"red":6,"yellow":6,"green":6,"blue":15},"blue_box":[150,1692,175,1722],"blue_sat":0.18,
+# 18 Oct: camera .220 re-aimed so the 4 docks sit near the middle of the frame (rings ~5-10x bigger), and probe 1's
+# dark-navy ring was swapped for PINK (Marcel). One small window per dock, on the ring spot (full-frame coords).
+# Pink and red read almost the same hue on this camera (pink ~351 deg, sat ~0.45; red ~359 deg, sat ~0.6), so a
+# red-ish ring is split by saturation/hue, and when only one of Pink/Red is quiet the red-ish ring is that one.
+_DOCK_DEF={"cam":"305d1e22","docks":[[722,744],[752,741],[775,723],[797,702]],"r":10,
+           "min_px":{"red":20,"yellow":50,"green":25},"pink_sat":0.53,"pink_hue":-4,
            "every":15,"idle_every":60,"confirm":2,"of":3}
-_DOCK_PID={"blue":1,"green":2,"red":3,"yellow":4}
+_DOCK_PID={"pink":1,"green":2,"red":3,"yellow":4}
 DOCK_SEEN={"at":0.0,"pids":[],"counts":{},"err":"","streak":{}}
 def _dock_has(pid,now=None):
     """Camera has seen this probe's ring on a dock on the last `confirm` looks, and the look is fresh.
@@ -668,23 +667,26 @@ def _dock_stuck(pid,now=None):
 def _dock_cfg():
     c=dict(_DOCK_DEF); c.update({k:v for k,v in ((db.get("probe_dock") or {}).items()) if k in _DOCK_DEF}); return c
 def _dock_colours(jpg,cfg):
-    import colorsys
+    """Per dock window -> what ring is on it: "yellow" | "green" | "red" | "pink" | "redish" (can't split) | None."""
+    import colorsys, statistics
     from PIL import Image; import io
     im=Image.open(io.BytesIO(jpg)).convert("RGB")
-    c={"red":0,"yellow":0,"green":0,"blue":0}
-    x0,y0,x1,y1=cfg["box"]; gx=int(cfg.get("gx") or x0); smin=float(cfg.get("sat",0.25)); vmin=float(cfg.get("val",0.12))
-    for i,(r,g,b) in enumerate(im.crop((x0,y0,x1,y1)).getdata()):
-        h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
-        if s<smin or v<vmin: continue
-        d=h*360
-        if d<20 or d>=330: c["red"]+=1
-        elif d<70: c["yellow"]+=1
-        elif d<170 and x0+(i%(x1-x0))>=gx: c["green"]+=1   # left edge = glow off the blue frame
-    bs=float(cfg.get("blue_sat",0.18))
-    for r,g,b in im.crop(tuple(cfg["blue_box"])).getdata():
-        h,s,v=colorsys.rgb_to_hsv(r/255.0,g/255.0,b/255.0)
-        if s>=bs and v>=0.08 and 200<=h*360<260: c["blue"]+=1
-    return c
+    mp=cfg.get("min_px") or {}; r=int(cfg.get("r") or 10); out=[]
+    for cx,cy in cfg["docks"]:
+        y_=g_=0; reds=[]
+        for px in im.crop((cx-r,cy-r,cx+r+1,cy+r+1)).getdata():
+            h,s_,v=colorsys.rgb_to_hsv(px[0]/255.0,px[1]/255.0,px[2]/255.0); d=h*360
+            if v<0.15 or s_<0.3: continue
+            if (d>=330 or d<25) and s_>=0.35 and v>=0.2: reds.append(((d-360) if d>=180 else d, s_))
+            elif 30<=d<65 and s_>=0.4: y_+=1
+            elif 70<=d<170: g_+=1
+        if y_>=int(mp.get("yellow",50)): out.append("yellow")
+        elif g_>=int(mp.get("green",25)): out.append("green")
+        elif len(reds)>=int(mp.get("red",20)):
+            hs=statistics.median(x[0] for x in reds); ss=statistics.median(x[1] for x in reds)
+            out.append("pink" if (ss<float(cfg.get("pink_sat",0.53)) and hs<float(cfg.get("pink_hue",-4))) else "red")
+        else: out.append(None)
+    return out
 def dock_watch_loop():
     time.sleep(30)
     while True:
@@ -701,15 +703,16 @@ def dock_watch_loop():
                 data,err=_snap_from(cam,timeout=10)
                 if data:
                     cnt=_dock_colours(data,cfg); st=DOCK_SEEN.setdefault("streak",{})
-                    mp=cfg["min_px"] if isinstance(cfg["min_px"],dict) else {}
                     win=max(1,int(cfg.get("of") or 3)); need=max(1,int(cfg.get("confirm") or 2))
-                    hit={k:cnt.get(k,0)>=int(mp.get(k,15)) for k in _DOCK_PID}
-                    # Blue by elimination only: it must be quiet, show a faint patch in its spot, and every other
-                    # quiet probe must already be seen on a dock this look.
-                    if hit.get("blue"):
+                    hit={k:(k in cnt) for k in _DOCK_PID}
+                    # Pink vs Red: if only one of them is quiet (the other is sending = not on a dock), any red-ish
+                    # ring on a dock is that one; if both are quiet and two red-ish rings are seen, it's both.
+                    nred=sum(1 for x in cnt if x in ("red","pink"))
+                    if nred:
                         quiet=[p for p in (1,2,3,4) if _rfx_probe_state(p).get("s") not in ("live","out","none")]
-                        others=[p for p in quiet if p!=_DOCK_PID["blue"]]
-                        hit["blue"]=(_DOCK_PID["blue"] in quiet) and all(hit[k] for k,p in _DOCK_PID.items() if p in others)
+                        cands=[k for k in ("pink","red") if _DOCK_PID[k] in quiet]
+                        if cands and nred>=len(cands):
+                            for k in ("pink","red"): hit[k]=k in cands
                     for k,pid in _DOCK_PID.items():
                         st[pid]=((st.get(pid) or [])+[bool(hit[k])])[-win:]
                     # seen on 2 of the last 3 looks: a passing hand can't trigger it, one dull frame can't drop it

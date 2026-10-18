@@ -179,7 +179,7 @@ body.style-v2 .ac3{--acc:#34d399;--accv:#34d399;}
 /* Probe cards colour-coded to the PHYSICAL RFX probes so staff know which is which at a glance:
    probe 1 = blue, 2 = green, 3 = red, 4 = yellow. Own classes (not the shared ac0-3) so the batch
    timers keep their colours. Applies in both v2 and classic. */
-.probe-card.pc1{--acc:#3b82f6;--accv:#3b82f6;}
+.probe-card.pc1{--acc:#ec4899;--accv:#ec4899;}   /* probe 1 ring swapped blue -> PINK, 18 Oct */
 .probe-card.pc2{--acc:#22c55e;--accv:#22c55e;}
 .probe-card.pc3{--acc:#ef4444;--accv:#ef4444;}
 .probe-card.pc4{--acc:#eab308;--accv:#eab308;}
@@ -4396,7 +4396,7 @@ function _activeAlarmDetails(){
     if(typeof _waitAlarm!=='undefined'&&_waitAlarm)out.push({key:'orders',label:'Orders waiting too long'});
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
-    if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'BLUE',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' on charge'});}
+    if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' on charge'});}
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
@@ -5470,7 +5470,7 @@ function renderProbes(){
       const _isDef=_rawNm===('Probe '+pidN);      // hide the redundant default "Probe n" \u2014 big number badge is the ID
       const _nm=_rawNm.replace(/"/g,'&quot;');
       // colour-name identity bar (the thing you read across the kitchen); custom name shown small if set
-      const _cn=({1:'BLUE',2:'GREEN',3:'RED',4:'YELLOW'})[pidN]||('PROBE '+pidN);
+      const _cn=({1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'})[pidN]||('PROBE '+pidN);
       const _nmHtml=(_isDef||!_nm)?'':`<div class="p2-subname">${_nm}</div>`;
       // minutes-left estimate (server computes it live from the probe's own climb rate) \u2014 replaces the status word
       const _CLK='<svg class="p2-clk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -8036,7 +8036,7 @@ function _probeBattMorningCheck(){
     var today=new Date().toISOString().slice(0,10);
     var seen={}; try{seen=JSON.parse(localStorage.getItem('probeBattLowDay')||'{}');}catch(e){}
     window._battLowSeen=window._battLowSeen||{};
-    var names={1:'Blue',2:'Green',3:'Red',4:'Yellow'};
+    var names={1:'Pink',2:'Green',3:'Red',4:'Yellow'};
     var low=[];
     for(var pid=1; pid<=4; pid++){ var pct=b[pid];
       if(typeof pct!=='number' || pct>25 || !_probeSending(pid)) continue;
