@@ -2099,7 +2099,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <input type="time" id="po-time" onchange="poSaveAuto()">
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
-    <div id="po-status" style="margin-top:8px;clear:both;"></div>
     <!-- SEARCH ON TOP so it is always visible (never pushed off-screen after a turn-off) -->
     <div style="margin-top:12px;font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
     <div class="row" style="gap:8px;align-items:center;">
@@ -2111,6 +2110,9 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div style="margin-top:16px;font-weight:800;color:var(--amber);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">CURRENTLY SWITCHED OFF</div>
     <div id="prodoff-list" style="max-height:38vh;overflow:auto;"></div>
   </div>
+  <!-- progress/status FLOATS over the bottom of the screen: it takes no space in the panel, so the
+       results never move when it appears (the panel is centred — any growth shifted every button) -->
+  <div id="po-status" style="position:absolute;left:50%;transform:translateX(-50%);bottom:18px;width:min(620px,92vw);z-index:5;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.55);border-radius:var(--radius);"></div>
 </div>
 
 <!-- PIN confirm modal -->
@@ -7774,52 +7776,59 @@ function poSaveAuto(){
   appData.prodoff_auto_time=v;saveKeys(['prodoff_auto_on','prodoff_auto_time']);
   _poStatus(appData.prodoff_auto_on?('Switches everything on at '+v):'Auto switch-on is off');
 }
+// Batch switches run as a SERVER job (20 Oct): the tablet hands over the whole list in one request and
+// the server finishes it even if this screen is closed or the page reloads. We just watch progress.
+let _poJobT=null;
+function _poJobSummary(j){
+  const bits=[],name=j.label?(_mEsc(j.label)+': '):'';
+  const verb=j.action==='off'?'switched off':'switched on';
+  if(j.ok)bits.push('<span style="color:var(--green);">'+j.ok+' '+verb+'</span>');
+  if(j.pending)bits.push('<span style="color:var(--amber);">'+j.pending+' still greying out in Square (lands within a minute)</span>');
+  if(j.addon)bits.push('<span style="color:var(--amber);">'+j.addon+' add-on'+(j.addon>1?'s':'')+' need the Square app</span>');
+  if(j.fail)bits.push('<span style="color:var(--red);">'+j.fail+' failed'+((j.errors||[]).length?(' &mdash; '+_mEsc(j.errors[j.errors.length-1])):'')+'</span>');
+  return name+(bits.join(' &middot; ')||'Nothing to do');
+}
+function _poWatchJob(jid){
+  clearTimeout(_poJobT);
+  const tick=()=>fetch('/api/product_job/'+encodeURIComponent(jid),{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    const j=d&&d.ok&&d.job;
+    if(!j){_poStatus('Lost track of the job — check the list','var(--amber)');return;}
+    const col=j.action==='off'?'var(--amber)':'var(--green)';
+    if(j.state!=='done'){
+      _poProgress(j.done,j.total,(j.action==='off'?'Switching off ':'Switching on ')+(j.current||j.label||''),col);
+      _poJobT=setTimeout(tick,800);return;}
+    _poStatus(_poJobSummary(j),(j.fail||j.addon||j.pending)?'var(--amber)':'var(--green)');
+    checkProductsOff();if((document.getElementById('po-search')||{}).value)poSearch();
+  }).catch(()=>{_poJobT=setTimeout(tick,2000);});   // network blip: the job keeps running server-side
+  tick();
+}
+function _poRunJob(action,ops,label){
+  if(!ops.length){_poStatus('Nothing to do','var(--green)');return;}
+  _poProgress(0,ops.length,(action==='off'?'Switching off ':'Switching on ')+(label||''),action==='off'?'var(--amber)':'var(--green)');
+  fetch('/api/product_job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action,ops:ops,label:label||''})})
+    .then(r=>r.json()).then(d=>{if(d&&d.ok)_poWatchJob(d.job);else _poStatus('Could not start: '+_mEsc((d&&d.error)||'?'),'var(--red)');})
+    .catch(()=>_poStatus('Failed — could not reach the server','var(--red)'));
+}
+function _poResumeJobs(){   // panel opened (or page reloaded) while a job is running → pick its progress back up
+  fetch('/api/product_jobs',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    const js=(d&&d.jobs)||[];const live=js.filter(j=>j.state!=='done');
+    if(live.length)_poWatchJob(live[live.length-1].id);
+  }).catch(()=>{});
+}
 function poRunAll(){
-  // client-side loop (like Switch OFF all) so it shows a real 'done / total' counter instead of one
-  // opaque server call. Skips the never-auto-on names, exactly as the server run does.
+  // Skips the never-auto-on names, exactly as the server's morning run does.
   _poStatus('Loading products&hellip;',null,true);
-  fetch('/api/products_offline',{cache:'no-store'}).then(r=>r.json()).then(async d=>{
+  fetch('/api/products_offline?fresh=1',{cache:'no-store'}).then(r=>r.json()).then(d=>{
     const list=(d&&d.ok&&d.off)?d.off:[];
     const never=new Set((appData.prodoff_never||[]).map(n=>String(n).toUpperCase()));
-    const todo=list.filter(o=>!never.has(String(o.item||'').toUpperCase()));
-    const total=todo.length;
-    if(!total){_poStatus('Nothing to switch on','var(--green)');checkProductsOff();return;}
-    let done=0,on=0,addon=0,fail=0,lastErr='';
-    _poProgress(0,total,'Switching on','var(--green)');
-    for(const o of todo){
-      try{const r=await fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:o.id})}).then(x=>x.json());
-        if(r&&r.ok)on++;else if(r&&/add-on/i.test(r.error||''))addon++;else{fail++;if(r&&r.error)lastErr=r.error;}}
-      catch(e){fail++;lastErr='network error';}
-      done++;_poProgress(done,total,'Switching on','var(--green)');
-    }
-    const bits=[];
-    if(on)bits.push('<span style="color:var(--green);">'+on+' switched on</span>');
-    if(addon)bits.push('<span style="color:var(--amber);">'+addon+' add-on'+(addon>1?'s':'')+' need the Square app</span>');
-    if(fail)bits.push('<span style="color:var(--red);">'+fail+' failed'+(lastErr?(' &mdash; '+_mEsc(lastErr)):'')+'</span>');
-    _poStatus(bits.join(' &middot; ')||'All switched on ✓',(addon||fail)?'var(--amber)':'var(--green)');
-    checkProductsOff();poSearch();
+    const ops=list.filter(o=>!never.has(String(o.item||'').toUpperCase())).map(o=>({id:o.id,kind:o.kind||'',name:o.item||''}));
+    if(!ops.length){_poStatus('Nothing to switch on','var(--green)');checkProductsOff();return;}
+    _poRunJob('on',ops,'Turn all on');
   }).catch(()=>_poStatus('Failed — could not reach the server','var(--red)'));
 }
 function prodOffTurnOnG(i){
   const g=_pdOffGrpAt(i);if(!g)return;
-  const total=(g.ids||[]).length;let done=0;
-  _poProgress(0,total,'Switching on '+g.name,'var(--green)');
-  let on=0,addon=0,fail=0;
-  // one at a time — firing all sizes of the SAME item in parallel made Square reject one with a
-  // version conflict (the "3 of 4 sizes turned on" bug); sequential writes never collide
-  (async()=>{for(const id of g.ids){
-    try{const d=await fetch('/api/product_enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(r=>r.json());
-      if(d&&d.ok)on++;else if(d&&/add-on/i.test(d.error||''))addon++;else fail++;}
-    catch(e){fail++;}
-    done++;_poProgress(done,total,'Switching on '+g.name,'var(--green)');
-  }})().then(()=>{
-    const bits=[];
-    if(on)bits.push(on+' switched on');
-    if(addon)bits.push(addon+' add-on'+(addon>1?'s':'')+' need the Square app');
-    if(fail)bits.push(fail+' failed');
-    _poStatus(_mEsc(g.name)+': '+bits.join(' &middot; '),(addon||fail)?'var(--amber)':'var(--green)');
-    checkProductsOff();
-  });
+  _poRunJob('on',(g.ids||[]).map(id=>({id:id,name:g.name})),g.name);
 }
 function _prodOffRenderModal(){
   const el=document.getElementById('prodoff-list');if(!el)return;
@@ -7841,19 +7850,23 @@ function _prodOffRenderModal(){
       :'<button class="po-btn" onclick="prodOffMuteG('+i+',\'hour\')">Silence 1 hr</button><button class="po-btn" onclick="prodOffMuteG('+i+',\'day\')">Silence today</button>';
     const nev=_pdOffNever(g.name)?' checked':'';
     const members=_prodOffList.filter(p=>(p.item||'?')===g.name);
+    const _nOff=members.filter(m=>m.kind!=='modifier').length+(members.some(m=>m.kind==='modifier')?1:0);   // add-on copies count once
     const multi=members.length>1;
     let rows='<div class="prodoff-row" style="align-items:flex-start;">'
       +'<div style="min-width:0;flex:1;">'
-        +'<div class="prodoff-name">'+_mEsc(g.name)+(multi?(' <span class="prodoff-tag">'+members.length+' off</span>'):'')+'</div>'
+        +'<div class="prodoff-name">'+_mEsc(g.name)+(multi?(' <span class="prodoff-tag">'+_nOff+' off</span>'):'')+'</div>'
         +'<label class="po-never"><span class="po-sw sm"><input type="checkbox"'+nev+' onchange="prodOffNeverToggle('+i+')"><span class="po-sl"></span></span>Never auto-on</label>'
       +'</div>'
       +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnG('+i+')">Turn on'+(multi?' all':'')+'</button>'+sil+'</div>'
     +'</div>';
     if(multi){
-      rows+=members.map(m=>{
-        const t=(m.kind==='modifier')?'MODIFIER':((m.variation&&m.variation.toLowerCase()!=='regular')?m.variation:'Regular');
+      // the add-on's copies (one per menu) are ONE add-on — show one row; turning it on brings back every copy
+      const modm=members.filter(m=>m.kind==='modifier'),sub=members.filter(m=>m.kind!=='modifier');
+      if(modm.length)sub.push(Object.assign({},modm[0],{_copies:modm.length}));
+      rows+=sub.map(m=>{
+        const t=(m.kind==='modifier')?('ADD-ON'+(m._copies>1?(' &middot; '+m._copies+' menus'):'')):((m.variation&&m.variation.toLowerCase()!=='regular')?_mEsc(m.variation):'Regular');
         return '<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;">'
-          +'<div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+_mEsc(t)+'</div>'
+          +'<div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+t+'</div>'
           +'<div class="po-ctl"><button class="po-btn go" onclick="prodOffTurnOnOne(\''+m.id+'\')">Turn on</button></div>'
         +'</div>';
       }).join('');
@@ -7898,11 +7911,11 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
     const allBtn=(_poHits.length>1)?('<div style="display:flex;justify-content:flex-end;margin:4px 0;"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOffAll()">Switch OFF all '+_poHits.length+' results</button></div>'):'';
     const RED='background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;';
     box.innerHTML=catNote+allBtn+_poHits.map((it,i)=>{
-      const vs=(it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:'',off:it.off}));
+      const vs=(it.vars||[]).length?it.vars:[{id:(it.ids||[])[0],name:'',off:it.off}];
       const multi=vs.length>1;
       let head='<div class="prodoff-row">'
         +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
-        +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+'</div>'
+        +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+((it.kind==='modifier'&&it.copies>1)?'<span style="font-size:var(--fs-sm);color:var(--muted);margin-left:7px;">in '+it.copies+' menus</span>':'')+'</div>'
         +(it.off?'<div style="font-size:var(--fs-sm);color:var(--amber);">already has something switched off</div>':'')+'</div>'
         +'<div class="po-ctl"><button class="po-btn" style="'+RED+'" onclick="poSwitchOff('+i+')">Switch OFF'+(multi?' all':'')+'</button></div>'
         +'</div>';
@@ -7922,47 +7935,32 @@ function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
     }).join('');
   }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">search failed</div>';});
 },350);}
-async function _poDoSwitchOff(it,onStep){
-  let ok=0,fail=0,lastErr='';
-  for(const id of it.ids){
-    try{const d=await fetch('/api/product_disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,kind:it.kind||'',name:it.name||''})}).then(r=>r.json());   // name lets the server re-resolve a stale add-on id
-      if(d&&d.ok)ok++;else{fail++;if(d&&d.error)lastErr=d.error;}}catch(e){fail++;lastErr='network error';}
-    if(onStep)onStep();   // one item done → advance the real progress bar
-  }
-  return {ok,fail,lastErr};
+function _poOps(it){
+  // an add-on row stands for EVERY copy of it (one per menu) — one id is enough, the server cascades
+  if(it.kind==='modifier')return [{id:(it.ids||[])[0],kind:'modifier',name:it.name}];
+  return (it.ids||[]).map(id=>({id:id,kind:'',name:it.name}));
 }
 function poSwitchOffAll(){const hits=_poHits.slice();if(!hits.length)return;
-  const total=hits.reduce((s,it)=>s+((it.ids||[]).length),0);
-  _askConfirm('Switch off ALL '+hits.length+' results?','Marks '+total+' item'+(total>1?'s':'')+' unavailable in Square.',async()=>{
-    let ok=0,fail=0,lastErr='',done=0;
-    _poProgress(0,total,'Switching off');
-    for(const it of hits){const r=await _poDoSwitchOff(it,()=>{done++;_poProgress(done,total,'Switching off');});ok+=r.ok;fail+=r.fail;if(r.lastErr)lastErr=r.lastErr;}
-    _poStatus(ok+' switched off'+(fail?(' &middot; <span style="color:var(--red);">'+fail+' failed'+(lastErr?(' &mdash; '+_mEsc(lastErr)):'')+'</span>'):''),fail?'var(--red)':'var(--green)');
-    checkProductsOff();poSearch();
-  },'Switch all off');}
+  const ops=[].concat(...hits.map(_poOps));
+  _askConfirm('Switch off ALL '+hits.length+' results?','Marks '+ops.length+' item'+(ops.length>1?'s':'')+' unavailable in Square. It keeps going even if you close this screen.',
+    ()=>_poRunJob('off',ops,'All results'),'Switch all off');}
 function poSwitchOff(i){const it=_poHits[i];if(!it)return;
-  const total=(it.ids||[]).length;
-  _askConfirm('Switch off '+it.name+'?','Marks '+(total>1?('all '+total+' sizes'):'it')+' SOLD OUT in Square — on the POS and online too.',async()=>{
-    let done=0;_poProgress(0,total,'Switching off '+it.name);
-    const r=await _poDoSwitchOff(it,()=>{done++;_poProgress(done,total,'Switching off '+it.name);});
-    _poStatus(_mEsc(it.name)+': '+r.ok+' switched off'+(r.fail?(' &middot; <span style="color:var(--red);">'+r.fail+' failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>'):''),r.fail?'var(--red)':'var(--green)');
-    checkProductsOff();poSearch();
-  },'Switch off');}
+  const ops=_poOps(it),n=ops.length;
+  const what=it.kind==='modifier'?('the add-on everywhere it appears'+(it.copies>1?(' ('+it.copies+' menus)'):'')):(n>1?('all '+n+' sizes'):'it');
+  _askConfirm('Switch off '+it.name+'?','Marks '+what+' SOLD OUT in Square — on the POS and online too. It keeps going even if you close this screen.',
+    ()=>_poRunJob('off',ops,it.name),'Switch off');}
 function poSwitchOffOne(i,j){const it=_poHits[i];if(!it)return;
   const vs=(it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:''}));
   const v=vs[j];if(!v)return;
-  const nm=it.name+' — '+((!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name);
-  _askConfirm('Switch off '+nm+'?','Marks just this one SOLD OUT in Square — on the POS and online too.',async()=>{
-    _poStatus('Switching off '+_mEsc(nm)+'&hellip;',null,true);
-    const r=await _poDoSwitchOff({name:nm,ids:[v.id],kind:it.kind||''});
-    _poStatus(_mEsc(nm)+': '+(r.ok?'switched off ✓':('<span style="color:var(--red);">failed'+(r.lastErr?(' &mdash; '+_mEsc(r.lastErr)):'')+'</span>')),r.fail?'var(--red)':'var(--green)');
-    checkProductsOff();poSearch();
-  },'Switch off');}
+  const sz=(!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name;
+  // name stays the PRODUCT name (not "X — SML") so the add-on sweep still matches it
+  _askConfirm('Switch off '+it.name+' — '+sz+'?','Marks just this one SOLD OUT in Square — on the POS and online too.',
+    ()=>_poRunJob('off',[{id:v.id,kind:it.kind||'',name:it.name}],it.name+' — '+sz),'Switch off');}
 function prodOffOpen(){
   const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
   const box=document.getElementById('po-search-results');if(box)box.innerHTML='';        // and no stale results from last time
   _poHits=[];clearTimeout(_poQT);
-  _prodOffRenderModal();_poSummary();openModal('prodoff-modal');}
+  _prodOffRenderModal();_poSummary();openModal('prodoff-modal');_poResumeJobs();}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
 function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}
 // ── Remote restart (apply backend updates from the dash) ──

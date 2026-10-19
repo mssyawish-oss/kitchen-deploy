@@ -3102,9 +3102,17 @@ def api_comp_send():
 def api_pull_log():
     return jsonify({"ok":True,"pulls":(db.get("pull_log",[]) or [])[-300:]})
 
+_OFFL_CACHE={"at":0,"items":None}
+def _offl_stale(): _OFFL_CACHE["at"]=0
 @app.route("/api/products_offline")
 def api_products_offline():
-    items,err=_sq_offline_products()
+    # Every tablet polls this once a minute and each call is a full Square catalog scan (~3 s). Share
+    # one scan between them for 20 s; any switch on/off clears it so the panel never shows stale state.
+    if _OFFL_CACHE["items"] is not None and time.time()-_OFFL_CACHE["at"]<20 and not request.args.get("fresh"):
+        items,err=copy.deepcopy(_OFFL_CACHE["items"]),None
+    else:
+        items,err=_sq_offline_products()
+        if not err and items is not None: _OFFL_CACHE.update({"at":time.time(),"items":copy.deepcopy(items)})
     if err: return jsonify({"ok":False,"error":err})
     # Stamp when each product was FIRST seen switched off (server-side so every device agrees, and it survives
     # device reloads). The frontend uses off_since to delay the alarm by the owner's time-of-day rules. Entries
@@ -3217,7 +3225,56 @@ def api_sq_addon_dedup():
             else: fails.append({"list":g["list"],"name":g["name"],"id":oid})
     return jsonify({"ok":True,"dup_names":len(groups),"removed":removed,"failed":fails})
 
-_PSRCH_CACHE={"at":0,"items":[]}
+_PSRCH_CACHE={"at":0,"items":[],"building":False}
+_PSRCH_LOCK=threading.Lock()
+_CATERING_CATS={"SHARE PACKS","CHICKEN & SIDES","PARTY FOOD","BURGERS & SLIDERS","FUNCTION PACKS","KIDS MEALS","EXTRAS"}
+def _psrch_build():
+    """Rebuild the ITEMS search index from Square (~3 s). One build at a time; callers that find a
+    build already running just skip. Add-on copies are GROUPED by normalised name: GREEK SALAD lives
+    as 4 modifier objects (one per pack menu) but it is ONE add-on to staff, and switching any copy
+    off already switches every copy off (cascade) — so it is one row, not four (20 Oct audit)."""
+    if not _PSRCH_LOCK.acquire(blocking=False): return False
+    _PSRCH_CACHE["building"]=True
+    try:
+        cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+        if not hdr or not loc: return False
+        # the catering menu's category ids, so results can be tagged/filtered
+        catering_ids={o.get("id") for o in _sq_catalog_list("CATEGORY")
+                      if (o.get("category_data") or {}).get("name") in _CATERING_CATS}
+        items=[]
+        for obj in _sq_catalog_list("ITEM"):
+            idata=obj.get("item_data") or {}
+            if idata.get("is_archived"): continue
+            vs=[];off=False
+            for v in idata.get("variations",[]) or []:
+                vd=v.get("item_variation_data") or {}
+                voff=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (vd.get("location_overrides") or []))
+                vs.append({"id":v.get("id"),"name":vd.get("name") or "","off":voff})
+                if voff: off=True
+            catering=any(c.get("id") in catering_ids for c in (idata.get("categories") or []))
+            if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
+                                 "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],
+                                 "vars":vs,"off":off,"catering":catering})
+        groups={}
+        for obj in _sq_catalog_list("MODIFIER"):
+            md=obj.get("modifier_data") or {}; nm=md.get("name") or "?"
+            g=groups.setdefault(_norm_name(nm) or nm,{"name":nm,"ids":[],"sizes":["ADD-ON"],"off":False,"kind":"modifier"})
+            g["ids"].append(obj.get("id"))
+            if any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])): g["off"]=True
+        for g in groups.values():
+            g["copies"]=len(g["ids"])
+            items.append(g)
+        _PSRCH_CACHE.update({"at":time.time(),"items":items})
+        return True
+    except Exception as e:
+        print("psrch_build:",str(e)[:160]); return False
+    finally:
+        _PSRCH_CACHE["building"]=False
+        _PSRCH_LOCK.release()
+def _psrch_stale():
+    """Mark the search index out of date. The next search still answers instantly from the old index
+    and a fresh one builds in the background — no more 3-second 'Searching…' after every switch."""
+    _PSRCH_CACHE["at"]=0
 @app.route("/api/product_search")
 def api_product_search():
     """Search the whole Square catalog by name so staff can 86 a product FROM the dash.
@@ -3225,66 +3282,26 @@ def api_product_search():
     q=(request.args.get("q") or "").strip().lower()
     if len(q)<2: return jsonify({"ok":True,"items":[]})
     # scope: "retail" (default) hides the catering menu so 86-ing a busy-service item doesn't also
-    # switch off its catering twin; "both" searches everything. The catering items are separate
-    # catalog items (same name, different id) living in these categories.
+    # switch off its catering twin; "both" searches everything.
     scope=(request.args.get("scope") or "retail").strip().lower()
-    CATERING_CATS={"SHARE PACKS","CHICKEN & SIDES","PARTY FOOD","BURGERS & SLIDERS","FUNCTION PACKS","KIDS MEALS","EXTRAS"}
-    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
-    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
-    now=time.time()
-    if now-_PSRCH_CACHE["at"]>180:      # refresh the item index every 3 min
-        items=[];cursor=None
-        try:
-            # which category ids belong to the catering menu (so results can be tagged/filtered)
-            catering_ids=set();cursor=None
-            for _ in range(20):
-                url=SQUARE_BASE+"/v2/catalog/list?types=CATEGORY"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
-                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                    data=json.loads(r.read().decode())
-                for obj in data.get("objects",[]) or []:
-                    if (obj.get("category_data") or {}).get("name") in CATERING_CATS: catering_ids.add(obj.get("id"))
-                cursor=data.get("cursor")
-                if not cursor: break
-            cursor=None
-            for _ in range(25):
-                url=SQUARE_BASE+"/v2/catalog/list?types=ITEM"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
-                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                    data=json.loads(r.read().decode())
-                for obj in data.get("objects",[]) or []:
-                    idata=obj.get("item_data") or {}
-                    if idata.get("is_archived") or obj.get("is_deleted"): continue
-                    vs=[];off=False
-                    for v in idata.get("variations",[]) or []:
-                        vd=v.get("item_variation_data") or {}
-                        voff=any(ov.get("location_id")==loc and ov.get("sold_out") for ov in (vd.get("location_overrides") or []))
-                        vs.append({"id":v.get("id"),"name":vd.get("name") or "","off":voff})
-                        if voff: off=True
-                    catering=any(c.get("id") in catering_ids for c in (idata.get("categories") or []))
-                    if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
-                                         "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],
-                                         "vars":vs,"off":off,"catering":catering})
-                cursor=data.get("cursor")
-                if not cursor: break
-            cursor=None
-            for _ in range(25):
-                url=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER"+("&cursor="+urllib.parse.quote(cursor) if cursor else "")
-                with urllib.request.urlopen(urllib.request.Request(url,headers=hdr),timeout=20,context=SSL_CTX) as r:
-                    data=json.loads(r.read().decode())
-                for obj in data.get("objects",[]) or []:
-                    if obj.get("is_deleted"): continue
-                    md=obj.get("modifier_data") or {}
-                    items.append({"name":md.get("name") or "?","ids":[obj.get("id")],"sizes":["MODIFIER"],"off":any(
-                        ov.get("location_id")==loc and ov.get("sold_out") for ov in (md.get("location_overrides") or [])),"kind":"modifier"})
-                cursor=data.get("cursor")
-                if not cursor: break
-            _PSRCH_CACHE.update({"at":now,"items":items})
-        except Exception as e:
-            return jsonify({"ok":False,"error":str(e)[:160]})
-    hits=[it for it in _PSRCH_CACHE["items"] if q in it["name"].lower()]
-    if scope!="both":                    # default: retail only — hide the catering-menu twins
-        hits=[it for it in hits if not it.get("catering")]
-    n_catering=sum(1 for it in _PSRCH_CACHE["items"] if q in it["name"].lower() and it.get("catering"))
-    return jsonify({"ok":True,"items":hits[:20],"scope":scope,"hidden_catering":(n_catering if scope!="both" else 0)})
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not _sq_headers() or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    if not _PSRCH_CACHE["items"]:
+        _psrch_build()                                   # very first search: nothing to serve yet, wait for it
+        if not _PSRCH_CACHE["items"]: return jsonify({"ok":False,"error":"couldn't load the menu from Square - try again"})
+    elif time.time()-_PSRCH_CACHE["at"]>180 and not _PSRCH_CACHE["building"]:
+        threading.Thread(target=_psrch_build,daemon=True).start()   # serve the current index, refresh behind it
+    bench={_norm_name(b.get("name")) for b in (db.get("mod_86_bin") or {}).values()}
+    hits=[]
+    for it in _PSRCH_CACHE["items"]:
+        if q not in it["name"].lower(): continue
+        if it.get("kind")=="modifier" and _norm_name(it["name"]) in bench:
+            continue                                     # switched off from the dash — it's in the OFF list already
+        hits.append(it)
+    n_catering=sum(1 for it in hits if it.get("catering"))
+    if scope!="both": hits=[it for it in hits if not it.get("catering")]
+    hits.sort(key=lambda it:(it.get("kind")=="modifier",not it["name"].lower().startswith(q)))   # items first, best match first
+    return jsonify({"ok":True,"items":hits[:30],"scope":scope,"hidden_catering":(n_catering if scope!="both" else 0)})
 
 def _sq_disable_variation(vid):
     """Mark one item-variation SOLD OUT at this location (86 it) — the reverse of enable.
@@ -3303,17 +3320,9 @@ def _sq_disable_variation(vid):
     ov=next((x for x in ovs if x.get("location_id")==loc),None)
     if ov is None: ov={"location_id":loc};ovs.append(ov)
     if ov.get("sold_out"): return True,None                      # already off
-    ov["sold_out"]=True
-    if "track_inventory" not in ov: ov["track_inventory"]=False  # Square drops a bare sold_out=true; pairing it with an explicit tracking value makes the write stick
-    import uuid as _uuid
-    try:
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":o2}).encode(),headers=hdr)
-        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
-        if res.get("errors"): return False,"Square rejected the change"
-    except Exception as e:
-        return False,str(e)[:140]
-    # verify — a silent no-op must not report success
+    # (A plain sold_out=true write used to be tried first. Square silently ignores it — proven 3 Aug and
+    # 8 Aug — so it only cost 3 round trips per size. Straight to the zero-count route now.)
+    # live check of the sold-out flag (used while waiting for Square to apply the auto-86)
     def _is_off():
         try:
             with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
@@ -3321,7 +3330,6 @@ def _sq_disable_variation(vid):
             return any(x.get("location_id")==loc and x.get("sold_out")
                        for x in (chk.get("item_variation_data") or {}).get("location_overrides") or [])
         except Exception: return None
-    if _is_off(): return True,None
     # Square guards sold_out=true against API writes (clear-only, verified live 3 Aug 2026). The one
     # sanctioned road: switch the variation to inventory tracking and count it to ZERO — Square then
     # marks it sold out ITSELF (the exact mechanics of the old negative-stock bug, now used on purpose).
@@ -3356,7 +3364,7 @@ def _sq_disable_variation(vid):
                 # state that HOLDS the sold-out. Turn-on clears both (see _sq_enable_variation).
                 return True,None
         threading.Thread(target=_sq_disable_watch,args=(vid,loc,hdr,u),daemon=True).start()
-        return False,"Square is still applying this — it usually lands within a minute. Stock tracking will be cleared either way; re-check the item shortly."
+        return False,"PENDING: Square is still greying this out — it usually lands within a minute, no need to tap again."
     except Exception as e:
         try: _sq_untrack(vid)          # never leave tracking armed behind a crash
         except Exception: pass
@@ -3401,8 +3409,11 @@ def _sq_disable_watch(vid,loc,hdr,u):
     for _ in range(24):
         time.sleep(5)
         if _off(): got=True; break
-    _sq_untrack(vid)
-    print("sq_disable_watch %s: %s"%(vid,"sold out, tracking cleared" if got
+    # Only untrack when the 86 never landed. Tracking at ZERO is what HOLDS a sold-out (untracking
+    # clears sold_out — proven 8 Aug), so untracking a successful 86 put the item straight back on
+    # sale (20 Oct audit: "turned off all sizes but it didn't stick"). Turn-on clears both later.
+    if not got: _sq_untrack(vid)
+    print("sq_disable_watch %s: %s"%(vid,"sold out, tracking kept at zero to hold it" if got
           else "NEVER went sold out - tracking cleared, item still on sale"))
 
 def _sq_disable_modifier(vid):
@@ -3586,33 +3597,37 @@ def _sq_restore_modifier_all(vid):
         elif e: lasterr=e
     return (done>0),(None if done>0 else (lasterr or "couldn't bring this add-on back"))
 
-@app.route("/api/product_disable",methods=["POST"])
-def api_product_disable():
-    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
-    if not vid: return jsonify({"ok":False,"error":"no id"})
-    kind=str(d.get("kind") or ""); nm=str(d.get("name") or "")
+def _product_disable_one(vid,kind="",nm="",sweep=True):
+    """Switch ONE id off (item variation, or an add-on + every copy of it). sweep=False skips the
+    same-name add-on sweep for items — the batch job runs that ONCE per product instead of once per
+    size (4 sizes of GREEK SALAD used to run it 4 times, 2 full catalog scans each)."""
     if kind=="modifier":
         # CASCADE: switch OFF every copy of this add-on (matched by normalised name) + verify none remain.
-        # Replaces the old single-id disable that left differently-spelled twins live on POS/online.
         ok,err=_sq_disable_modifier_all(vid,nm)
     else:
         ok,err=_sq_disable_variation(vid)
-        if not ok and err and "POS" not in str(err):
+        if not ok and err and "POS" not in str(err) and not str(err).startswith("PENDING"):
             time.sleep(0.8); ok,err=_sq_disable_variation(vid)
         # ALSO switch off the same-named ADD-ON (modifier), so turning a menu item OFF removes it as an
         # add-on too (Marcel: 'turning the item off didn't turn off the add-ons' → had to do it in POS).
         # Best-effort by name; never fail the item result on the add-on sweep.
-        if nm:
+        if nm and sweep:
             try: _sq_disable_modifier_all("",nm)
             except Exception as _e: print("product_disable addon-sweep:",str(_e)[:120])
-    _PSRCH_CACHE["at"]=0          # ids may have changed — force a fresh index on the next search
+    _psrch_stale(); _offl_stale()
     if ok:
         # Fresh grace clock NOW. The offline scan only clears a stamp when it SEES the product back on
         # (scans are ~1/min), so off→on→off inside that window kept the old stamp and the "1 hour after
-        # switch-off" alarm delay looked already spent — alarm fired the instant it was switched off
-        # (owner, 7 Aug: "the alarm instantly starts").
+        # switch-off" alarm delay looked already spent (owner, 7 Aug: "the alarm instantly starts").
         with data_lock:
-            s=db.setdefault("prodoff_since",{}); s[vid]=int(time.time()*1000); save_data(db)
+            st=db.setdefault("prodoff_since",{}); st[vid]=int(time.time()*1000); save_data(db)
+    return ok,err
+
+@app.route("/api/product_disable",methods=["POST"])
+def api_product_disable():
+    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
+    if not vid: return jsonify({"ok":False,"error":"no id"})
+    ok,err=_product_disable_one(vid,str(d.get("kind") or ""),str(d.get("name") or ""))
     return jsonify({"ok":ok,"error":(None if ok else err)})
 
 def _sq_catalog_list(types):
@@ -3713,14 +3728,20 @@ def api_name_fix():
     for o,mnm,canon in todo:
         if _sq_rename_modifier(o.get("id"),canon,o): renamed.append({"from":mnm,"to":canon})
         else: failed.append({"from":mnm,"to":canon})
-    _PSRCH_CACHE["at"]=0
+    _psrch_stale()
     return jsonify({"ok":True,"applied":True,"renamed":renamed,"failed":failed})
 
-@app.route("/api/product_enable",methods=["POST"])
-def api_product_enable():
-    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
-    if not vid: return jsonify({"ok":False,"error":"no id"})
-    if vid in (db.get("mod_86_bin") or {}):
+def _product_enable_one(vid):
+    """Switch ONE id back on. Returns (ok, err, warn)."""
+    bin_=db.get("mod_86_bin") or {}
+    if vid not in bin_:
+        fv=_sq_follow_mod_id(vid)
+        if fv!=vid:
+            # an archived add-on copy that a sibling's cascade turn-on already brought back (it has a
+            # new id now) — that's a success, not the "failed" the group Turn-on used to report
+            if fv in bin_: vid=fv
+            else: return True,None,None
+    if vid in bin_:
         ok,err=_sq_restore_modifier_all(vid)     # cascade: bring back EVERY archived copy of this add-on
     else:
         ok,err=_sq_enable_variation(vid)
@@ -3729,16 +3750,93 @@ def api_product_enable():
             # versions under us) — one fresh read-modify-write attempt fixes virtually all of them
             time.sleep(0.8)
             ok,err=_sq_enable_variation(vid)
-    try: _PSRCH_CACHE["at"]=0     # revive swaps mint new ids — refresh the search index
-    except Exception: pass
+    _psrch_stale(); _offl_stale()             # revive swaps mint new ids — refresh the search index
     if ok:
         with data_lock:            # back on → drop its grace stamp so the NEXT off starts a fresh hour
-            s=db.get("prodoff_since") or {}
-            if vid in s: del s[vid]; db["prodoff_since"]=s; save_data(db)
-    out={"ok":ok,"error":(None if ok else err)}
-    if ok and err: out["warn"]=err          # e.g. tracking stuck ON — item works but needs a look in Square
+            st=db.get("prodoff_since") or {}
+            if vid in st: del st[vid]; db["prodoff_since"]=st; save_data(db)
+    return ok,(None if ok else err),(err if ok and err else None)
+
+@app.route("/api/product_enable",methods=["POST"])
+def api_product_enable():
+    d=request.get_json(silent=True) or {}; vid=str(d.get("id",""))
+    if not vid: return jsonify({"ok":False,"error":"no id"})
+    ok,err,warn=_product_enable_one(vid)
+    out={"ok":ok,"error":err}
+    if warn: out["warn"]=warn          # e.g. tracking stuck ON — item works but needs a look in Square
     if request.args.get("debug"): out["debug"]=_ENABLE_DBG   # diagnostic: raw Square upsert response
     return jsonify(out)
+
+# ── SWITCH JOBS (20 Oct 2026): "Switch OFF all sizes" / "Turn on all" used to be a loop running IN THE
+#    TABLET, one request per size. Leave the screen mid-way (the page reloads when a new build is
+#    waiting, or after a server restart) and the rest never got sent. Now the tablet hands the whole
+#    list over in ONE request and the server finishes it no matter what the screen does; any tablet
+#    can watch the progress. Jobs run one at a time so two tablets can't race Square on the same item.
+_PJOBS={}; _PJOB_RUN_LOCK=threading.Lock()
+def _pjob_run(jid):
+    j=_PJOBS[jid]
+    with _PJOB_RUN_LOCK:
+        j["state"]="running"; j["started"]=int(time.time()*1000)
+        swept=set()
+        for op in j["ops"]:
+            vid=str(op.get("id") or ""); kind=str(op.get("kind") or ""); nm=str(op.get("name") or "")
+            j["current"]=nm
+            try:
+                if j["action"]=="off":
+                    key=_norm_name(nm)
+                    if kind=="modifier" and key and key in swept:
+                        ok,err=True,None              # this add-on's cascade already took every copy off
+                    else:
+                        ok,err=_product_disable_one(vid,kind,nm,sweep=False)
+                        if kind=="modifier" and ok: swept.add(key)
+                else:
+                    ok,err,_w=_product_enable_one(vid)
+            except Exception as ex:
+                ok,err=False,str(ex)[:140]
+            if ok: j["ok"]+=1
+            elif err and str(err).startswith("PENDING"): j["pending"]+=1
+            elif err and "add-on" in str(err) and j["action"]=="on": j["addon"]+=1
+            else:
+                j["fail"]+=1
+                if err: j["errors"].append((nm+": " if nm else "")+str(err)[:140])
+            j["done"]+=1
+        if j["action"]=="off":
+            # the same-name add-on sweep, ONCE per product (not once per size)
+            for nm in dict.fromkeys(str(op.get("name") or "") for op in j["ops"] if op.get("kind")!="modifier"):
+                key=_norm_name(nm)
+                if not key or key in swept: continue
+                j["current"]=nm+" (add-on)"; swept.add(key)
+                try: _sq_disable_modifier_all("",nm)
+                except Exception as _e: print("pjob addon-sweep:",str(_e)[:120])
+        j["current"]="refreshing the list"
+        _psrch_build()                                # fresh search index BEFORE we report done
+        _offl_stale()
+        j["state"]="done"; j["finished"]=int(time.time()*1000); j["current"]=""
+@app.route("/api/product_job",methods=["POST"])
+def api_product_job():
+    d=request.get_json(silent=True) or {}
+    action=str(d.get("action") or ""); ops=[o for o in (d.get("ops") or []) if isinstance(o,dict) and o.get("id")]
+    if action not in ("off","on") or not ops: return jsonify({"ok":False,"error":"nothing to do"})
+    jid="pj%d"%int(time.time()*1000)
+    _PJOBS[jid]={"id":jid,"action":action,"label":str(d.get("label") or "")[:80],"ops":ops[:200],
+                 "total":len(ops[:200]),"done":0,"ok":0,"fail":0,"pending":0,"addon":0,"errors":[],
+                 "state":"queued","current":"","created":int(time.time()*1000)}
+    for k in sorted(_PJOBS)[:-20]: _PJOBS.pop(k,None)      # keep the last 20
+    threading.Thread(target=_pjob_run,args=(jid,),daemon=True).start()
+    return jsonify({"ok":True,"job":jid})
+@app.route("/api/product_job/<jid>")
+def api_product_job_get(jid):
+    j=_PJOBS.get(jid)
+    if not j: return jsonify({"ok":False,"error":"unknown job"})
+    return jsonify({"ok":True,"job":{k:v for k,v in j.items() if k!="ops"}})   # nested: the job's own "ok" COUNT must not clobber the response flag
+@app.route("/api/product_jobs")
+def api_product_jobs():
+    # unfinished + finished-in-the-last-minute jobs, so a tablet that reloaded (or a second tablet)
+    # can pick the progress bar back up
+    now=int(time.time()*1000)
+    js=[{k:v for k,v in j.items() if k!="ops"} for j in _PJOBS.values()
+        if j["state"]!="done" or now-j.get("finished",now)<60000]
+    return jsonify({"ok":True,"jobs":sorted(js,key=lambda x:x["created"])})
 
 # ── Morning auto-switch-on: staff switch a product off and forget to switch it back, so every
 #    morning before open we un-86 everything EXCEPT the owner's never-touch list (db['prodoff_never'],
@@ -3768,7 +3866,7 @@ def _prodoff_auto_enable(manual=False):
         return out
     # one product = many Square objects, so the same name can land in several buckets. Report it once,
     # under the most actionable outcome, or the summary reads as a contradiction.
-    try: _PSRCH_CACHE["at"]=0     # products changed state → force the search index to rebuild so "already off" labels aren't stale
+    try: _psrch_stale()     # products changed state → force the search index to rebuild so "already off" labels aren't stale
     except Exception: pass
     fl=uniq(failed); ad=[x for x in uniq(addons) if x not in fl]
     sc=[x for x in uniq(scheduled) if x not in fl and x not in ad]
@@ -3887,11 +3985,15 @@ def _packmod_integrity(fix=True):
     if not base or not hdr: return {"ok":True,"checked":0,"restored":[],"note":"no baseline yet"}
     import uuid as _uuid
     restored=[]; failed=[]; checked=0
+    # A side that is in mod_86_bin was switched off ON PURPOSE from the ITEMS panel — it is missing
+    # because staff 86'd it, not because it got lost. Re-adding it is what made switched-off add-ons
+    # "turn themselves back on" within 15 min (20 Oct audit). Turn-on recreates it from the bin.
+    benched={_norm_name(b.get("name")) for b in (db.get("mod_86_bin") or {}).values()}
     for lid,expect in base.items():
         checked+=1
         live=_packmod_list_members(lid,hdr)
         if live is None: continue
-        missing=[nm for nm in expect if nm not in live]
+        missing=[nm for nm in expect if nm not in live and _norm_name(nm) not in benched]
         if not missing: continue
         if not fix:
             failed+=[{"list":lid,"name":nm,"note":"missing"} for nm in missing]; continue
@@ -3916,7 +4018,7 @@ def _packmod_integrity(fix=True):
             except Exception as e:
                 failed.append({"list":lid,"name":nm,"err":str(e)[:80]})
     if restored:
-        try: _PSRCH_CACHE["at"]=0                            # menu changed → rebuild the ITEMS search index
+        try: _psrch_stale()                            # menu changed → rebuild the ITEMS search index
         except Exception: pass
         try:
             note="Auto-restored %d missing pack side(s): %s"%(len(restored),
