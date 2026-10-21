@@ -7141,6 +7141,11 @@ def _tables_check_once(force=False,save_preview=False):
                     TABLESW["img_at"]=int(time.time()*1000)
                     _tables_log_add(frame,TABLESW["note"])
                 except Exception: pass
+                if cfg.get("push") and (cfg.get("ntfy_topic") or "").strip():   # owner 21 Oct: also ping his phone
+                    try: fr=_downscale_jpeg(jpeg,720)
+                    except Exception: fr=None
+                    threading.Thread(target=_ntfy_push,args=(cfg["ntfy_topic"],"Check outside tables",
+                                     TABLESW["note"],fr),daemon=True).start()
     else:
         TABLESW["pendn"]=0
         if cur=="left":
@@ -7152,6 +7157,17 @@ def _tables_check_once(force=False,save_preview=False):
         try: row["preview"]="data:image/jpeg;base64,"+base64.b64encode(_downscale_jpeg(jpeg,720)).decode()
         except Exception: pass
     return row
+def _ntfy_push(topic,title,msg,jpeg=None):
+    """Phone push via ntfy.sh (owner's ntfy app). With a frame, the photo rides along as the attachment."""
+    try:
+        hdr={"Title":title,"Tags":"warning","Priority":"high"}
+        if jpeg: hdr.update({"Filename":"tables.jpg","Message":msg}); body=jpeg
+        else: body=msg.encode()
+        hdr={k:v.encode("ascii","ignore").decode() for k,v in hdr.items()}
+        req=urllib.request.Request("https://ntfy.sh/"+urllib.parse.quote(topic.strip()),data=body,headers=hdr,method="PUT")
+        with urllib.request.urlopen(req,timeout=15,context=SSL_CTX) as r: r.read()
+    except Exception as e:
+        print("ntfy push:",str(e)[:120])
 def _tables_payload():
     cfg=_tables_cfg()
     return {"on":bool(cfg.get("enabled")),"alert":TABLESW.get("state")=="left",
@@ -7193,6 +7209,8 @@ def api_tables_config():
             try: cur[k2]=int(d[k2])
             except Exception: pass
     if "prompt" in d: cur["prompt"]=str(d["prompt"] or "")
+    if "push" in d: cur["push"]=bool(d["push"])
+    if "ntfy_topic" in d: cur["ntfy_topic"]=str(d["ntfy_topic"] or "").strip()
     with data_lock: db["tables_watch"]=cur; save_data(db)
     return jsonify({"ok":True,"config":cur})
 @app.route("/api/tables_test",methods=["POST"])
