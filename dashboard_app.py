@@ -10901,7 +10901,7 @@ def api_drygoods_print():
         try:
             with data_lock:
                 items=[x for x in (db.get("drygoods_items") or []) if x.get("contents","").strip().lower()!=contents.lower()]
-                items.insert(0,{"id":"dg%d"%int(time.time()*1000),"contents":contents,"by":staff,"ts":int(time.time())})
+                items.insert(0,{"id":"dg%d"%int(time.time()*1000),"contents":contents.upper(),"by":staff,"ts":int(time.time())})   # saved packs are always CAPS (Marcel 21 Oct)
                 db["drygoods_items"]=items[:80]; save_data(db)
         except Exception: pass
     try:

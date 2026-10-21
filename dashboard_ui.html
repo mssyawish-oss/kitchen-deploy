@@ -716,6 +716,14 @@ body.view-wall .prep-col-body .prep-card .pc-check{width:34px;height:34px;}
 .iph-field{flex:1;border:1px solid #d6d6da;border-radius:var(--radius);padding:4px 9px;font-size:var(--fs-xs);color:#a3a3a8;background:#fff;}
 .iph-send{width:20px;height:20px;border-radius:50%;background:#c8e6c9;color:#fff;font-size:var(--fs-sm);font-weight:700;display:flex;align-items:center;justify-content:center;}
 .iph-note{text-align:center;font-size:var(--fs-sm);color:var(--muted);margin-top:9px;}
+/* saved dry-goods packs drawn as mini copies of the printed tag (same shape: black header, big centred caps, packed/by row) */
+.dg-tix{position:relative;aspect-ratio:567/352;background:#fff;color:#000;border:3px solid #000;border-radius:4px;display:flex;flex-direction:column;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.35);transition:transform .08s;}
+.dg-tix:active{transform:scale(.97);}
+.dg-tix-h{background:#000;color:#fff;font-weight:800;font-size:11px;letter-spacing:.06em;text-align:center;padding:4px 22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dg-tix-c{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px 8px;font-weight:800;text-transform:uppercase;line-height:1.08;overflow:hidden;overflow-wrap:anywhere;}
+.dg-tix-f{border-top:2px solid #000;margin:0 7px;padding:3px 0 4px;font-size:9px;font-weight:700;color:#000;display:flex;justify-content:space-between;opacity:.75;}
+.dg-tix-x{position:absolute;top:0;right:2px;background:transparent;border:none;color:#fff;font-size:17px;line-height:1;cursor:pointer;padding:2px 5px;}
+#dg-list{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
 .pl2-prev{display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border2);border-radius:var(--r-sm);padding:5px;margin-bottom:11px;min-height:52px;}
 .pl2-prev img{display:block;width:100%;max-width:270px;height:auto;image-rendering:pixelated;}
 .pl2-prev-wait{font-size:var(--fs-sm);color:#888;}
@@ -1673,6 +1681,7 @@ body.view-wall #walkin-dot{width:15px;height:15px;}
 @media(max-width:820px){.lbl-layout{flex-direction:column;}.lbl-side{flex:0 0 auto;flex-direction:row;flex-wrap:wrap;align-items:flex-start;}}
 #lbl-preview-wrap{display:flex;justify-content:flex-start;}
 .lbl-preview{width:200px;min-height:104px;background:#fff;color:#000;border:1px solid #cbd3dd;border-radius:var(--r-sm);padding:9px 10px;font-family:'Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;flex-direction:column;}
+.lbl-pick .pc-name{text-transform:uppercase;}   /* prep-label items always show in CAPS, however they were typed (Marcel 21 Oct) */
 .lbl-preview .lp-item{font-size:var(--fs-lg);font-weight:800;line-height:1.05;letter-spacing:-.01em;word-break:break-word;}
 .lbl-preview .lp-row{font-size:var(--fs-sm);margin-top:4px;color:#111;}
 .lbl-preview .lp-useby{margin-top:6px;font-size:var(--fs-sm);font-weight:800;border:2px solid #000;border-radius:var(--r-sm);padding:2px 6px;text-align:center;}
@@ -2294,7 +2303,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Dry Goods Packaging Labels</div><button class="modal-close" onclick="closeModal('drygoods-modal')">&times;</button></div>
     <div class="pl2-lab" style="margin-bottom:5px;">What&rsquo;s in the pack</div>
-    <input class="input" id="dg-contents" placeholder="e.g. Panko Breadcrumbs" oninput="_dgPrev()" style="margin-bottom:10px;">
+    <input class="input" id="dg-contents" placeholder="e.g. PANKO BREADCRUMBS" oninput="_dgPrev()" style="margin-bottom:10px;text-transform:uppercase;">
     <div class="pl2-prev" id="dg-prev"><span class="pl2-prev-wait">Type the contents to see the label&hellip;</span></div>
     <div class="pl2-row">
       <span class="pl2-lab">Labels</span>
@@ -8754,13 +8763,17 @@ function _dgPrintGo(save){
     else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn’t confirm.');st.style.color='var(--red)';}}
   }).catch(()=>{if(btn)btn.disabled=false;if(b2)b2.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
+function _dgTixSize(t){const n=String(t).length,w=Math.max(...String(t).split(/\s+/).map(x=>x.length),1);   // long names shrink so the whole name fits, like the printed tag
+  const z=n<=12?20:n<=20?17:n<=30?14:n<=42?12:10;return Math.min(z,Math.floor(150/w))+'px';}
 function _dgLoadList(){
   const el=document.getElementById('dg-list');if(!el)return;
   fetch('/api/drygoods').then(r=>r.json()).then(d=>{
     const items=(d&&d.items)||[];
-    el.innerHTML=items.length?items.map(it=>'<div class="prep-card" style="position:relative;" onclick="_dgLoad('+_jsq(it.contents||'')+')">'
-      +'<div class="pc-row"><div class="pc-name">'+_mEsc(it.contents||'')+'</div></div>'
-      +'<button onclick="event.stopPropagation();_dgDelete('+_jsq(it.id||'')+',this)" title="Remove" style="position:absolute;top:2px;right:4px;background:transparent;border:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:0 5px;">&times;</button></div>').join('')
+    el.innerHTML=items.length?items.map(it=>'<div class="dg-tix" onclick="_dgLoad('+_jsq(it.contents||'')+')">'
+      +'<div class="dg-tix-h">DRY GOODS</div>'
+      +'<div class="dg-tix-c" style="font-size:'+_dgTixSize(it.contents||'')+'">'+_mEsc(it.contents||'')+'</div>'
+      +'<div class="dg-tix-f"><span>PACKED</span><span>BY</span></div>'
+      +'<button class="dg-tix-x" onclick="event.stopPropagation();_dgDelete('+_jsq(it.id||'')+',this)" title="Remove">&times;</button></div>').join('')
       :'<div style="color:var(--muted);font-size:var(--fs-md);padding:12px;grid-column:1/-1;">No saved packs yet &mdash; Print &amp; save one above and it&rsquo;ll appear here as a box.</div>';
   }).catch(()=>{el.innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm);">Couldn&rsquo;t load saved packs.</div>';});
 }
@@ -8768,8 +8781,8 @@ function _dgLoad(contents){const i=document.getElementById('dg-contents');if(i)i
 let _dgDelArm=null,_dgDelTimer=null;
 function _dgDelete(id,btn){
   if(_dgDelArm===id){clearTimeout(_dgDelTimer);_dgDelArm=null;fetch('/api/drygoods_delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>_dgLoadList());return;}
-  _dgDelArm=id;if(btn){btn.style.color='var(--red)';btn.style.fontWeight='700';btn.title='Tap again to remove';}
-  clearTimeout(_dgDelTimer);_dgDelTimer=setTimeout(()=>{_dgDelArm=null;if(btn){btn.style.color='var(--muted)';btn.style.fontWeight='';btn.title='Remove';}},2500);
+  _dgDelArm=id;if(btn){btn.style.color='#ff5a5a';btn.style.fontWeight='700';btn.title='Tap again to remove';}
+  clearTimeout(_dgDelTimer);_dgDelTimer=setTimeout(()=>{_dgDelArm=null;if(btn){btn.style.color='';btn.style.fontWeight='';btn.title='Remove';}},2500);
 }
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
