@@ -9967,7 +9967,7 @@ def _lbl_date(dt,withtime=False):
     return s+(" %02d:%02d"%(dt.hour,dt.minute) if withtime else "")
 def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     from PIL import Image,ImageDraw,ImageFont
-    W,H=NIIM_W,430          # compact tag — same printed size as the dry goods label (~25% shorter than the old 591)
+    W,H=NIIM_W,352          # compact tag — same printed size as the dry goods label (cut from 430 on 21 Oct 2026: the peel-off paper costs ~2x)
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     def fnt(sz,bold=True):
         names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
@@ -9992,35 +9992,35 @@ def _render_label_png(item,staff,prepped_s,useby_s,seq=0,total=1,simple=False):
     day=(prepped_s.split()[0] if prepped_s else ""); dayname=DOWFULL.get(day,day.upper())
     M=16
     # 1) top black day band (drives FIFO rotation) + batch badge on the right
-    band_h=66; dr.rectangle([0,0,W,band_h],fill=0)
-    fh=fnt(44,True); dw=dr.textlength(dayname,font=fh)
-    dr.text(((W-dw)//2,band_h//2-27),dayname,font=fh,fill=255)   # day name centred in the band
+    band_h=56; dr.rectangle([0,0,W,band_h],fill=0)
+    fh=fnt(38,True); dw=dr.textlength(dayname,font=fh)
+    dr.text(((W-dw)//2,band_h//2-23),dayname,font=fh,fill=255)   # day name centred in the band
     if total>1 and seq>0:
-        badge="%d/%d"%(seq,total); fb=fnt(30,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-M-bw,band_h//2-19),badge,font=fb,fill=255)     # batch badge stays top-right
+        badge="%d/%d"%(seq,total); fb=fnt(26,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-M-bw,band_h//2-16),badge,font=fb,fill=255)     # batch badge stays top-right
     # 2) USE BY box — the discard deadline, boxed near the bottom. BOTTOM_SAFE keeps it off the
     # physical edge (the printer's leading/trailing margin), so the most important line never clips.
-    BOTTOM_SAFE=14
-    box_h=92; box_y0=H-BOTTOM_SAFE-box_h
+    BOTTOM_SAFE=12
+    box_h=76; box_y0=H-BOTTOM_SAFE-box_h
     if simple:
         # SIMPLE label (spice mixes, sauce bases — no discard deadline): skip the USE BY box entirely
         # and let the by/prepped block anchor to the bottom; the name zone grows to fill the space.
         box_y0=H-BOTTOM_SAFE-4
     else:
         dr.rectangle([10,box_y0,W-10,box_y0+box_h],outline=0,width=5)
-        box="USE BY  "+useby_s; fu=fnt(50,True)
+        box="USE BY  "+useby_s; fu=fnt(44,True)
         while dr.textlength(box,font=fu)>W-42 and fu.size>24: fu=fnt(fu.size-2,True)
         dr.text(((W-dr.textlength(box,font=fu))//2, box_y0+(box_h-fu.size)//2-5), box, font=fu, fill=0)
     # 3) PREPPED date + BY name, stacked just above the box (name big + bold)
-    fsb=fnt(27,True); fs=fnt(27,False); fname=fnt(38,True)
-    by_y=box_y0-12-42; pr_y=by_y-38
-    dr.text((M,pr_y),"PREPPED",font=fsb,fill=0); dr.text((M+170,pr_y),prepped_s,font=fs,fill=0)
-    dr.text((M,by_y+8),"BY",font=fsb,fill=0); dr.text((M+170,by_y),(staff or "-"),font=fname,fill=0)
+    fsb=fnt(24,True); fs=fnt(24,False); fname=fnt(33,True)
+    by_y=box_y0-10-36; pr_y=by_y-32
+    dr.text((M,pr_y),"PREPPED",font=fsb,fill=0); dr.text((M+150,pr_y),prepped_s,font=fs,fill=0)
+    dr.text((M,by_y+7),"BY",font=fsb,fill=0); dr.text((M+150,by_y),(staff or "-"),font=fname,fill=0)
     # 4) divider above the prepped block
-    div_y=pr_y-12; dr.line([M,div_y,W-M,div_y],fill=0,width=3)
+    div_y=pr_y-10; dr.line([M,div_y,W-M,div_y],fill=0,width=3)
     # 5) product name — biggest font whose EVERY line fits the width AND the (now shorter) height zone;
     #    the width check (not just height) stops a long single word from spilling past the edge.
-    top=band_h+12; bottom=div_y-8; zone=bottom-top; maxw=W-2*M
+    top=band_h+8; bottom=div_y-6; zone=bottom-top; maxw=W-2*M
     up=(item or "").upper(); nwords=len(up.split())
     chosen=None
     for sz in (72,66,60,54,48,44,40,36,32,28,24):
@@ -10041,7 +10041,7 @@ def _render_drygoods_png(item,staff,packed_s,seq=0,total=1,banner="DRY GOODS"):
     a DRY GOODS header, the contents big + centred (auto-sized to fit inside the
     border, wraps up to 3 lines), then PACKED date + BY name.  No use-by."""
     from PIL import Image,ImageDraw,ImageFont
-    W,H=NIIM_W,430
+    W,H=NIIM_W,352          # cut from 430 on 21 Oct 2026 (the peel-off paper costs ~2x)
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     def fnt(sz,bold=True):
         names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
@@ -10062,11 +10062,11 @@ def _render_drygoods_png(item,staff,packed_s,seq=0,total=1,banner="DRY GOODS"):
         return lines[:maxlines]
     M=18; CM=40                                  # CM = side padding for the contents (never touch the border)
     dr.rectangle([5,5,W-6,H-6],outline=0,width=4)                 # tag border
-    hb=64; dr.rectangle([5,5,W-6,hb],fill=0)                      # banner header strip
+    hb=56; dr.rectangle([5,5,W-6,hb],fill=0)                      # banner header strip
     bn=((banner or "DRY GOODS").upper())
     _bavail=W-2*M-(46 if (total>1 and seq>0) else 0)             # leave room for the n/n badge
-    fhd=fnt(40,True); _bsz=40
-    for _s in (40,36,32,28,26,24,22,20,18):                      # shrink the banner so a long category still fits
+    fhd=fnt(36,True); _bsz=36
+    for _s in (36,32,28,26,24,22,20,18):                      # shrink the banner so a long category still fits
         _f=fnt(_s,True)
         if dr.textlength(bn,font=_f)<=_bavail: fhd=_f; _bsz=_s; break
     else:
@@ -10074,10 +10074,10 @@ def _render_drygoods_png(item,staff,packed_s,seq=0,total=1,banner="DRY GOODS"):
     hw=dr.textlength(bn,font=fhd)
     dr.text(((W-hw)//2,5+(hb-5-_bsz)//2-2),bn,font=fhd,fill=255)
     if total>1 and seq>0:
-        badge="%d/%d"%(seq,total); fb=fnt(26,True); bw=dr.textlength(badge,font=fb)
-        dr.text((W-M-bw,5+(hb-5-26)//2-1),badge,font=fb,fill=255)
+        badge="%d/%d"%(seq,total); fb=fnt(24,True); bw=dr.textlength(badge,font=fb)
+        dr.text((W-M-bw,5+(hb-5-24)//2-1),badge,font=fb,fill=255)
     # contents — biggest bold font whose EVERY line fits the padded width AND the height zone
-    top=hb+18; bottom=H-118; zone=bottom-top; maxw=W-2*CM
+    top=hb+12; bottom=H-98; zone=bottom-top; maxw=W-2*CM
     up=(item or "").upper(); nwords=len(up.split())
     chosen=None
     for sz in (72,66,60,54,48,44,40,36,32,28,24):
@@ -10092,10 +10092,84 @@ def _render_drygoods_png(item,staff,packed_s,seq=0,total=1,banner="DRY GOODS"):
     y=top+max(0,(zone-len(lines)*lh)//2)
     for ln in lines:
         dr.text(((W-dr.textlength(ln,font=f))//2,y),ln,font=f,fill=0); y+=lh
-    dy=H-108; dr.line([M,dy,W-M,dy],fill=0,width=3)              # divider
-    fsb=fnt(30,True); fs=fnt(30,False); fname=fnt(40,True)
-    dr.text((M,dy+16),"PACKED",font=fsb,fill=0); dr.text((M+180,dy+16),packed_s,font=fs,fill=0)
-    dr.text((M,dy+56),"BY",font=fsb,fill=0); dr.text((M+180,dy+50),(staff or "-"),font=fname,fill=0)
+    dy=H-90; dr.line([M,dy,W-M,dy],fill=0,width=3)               # divider
+    fsb=fnt(26,True); fs=fnt(26,False); fname=fnt(34,True)
+    dr.text((M,dy+12),"PACKED",font=fsb,fill=0); dr.text((M+160,dy+12),packed_s,font=fs,fill=0)
+    dr.text((M,dy+48),"BY",font=fsb,fill=0); dr.text((M+160,dy+43),(staff or "-"),font=fname,fill=0)
+    return img
+def _recipe_tag_parts(r):
+    """(name, yield line, ingredient lines) from a recipe's free-text body: the '- ' lines under
+    INGREDIENTS, stopping at METHOD (or the first blank line after the list). No method steps."""
+    lines=[l.strip() for l in (r.get("body") or "").replace("\r","").split("\n")]
+    yld=""; items=[]; seen_head=False
+    for l in lines:
+        u=l.upper()
+        if not yld and u.startswith("YIELD"): yld=l.split(":",1)[-1].strip(); continue
+        if u.startswith("INGREDIENT"): seen_head=True; continue
+        if re.match(r"^(METHOD|STEPS|DIRECTIONS|INSTRUCTIONS|PROCESS)\b",u): break
+        if not l:
+            if items: break
+            continue
+        if not seen_head and not l.startswith(("-","•","*")): continue   # no heading: take bullets before METHOD
+        items.append(re.sub(r"^[-•*]\s*","",l))
+    return (r.get("name") or "Recipe"),yld,[i for i in items if i]
+def _render_recipe_png(name,yld,items):
+    """Small RECIPE tag — name in the black header, batch/yield line, then the ingredients only
+    (2 columns once the list is long). Height follows the list so short recipes use less paper."""
+    from PIL import Image,ImageDraw,ImageFont
+    W=NIIM_W; M=18; GAP=18
+    def fnt(sz,bold=True):
+        names=(["arialbd.ttf","Arial Bold.ttf","DejaVuSans-Bold.ttf"] if bold else ["arial.ttf","Arial.ttf","DejaVuSans.ttf"])
+        for c in names:
+            for p in (c,os.path.join("C:\\Windows\\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    scratch=ImageDraw.Draw(Image.new("L",(1,1),255))
+    def wrap(text,font,maxw,maxlines):
+        out=[];cur=""
+        for w in text.split():
+            t=(cur+" "+w).strip()
+            if scratch.textlength(t,font=font)<=maxw: cur=t
+            else:
+                if cur: out.append(cur)
+                cur=w
+        if cur: out.append(cur)
+        return out[:maxlines]
+    items=items or ["(no ingredients listed)"]
+    cols=2 if len(items)>4 else 1
+    colw=(W-2*M-(GAP if cols==2 else 0))//cols-16              # 16 = bullet indent
+    sz=26 if cols==1 else 23
+    fi=fnt(sz,False); lh=int(sz*1.22)
+    blocks=[wrap(it,fi,colw,3) or [""] for it in items]
+    per=(len(blocks)+cols-1)//cols
+    colsets=[blocks[i*per:(i+1)*per] for i in range(cols)]
+    body_h=max(sum(len(b) for b in cs)*lh+(len(cs)-1)*4 for cs in colsets if cs)
+    hb=52; fy=fnt(22,False); ylines=wrap(yld,fy,W-2*M,2) if yld else []
+    if ylines and " ".join(ylines)!=" ".join(yld.split()): ylines[-1]=ylines[-1].rsplit(" ",1)[0]+" …"   # cut-off yield: show it
+    yh=(len(ylines)*27+10) if ylines else 0
+    H=hb+8+yh+body_h+16
+    img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
+    dr.rectangle([0,0,W,hb],fill=0)
+    up=(name or "Recipe").upper()
+    for s2 in (34,30,27,24,21,18):
+        fh=fnt(s2,True)
+        if dr.textlength(up,font=fh)<=W-2*M: break
+    dr.text(((W-dr.textlength(up,font=fh))//2,(hb-fh.size)//2-2),up,font=fh,fill=255)
+    y=hb+8
+    for yl in ylines:
+        dr.text((M,y),yl,font=fy,fill=0); y+=27
+    if ylines:
+        y+=2; dr.line([M,y,W-M,y],fill=0,width=2); y+=8
+    x0=M
+    for cs in colsets:
+        yy=y
+        for b in cs:
+            dr.ellipse([x0+2,yy+lh//2-5,x0+10,yy+lh//2+3],fill=0)
+            for ln in b:
+                dr.text((x0+16,yy),ln,font=fi,fill=0); yy+=lh
+            yy+=4
+        x0+=colw+16+GAP
     return img
 _NIIM_CHR="bef8d6c9-9c21-4c9e-b632-bd58c1009f9f"   # NOTIFY + WRITE_NO_RESPONSE
 NIIM_W=567                                         # B1 Pro printhead width in dots (300 dpi)
@@ -10819,6 +10893,40 @@ def api_drygoods_print():
     if not printed and not note:
         _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
         note="Label didn't print%s. Is the Brother on + joined to the shop WiFi? Label saved (labels/last_drygoods.png)."%_why
+    return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
+
+def _recipe_by_id(rid):
+    return next((r for r in (db.get("recipes") or []) if str(r.get("id"))==str(rid)),None)
+
+@app.route("/api/recipe_tag_preview")
+def api_recipe_tag_preview():
+    r=_recipe_by_id(request.args.get("id",""))
+    if not r: return ("Recipe not found",404)
+    img=_render_recipe_png(*_recipe_tag_parts(r))
+    import io as _io
+    buf=_io.BytesIO(); img.convert("L").save(buf,format="PNG")
+    return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
+
+@app.route("/api/recipe_tag_print",methods=["POST"])
+def api_recipe_tag_print():
+    d=request.get_json(silent=True) or {}
+    r=_recipe_by_id(d.get("id",""))
+    if not r: return jsonify({"ok":False,"error":"Recipe not found"})
+    try: qty=max(1,min(10,int(d.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    try: img=_render_recipe_png(*_recipe_tag_parts(r))
+    except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
+    printed=0; note=""
+    for _ in range(qty):
+        try:
+            if _print_label(img,1): printed+=1
+        except Exception as e: note="printer error: %s"%e; break
+    try:
+        base=os.path.join(BASE_DIR,"labels"); os.makedirs(base,exist_ok=True); img.save(os.path.join(base,"last_recipe.png"))
+    except Exception: pass
+    if not printed and not note:
+        _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
+        note="Recipe tag didn't print%s. Is the Brother on + joined to the shop WiFi? Tag saved (labels/last_recipe.png)."%_why
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
 @app.route("/api/drygoods_delete",methods=["POST"])

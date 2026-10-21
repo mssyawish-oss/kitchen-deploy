@@ -2312,6 +2312,22 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div id="dg-list" class="prep-grid" style="max-height:34vh;overflow-y:auto;"></div>
   </div>
 </div>
+<div class="modal-overlay" id="recipetag-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="rt-title">Recipe tag</div><button class="modal-close" onclick="closeModal('recipetag-modal')">&times;</button></div>
+    <div class="pl2-lab" style="margin-bottom:5px;">Ingredients only &mdash; no method</div>
+    <div class="pl2-prev" id="rt-prev"></div>
+    <div class="pl2-row">
+      <span class="pl2-lab">Tags</span>
+      <div class="pl2-qty"><button onclick="_rtStep(-1)">&minus;</button><span id="rt-qty">1</span><button onclick="_rtStep(1)">+</button></div>
+    </div>
+    <div class="pl2-status" id="rt-status"></div>
+    <div class="pl2-actions">
+      <button class="btn" onclick="closeModal('recipetag-modal')">Close</button>
+      <button class="btn btn-primary" id="rt-print" onclick="_rtPrint()">Print</button>
+    </div>
+  </div>
+</div>
 <!-- Missed-pull prompt: probe reconnected much lower → a row likely came off during the blackout -->
 <div class="modal-overlay" id="mp-modal">
   <div class="modal">
@@ -8196,11 +8212,33 @@ function renderRecipeDetail(){
     '<div class="rcp-d-head"><div class="rcp-d-name">'+_mEsc(r.name||'Recipe')+'</div>'
     +'<div class="rcp-d-actions">'
       +'<button class="btn btn-primary" onclick="printRecipeTag('+_jsq(r.id)+')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print tag</button>'
+      +'<button class="btn" onclick="openRecipeTag('+_jsq(r.id)+')">Print recipe</button>'
       +'<button class="btn" onclick="editRecipe('+idx+')">Edit</button>'
       +'<button class="btn btn-danger" onclick="deleteRecipe('+idx+')">Delete</button>'
     +'</div></div>'
     +(r.category?'<span class="tag tag-amber" style="display:inline-block;margin-bottom:10px;font-size:var(--fs-md);text-transform:uppercase;">'+_mEsc(r.category)+'</span>':'')
     +'<div class="rcp-d-body">'+body+'</div>';
+}
+// small ingredients-only recipe tag (no method) — rendered + printed by the server from the saved recipe
+let _rtId=null,_rtQty=1;
+function openRecipeTag(id){const r=(appData.recipes||[]).find(x=>x.id===id);if(!r)return;_rtId=id;_rtQty=1;
+  const g=i=>document.getElementById(i);
+  if(g('rt-title'))g('rt-title').textContent=(r.name||'Recipe')+' — recipe tag';
+  if(g('rt-qty'))g('rt-qty').textContent='1'; if(g('rt-status'))g('rt-status').textContent='';
+  const el=g('rt-prev');
+  if(el){el.innerHTML='<span class="pl2-prev-wait">Loading preview&hellip;</span>';
+    const im=new Image();im.onload=()=>{el.innerHTML='';el.appendChild(im);};im.onerror=()=>{el.innerHTML='<span class="pl2-prev-wait">Preview unavailable</span>';};
+    im.alt='Recipe tag preview';im.src='/api/recipe_tag_preview?id='+encodeURIComponent(id)+'&_='+Date.now();}
+  openModal('recipetag-modal');}
+function _rtStep(d){_rtQty=Math.max(1,Math.min(10,_rtQty+d));const q=document.getElementById('rt-qty');if(q)q.textContent=_rtQty;}
+function _rtPrint(){
+  const st=document.getElementById('rt-status'),btn=document.getElementById('rt-print');
+  if(btn)btn.disabled=true; if(st){st.textContent='Sending '+_rtQty+' tag'+(_rtQty>1?'s':'')+'…';st.style.color='var(--muted)';}
+  fetch('/api/recipe_tag_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:_rtId,qty:_rtQty})}).then(r=>r.json()).then(d=>{
+    if(btn)btn.disabled=false;
+    if(d.ok&&d.printed){_toast('✓ '+_rtQty+' recipe tag'+(_rtQty>1?'s':'')+' printed');closeModal('recipetag-modal');}
+    else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn’t confirm.');st.style.color='var(--red)';}}
+  }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 function printRecipeTag(id){const r=(appData.recipes||[]).find(x=>x.id===id);if(!r)return;openDryGoods(r.name||'',r.category||'DRY GOODS');}
 function _fillRecipeCats(){const dl=document.getElementById('recipe-cat-list');if(!dl)return;const cats=[];(appData.recipes||[]).forEach(r=>{if(r.category&&!cats.includes(r.category))cats.push(r.category);});dl.innerHTML=cats.map(c=>'<option value="'+c.replace(/"/g,'')+'">').join('');}
