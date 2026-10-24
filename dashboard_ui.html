@@ -3319,7 +3319,8 @@ const _ALARM_DEF={
  probeOverdone:{label:'Probe \u2014 overdone',color:'#ef4444',interval:1800,desc:'A meat probe has gone over temperature.'},
  stock:{label:'Cook more (low stock)',color:'#f59e0b',interval:1000,desc:'Rotisserie/fried stock low. The amber “Cook more” pill ALWAYS shows on the card — this switch is the SOUND only.'},
  prodoff:{label:'Products still switched off',color:'#ef4444',interval:3600,desc:'Items / add-ons left sold-out in Square (opening alarm from 10:10am).'},
- timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A cooking timer reaches zero.'},
+ timer:{label:'Batch timer finished',color:'#ff3333',interval:600,desc:'A rotisserie / fried batch timer reaches zero.'},
+ ktimer:{label:'Kitchen timer finished',color:'#ff3333',interval:600,desc:'One of the Kitchen Timers on the Prep page reaches zero. Separate from the batch timers, so these can beep while batch timers stay quiet.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
@@ -3337,9 +3338,9 @@ const _ALARM_DEF={
  ovenstep:{label:'Oven step — load the next tray',color:'#fb923c',interval:1200,desc:'The combi oven is about to move to its next program step: a big banner names the tray to load. Keeps sounding until the oven door opens (camera / cloud) or someone taps Done. Set up under Settings → Oven step alerts.'}
 };
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
- stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',rotstopped:'Sharp beep',
+ stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',ktimer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','ktimer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3360,7 +3361,7 @@ function _acfg(key){const d=_ALARM_DEF[key]||{};const c=((appData.alarm_cfg||{})
   interval:(typeof c.interval==='number')?c.interval:(d.interval||1500),
   autostop:(typeof c.autostop==='number')?c.autostop:0,
   has_custom:c.has_custom===true||(!!d.bundled&&!c.sound_preset), sound_v:c.sound_v||0, sound_preset:c.sound_preset||'' };}
-function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';return 'timer';}
+function _keyForId(id){id=String(id);if(/^stock-/.test(id))return 'stock';if(id==='rot-stopped')return 'rotstopped';if(id==='prod-off')return 'prodoff';if(/^ktimer-/.test(id))return 'ktimer';return 'timer';}
 window._customAudio=window._customAudio||{};
 function _customAudioFor(key,v){const id=key+'|'+v;let a=window._customAudio[key];if(!a||a._id!==id){a=new Audio('/api/alarm_sound/'+key+'?v='+v);a._id=id;window._customAudio[key]=a;}return a;}   // reuse ONE Audio element per alarm (was leaking a new one every interval)
 // PER-DEVICE MUTING. Every other alarm setting is shop-wide (change it once, it applies everywhere) —
@@ -9184,7 +9185,7 @@ function ktTick(){
   KT.forEach((t,i)=>{
     if(t.running&&t.endAt-now<=0){
       t.running=false;t.remaining=0;t.done=true;structChange=true;_ktCollapsed=false;_ktSave();   // pop the strip open so the finished timer is visible
-      playAlarm('ktimer-'+i);                                   // repeating "Batch timer" alarm + screen flash (Alarm Center settings)
+      playAlarm('ktimer-'+i);                                   // repeating "Kitchen timer" alarm + screen flash (Alarm Center settings)
       showLockBanner('TIMER DONE',(t.label||'Timer')+' — time’s up');
       document.querySelector('.nav-btn[data-page="jobs"]')?.classList.add('alarming');
     }
