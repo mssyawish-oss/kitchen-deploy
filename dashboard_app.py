@@ -11160,6 +11160,275 @@ setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocal
 @app.route("/fry")
 def fry_page():
     return Response(FRY_PAGE,mimetype="text/html")
+FRYER_PAGE=r"""<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no"><title>Fryer</title><style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b0b0c;color:#f2f2f4;overflow:hidden;
+font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif;user-select:none}
+#top{height:22px;display:flex;gap:16px;align-items:center;padding:6px 16px 0;font-size:13px;color:#c7c7cc;font-weight:600}
+#bar{height:54px;display:flex;align-items:center;padding:0 12px;gap:10px;position:relative}
+.rb{width:38px;height:38px;border-radius:50%;background:#3a3a3c;display:flex;align-items:center;justify-content:center;color:#e5e5ea;font-size:19px}
+#sync{font-size:12px;color:#8e8e93}
+#seg{position:absolute;left:50%;transform:translateX(-50%);display:flex;background:#3a3a3c;border-radius:20px;padding:3px;width:380px}
+#seg div{flex:1;text-align:center;padding:8px 0;border-radius:17px;font-size:14px;font-weight:600;color:#e5e5ea;cursor:pointer}
+#seg div.on{background:#8e8e93;color:#fff}
+#right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.pill{background:#3a3a3c;border-radius:14px;padding:5px 11px;font-size:12px;font-weight:600;color:#e5e5ea;display:flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:50%;background:#30d158}
+#pager{display:flex;gap:4px;align-items:center;background:#3a3a3c;border-radius:16px;padding:3px 8px;font-size:14px;font-weight:700}
+#pager span{padding:2px 8px;color:#8e8e93;cursor:pointer}#pager span.ok{color:#fff}
+#grid{position:absolute;top:84px;left:8px;right:8px;bottom:8px;display:grid;gap:8px;
+grid-template-columns:repeat(var(--cols),1fr);grid-template-rows:repeat(2,1fr)}
+.card{background:#f2f2f7;border-radius:9px;overflow:hidden;display:flex;flex-direction:column;color:#1c1c1e;min-height:0}
+.hd{padding:7px 10px 6px;display:grid;grid-template-columns:1fr auto;row-gap:1px;background:#d1d1d6;color:#1c1c1e}
+.hd.warn{background:#ffb020;color:#1c1c1e}.hd.late{background:#ee2a24;color:#fff}.hd.done{background:#d1d1d6;color:#1c1c1e}
+.nm{font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ty{font-size:18px;font-weight:700;text-align:right}
+.tm{font-size:13px;font-weight:600;opacity:.85;font-variant-numeric:tabular-nums}
+.sr{font-size:12px;font-weight:600;text-align:right;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.pb{padding:8px 12px;color:#636366;font-size:15px;border-bottom:1px solid #d8d8dd}
+.body{flex:1;overflow:hidden;position:relative}
+.ln{display:grid;grid-template-columns:22px 1fr 22px;padding:9px 10px 9px 12px;border-bottom:1px solid #dcdce0;cursor:pointer}
+.ln .q{font-size:16px;color:#3a3a3c}.ln .n{font-size:16px;font-weight:500;letter-spacing:.01em}
+.ln .v{color:#d0303a;font-size:15px;margin-top:3px}.ln .m{color:#2c62c9;font-size:15px;margin-top:3px}
+.ln .m.rm{color:#d0303a}.ln .m.ad{color:#1d8f3a}
+.ln .f{color:#8e8e93;font-size:13px;font-style:italic;margin-top:3px}
+.ln .nt{color:#636366;font-size:14px;font-style:italic;margin-top:3px}
+.ln .ck{color:#8e8e93;font-size:16px;text-align:right}
+.ln.x{opacity:.38}.ln.x .n{text-decoration:line-through}
+.more{position:absolute;left:0;right:0;bottom:0;height:34px;background:linear-gradient(transparent,#f2f2f7);pointer-events:none}
+.ft{padding:8px 10px 10px;display:flex;gap:8px}
+.btn{flex:1;height:40px;border-radius:20px;background:#e5e5ea;display:flex;align-items:center;justify-content:center;
+font-size:15px;font-weight:600;color:#3a3a3c;cursor:pointer}
+.btn:active{background:#c7c7cc}
+#empty{position:absolute;top:84px;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+#empty b{font-size:22px}#empty div{font-size:15px;color:#8e8e93}
+#warnbar{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:#ee2a24;color:#fff;padding:6px 14px;border-radius:14px;font-size:13px;font-weight:700;display:none}
+</style></head><body>
+<div id=top><span id=clock></span><span id=title>FRYER - Prep</span></div>
+<div id=bar><div class=rb>&#9776;</div><div class=rb onclick="load(1)">&#8635;</div><span id=sync>Last synced just now</span>
+<div id=seg><div id=sgD onclick="setView('done')">Completed</div><div id=sgO class=on onclick="setView('open')">0 Open</div></div>
+<div id=right><span class=pill id=online><span class=dot></span>Online</span>
+<div id=pager><span id=pp onclick="page(-1)">&lsaquo;</span><b id=pn>1</b><span id=pnx onclick="page(1)">&rsaquo;</span></div></div></div>
+<div id=grid></div><div id=empty><b>FRYER</b><b>No Open Tickets</b><div>This station is online and accepting orders.</div></div>
+<div id=warnbar></div>
+<script>
+let D={open:[],done:[],cfg:{warn_min:5,late_min:10,title:'FRYER - Prep'}},view='open',pg=0,lastSig='',seen=null,okAt=Date.now();
+const SOUND=/[?&]sound=1/.test(location.search);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function cols(){return Math.max(2,Math.min(6,Math.floor(innerWidth/300)))}
+function hm(ms){const d=new Date(ms);let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+String(m).padStart(2,'0')+' '+ap}
+function el(ms){let s=Math.max(0,Math.floor((Date.now()-ms)/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;
+ return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')}
+function ago(ms){const m=Math.floor((Date.now()-ms)/60000);return m<60?m+' min. ago':Math.floor(m/60)+' hr. ago'}
+function modCls(m){const u=m.toUpperCase();return /^(NO |REMOVE|WITHOUT|HOLD)/.test(u)?'m rm':/^(ADD|EXTRA|PLUS)/.test(u)?'m ad':'m'}
+function card(t,done){
+ const age=(Date.now()-(t.due||t.created))/60000;
+ const cls=done?'done':age>=D.cfg.late_min?'late':age>=D.cfg.warn_min?'warn':'';
+ let h=`<div class=card><div class="hd ${cls}"><div class=nm>${esc(t.name)}</div><div class=ty>${esc(t.type)}</div>`+
+  `<div class=tm data-t="${done?'':t.due||t.created}">${done?hm(t.done_at)+', '+ago(t.done_at):el(t.due||t.created)}</div><div class=sr>${esc(t.src)}</div></div>`;
+ if(t.due) h+=`<div class=pb>Prepare by ${hm(t.due)}</div>`;
+ h+='<div class=body>';
+ for(const l of t.lines){
+  const x=(t.struck||[]).includes(l.k);
+  h+=`<div class="ln${x?' x':''}" onclick="act('${t.id}','strike','${l.k}')"><div class=q>${l.q}</div><div><div class=n>${esc(l.n.toUpperCase())}</div>`;
+  if(l.v) h+=`<div class=v>${esc(l.v.toUpperCase())}</div>`;
+  for(const m of (l.mods||[])) h+=`<div class="${modCls(m)}">${esc(m.toUpperCase())}</div>`;
+  if(l.for) h+=`<div class=f>for ${esc(l.for)}</div>`;
+  if(l.note) h+=`<div class=nt>${esc(l.note)}</div>`;
+  h+=`</div><div class=ck>${x?'&#10003;':''}</div></div>`;
+ }
+ h+='<div class=more></div></div><div class=ft>'+(done?`<div class=btn onclick="act('${t.id}','recall')">&#8634; Recall ticket</div>`
+   :`<div class=btn onclick="act('${t.id}','bump')">&#10003; Done</div>`)+'</div></div>';
+ return h}
+function render(){
+ const list=view==='open'?D.open:D.done,c=cols(),per=c*2,np=Math.max(1,Math.ceil(list.length/per));
+ if(pg>=np)pg=np-1;
+ document.getElementById('grid').style.setProperty('--cols',c);
+ document.getElementById('grid').innerHTML=list.slice(pg*per,pg*per+per).map(t=>card(t,view==='done')).join('');
+ document.getElementById('empty').style.display=(view==='open'&&!list.length)?'flex':'none';
+ document.getElementById('sgO').textContent=D.open.length+' Open';
+ document.getElementById('sgO').className=view==='open'?'on':'';document.getElementById('sgD').className=view==='done'?'on':'';
+ document.getElementById('pn').textContent=pg+1;
+ document.getElementById('pp').className=pg>0?'ok':'';document.getElementById('pnx').className=pg<np-1?'ok':'';
+ document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';
+ document.querySelectorAll('.body').forEach(b=>{b.querySelector('.more').style.display=b.scrollHeight>b.clientHeight+4?'block':'none'});
+}
+function setView(v){view=v;pg=0;render()}
+function page(d){pg=Math.max(0,pg+d);render()}
+function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();
+ o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.25;o.start();o.stop(a.currentTime+.25)}catch(e){}}
+async function load(force){
+ try{const r=await fetch('/api/fryer_board',{cache:'no-store'});const d=await r.json();okAt=Date.now();
+  const ids=new Set(d.open.map(t=>t.id));
+  if(seen&&SOUND&&[...ids].some(i=>!seen.has(i)))beep();seen=ids;
+  const sig=JSON.stringify([d.open,d.done.map(t=>t.id)]);D=d;
+  if(force||sig!==lastSig){lastSig=sig;render()}
+  const wb=document.getElementById('warnbar');
+  if(d.board_age_s>60){wb.textContent='Orders feed delayed ('+d.board_age_s+'s)';wb.style.display='block'}
+  else if(d.cat_err){wb.textContent='Menu lookup: '+d.cat_err;wb.style.display='block'}else wb.style.display='none';
+ }catch(e){}
+}
+async function act(id,a,k){
+ if(a==='strike'&&view==='done')return;
+ const t=[...D.open,...D.done].find(x=>x.id===id);
+ if(t&&a==='strike'){const s=new Set(t.struck||[]);s.has(k)?s.delete(k):s.add(k);t.struck=[...s];render()}
+ if(t&&a==='bump'){D.open=D.open.filter(x=>x.id!==id);t.done_at=Date.now();D.done.unshift(t);render()}
+ if(t&&a==='recall'){D.done=D.done.filter(x=>x.id!==id);D.open.push(t);view='open';render()}
+ try{await fetch('/api/fryer_action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,act:a,k})})}catch(e){}
+ lastSig='';load();
+}
+function tick(){
+ document.getElementById('clock').textContent=hm(Date.now());
+ document.querySelectorAll('.tm[data-t]').forEach(e=>{const t=+e.dataset.t;if(t)e.textContent=el(t)});
+ const s=Math.floor((Date.now()-okAt)/1000);
+ document.getElementById('sync').textContent=s<10?'Last synced just now':'Last synced '+s+'s ago';
+ document.getElementById('online').innerHTML=s<30?'<span class=dot></span>Online':'<span class=dot style="background:#ee2a24"></span>Offline';
+}
+addEventListener('resize',()=>render());
+setInterval(tick,1000);setInterval(load,2000);setInterval(()=>{lastSig='';load()},30000);
+tick();load(1);
+</script></body></html>"""
+
+
+# ── FRYER BOARD (/fryer) — our own prep screen for the chip fryer (25 Oct 2026) ───────────────────
+# Square routes a MODIFIER with its parent item, so a chicken pack's CHIPS side lands on the Chicken KDS,
+# never the Fryer one. This board rebuilds the fryer's work from the order data the dash already polls
+# (_KDS_RAW): every line item in a fryer kitchen category (FRYER / FRYER FROZEN by default) PLUS any
+# modifier on any other item whose name is a fryer item (CHIPS, SWEET POTATO CHIPS, ONION RINGS, ...).
+# Read-only towards Square. Staff may tap items / bump tickets here (state in db["fryer_board_state"]);
+# tickets also clear on their own: online/delivery when the Pass bumps (fulfillment PREPARED), counter (POS)
+# tickets when the Pass screen-reader sees them bumped, else after pos_timeout_min.
+_FRYER_DEFAULTS={"categories":["FRYER","FRYER FROZEN"],"exclude":["CATER"],"pos_timeout_min":30,
+                 "sched_lead_min":20,"warn_min":5,"late_min":10,"completed_hours":3,"title":"FRYER - Prep"}
+def _fryer_cfg():
+    c=dict(_FRYER_DEFAULTS); c.update(db.get("fryer_board") or {}); return c
+_FRYER_CAT={"ts":0,"var":set(),"names":set(),"err":""}
+def _fryer_norm(s):
+    s=re.sub(r'\s+',' ',(s or "").upper().replace("&"," AND ")).strip()
+    return re.sub(r'^(SIDE|ADD|EXTRA)\s+','',s)
+def _fryer_catalog():
+    # variation ids + item names that belong to the fryer kitchen categories; refreshed every 30 min
+    if time.time()-_FRYER_CAT["ts"]<1800 and _FRYER_CAT["names"]: return _FRYER_CAT
+    try:
+        want={x.strip().upper() for x in _fryer_cfg()["categories"]}
+        cats={o["id"] for o in _sq_catalog_list("CATEGORY")
+              if ((o.get("category_data") or {}).get("name") or "").strip().upper() in want}
+        var=set(); names=set()
+        for it in _sq_catalog_list("ITEM"):
+            d=it.get("item_data") or {}
+            if not any((c.get("id") in cats) for c in (d.get("categories") or [])): continue
+            names.add(_fryer_norm(d.get("name")))
+            for v in d.get("variations") or []: var.add(v.get("id"))
+        if names: _FRYER_CAT.update({"ts":time.time(),"var":var,"names":names,"err":""})
+        else: _FRYER_CAT.update({"ts":time.time()-1500,"err":"no fryer items found"})
+    except Exception as e:
+        _FRYER_CAT["err"]=str(e)[:160]; _FRYER_CAT["ts"]=time.time()-1500   # retry in ~5 min
+    return _FRYER_CAT
+def _fryer_state():
+    st=db.setdefault("fryer_board_state",{})
+    for k in ("bumped","struck","recalled"): st.setdefault(k,{})
+    return st
+def _fryer_lines(o,cat,excl):
+    out=[]
+    for i,li in enumerate(o.get("line_items") or []):
+        nm=(li.get("name") or "").strip()
+        if not nm or any(x in nm.upper() for x in excl): continue
+        var=(li.get("variation_name") or "").strip()
+        if var.lower()=="regular": var=""
+        try: q=int(float(li.get("quantity") or 1))
+        except (TypeError,ValueError): q=1
+        mods=[(m.get("name") or "").strip() for m in (li.get("modifiers") or []) if m.get("name")]
+        note=(li.get("note") or "").strip()
+        if li.get("catalog_object_id") in cat["var"] or _fryer_norm(nm) in cat["names"]:
+            out.append({"k":"%d"%i,"q":q,"n":nm,"v":var,"mods":mods,"note":note,"for":""})
+            continue
+        for j,m in enumerate(mods):                       # a fryer side chosen as a modifier on another item
+            if _fryer_norm(m) in cat["names"]:
+                out.append({"k":"%d.%d"%(i,j),"q":q,"n":m,"v":"","mods":[],"note":"",
+                            "for":nm+((" "+var) if var else "")})
+    return out
+def _fryer_payload():
+    cfg=_fryer_cfg(); cat=_fryer_catalog(); st=_fryer_state(); now=time.time()
+    excl=[x.upper() for x in cfg["exclude"] if x]
+    hide={s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}
+    pass_bumped={str(b.get("name","")).strip().lstrip('#') for b in (KDS_SCREEN.get("bumped") or {}).values()}
+    open_t=[]; done_t=[]
+    for o in (_KDS_RAW.get("orders") or []):
+        oid=o.get("id")
+        if not oid or not o.get("fulfillments"): continue
+        src=((o.get("source") or {}).get("name") or "").strip()
+        if src.lower() in hide: continue
+        ff=[(f.get("state") or "").upper() for f in o.get("fulfillments") or []]
+        if ff and all(s in ("CANCELED","CANCELLED","FAILED") for s in ff): continue
+        created=_parse_dt(o.get("created_at"))
+        if not created: continue
+        if now-created.timestamp()>2*86400 and not any(s in ("PROPOSED","RESERVED") for s in ff): continue
+        lines=_fryer_lines(o,cat,excl)
+        if not lines: continue
+        due=None; rname=""; dtype=""
+        for f in o.get("fulfillments") or []:
+            pd=f.get("pickup_details") or {}; dd=f.get("delivery_details") or {}
+            if not dtype:
+                dtype=("Delivery" if (dd or (f.get("type") or "").upper()=="DELIVERY") else
+                       "Takeaway" if src.lower() in ("point of sale","") else "Pickup")
+            if (pd.get("schedule_type") or dd.get("schedule_type"))=="SCHEDULED":
+                d=_parse_dt(pd.get("pickup_at") or dd.get("deliver_at"))
+                if d and (due is None or d<due): due=d
+            rec=pd.get("recipient") or dd.get("recipient") or {}
+            rname=rname or (rec.get("display_name") or "")
+        tname=(o.get("ticket_name") or "").strip()
+        num=tname.lstrip('#') if re.fullmatch(r'#?\d+',tname) else ""
+        name=num or tname or rname or ("#"+oid[-5:])
+        if due and now<due.timestamp()-cfg["sched_lead_min"]*60: continue      # pre-order not due yet
+        fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
+        ispos=src.lower()=="point of sale"
+        recalled=oid in st["recalled"] and oid not in st["bumped"]
+        why=""
+        if oid in st["bumped"]: why="fryer"
+        elif recalled: why=""
+        elif not ispos and fulfilled: why="pass"
+        elif ispos and num and num in pass_bumped: why="pass"
+        elif ispos and now-created.timestamp()>cfg["pos_timeout_min"]*60: why="timeout"
+        elif not due and now-created.timestamp()>18*3600: why="timeout"
+        ref=(o.get("reference_id") or "").strip()
+        sub=src if (not ref or len(ref)>14 or ispos) else src+" #"+ref.lstrip('#')
+        t={"id":oid,"name":name,"type":dtype,"src":sub,"created":int(created.timestamp()*1000),
+           "due":int(due.timestamp()*1000) if due else None,"lines":lines,
+           "struck":st["struck"].get(oid) or []}
+        if why:
+            bt=st["bumped"].get(oid) or (_parse_dt(o.get("updated_at")) or created).timestamp()
+            if why=="timeout": bt=max(bt,created.timestamp())
+            if now-bt<cfg["completed_hours"]*3600: t["done_at"]=int(bt*1000); t["why"]=why; done_t.append(t)
+        else:
+            open_t.append(t)
+    open_t.sort(key=lambda t:(t["due"] or t["created"]))
+    done_t.sort(key=lambda t:t["done_at"],reverse=True)
+    return {"open":open_t,"done":done_t[:60],"ts":int(now*1000),"board_age_s":int(now-(_KDS_RAW.get("ts") or 0)),
+            "cfg":{k:cfg[k] for k in ("warn_min","late_min","title")},"cat_err":cat["err"],"cat_n":len(cat["names"])}
+@app.route("/api/fryer_board")
+def api_fryer_board():
+    return jsonify(_fryer_payload())
+@app.route("/api/fryer_action",methods=["POST"])
+def api_fryer_action():
+    d=request.get_json(silent=True) or {}; oid=str(d.get("id") or ""); act=d.get("act")
+    if not oid: return jsonify({"ok":False})
+    with data_lock:
+        st=_fryer_state(); now=time.time()
+        if act=="bump": st["bumped"][oid]=now; st["recalled"].pop(oid,None)
+        elif act=="recall": st["bumped"].pop(oid,None); st["recalled"][oid]=now
+        elif act=="strike":
+            k=str(d.get("k") or ""); cur=set(st["struck"].get(oid) or [])
+            cur.symmetric_difference_update({k}); st["struck"][oid]=sorted(cur)
+        for b in ("bumped","recalled"):                      # forget state older than 2 days
+            for k in [k for k,v in st[b].items() if now-v>172800]: st[b].pop(k,None)
+        live={o.get("id") for o in (_KDS_RAW.get("orders") or [])}
+        for k in [k for k in st["struck"] if k not in live and k!=oid]: st["struck"].pop(k,None)
+        save_data(db)
+    return jsonify({"ok":True})
+@app.route("/fryer")
+def fryer_page():
+    return Response(FRYER_PAGE,mimetype="text/html")
 @app.route("/api/orders_debug2")
 def api_orders_debug2():
     """Board triage: every order Square returned, with its fulfillment verdict and whether the board
