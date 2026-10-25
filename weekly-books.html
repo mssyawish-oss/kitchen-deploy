@@ -105,6 +105,37 @@
   #gate button{ width:100%; background:#0f172a; color:#fff; padding:11px; font-size:14px; }
   #gate .err{ color:#dc2626; font-size:12px; min-height:16px; margin-top:8px; }
   @media (max-width:560px){ body{ padding:14px 11px 32px; } .card{ padding:15px; } .weekbar .wk{ min-width:auto; font-size:16px; } }
+  /* ---- 25 Oct: dashboard skin — KPI cards, 8-week trend, weekly report view ---- */
+  body{ background:#f4f6f9; color:#0f172a; }
+  .card{ border:1px solid #e6eaf0; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .card.hero{ display:none; }                      /* replaced by the KPI cards */
+  #cglCard{ display:none; }                         /* its numbers now live in the KPI cards */
+  .toolbar .seg{ display:inline-flex; background:#fff; border:1px solid #d9dfe7; border-radius:10px; padding:3px; gap:2px; }
+  .toolbar .seg button{ background:transparent; color:#475569; padding:6px 12px; border-radius:7px; box-shadow:none; }
+  .toolbar .seg button.on{ background:#0f172a; color:#fff; }
+  .kpis{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:16px; }
+  @media(max-width:980px){ .kpis{ grid-template-columns:repeat(2,1fr); } .kpis .kpi.big{ grid-column:1/-1; } }
+  .kpi{ background:#fff; border:1px solid #e6eaf0; border-radius:14px; padding:14px 16px; box-shadow:0 1px 2px rgba(15,23,42,.04); min-width:0; }
+  .kpi .k{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#64748b; }
+  .kpi .v{ font-size:24px; font-weight:800; letter-spacing:-.02em; margin-top:4px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .kpi .s{ font-size:12px; color:#64748b; margin-top:2px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .kpi .bar{ height:6px; background:#eef2f6; border-radius:99px; margin-top:9px; overflow:hidden; }
+  .kpi .bar i{ display:block; height:100%; border-radius:99px; }
+  .kpi.big{ background:linear-gradient(135deg,#0f172a,#1e293b); border-color:#0f172a; color:#fff; }
+  .kpi.big .k,.kpi.big .s{ color:#cbd5e1; }
+  .kpi.big .v{ font-size:28px; }
+  .chip{ font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; }
+  .chip.up{ background:#dcfce7; color:#166534; } .chip.down{ background:#fee2e2; color:#991b1b; } .chip.flat{ background:#f1f5f9; color:#475569; }
+  .kpi.big .chip.up{ background:rgba(34,197,94,.2); color:#86efac; } .kpi.big .chip.down{ background:rgba(239,68,68,.2); color:#fca5a5; }
+  #trendCard h2{ margin-bottom:6px; }
+  .trend svg{ width:100%; height:auto; display:block; }
+  .trend .lg{ font-size:11.5px; color:#64748b; display:flex; gap:14px; margin-top:4px; }
+  .trend .lg b{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  #reportView .rhead{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  #reportView .rhead .t{ font-weight:800; font-size:16px; }
+  #reportView .rhead .h{ font-size:12px; color:#64748b; }
+  #reportFrame{ width:100%; min-height:1400px; border:1px solid #e6eaf0; border-radius:14px; background:#fff; }
+  #reportLoading{ background:#fff; border:1px solid #e6eaf0; border-radius:14px; padding:40px; text-align:center; color:#64748b; font-size:14px; }
 </style>
 </head>
 <body>
@@ -123,7 +154,8 @@
     <button class="sync" id="syncBtn" onclick="syncWeek()">⟳ Sync from Square</button>
     <button class="sync" id="billBtn" onclick="syncBills()" style="background:#7c3aed">⬇ Load invoices</button>
     <button class="ghost" onclick="goToday()">This week</button>
-    <button class="ghost" id="viewBtn" onclick="toggleView()">📅 Month view</button>
+    <span class="seg"><button id="segWeek" class="on" onclick="setView('week')">Week</button><button id="segMonth" onclick="setView('month')">Month</button><button id="segReport" onclick="setView('report')">📄 Weekly report</button></span>
+    <button id="viewBtn" style="display:none" onclick="toggleView()"></button>
     <span id="status"></span>
     <span id="cloud" onclick="manualRestore()" title="Click to pull the latest backup from the server" style="margin-left:auto;font-size:12px;color:#94a3b8;cursor:pointer;white-space:nowrap">☁ …</span>
   </div>
@@ -137,6 +169,8 @@
   <div id="syncStatus" style="display:none"></div>
 
   <div id="weekView">
+  <div class="kpis" id="kpis"></div>
+  <div class="card" id="trendCard"><h2><span>Last 8 weeks</span><span style="font-weight:600;text-transform:none;letter-spacing:0;color:#94a3b8">tap a week to open it</span></h2><div class="trend" id="trend"></div></div>
   <div class="books-grid">
   <div class="books-col">
   <div class="card summary hero">
@@ -148,7 +182,7 @@
     <div class="row tot"><span>Net profit</span><span class="v net" id="plNet">$0</span></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cglCard">
     <h2><span>Cost of goods &amp; labour</span></h2>
     <div class="summary">
       <div class="row"><span>Total COGS<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
@@ -202,6 +236,7 @@
   </div>
   </div>
   <div id="monthView" style="display:none"></div>
+  <div id="reportView" style="display:none"></div>
 </div>
 
 <script>
@@ -497,7 +532,7 @@ function toggleView(){
 }
 function jumpWeek(k){ _navSeq++; viewMode='week'; curMon=parseISO(k); render(); maybeAutoSync(); }
 function weekTotals(wkKey){
-  const wt=TX.filter(t=>weekKey(t.date)===wkKey);
+  const wt=TX.filter(t=>weekKey(t.date)===wkKey && !isExcl(t));
   const sum=a=>a.reduce((s,t)=>s+weeklyVal(t),0);
   const sales=sum(wt.filter(t=>t.type==='income'));
   const cogs=sum(wt.filter(t=>bucketOf(t)==='cogs'));
@@ -688,7 +723,10 @@ function groupRowHTML(cat,g,gi){
     +'<div id="grp'+gi+'" style="display:none;margin:0 6px 10px 10px">'+items+'</div>';
 }
 function render(focusNew,focusKey){
-  if(viewMode==='month'){ renderMonth(); return; }
+  syncSeg();
+  if(viewMode==='month'){ document.getElementById('reportView').style.display='none'; renderMonth(); return; }
+  if(viewMode==='report'){ renderReport(); return; }
+  document.getElementById('reportView').style.display='none';
   document.getElementById('weekView').style.display='';
   document.getElementById('monthView').style.display='none';
   const vb=document.getElementById('viewBtn'); if(vb)vb.textContent='📅 Month view';
@@ -771,6 +809,76 @@ function renderTotals(){
   document.getElementById('plLabPct').textContent=pct(labour);
   document.getElementById('plOther').textContent='-'+fmt(other);
   setSigned2('plNet',net);
+  renderKpis({sales:sales,cogs:cogs,labour:labour,other:other,net:net});
+  renderTrend();
+}
+// ── KPI cards: the five numbers that matter, each compared with the week before ──
+function renderKpis(c){
+  const el=document.getElementById('kpis'); if(!el) return;
+  const p=weekTotals(isoOf(addDays(curMon,-7)));
+  const pc=v=>c.sales?Math.round(v/c.sales*1000)/10:0;
+  const chip=(now,before,goodUp)=>{ if(!(before>0)&&!(before<0)) return ''; const d=(now-before)/Math.abs(before)*100; if(Math.abs(d)<0.5) return '<span class="chip flat">same as last wk</span>';
+    const up=d>0, good=(up===goodUp); return '<span class="chip '+(good?'up':'down')+'">'+(up?'▲':'▼')+' '+Math.abs(d).toFixed(0)+'% vs last wk</span>'; };
+  const ptChip=(nowPct,beforeV,beforeSales,goodDown)=>{ if(!(beforeSales>0)) return ''; const b=beforeV/beforeSales*100, d=nowPct-b; if(Math.abs(d)<0.3) return '<span class="chip flat">same as last wk</span>';
+    const good=goodDown?(d<0):(d>0); return '<span class="chip '+(good?'up':'down')+'">'+(d>0?'▲':'▼')+' '+Math.abs(d).toFixed(1)+' pts</span>'; };
+  const bar=(pct,col)=>'<div class="bar"><i style="width:'+Math.max(0,Math.min(100,pct))+'%;background:'+col+'"></i></div>';
+  const cp=pc(c.cogs), lp=pc(c.labour), op=pc(c.other), np=pc(c.net);
+  el.innerHTML=
+    '<div class="kpi"><div class="k">Sales</div><div class="v">'+fmt(c.sales)+'</div><div class="s">'+chip(c.sales,p.sales,true)+'</div></div>'+
+    '<div class="kpi"><div class="k">Cost of goods</div><div class="v">'+fmt(c.cogs)+'</div><div class="s"><b style="color:#0f172a">'+cp+'%</b> of sales '+ptChip(cp,p.cogs,p.sales,true)+'</div>'+bar(cp/40*100,cp>35?'#ef4444':'#f59e0b')+'</div>'+
+    '<div class="kpi"><div class="k">Labour (incl. super)</div><div class="v">'+fmt(c.labour)+'</div><div class="s"><b style="color:#0f172a">'+lp+'%</b> of sales '+ptChip(lp,p.wages,p.sales,true)+'</div>'+bar(lp/40*100,lp>30?'#ef4444':'#3b82f6')+'</div>'+
+    '<div class="kpi"><div class="k">Bills &amp; overheads</div><div class="v">'+fmt(c.other)+'</div><div class="s"><b style="color:#0f172a">'+op+'%</b> of sales</div>'+bar(op/40*100,'#8b5cf6')+'</div>'+
+    '<div class="kpi big"><div class="k">Net profit</div><div class="v" style="color:'+(c.net>=0?'#4ade80':'#f87171')+'">'+fmt(c.net)+'</div><div class="s"><span><b style="color:#fff">'+np+'%</b> margin</span>'+chip(c.net,p.net,true)+'</div></div>';
+}
+// ── 8-week trend: sales (light) and net profit (green / red) per week; tap a week to open it ──
+function renderTrend(){
+  const el=document.getElementById('trend'); if(!el) return;
+  const weeks=[]; for(let i=7;i>=0;i--) weeks.push(isoOf(addDays(curMon,-7*i)));
+  const T=weeks.map(k=>Object.assign({k:k},weekTotals(k)));
+  const max=Math.max(1,...T.map(t=>Math.max(t.sales,Math.abs(t.net))));
+  const W=760,H=170,pl=8,pr=8,top=18,bot=34,cw=(W-pl-pr)/T.length,base=H-bot,sc=(base-top)/max;
+  let g='';
+  T.forEach((t,i)=>{
+    const x=pl+i*cw, bw=cw*0.36, on=t.k===curKey();
+    const hs=Math.max(1,t.sales*sc), hn=Math.max(1,Math.abs(t.net)*sc);
+    g+='<g style="cursor:pointer" onclick="jumpWeek(\''+t.k+'\')"><title>'+t.k+' · sales '+fmt(t.sales)+' · net '+fmt(t.net)+'</title>'+
+      '<rect x="'+x+'" y="'+top+'" width="'+cw+'" height="'+(H-top)+'" fill="'+(on?'#f1f5f9':'transparent')+'" rx="8"/>'+
+      '<rect x="'+(x+cw*0.12)+'" y="'+(base-hs)+'" width="'+bw+'" height="'+hs+'" rx="3" fill="#cbd5e1"/>'+
+      '<rect x="'+(x+cw*0.52)+'" y="'+(base-hn)+'" width="'+bw+'" height="'+hn+'" rx="3" fill="'+(t.net>=0?'#16a34a':'#dc2626')+'"/>'+
+      '<text x="'+(x+cw*0.52+bw/2)+'" y="'+(base-hn-5)+'" font-size="10.5" font-weight="700" text-anchor="middle" fill="'+(t.net>=0?'#166534':'#991b1b')+'">'+(t.sales?((t.net<0?'-':'')+'$'+(Math.abs(t.net)/1000).toFixed(1)+'k'):'')+'</text>'+
+      '<text x="'+(x+cw/2)+'" y="'+(H-14)+'" font-size="11" text-anchor="middle" fill="'+(on?'#0f172a':'#64748b')+'" font-weight="'+(on?800:500)+'">'+parseISO(t.k).getDate()+' '+MO[parseISO(t.k).getMonth()]+'</text>'+
+      '<text x="'+(x+cw/2)+'" y="'+(H-2)+'" font-size="9.5" text-anchor="middle" fill="#94a3b8">'+(t.sales?Math.round(t.net/t.sales*100)+'%':'')+'</text></g>';
+  });
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'">'+g+'</svg><div class="lg"><span><b style="background:#cbd5e1"></b>Sales</span><span><b style="background:#16a34a"></b>Net profit (label = $, below = margin)</span></div>';
+}
+// ── one switch for Week / Month / Weekly report ──
+function syncSeg(){ ['Week','Month','Report'].forEach(n=>{ const b=document.getElementById('seg'+n); if(b) b.classList.toggle('on',viewMode===n.toLowerCase()); }); }
+function setView(m){
+  if(m==='month' && viewMode!=='month') curMonth=new Date(curMon.getFullYear(),curMon.getMonth(),1);
+  viewMode=m; render();
+}
+// ── the same weekly profit report that gets emailed, for whichever week is on screen ──
+let _reportFor='';
+function renderReport(){
+  document.getElementById('weekView').style.display='none';
+  document.getElementById('monthView').style.display='none';
+  const rv=document.getElementById('reportView'); rv.style.display='';
+  const ss=document.getElementById('syncStatus'); if(ss) ss.style.display='none';   // the sync chips belong to the week view
+  const sun=addDays(curMon,6), k=curKey();
+  const lbl=curMon.getDate()+' '+MO[curMon.getMonth()]+' – '+sun.getDate()+' '+MO[sun.getMonth()];
+  document.getElementById('wkLabel').childNodes[0].nodeValue=lbl;
+  document.getElementById('wkSmall').textContent=sun.getFullYear();
+  if(_reportFor===k && document.getElementById('reportFrame')) return;
+  _reportFor=k;
+  const unfinished=Date.now()<sun.getTime()+86400000;
+  rv.innerHTML='<div class="rhead"><span class="t">Weekly profit report · '+lbl+'</span><span class="h">'+(unfinished?'This week isn\'t finished yet, so it shows the days so far. ':'')+'Same report as the Monday email: cost of goods from your recipes, real payouts, real GST and AGL bills.</span>'+
+    '<button class="ghost" style="margin-left:auto" onclick="_reportFor=\'\';renderReport()">⟳ Refresh</button></div>'+
+    '<div id="reportLoading">Building the report for '+lbl+'… (about 20–40 seconds)</div>'+
+    '<iframe id="reportFrame" style="display:none" title="Weekly profit report"></iframe>';
+  const f=document.getElementById('reportFrame');
+  f.onload=function(){ document.getElementById('reportLoading').style.display='none'; f.style.display='';
+    try{ const h=f.contentDocument.body.scrollHeight; if(h) f.style.height=(h+40)+'px'; }catch(e){} };
+  f.src='/api/pl_send?kind=weekly&preview=1&date='+k;
 }
 function setSigned2(id,v){ const el=document.getElementById(id); el.textContent=fmt(v); el.classList.toggle('pos2',v>0); el.classList.toggle('neg2',v<0); }
 // Mark is a flat weekly salary (amount from kitchen_data.json, not stored here), SPREAD across the 7 days
