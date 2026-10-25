@@ -4155,12 +4155,12 @@ def _drive_search(args):
     m=re.search(r"parentId\s*=\s*'([^']+)'",q)
     gq=("'%s' in parents and trashed=false"%m.group(1)) if m else q
     params={"q":gq,"pageSize":int(args.get("pageSize",100) or 100),
-        "fields":"nextPageToken,files(id,name,mimeType,createdTime)",
+        "fields":"nextPageToken,files(id,name,mimeType,createdTime,md5Checksum)",
         "supportsAllDrives":"true","includeItemsFromAllDrives":"true"}
     if args.get("pageToken"): params["pageToken"]=args["pageToken"]
     j=_g_get_json(_DRIVE+"/files?"+urllib.parse.urlencode(params))
     files=[{"id":f["id"],"title":f.get("name",""),"mimeType":f.get("mimeType",""),
-            "createdTime":f.get("createdTime","")} for f in (j.get("files") or [])]
+            "createdTime":f.get("createdTime",""),"md5":f.get("md5Checksum","")} for f in (j.get("files") or [])]
     return {"files":files,"nextPageToken":j.get("nextPageToken")}
 
 def _pdf_to_text(raw):
@@ -4628,9 +4628,10 @@ def _pl_regex_cogs(text,title):
             m=re.search(pat,T,re.I)
             if m: amt=float(m.group(1).replace(",","")); break
     if not amt>0: return None
-    im=re.search(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6}|72\d{4})(?![0-9])',T)
+    im=re.search(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])',T)
     return {"type":"cogs","vendor":vendor,"amt":round(amt,2),"invoiceNo":(im.group(1) if im else ""),"invoiceDate":_pl_inv_date(text or "")}
 
+_PL_INV_RE=re.compile(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])')
 def _pl_scan_bills(max_seconds=420):
     # Every PDF in the Drive invoices folder -> verdict cached by fileId in db['books_billcache'] (a file's
     # content never changes, so each file is read ONCE; skips are cached too, read errors are not).
@@ -4667,12 +4668,21 @@ def _pl_scan_bills(max_seconds=420):
         try:
             with data_lock: db["books_billcache"]=cache; save_data(db)
         except Exception: pass
-    booked=[]
-    for f in pdfs:
+    booked=[]; seen=set(); stats["dupes"]=0
+    for f in sorted(pdfs,key=lambda f:f.get("createdTime") or ""):   # oldest first: the original copy wins
         v=verdicts.get(f.get("id"))
         if not v or v.get("type")!="cogs": continue
+        # the same invoice can sit in the folder twice under different names (10 Oct: ~40 re-uploaded copies),
+        # so de-dupe on file content and on supplier + invoice no. + amount, not just the Drive file id
+        keys=[("md5",f["md5"])] if f.get("md5") else []
+        inv=v.get("invoiceNo") or ""
+        if not inv:   # older cached verdicts (e.g. Russel's 73xxxx) have no number: take it from the file name
+            m=_PL_INV_RE.search(f.get("title") or ""); inv=m.group(1) if m else ""
+        if inv: keys.append(("inv",_pl_loose(v.get("vendor")),inv.upper(),round(float(v["amt"]),2)))
+        if any(k in seen for k in keys): stats["dupes"]+=1; continue
+        seen.update(keys)
         booked.append({"date":(v.get("invoiceDate") or (f.get("createdTime") or "")[:10]),"vendor":v["vendor"],"amt":float(v["amt"]),
-                       "inv":v.get("invoiceNo",""),"title":f.get("title",""),"dated":bool(v.get("invoiceDate"))})
+                       "inv":inv,"title":f.get("title",""),"dated":bool(v.get("invoiceDate"))})
     stats["booked"]=len(booked)
     return booked,stats
 

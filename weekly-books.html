@@ -359,6 +359,7 @@ function load(){
       localStorage.setItem(KEY+'_aprMayReal','1'); save();
     }
     ensureFixedOH();
+    { const n=dedupeBillRows(); if(n){ window._billDupesRemoved=(window._billDupesRemoved||0)+n; save(); } }
     reconcileEstimates();   // a real Uber/DoorDash payout always supersedes its 30% estimate
     dedupeMark();
     pruneFuturePayouts();
@@ -402,12 +403,16 @@ const isSeedRow=t=>typeof t.id==='string' && t.id.charAt(0)==='s';
 async function reconcileServer(){
   let s; try{ const r=await fetch('/api/books_tx'); if(!r.ok) return; s=await r.json(); }catch(e){ return; }
   if(!s) return;
-  const srvTx=s.tx||[], srvN=srvTx.length;
+  // count the server copy the way load() will see it: the retired embedded invoice seed (bd_*) is dropped on every
+  // load, so counting it made every open look like "the server has 170+ more" and raised the restore banner
+  const srvTx=(s.tx||[]).filter(t=>!(typeof t.id==='string' && t.id.indexOf('bd_')===0)), srvN=srvTx.length;
   if(srvN===0){ if(TX.filter(t=>!isSeedRow(t)).length>0) pushSnap(); else setCloud('backup empty'); return; }  // server empty → seed from here
   if(TX.length===0 || TX.every(isSeedRow)){                                   // this device is empty → adopt the backup
     TX=srvTx; try{localStorage.setItem(RSKIP,JSON.stringify(s.rskip||{}));}catch(e){}
     save(); load(); render(); setCloud('restored · '+srvN+' items'); return;
   }
+  // the server copy can only be "bigger" because it still holds the duplicate invoices this device just removed → replace it
+  if(window._billDupesRemoved && srvN <= TX.length+window._billDupesRemoved+5){ pushSnap(); setCloud('duplicates removed · '+TX.length+' items'); return; }
   if(srvN > TX.length+5) showSnapConflict(srvN,s.ts,srvTx,s.rskip||{});       // server has notably MORE → this device may be missing data; offer restore
   else if(TX.length>=srvN){ pushSnap(); setCloud('in sync · '+TX.length+' items'); }  // only back up when this device is EQUAL or RICHER — never shrink the server copy
   else setCloud('in sync · '+srvN+' on server');                              // server slightly larger but within tolerance → leave it, don't clobber
@@ -582,6 +587,25 @@ function wageRowHTML(t){
   }
   return rowHTML(t);
 }
+// The same supplier invoice must never count twice. Two Drive files are the same invoice when their CONTENT is
+// identical (md5) or when they share supplier + invoice no. + amount (10 Oct: ~40 invoices were re-uploaded
+// under new names like "Baiada - U877636.pdf", and de-duping on the Drive file id alone booked both copies).
+const INV_RE=/(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])/;
+function billKey(vendor,inv,amt){ return inv ? ((vendor||'').toLowerCase().replace(/[^a-z0-9]/g,'')+'|'+String(inv).toUpperCase()+'|'+Math.round((+amt||0)*100)) : ''; }
+// Safety net for rows already saved: drop any second copy of a src:'bill' invoice (keeps a ticked copy over an
+// unticked one). Runs on every load and after every invoice sync. Returns how many it removed.
+function dedupeBillRows(){
+  const keep={}, rm=new Set();
+  TX.forEach(function(t){
+    if(t.src!=='bill') return;
+    const k=billKey(t.cat,t.inv,t.amt); if(!k) return;
+    const prev=keep[k];
+    if(!prev){ keep[k]=t; return; }
+    if(isExcl(prev) && !isExcl(t)){ rm.add(prev.id); keep[k]=t; } else rm.add(t.id);
+  });
+  if(rm.size) TX=TX.filter(function(t){ return !rm.has(t.id); });
+  return rm.size;
+}
 function isAutoTx(t){ return t.src==='sync' || t.src==='bill' || t.src==='embed' || t.src==='est'; }
 // De-dupe expenses: where an ORIGINAL (imported CSV, non-auto) expense EXACTLY matches an auto/blue one
 // (same week + same category + same amount), drop the original and keep the blue auto. Returns count removed.
@@ -595,6 +619,8 @@ function _dedupeExpenses(){
   TX=TX.filter(t=>!rm.has(t.id));
   return rm.size;
 }
+// undo for the 25 Oct invoice de-dupe: puts the books back exactly as they were before it ran
+function restoreBillBackup(){ try{ const b=localStorage.getItem(KEY+'_preBillDedupe'); if(!b){ status('No pre-cleanup backup found.'); return; } TX=JSON.parse(b); localStorage.setItem(KEY+'_billDedupe1','1'); try{ localStorage.setItem(KEY,b); }catch(e){} pushSnap(); render(); status('Restored the books to before the invoice de-dupe (reload re-applies the load-time check).'); }catch(e){ status('Restore failed: '+e.message); } }
 function restoreDupeBackup(){ try{ const b=localStorage.getItem(KEY+'_predupe'); if(!b){ status('No pre-cleanup backup found.'); return; } TX=JSON.parse(b); localStorage.removeItem(KEY+'_dedupeExp2'); save(); render(); status('Restored the books to before the duplicate cleanup.'); }catch(e){ status('Restore failed: '+e.message); } }
 function rowHTML(t){
   const auto=isAutoTx(t);
@@ -662,7 +688,6 @@ function groupRowHTML(cat,g,gi){
     +'<div id="grp'+gi+'" style="display:none;margin:0 6px 10px 10px">'+items+'</div>';
 }
 function render(focusNew,focusKey){
-  if(window._warming) return;   // warm-up moves curMon week by week; don't repaint until it restores your view
   if(viewMode==='month'){ renderMonth(); return; }
   document.getElementById('weekView').style.display='';
   document.getElementById('monthView').style.display='none';
@@ -912,7 +937,7 @@ function regexCogs(text,title){
   if(!(amt>0)){ for(const p of pats){ const m=T.match(p); if(m){ amt=parseFloat(m[1].replace(/,/g,'')); if(amt>0) break; } } }
   if(!(amt>0)) return null;
   let invoiceDate=parseInvDate(T);
-  let invoiceNo=''; const im=T.match(/\b(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|9018\d{6}|72\d{4})\b/); if(im) invoiceNo=im[1];
+  let invoiceNo=''; const im=T.match(/\b(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})\b/); if(im) invoiceNo=im[1];
   return {type:'cogs',vendor:vendor,amt:Math.round(amt*100)/100,invoiceNo:invoiceNo,invoiceDate:invoiceDate};
 }
 async function parseBillAI(text,title){
@@ -990,6 +1015,8 @@ async function syncBills(){
     //    so one slow/oversized PDF can't stall the whole queue.
     let cache; try{cache=JSON.parse(localStorage.getItem(BILLCACHE)||'{}');}catch(e){cache={};}
     let changed=false;
+    // remember which invoices you unticked (by Drive file) so the rebuild keeps them unticked
+    const exclFiles=new Set(TX.filter(t=>t.src==='bill' && t.fileId && isExcl(t)).map(t=>t.fileId));
     TX=TX.filter(t=>t.src!=='bill' && !(typeof t.id==='string' && t.id.indexOf('bd_')===0)); // rebuild live Drive bills + drop the old embedded invoice seed (bd_*); KEEP overheads (oh_*) + history
     const TIMEOUT=30000;
     const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
@@ -1013,22 +1040,33 @@ async function syncBills(){
       done=Math.min(i+CONC,files.length);
       status(`Reading invoices… ${done}/${files.length}`+(read?` (${read} new this run)`:' (mostly cached)'));
     }
-    // 3) book the confident COGS hits, de-duped by vendor+invoice no.
-    let cb=0; const seen=new Set();
-    files.forEach((f,i)=>{
-      const o=results[i];
+    // 3) book the confident COGS hits ONCE each. Oldest file first, so the original copy wins over a re-upload.
+    //    Keys: the file id, the file's content (md5), and supplier+invoice no.+amount (only when there IS a
+    //    number, so two real same-supplier invoices with a blank number are still both booked).
+    let cb=0, dup=0; const seen=new Set();
+    const order=files.map((f,i)=>i).sort((a,b)=>String(files[a].createdTime||'')<String(files[b].createdTime||'')?-1:1);
+    order.forEach(i=>{
+      const f=files[i], o=results[i];
       if(!o || o.type!=='cogs' || !(o.amt>0)) return;
-      const key=f.id;                                                 // one Drive file = one invoice. (Keying on vendor+invoiceNo wrongly dropped two real invoices from the same supplier that shared/blanked an invoice number.)
-      if(seen.has(key)) return; seen.add(key);                        // never book the same FILE twice
+      const amt=Math.round(o.amt*100)/100;
+      const inv=o.invoiceNo || (((f.title||'').match(INV_RE)||[])[1]) || '';
+      const keys=['f:'+f.id]; if(f.md5) keys.push('m:'+f.md5); const bk=billKey(o.vendor,inv,amt); if(bk) keys.push('k:'+bk);
+      if(keys.some(k=>seen.has(k))){ dup++; return; }
+      keys.forEach(k=>seen.add(k));
       const fbWk=weekKey((f.createdTime||'').slice(0,10)||curKey());
       const wk=safeWk(o.invoiceDate, fbWk);
-      TX.push({id:uid(),date:wk,type:'expense',cat:o.vendor,amt:Math.round(o.amt*100)/100,bucket:'cogs',src:'bill',fileId:f.id,inv:o.invoiceNo||''}); cb++;
+      const id='bill_'+f.id;                                          // stable id: an untick survives every re-sync
+      TX.push({id:id,date:wk,type:'expense',cat:o.vendor,amt:amt,bucket:'cogs',src:'bill',fileId:f.id,inv:inv}); cb++;
+      if(exclFiles.has(f.id)) EXCLUDED.add(id);
     });
+    try{ localStorage.setItem(EXCL_KEY, JSON.stringify(Array.from(EXCLUDED))); }catch(e){}
+    dedupeBillRows();
     if(changed){ try{localStorage.setItem(BILLCACHE,JSON.stringify(cache));}catch(e){} }
     // Note: G&W and CFM invoices are saved as PDFs in the folder now, so they're booked above —
     // the old email-reading step (syncXeroBills) was removed to avoid booking them twice.
     save(); render();
-    status(`Bills ✓ ${cb} invoices booked from ${files.length} scanned`+(errs?` · ${errs} couldn't be read — tap Load invoices again to retry just those`:'')+'.');
+    if(btn) btn.dataset.ok='1';
+    status(`Bills ✓ ${cb} invoices booked from ${files.length} scanned`+(dup?` · ${dup} duplicate cop${dup>1?'ies':'y'} skipped`:'')+(errs?` · ${errs} couldn't be read — tap Load invoices again to retry just those`:'')+'.');
   }catch(e){ status('Bills sync issue: '+(e.message||e)); }
   if(btn)btn.disabled=false;
 }
@@ -1054,16 +1092,16 @@ async function call(name,args){
 const BRAND=/bruno/i; // only count the active business; old closed brands (1001 Nights, Village Birdhouse) are ignored
 const usDate=d=>`${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
 
-function setSyncLine(cat,amt,type){
-  type=type||'income';
-  let t=TX.find(x=>weekKey(x.date)===curKey() && x.src==='sync' && x.cat===cat);
+function setSyncLine(cat,amt,type,wk){
+  type=type||'income'; wk=wk||curKey();
+  let t=TX.find(x=>weekKey(x.date)===wk && x.src==='sync' && x.cat===cat);
   if(t){ t.amt=Math.round(amt*100)/100; t.type=type; }
-  else TX.push({id:uid(),date:curKey(),type,cat,amt:Math.round(amt*100)/100,src:'sync'});
+  else TX.push({id:uid(),date:wk,type,cat,amt:Math.round(amt*100)/100,src:'sync'});
 }
 // DELIVERY ESTIMATE: payout ≈ Square gross − 30% (the platform's cut). Books an estimate income line for the
 // current week ONLY when no real payout is booked yet; the real payout (email/pinned) always wins.
-function bookEstimate(cat,gross){
-  const k=curKey(), est=Math.round((gross||0)*0.70*100)/100;
+function bookEstimate(cat,gross,wk){
+  const k=wk||curKey(), est=Math.round((gross||0)*0.70*100)/100;
   const real=TX.find(x=>weekKey(x.date)===k && x.cat===cat && x.src!=='est');   // a real payout already exists
   if(real){ if(est>0) real.est=est; TX=TX.filter(t=>!(weekKey(t.date)===k && t.cat===cat && t.src==='est')); return; }
   let e=TX.find(x=>weekKey(x.date)===k && x.cat===cat && x.src==='est');
@@ -1105,16 +1143,20 @@ function renderSyncStatus(){
     +'</div>';
 }
 
-async function syncWeek(){
+async function syncWeek(wkMon){
   if(!IN_CLAUDE){ status('Viewing saved books — open in the Claude app to pull live Square/email data.'); return; }
   if(window._syncBusy) return; window._syncBusy=true;
   // safety net: never let the busy flag stick (a stuck flag silently blocks ALL future syncs)
   clearTimeout(window._syncGuard); window._syncGuard=setTimeout(function(){ window._syncBusy=false; },120000);
   let syncOk=false;
-  ensureBills(); ensureHist(); ensurePayouts(); ensureWages();   // invoices + pinned payouts/wages refresh as part of every sync
-  syncDisplayFromTX(); setBusy(['dep','cash','wage','uber','dd']);   // show the status panel: live sources start "searching"
+  // the week being synced is fixed up front: navigating (or the background warm-up) mid-sync must never
+  // book this week's figures into another week. The status chips only show it when it's the week on screen.
+  const mon=new Date(wkMon||curMon), sun=addDays(mon,6), wk=isoOf(mon), onScreen=()=>wk===curKey();
+  const say=m=>{ if(onScreen()) status(m); else status('Updating '+mon.getDate()+' '+MO[mon.getMonth()]+' week… '+m); };
+  const setDoneW=k=>{ if(onScreen()) setDone(k); };
+  ensureHist(); ensurePayouts(); ensureWages();   // pinned payouts/wages refresh as part of every sync (the old embedded invoice seed is retired: Drive is the source)
+  if(onScreen()){ syncDisplayFromTX(); setBusy(['dep','cash','wage','uber','dd']); }   // show the status panel: live sources start "searching"
   const btn=document.getElementById('syncBtn'); if(btn)btn.disabled=true;
-  const mon=new Date(curMon), sun=addDays(mon,6);
   let dep=0, cash=0, gotIncome=false;
   // fetch a slightly wider UTC window (±1 day) so timezone/DST offsets can't clip the week's edges —
   // the exact LOCAL week boundary is enforced client-side below (c>=mon && c<addDays(mon,7))
@@ -1124,7 +1166,7 @@ async function syncWeek(){
     // "EARNED IN THIS PERIOD", matching Square's dashboard exactly: card payments TAKEN in these dates
     // (status COMPLETED), minus Square's processing fees, app fees, gift-card redemptions and refunds.
     // NOT transfer-dated — money is counted when you earn it, not when it lands in the bank.
-    status('Tallying sales earned this week…');
+    say('Tallying sales earned this week…');
     // ONE reliable server-side call tallies the WHOLE week's card+cash (the old client-side 15-page
     // pagination through the proxy was slow and would leave a stale partial like "$503"). Exact Melbourne
     // week bounds (local Monday → next Monday), same as the delivery-gross call below.
@@ -1133,17 +1175,17 @@ async function syncWeek(){
     const sd=await sres.json();
     if(sd&&sd.ok){
       dep=+sd.deposits_card_net||0; cash=+sd.cash||0;
-      if(dep>0){ setSyncLine('Bank deposits (Square)',Math.round(dep*100)/100); gotIncome=true; }
-      if(cash>0){ setSyncLine('Cash sales (Square)',Math.round(cash*100)/100); gotIncome=true; }
+      if(dep>0){ setSyncLine('Bank deposits (Square)',Math.round(dep*100)/100,'income',wk); gotIncome=true; }
+      if(cash>0){ setSyncLine('Cash sales (Square)',Math.round(cash*100)/100,'income',wk); gotIncome=true; }
       if(gotIncome) syncOk=true;
     }
-    setDone('dep'); setDone('cash');
+    setDoneW('dep'); setDoneW('cash');
     save(); render();
-  }catch(e){ status('Income sync issue (wages still loading)… '+(e.message||e)); setDone('dep'); setDone('cash'); }   // don't abort — let wages/payouts continue
+  }catch(e){ status('Income sync issue (wages still loading)… '+(e.message||e)); setDoneW('dep'); setDoneW('cash'); }   // don't abort — let wages/payouts continue
   // Staff wages from Square timecards (hours worked minus unpaid breaks × pay rate)
   let wages=0;
   try{
-    status('Calculating staff wages from timecards…');
+    say('Calculating staff wages from timecards…');
     await loadStaffNames();
     const byStaff={};
     let cur, pages=0;
@@ -1177,16 +1219,16 @@ async function syncWeek(){
     // ONLY replace this week's wage rows when fresh timecard data actually came back — if the fetch
     // returned nothing (Square hiccup), the saved wages from the last sync STAY, same as sales/expenses
     if(Object.keys(byStaff).length){
-      try{ const m=shiftsMap(); m[curKey()]=shiftRec; localStorage.setItem(SHIFTKEY,JSON.stringify(m)); }catch(e){}
-      TX=TX.filter(t=>!(weekKey(t.date)===curKey() && t.src==='sync' && (t.staffId || t.cat==='Staff wages (Square)')));
-      TX=TX.filter(t=>!(weekKey(t.date)===curKey() && typeof t.id==='string' && t.id.charAt(0)==='s' && /^(wage|super)$/i.test(t.cat||'')));
+      try{ const m=shiftsMap(); m[wk]=shiftRec; localStorage.setItem(SHIFTKEY,JSON.stringify(m)); }catch(e){}
+      TX=TX.filter(t=>!(weekKey(t.date)===wk && t.src==='sync' && (t.staffId || t.cat==='Staff wages (Square)')));
+      TX=TX.filter(t=>!(weekKey(t.date)===wk && typeof t.id==='string' && t.id.charAt(0)==='s' && /^(wage|super)$/i.test(t.cat||'')));
     }
-    Object.entries(byStaff).forEach(([id,amt])=>{ if(amt>0){ wages+=amt; TX.push({id:uid(),date:curKey(),type:'expense',bucket:'wage',cat:(STAFF[id]||'Staff'),amt:Math.round(amt*100)/100,src:'sync',staffId:id}); } });
-    setDone('wage');
+    Object.entries(byStaff).forEach(([id,amt])=>{ if(amt>0){ wages+=amt; TX.push({id:uid(),date:wk,type:'expense',bucket:'wage',cat:(STAFF[id]||'Staff'),amt:Math.round(amt*100)/100,src:'sync',staffId:id}); } });
+    setDoneW('wage');
     save(); render();
-  }catch(e){ setDone('wage'); }
+  }catch(e){ setDoneW('wage'); }
   try{
-    status('Reading Uber Eats payout emails…');
+    say('Reading Uber Eats payout emails…');
     const s=await call(GSEARCH,{query:UBER_QUERY,pageSize:25});
     let uber=0, found=0;
     for(const th of (s.threads||[])){
@@ -1198,10 +1240,10 @@ async function syncWeek(){
       const m=body.match(UBER_AMT);
       if(m){ uber+=parseFloat(m[1].replace(/,/g,'')); found++; }
     }
-    if(uber>0){ setSyncLine('Uber Eats (net payout)',uber); save(); render(); } // never clears an existing line — booked figures stay put
-    setDone('uber');
+    if(uber>0){ setSyncLine('Uber Eats (net payout)',uber,'income',wk); save(); render(); } // never clears an existing line — booked figures stay put
+    setDoneW('uber');
     // DoorDash payout emails (accounts@doordash.com; projected Mon / finalized Thu)
-    status('Reading DoorDash payout emails…');
+    say('Reading DoorDash payout emails…');
     let dd=0;
     try{
       const ddStr=`${pad(mon.getMonth()+1)}/${pad(mon.getDate())}/${mon.getFullYear()}`;
@@ -1209,6 +1251,8 @@ async function syncWeek(){
       const ds=await call(GSEARCH,{query:dq,pageSize:20});
       const byBrand={};
       for(const th of (ds.threads||[])){
+        const ss=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');   // the search already carries the subject: skip other weeks WITHOUT opening them (was 20 full-thread reads per sync)
+        if(ss && (ss.indexOf(ddStr)===-1 || !BRAND.test(ss))) continue;
         const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
         const msgs=t.messages||[]; const subj=(msgs[0]&&msgs[0].subject)||'';
         if(subj.indexOf(ddStr)===-1) continue;
@@ -1219,24 +1263,24 @@ async function syncWeek(){
         if(mm) byBrand[brand]=parseFloat(mm[1].replace(/,/g,'')); // latest email per brand wins
       }
       dd=Object.values(byBrand).reduce((a,b)=>a+b,0);
-      if(dd>0){ setSyncLine('DoorDash (net payout)',dd); save(); render(); } // never clears an existing line — booked figures stay put
-      setDone('dd');
-    }catch(e){ setDone('dd'); }
+      if(dd>0){ setSyncLine('DoorDash (net payout)',dd,'income',wk); save(); render(); } // never clears an existing line — booked figures stay put
+      setDoneW('dd');
+    }catch(e){ setDoneW('dd'); }
     // DELIVERY ESTIMATE — fill Uber/DoorDash from Square gross −30% so the week is complete before the payout email lands
     try{
       const dStart=new Date(mon).toISOString(), dEnd=new Date(addDays(mon,7)).toISOString();
       const gres=await fetch('/api/delivery_gross?start='+encodeURIComponent(dStart)+'&end='+encodeURIComponent(dEnd));
       const gd=await gres.json();
-      if(gd&&gd.ok){ bookEstimate('Uber Eats (net payout)',gd.uber||0); bookEstimate('DoorDash (net payout)',gd.doordash||0); }
+      if(gd&&gd.ok){ bookEstimate('Uber Eats (net payout)',gd.uber||0,wk); bookEstimate('DoorDash (net payout)',gd.doordash||0,wk); }
     }catch(e){}
-    reconcileEstimates(); syncDisplayFromTX(); setDone('uber'); setDone('dd'); save(); render();
+    reconcileEstimates(); if(onScreen()) syncDisplayFromTX(); setDoneW('uber'); setDoneW('dd'); save(); render();
     const allZero=!(dep>0||cash>0||uber>0||dd>0||wages>0);
-    status(`Synced ✓  Deposits ${dep>0?fmt(dep):'—'} · Cash ${cash>0?fmt(cash):'—'} · Uber ${uber>0?fmt(uber):'—'} · DoorDash ${dd>0?fmt(dd):'—'} · Wages ${wages>0?fmt(wages):'—'}.`+(allZero?`  [debug ${_dbg}]`:''));
+    say(`Synced ✓  Deposits ${dep>0?fmt(dep):'—'} · Cash ${cash>0?fmt(cash):'—'} · Uber ${uber>0?fmt(uber):'—'} · DoorDash ${dd>0?fmt(dd):'—'} · Wages ${wages>0?fmt(wages):'—'}.`+(allZero?`  [debug ${_dbg}]`:''));
   }catch(e){ status('Email sync issue: '+(e.message||e)); }
   if(btn)btn.disabled=false;
   clearTimeout(window._syncGuard); window._syncBusy=false;
   // only record the week as "synced" once income actually came back — a failed fetch won't lock out the next try
-  if(syncOk){ try{ const m=lastSyncMap(); m[curKey()]=Date.now(); localStorage.setItem(LSYNC,JSON.stringify(m)); }catch(e){} }
+  if(syncOk){ try{ const m=lastSyncMap(); m[wk]=Date.now(); localStorage.setItem(LSYNC,JSON.stringify(m)); }catch(e){} }
 }
 let autoSynced={};
 // Auto-sync any week you land on (back to 30 Mar — earlier weeks are the imported history), throttled to
@@ -1257,7 +1301,7 @@ function maybeAutoSync(){
 // weeks always meant "click Sync and wait". On open we now quietly top up the last
 // WARM_WEEKS weeks, oldest→newest, reusing the exact same per-week sync path.
 // It backs off the moment you navigate, and never runs while a sync is in flight.
-const WARM_WEEKS=8, WARM_FRESH_MS=12*3600*1000;
+const WARM_WEEKS=8, WARM_FRESH_MS=12*3600*1000, SETTLED_MS=11*24*3600*1000;   // a week synced 11+ days after its Monday already has every payout email
 let _navSeq=0;                                   // bumped by every user navigation
 async function warmRecentWeeks(){
   if(!IN_CLAUDE || window._warmRan) return; window._warmRan=true;
@@ -1267,25 +1311,20 @@ async function warmRecentWeeks(){
     const w=mondayOf(addDays(today,-7*i)), k=isoOf(w);
     if(k<'2026-03-02') break;
     if(k===isoOf(userMon)) continue;                                  // the viewed week is handled by maybeAutoSync
-    if(Date.now()-((lastSyncMap()[k])||0) < WARM_FRESH_MS) continue;  // synced recently → leave it
+    const last=(lastSyncMap()[k])||0;
+    if(Date.now()-last < WARM_FRESH_MS) continue;                      // synced recently → leave it
+    if(last > w.getTime()+SETTLED_MS) continue;                        // synced after its payouts landed → it's final, leave it
     due.push(w);
   }
   if(!due.length) return;
   due.reverse();                                   // oldest first, so the newest data lands last
-  window._warming=true;
-  try{
-    for(let i=0;i<due.length;i++){
-      if(_navSeq!==startSeq) break;                // you moved → stop touching the view
-      while(window._syncBusy) await new Promise(r=>setTimeout(r,1500));
-      if(_navSeq!==startSeq) break;
-      curMon=new Date(due[i]);
-      status('Updating recent weeks… '+(i+1)+' of '+due.length);
-      try{ await syncWeek(); }catch(e){}
-    }
-  } finally {
-    window._warming=false; curMon=userMon; render();
-    status(_navSeq===startSeq?'Recent weeks up to date ✓':'');
+  for(let i=0;i<due.length;i++){
+    if(_navSeq!==startSeq) break;                  // you moved → let your week sync first; the rest can wait
+    while(window._syncBusy) await new Promise(r=>setTimeout(r,1500));
+    if(_navSeq!==startSeq) break;
+    try{ await syncWeek(due[i]); }catch(e){}       // the week is passed in: the screen never changes under you
   }
+  status(_navSeq===startSeq?'Recent weeks up to date ✓':'');
 }
 // Uber's payout email lands ~midnight Sunday and DoorDash's on Monday — AFTER the week has closed.
 // So early each week (Mon–Thu), quietly check for LAST week's payout emails and book them into last week.
@@ -1322,6 +1361,8 @@ async function backfillPrevWeek(){
       const ds=await call(GSEARCH,{query:'(from:accounts@doordash.com OR from:no-reply@doordash.com) "DoorDash payment"',pageSize:20});
       const byBrand={};
       for(const th of (ds.threads||[])){
+        const ss=((th.messages&&th.messages[0]&&th.messages[0].subject)||'');
+        if(ss && (ss.indexOf(ddStr)===-1 || !BRAND.test(ss))) continue;   // wrong week: don't open it
         const t=await call(GTHREAD,{threadId:th.id,messageFormat:'FULL_CONTENT'});
         const msgs=t.messages||[]; const subj=(msgs[0]&&msgs[0].subject)||'';
         if(subj.indexOf(ddStr)===-1||!BRAND.test(subj)) continue;
@@ -1523,8 +1564,17 @@ function drawDayChart(hrS,hrW){
       if(typeof f.mark_weekly==='number') MARK_WEEKLY=f.mark_weekly;
     }
   }catch(e){}
+  const _billFix=localStorage.getItem(KEY+'_billDedupe1')!=='1';
+  if(_billFix && !localStorage.getItem(KEY+'_preBillDedupe')){ try{ localStorage.setItem(KEY+'_preBillDedupe', localStorage.getItem(KEY)||'[]'); }catch(e){} }   // backup BEFORE load() drops any duplicate invoice
   load(); render(); applyWagesState(); reconcileServer(); maybeAutoSync(); syncLive(); backfillPrevWeek();
   setTimeout(warmRecentWeeks, 8000);   // let the viewed week finish first, then top up the rest quietly
+  if(IN_CLAUDE && _billFix){   // ONE-TIME: rebuild invoices without the 10 Oct duplicate copies (backup taken above)
+    setTimeout(async function(){
+      const bb=document.getElementById('billBtn'); if(bb) delete bb.dataset.ok;
+      await syncBills();
+      if(bb && bb.dataset.ok==='1') localStorage.setItem(KEY+'_billDedupe1','1');   // only mark done when the Drive list came back
+    }, 4000);
+  }
   if(window._dedupeRemoved){ setTimeout(()=>{ try{ status('✓ Removed '+window._dedupeRemoved+' duplicate expense'+(window._dedupeRemoved>1?'s':'')+' — kept the blue auto ones.'); }catch(e){} }, 1500); }
 })();
 if(!IN_CLAUDE){ var sb=document.getElementById('syncBtn'); if(sb)sb.textContent='⟳ Sync (Claude app only)'; var bb=document.getElementById('billBtn'); if(bb)bb.style.display='none'; status('Saved books — March to today. Open in the Claude app to pull live data.'); }
