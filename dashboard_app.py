@@ -11355,10 +11355,9 @@ def _fryer_lines(o,cat,excl):
         if li.get("catalog_object_id") in cat["var"] or _fryer_norm(nm) in cat["names"]:
             out.append({"k":"%d"%i,"q":q,"n":nm,"v":var,"mods":mods,"note":note,"for":""})
             continue
-        for j,m in enumerate(mods):                       # a fryer side chosen as a modifier on another item
-            if _fryer_norm(m) in cat["names"]:
-                out.append({"k":"%d.%d"%(i,j),"q":q,"n":m,"v":"","mods":[],"note":"",
-                            "for":nm+((" "+var) if var else "")})
+        sides=[m for m in mods if _fryer_norm(m) in cat["names"]]   # fryer sides chosen as modifiers on another item
+        if sides:                                         # show it like Square does: the pack, with its fryer side(s) under it
+            out.append({"k":"%d"%i,"q":q,"n":nm,"v":var,"mods":sides,"note":"","for":""})
     return out
 def _fryer_payload():
     cfg=_fryer_cfg(); cat=_fryer_catalog(); st=_fryer_state(); now=time.time()
@@ -11398,7 +11397,7 @@ def _fryer_payload():
         recalled=oid in st["recalled"] and oid not in st["bumped"]
         why=""
         if oid in st["bumped"]: why="fryer"
-        elif recalled: why=""
+        elif recalled: why="timeout" if now-st["recalled"][oid]>cfg["pos_timeout_min"]*60 else ""
         elif not ispos and fulfilled: why="pass"
         elif ispos and num and num in pass_bumped: why="pass"
         elif ispos and now-created.timestamp()>cfg["pos_timeout_min"]*60: why="timeout"
