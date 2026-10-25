@@ -4721,7 +4721,7 @@ def _pl_item_sales(d0,d1):
     hdr=_sq_headers(); loc=((db.get("square_config") or {}).get("location_id") or "").strip()
     if not hdr or not loc: return {"ok":False,"error":"Square token/location not set","items":{},"mods":{},"orders":0}
     start=_pl_utc_z(_pl_local_midnight(d0)); end=_pl_utc_z(_pl_local_midnight(d1+timedelta(days=1)))
-    items={}; mods={}; cur=None; orders=0
+    items={}; mods={}; cur=None; orders=0; tax=0.0; notax={}
     for _ in range(60):
         body={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":start,"end_at":end}},
               "state_filter":{"states":["OPEN","COMPLETED"]}}},"limit":500}
@@ -4730,6 +4730,10 @@ def _pl_item_sales(d0,d1):
         with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
         for od in data.get("orders") or []:
             orders+=1
+            t_=((od.get("total_tax_money") or {}).get("amount") or 0)/100.0; tot_=((od.get("total_money") or {}).get("amount") or 0)/100.0
+            tax+=t_
+            if t_<=0 and tot_>0:
+                src_=((od.get("source") or {}).get("name") or "Other"); notax[src_]=notax.get(src_,0.0)+tot_
             for li in od.get("line_items") or []:
                 nm=(li.get("name") or "").strip(); var=(li.get("variation_name") or "").strip()
                 if not nm: continue
@@ -4746,7 +4750,7 @@ def _pl_item_sales(d0,d1):
                     me["sales"]+=((m.get("total_price_money") or {}).get("amount") or 0)/100.0
         cur=data.get("cursor")
         if not cur: break
-    return {"ok":True,"items":items,"mods":mods,"orders":orders}
+    return {"ok":True,"items":items,"mods":mods,"orders":orders,"tax":round(tax,2),"notax":{k:round(v,2) for k,v in notax.items()}}
 
 def _pl_recipe_cogs(d0,d1):
     costs=dict(db.get("item_costs") or {})
@@ -4779,7 +4783,8 @@ def _pl_recipe_cogs(d0,d1):
     return {"ok":True,"total":round(total+mtotal,2),"items_total":round(total,2),"mods_total":round(mtotal,2),
             "rows":sorted(rows,key=lambda r:-r["cost"]),"mods":sorted(mrows,key=lambda r:-r["cost"]),
             "unmatched":sorted(un,key=lambda r:-r["sales"]),"unmatched_mods":sorted(mun,key=lambda r:-r["qty"]),
-            "coverage":cov,"orders":s["orders"],"sales_seen":round(all_sales,2),"costed_sales":round(costed_sales,2)}
+            "coverage":cov,"orders":s["orders"],"sales_seen":round(all_sales,2),"costed_sales":round(costed_sales,2),
+            "tax":s.get("tax",0.0),"notax":s.get("notax") or {}}
 
 @app.route("/api/item_costs",methods=["GET","POST"])
 def api_item_costs():
@@ -4798,6 +4803,39 @@ def api_item_costs():
         return jsonify({"ok":True,"loaded":n,"total":len(cur)})
     return jsonify({"costs":{k:v for k,v in (db.get("item_costs") or {}).items() if not k.startswith("__")},"meta":db.get("item_costs_meta") or {}})
 
+
+# ── UTILITIES FROM THE REAL BILLS (25 Oct). Electricity and gas used to be flat guesses ($600 / $235 a week).
+#    Now: read AGL's bill emails in info@ (period, days, new charges), and charge each report the average
+#    daily cost of the latest bills (3 monthly electricity bills, 2 bi-monthly gas bills) x days in the period.
+#    Cached 12 h. If no bills can be read, the flat amount in Settings is used, as before. ──
+_PL_UTIL={"ts":0,"data":None}
+def _pl_utilities():
+    if _PL_UTIL["data"] is not None and time.time()-_PL_UTIL["ts"]<12*3600: return _PL_UTIL["data"]
+    bills=[]
+    try:
+        th=(_gmail_search({"query":'from:agl.com.au subject:"Your AGL" bill newer_than:200d',"pageSize":15}) or {}).get("threads") or []
+        for t in th:
+            subj=((t.get("messages") or [{}])[0].get("subject") or "")
+            kind=("gas" if re.search(r'\bgas\b',subj,re.I) else "elec" if re.search(r'electricity',subj,re.I) else None)
+            if not kind: continue
+            msgs=(_gmail_thread({"threadId":t["id"]}) or {}).get("messages") or []
+            txt=" ".join((m.get("plaintext_body") or "")+" "+re.sub(r'<[^>]+>',' ',m.get("htmlBody") or "") for m in msgs)
+            txt=re.sub(r'\s+',' ',txt.replace("&nbsp;"," "))
+            pm=re.search(r'Bill period (\d{1,2} \w{3} \d{4}) to (\d{1,2} \w{3} \d{4}) \((\d+) days\)',txt)
+            cm=(re.search(r'New charges:? \$([\d,]+\.\d\d)',txt) or re.search(r'Direct Debit amount \$([\d,]+\.\d\d)',txt)
+                or re.search(r'(?:Total|Amount) due:? \$([\d,]+\.\d\d)',txt))
+            if not pm or not cm: continue
+            bills.append({"kind":kind,"start":pm.group(1),"end":pm.group(2),"days":int(pm.group(3)),"amt":float(cm.group(1).replace(",","")),
+                          "end_d":datetime.strptime(pm.group(2),"%d %b %Y").date().isoformat()})
+    except Exception as e:
+        print("pl utilities:",e)
+    out={}
+    for kind,n in (("elec",3),("gas",2)):
+        b=sorted({x["end_d"]:x for x in bills if x["kind"]==kind}.values(),key=lambda x:x["end_d"])[-n:]   # one per bill period, newest n
+        dd=sum(x["days"] for x in b)
+        if dd>0: out[kind]={"daily":round(sum(x["amt"] for x in b)/dd,4),"bills":b,"days":dd,"from":b[0]["start"],"to":b[-1]["end"]}
+    _PL_UTIL["data"]=out; _PL_UTIL["ts"]=time.time()
+    return out
 
 def _pl_compute(kind,ref=None):
     # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
@@ -4901,11 +4939,29 @@ def _pl_compute(kind,ref=None):
     R["labour"]["total"]=round(R["labour"]["wages"]+R["labour"]["super"]+mark+man["wage"],2)
     if w.get("open_shifts"): R["notes"].append("%d shift(s) still clocked in (not counted until clocked out)."%w["open_shifts"])
     # ── OVERHEADS (weekly figures, prorated by days) ──
-    fo=((db.get("books_fin") or {}).get("fixed_oh") or [])
+    bf=(db.get("books_fin") or {}); fo=(bf.get("fixed_oh") or [])
+    try: util=_pl_utilities()
+    except Exception: util={}
+    # GST: what Square recorded on this period's sales, less the credits you claim on purchases. The credit share is
+    # taken from your last BAS (Jul-Sep 2026: 17,776.57 paid / 46,111.08 collected) - books_fin.gst_credit_ratio overrides.
+    gst_ratio=float(bf.get("gst_credit_ratio") or (17776.57/46111.08))
+    gst_real=bool(rc.get("ok")) and float(rc.get("tax") or 0)>0
     rows=[]
     for it in fo:
-        try: rows.append({"name":str(it[0]),"amt":round(float(it[1])*days/7.0,2)})
+        try:
+            nm=str(it[0]); amt=round(float(it[1])*days/7.0,2)
+            if re.match(r'^\s*electric',nm,re.I) and util.get("elec"):
+                u=util["elec"]; rows.append({"name":"Electricity (AGL bills %s - %s, avg %s/day)"%(u["from"],u["to"],_pl_money(u["daily"])),"amt":round(u["daily"]*days,2)}); continue
+            if re.match(r'^\s*gas\s*$',nm,re.I) and util.get("gas"):
+                u=util["gas"]; rows.append({"name":"Gas (AGL bills %s - %s, avg %s/day)"%(u["from"],u["to"],_pl_money(u["daily"])),"amt":round(u["daily"]*days,2)}); continue
+            if re.match(r'^\s*gst\s*$',nm,re.I) and gst_real:
+                col=float(rc["tax"]); net=round(col*(1-gst_ratio),2)
+                rows.append({"name":"GST to pay ATO (Square GST on sales %s, less %.0f%% credits as per last BAS)"%(_pl_money(col),gst_ratio*100),"amt":net}); continue
+            rows.append({"name":nm,"amt":amt})
         except Exception: pass
+    if gst_real and rc.get("notax"):
+        nt=sum(rc["notax"].values())
+        if nt>0: R["notes"].append("Square recorded NO GST on %s of sales (%s). If those items are taxable, the GST owed is about %s more - worth checking with your accountant."%(_pl_money(nt),", ".join("%s %s"%(k,_pl_money(v)) for k,v in sorted(rc["notax"].items(),key=lambda x:-x[1])),_pl_money(nt/11.0)))
     if man["other"]: rows.append({"name":"Manual entries (Books page)","amt":man["other"]})
     R["overheads"]={"total":round(sum(r["amt"] for r in rows),2),"rows":rows}
     # ── PROFIT ──
