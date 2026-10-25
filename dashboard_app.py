@@ -5673,7 +5673,9 @@ def api_alarm_settings():
             store[k]=cur
         db["alarm_cfg"]=store
         # keep the legacy on/off flags in sync so the existing alarm gates honour these toggles
-        for k,legacy in (("probe","probe_alarm_enabled"),("stock","stock_alarm_enabled"),("prodoff","products_off_enabled")):
+        # (prodoff is NOT synced: products_off_enabled shows/hides the whole ITEMS button, while
+        #  alarm_cfg.prodoff.enabled is only its SOUND - syncing hid ITEMS on every Alarm Center save)
+        for k,legacy in (("probe","probe_alarm_enabled"),("stock","stock_alarm_enabled")):
             if k in store and "enabled" in store[k]: db[legacy]=store[k]["enabled"]
         save_data(db)
     return jsonify({"ok":True,"alarm_cfg":db.get("alarm_cfg",{})})
