@@ -5710,7 +5710,7 @@ def api_restart():
 ALARM_SOUNDS_DIR=os.path.join(BASE_DIR,"alarm_sounds")
 try: os.makedirs(ALARM_SOUNDS_DIR,exist_ok=True)
 except Exception: pass
-_ALARM_KEYS={"probecharge","probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","ktimer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","display","tables","intables","frontdoor","ovenstep","packev"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
+_ALARM_KEYS={"probecharge","probeoffline","probe","probeAlmost","probeReady","probeOverdone","stock","prodoff","timer","ktimer","rotstopped","orders","service","walkin","prepcarry","checklist","preptasks","prepimportant","display","tables","intables","frontdoor","ovenstep","packev"}   # MUST match the UI's _ALARM_DEF — a key missing here is SILENTLY dropped on save (the "my probe tones never stick" bug, 3 Aug 2026)
 _SND_OK=("mp3","wav","ogg","webm","m4a","aac")
 _SND_EXT={"audio/mpeg":"mp3","audio/mp3":"mp3","audio/wav":"wav","audio/x-wav":"wav","audio/wave":"wav","audio/ogg":"ogg","audio/webm":"webm","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/aac":"aac"}
 
@@ -10204,9 +10204,10 @@ def _recipe_tag_parts(r):
     """(name, yield line, ingredient lines) from a recipe's free-text body: the '- ' lines under
     INGREDIENTS, stopping at METHOD (or the first blank line after the list). No method steps."""
     lines=[l.strip() for l in (r.get("body") or "").replace("\r","").split("\n")]
-    yld=""; items=[]; seen_head=False
+    yld=""; items=[]; seen_head=False; is_new=False
     for l in lines:
         u=l.upper()
+        if "NEW RECIPE" in u and not seen_head: is_new=True; continue   # '*** NEW RECIPE ***' line -> banner on the tag
         if not yld and u.startswith("YIELD"): yld=l.split(":",1)[-1].strip(); continue
         if u.startswith("INGREDIENT"): seen_head=True; continue
         if re.match(r"^(METHOD|STEPS|DIRECTIONS|INSTRUCTIONS|PROCESS)\b",u): break
@@ -10215,8 +10216,8 @@ def _recipe_tag_parts(r):
             continue
         if not seen_head and not l.startswith(("-","•","*")): continue   # no heading: take bullets before METHOD
         items.append(re.sub(r"^[-•*]\s*","",l))
-    return (r.get("name") or "Recipe"),yld,[i for i in items if i]
-def _render_recipe_png(name,yld,items):
+    return (r.get("name") or "Recipe"),yld,[i for i in items if i],is_new
+def _render_recipe_png(name,yld,items,is_new=False):
     """Small RECIPE tag — name in the black header, batch/yield line, then the ingredients only
     (2 columns once the list is long). Height follows the list so short recipes use less paper."""
     from PIL import Image,ImageDraw,ImageFont
@@ -10242,16 +10243,17 @@ def _render_recipe_png(name,yld,items):
     items=items or ["(no ingredients listed)"]
     cols=2 if len(items)>4 else 1
     colw=(W-2*M-(GAP if cols==2 else 0))//cols-16              # 16 = bullet indent
-    sz=26 if cols==1 else 23
+    sz=31 if cols==1 else 27
     fi=fnt(sz,False); lh=int(sz*1.22)
-    blocks=[wrap(it,fi,colw,3) or [""] for it in items]
+    blocks=[wrap(it,fi,colw,4) or [""] for it in items]
     per=(len(blocks)+cols-1)//cols
     colsets=[blocks[i*per:(i+1)*per] for i in range(cols)]
     body_h=max(sum(len(b) for b in cs)*lh+(len(cs)-1)*4 for cs in colsets if cs)
-    hb=52; fy=fnt(22,False); ylines=wrap(yld,fy,W-2*M,2) if yld else []
+    hb=56; fy=fnt(26,False); ylines=wrap(yld,fy,W-2*M,2) if yld else []
     if ylines and " ".join(ylines)!=" ".join(yld.split()): ylines[-1]=ylines[-1].rsplit(" ",1)[0]+" …"   # cut-off yield: show it
-    yh=(len(ylines)*27+10) if ylines else 0
-    H=hb+8+yh+body_h+16
+    yh=(len(ylines)*31+10) if ylines else 0
+    nh=48 if is_new else 0                                    # '*** NEW RECIPE ***' band under the header
+    H=hb+nh+8+yh+body_h+16
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     dr.rectangle([0,0,W,hb],fill=0)
     up=(name or "Recipe").upper()
@@ -10260,8 +10262,12 @@ def _render_recipe_png(name,yld,items):
         if dr.textlength(up,font=fh)<=W-2*M: break
     dr.text(((W-dr.textlength(up,font=fh))//2,(hb-fh.size)//2-2),up,font=fh,fill=255)
     y=hb+8
+    if is_new:
+        fn=fnt(32,True); t="*** NEW RECIPE ***"
+        dr.rectangle([M,y-2,W-M,y+nh-8],outline=0,width=3)
+        dr.text(((W-dr.textlength(t,font=fn))//2,y+(nh-8-fn.size)//2-4),t,font=fn,fill=0); y+=nh
     for yl in ylines:
-        dr.text((M,y),yl,font=fy,fill=0); y+=27
+        dr.text((M,y),yl,font=fy,fill=0); y+=31
     if ylines:
         y+=2; dr.line([M,y,W-M,y],fill=0,width=2); y+=8
     x0=M
