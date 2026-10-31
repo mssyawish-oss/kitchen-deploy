@@ -9670,19 +9670,21 @@ async function init(){
     sectionUnlockedAt={};
     if(typeof _toast==='function')_toast('Menu closed — idle for 30s');
   },5000);   // self-update: auto-reload when a new screen build is deployed
-  // Kiosk auto-return: after 5 min with NO interaction, snap back to the temperature (home) page from
-  // whatever page was left open, so the screen resets itself for the next person. Any touch/scroll/keypress
-  // resets the timer (shared _uiIdleLast). Skipped while a modal or the lock screen is up, so it never
-  // yanks the view mid-task.
+  // Kiosk auto-return (Marcel 31 Oct): after 90s with NO touch, snap back to the temperature (home) page from
+  // ANY page, closing any popup left open, so the screen resets itself for the next person. Any touch/scroll/
+  // keypress resets the timer (shared _uiIdleLast). Alert popups (sold-out warning, big-order popup) stay up.
+  const _IDLE_HOME_MS=90000, _IDLE_KEEP=['prodoff-modal','order-modal'];
   setInterval(()=>{
-    if(Date.now()-window._uiIdleLast<300000)return;                 // active within the last 5 min
+    if(Date.now()-window._uiIdleLast<_IDLE_HOME_MS)return;          // touched within the last 90s
+    const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;
     const home=(typeof _viewHome==='function')?_viewHome():'probes';
     const act=document.querySelector('.page.active');const cur=act?act.id.replace('page-',''):'';
-    if(!cur||cur===home)return;                                     // already on the temp page
-    if(document.querySelector('.modal-overlay.open'))return;        // don't interrupt an open dialog
-    const ls=document.getElementById('lock-screen');if(ls&&!ls.classList.contains('hidden'))return;
-    navTo(home);
-  },15000);
+    const open=[...document.querySelectorAll('.modal-overlay.open')].filter(m=>!_IDLE_KEEP.includes(m.id));
+    if(cur===home&&!open.length)return;                             // already home, nothing left open
+    open.forEach(m=>closeModal(m.id));
+    sectionUnlockedAt={};
+    if(cur!==home)navTo(home);
+  },5000);
   setInterval(refreshShared,12000);   // keep this device's screens in sync with the others
 }
 init();
