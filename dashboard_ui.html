@@ -4962,7 +4962,7 @@ function showLockBanner(title,sub,icon){if(!lockVisible())return;const k=(title|
 function clearLockBanners(){lockAlerts=[];renderLockBanners();}
 
 let cPinBuf='',cPinCB=null,cPinRoles=null;
-function requirePin(title,sub,cb,roles){cPinCB=cb;cPinRoles=roles||null;cPinBuf='';document.getElementById('pin-confirm-title').textContent=title||'Enter PIN';document.getElementById('pin-confirm-sub').textContent=sub||'';document.getElementById('pin-confirm-error').textContent='';updateCPinDots();openModal('pin-confirm-modal');}
+function requirePin(title,sub,cb,roles){cPinCB=cb;cPinRoles=roles||null;cPinBuf='';document.getElementById('pin-confirm-title').textContent=title||'Enter PIN';document.getElementById('pin-confirm-sub').textContent=sub||'';document.getElementById('pin-confirm-error').textContent='';updateCPinDots();const _pm=document.getElementById('pin-confirm-modal');document.body.appendChild(_pm);openModal('pin-confirm-modal');}   // move to the end of <body> so it stacks ABOVE an already-open popup (label 'Print without a name' pad was hidden behind it)
 function nowTime(){return new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});}
 // complete a task with PROOF: snap a camera photo if enabled, otherwise fall back to the PIN.
 let _capBusy=false;
