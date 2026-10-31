@@ -7121,7 +7121,20 @@ TABLES_DIR=os.path.join(BASE_DIR,"tables_watch")
 _TABLES_LOG_DIR=os.path.join(TABLES_DIR,"log")
 try: os.makedirs(_TABLES_LOG_DIR,exist_ok=True)
 except Exception: pass
-def _tables_log_add(frame_bytes,reason):
+def _tbl_clear_track(W,jpeg,log_add):
+    # "Table cleared" log (Marcel 31 Oct): after a LEFT was logged, 2 CLEAR reads in a row = the table was
+    # cleared → log it with the photo and how many minutes the rubbish sat there. Runs on its own counters,
+    # so it works even when the alert box was tapped away or never auto-clears. Waits over 4h are dropped.
+    since=W.get("clr_from") or 0
+    if not since: return
+    if time.time()-since>4*3600: W["clr_from"]=0; return
+    W["clr_n"]=W.get("clr_n",0)+1
+    if W["clr_n"]<2: return
+    mins=max(1,int(round((time.time()-since)/60.0)))
+    W["clr_from"]=0; W["clr_n"]=0
+    try: log_add(_downscale_jpeg(jpeg,960),"Cleared after %d min"%mins,kind="cleared",wait_min=mins)
+    except Exception: pass
+def _tables_log_add(frame_bytes,reason,**extra):
     # keep a small rolling record of every real detection (frame + reason + time) so Marcel can review
     # accuracy after the fact. Capped at 15; old frame files pruned to what's still in the list.
     ts=int(time.time()*1000)
@@ -7129,9 +7142,9 @@ def _tables_log_add(frame_bytes,reason):
         with open(os.path.join(_TABLES_LOG_DIR,"%d.jpg"%ts),"wb") as f: f.write(frame_bytes)
     except Exception: pass
     log=list(db.get("tables_log",[]) or [])
-    log.insert(0,{"ts":ts,"desc":reason or "Food left on an outside table",
-                  "at":datetime.now().strftime("%a %d %b %I:%M %p")})
-    log=log[:15]
+    log.insert(0,dict({"ts":ts,"desc":reason or "Food left on an outside table",
+                  "at":datetime.now().strftime("%a %d %b %I:%M %p")},**extra))
+    log=log[:40]   # left + cleared entries
     with data_lock: db["tables_log"]=log; save_data(db)
     try:
         keep={str(e.get("ts")) for e in log}
@@ -7214,7 +7227,7 @@ def _tables_check_once(force=False,save_preview=False):
         return row
     cur=TABLESW.get("state") or "clear"
     if verdict=="left":
-        TABLESW["clearn"]=0
+        TABLESW["clearn"]=0; TABLESW["clr_n"]=0
         if cur!="left":
             TABLESW["pendn"]=TABLESW.get("pendn",0)+1
             if TABLESW["pendn"]>=int(cfg.get("confirm",2)):
@@ -7225,6 +7238,7 @@ def _tables_check_once(force=False,save_preview=False):
                     with open(os.path.join(TABLES_DIR,"tables_last.jpg"),"wb") as f: f.write(frame)
                     TABLESW["img_at"]=int(time.time()*1000)
                     _tables_log_add(frame,TABLESW["note"])
+                    TABLESW["clr_from"]=time.time(); TABLESW["clr_n"]=0   # start timing how long until it's cleared
                 except Exception: pass
                 if cfg.get("push") and (cfg.get("ntfy_topic") or "").strip():   # owner 21 Oct: also ping his phone
                     try: fr=_downscale_jpeg(jpeg,720)
@@ -7233,6 +7247,7 @@ def _tables_check_once(force=False,save_preview=False):
                                      TABLESW["note"],fr),daemon=True).start()
     else:
         TABLESW["pendn"]=0
+        _tbl_clear_track(TABLESW,jpeg,_tables_log_add)
         if cur=="left":
             TABLESW["clearn"]=TABLESW.get("clearn",0)+1
             if TABLESW["clearn"]>=int(cfg.get("clear_confirm",1)):
@@ -8436,7 +8451,7 @@ INTABLES_DIR=os.path.join(BASE_DIR,"intables_watch")
 _INTABLES_LOG_DIR=os.path.join(INTABLES_DIR,"log")
 try: os.makedirs(_INTABLES_LOG_DIR,exist_ok=True)
 except Exception: pass
-def _intables_log_add(frame_bytes,reason):
+def _intables_log_add(frame_bytes,reason,**extra):
     # keep a small rolling record of every real detection (frame + reason + time) so Marcel can review
     # accuracy after the fact. Capped at 15; old frame files pruned to what's still in the list.
     ts=int(time.time()*1000)
@@ -8444,9 +8459,9 @@ def _intables_log_add(frame_bytes,reason):
         with open(os.path.join(_INTABLES_LOG_DIR,"%d.jpg"%ts),"wb") as f: f.write(frame_bytes)
     except Exception: pass
     log=list(db.get("intables_log",[]) or [])
-    log.insert(0,{"ts":ts,"desc":reason or "Food left on an inside table",
-                  "at":datetime.now().strftime("%a %d %b %I:%M %p")})
-    log=log[:15]
+    log.insert(0,dict({"ts":ts,"desc":reason or "Food left on an inside table",
+                  "at":datetime.now().strftime("%a %d %b %I:%M %p")},**extra))
+    log=log[:40]   # left + cleared entries
     with data_lock: db["intables_log"]=log; save_data(db)
     try:
         keep={str(e.get("ts")) for e in log}
@@ -8529,7 +8544,7 @@ def _intables_check_once(force=False,save_preview=False):
         return row
     cur=INTABLESW.get("state") or "clear"
     if verdict=="left":
-        INTABLESW["clearn"]=0
+        INTABLESW["clearn"]=0; INTABLESW["clr_n"]=0
         if cur!="left":
             INTABLESW["pendn"]=INTABLESW.get("pendn",0)+1
             if INTABLESW["pendn"]>=int(cfg.get("confirm",2)):
@@ -8540,9 +8555,11 @@ def _intables_check_once(force=False,save_preview=False):
                     with open(os.path.join(INTABLES_DIR,"intables_last.jpg"),"wb") as f: f.write(frame)
                     INTABLESW["img_at"]=int(time.time()*1000)
                     _intables_log_add(frame,INTABLESW["note"])
+                    INTABLESW["clr_from"]=time.time(); INTABLESW["clr_n"]=0   # start timing how long until it's cleared
                 except Exception: pass
     else:
         INTABLESW["pendn"]=0
+        _tbl_clear_track(INTABLESW,jpeg,_intables_log_add)
         if cur=="left":
             INTABLESW["clearn"]=INTABLESW.get("clearn",0)+1
             if INTABLESW["clearn"]>=int(cfg.get("clear_confirm",1)):

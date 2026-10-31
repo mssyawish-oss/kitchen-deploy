@@ -3847,14 +3847,18 @@ function tablesTest(){
     if(img){if(r.preview){img.src=r.preview;img.style.display='';if(cap){cap.textContent=(r.desc?('AI: '+r.desc+' — '):'')+'this is exactly what the AI looked at — tap to enlarge.';cap.style.display='';}}else{img.style.display='none';if(cap)cap.style.display='none';}}
   }).catch(()=>{st.textContent='Could not reach the server.';st.style.color='var(--red)';});
 }
+// "Table cleared" log (31 Oct): cleared rows carry kind:'cleared' + wait_min. Summary = today's clears + average wait.
+function _tblClearSummary(log){const day=new Date().toDateString();const c=log.filter(e=>e.kind==='cleared'&&new Date(e.ts).toDateString()===day);
+  if(!c.length)return '';const avg=Math.round(c.reduce((a,e)=>a+(+e.wait_min||0),0)/c.length);
+  return '<div style="font-size:var(--fs-md);color:var(--green);padding:4px 0 8px;">Today: '+c.length+' table'+(c.length>1?'s':'')+' cleared, average '+avg+' min after being left</div>';}
 function tablesLogLoad(){
   const box=document.getElementById('tb-log'); if(!box)return;
   fetch('/api/tables_log').then(r=>r.json()).then(d=>{
     const log=(d&&d.log)||[];
     if(!log.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);">No detections yet — when the AI decides food has been left on a table, the frame it decided on shows up here.</div>';return;}
-    box.innerHTML=log.map(e=>'<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">'
+    box.innerHTML=_tblClearSummary(log)+log.map(e=>'<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">'
       +'<img src="/api/tables_log_frame.jpg?ts='+e.ts+'" onclick="_tablesEnlarge(this.src)" style="width:120px;height:72px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:0 0 auto;" alt="detection">'
-      +'<div style="min-width:0;"><div style="font-size:var(--fs-md);color:var(--text);">'+_mEsc(e.desc||'Food left on an outside table')+'</div>'
+      +'<div style="min-width:0;"><div style="font-size:var(--fs-md);color:'+(e.kind==='cleared'?'var(--green)':'var(--text)')+';">'+(e.kind==='cleared'?'&#10003; Table cleared &mdash; '+_mEsc(String(e.wait_min||'?'))+' min after it was left':_mEsc(e.desc||'Food left on an outside table'))+'</div>'
       +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:2px;">'+_mEsc(e.at||'')+'</div></div></div>').join('');
   }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the log.</div>';});
 }
@@ -4123,9 +4127,9 @@ function intablesLogLoad(){
   fetch('/api/intables_log').then(r=>r.json()).then(d=>{
     const log=(d&&d.log)||[];
     if(!log.length){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);">No detections yet — when the AI decides food has been left on an inside table, the frame it decided on shows up here.</div>';return;}
-    box.innerHTML=log.map(e=>'<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">'
+    box.innerHTML=_tblClearSummary(log)+log.map(e=>'<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);">'
       +'<img src="/api/intables_log_frame.jpg?ts='+e.ts+'" onclick="_intablesEnlarge(this.src)" style="width:120px;height:72px;object-fit:cover;border-radius:6px;cursor:zoom-in;flex:0 0 auto;" alt="detection">'
-      +'<div style="min-width:0;"><div style="font-size:var(--fs-md);color:var(--text);">'+_mEsc(e.desc||'Food left on an inside table')+'</div>'
+      +'<div style="min-width:0;"><div style="font-size:var(--fs-md);color:'+(e.kind==='cleared'?'var(--green)':'var(--text)')+';">'+(e.kind==='cleared'?'&#10003; Table cleared &mdash; '+_mEsc(String(e.wait_min||'?'))+' min after it was left':_mEsc(e.desc||'Food left on an inside table'))+'</div>'
       +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:2px;">'+_mEsc(e.at||'')+'</div></div></div>').join('');
   }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red)">Could not load the log.</div>';});
 }
