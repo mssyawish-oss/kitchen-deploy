@@ -1890,7 +1890,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="recipe-empty" class="empty-state" style="display:none;"><div class="empty-illu illu-kid"></div>No recipes yet.</div>
     </div>
     <div class="page" id="page-jobs">
-      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button><button class="btn" onclick="openLabelModal()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Labels</button><button class="btn" onclick="openDryGoods()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Dry Goods</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
+      <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button><button class="btn" onclick="openLabelModal()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Labels</button><button class="btn" onclick="openSauceLabels()">Sauce labels</button><button class="btn" onclick="openDryGoods()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Dry Goods</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:var(--fs-sm);color:var(--muted);">
         <span>Unfinished-prep check at</span>
@@ -2320,6 +2320,25 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     </div>
     <div class="pl2-lab" style="margin-top:16px;margin-bottom:6px;">Saved packs &mdash; tap one to load it, then Print (stamps today&rsquo;s date)</div>
     <div id="dg-list" class="prep-grid" style="max-height:34vh;overflow-y:auto;"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="sauce-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Sauce Bottle Labels</div><button class="modal-close" onclick="closeModal('sauce-modal')">&times;</button></div>
+    <div class="pl2-lab" style="margin-bottom:5px;">Which sauce</div>
+    <div class="pl2-staff" id="sl-sauces"></div>
+    <div class="pl2-prev" id="sl-prev"><span class="pl2-prev-wait">Pick a sauce to see the label&hellip;</span></div>
+    <div class="pl2-row">
+      <span class="pl2-lab">Labels</span>
+      <div class="pl2-qty"><button onclick="_slStep(-1)">&minus;</button><span id="sl-qty">1</span><button onclick="_slStep(1)">+</button></div>
+    </div>
+    <div class="pl2-lab" style="margin-bottom:5px;">Who&rsquo;s printing</div>
+    <div class="pl2-staff" id="sl-staff"></div>
+    <div class="pl2-status" id="sl-status"></div>
+    <div class="pl2-actions">
+      <button class="btn" onclick="closeModal('sauce-modal')">Close</button>
+      <button class="btn btn-primary" id="sl-print" onclick="_slPrint()">Print</button>
+    </div>
   </div>
 </div>
 <div class="modal-overlay" id="recipetag-modal">
@@ -8741,6 +8760,42 @@ function openDryGoods(prefill,banner){
   _dgLoadList();
   openModal('drygoods-modal');
   if((g('dg-contents')||{}).value) _dgPrev();   // recipe tag: show the label straight away
+}
+// ---- Sauce bottle labels (31 Oct): pick sauce + who's printing → Brother. Name/date print small; the sauce
+// name, badge letter and border pattern are what tell the bottles apart. Same clocked-on rule as the other labels.
+let _slKey='',_slQty=1,_slStaff='';
+function openSauceLabels(){
+  const g=id=>document.getElementById(id);
+  _slKey='';_slQty=1;_slStaff='';
+  if(g('sl-qty'))g('sl-qty').textContent='1'; if(g('sl-status'))g('sl-status').textContent='';
+  if(g('sl-prev'))g('sl-prev').innerHTML='<span class="pl2-prev-wait">Pick a sauce to see the label&hellip;</span>';
+  const sb=g('sl-sauces');
+  if(sb)fetch('/api/sauce_labels').then(r=>r.json()).then(d=>{sb.innerHTML=((d&&d.sauces)||[]).map(x=>'<div class="lbl-chip" data-k="'+_mEsc(x.key)+'" onclick="_slPick('+_jsq(x.key)+')">'+_mEsc(x.name)+'</div>').join('');}).catch(()=>{});
+  const el=g('sl-staff');
+  if(el){
+    el.innerHTML='<span style="color:var(--muted);font-size:var(--fs-sm);">Loading who&rsquo;s on&hellip;</span>';
+    const draw=names=>{el.innerHTML=names.map(n=>'<div class="lbl-chip'+(_slStaff===n?' on':'')+'" onclick="_slPickStaff('+_jsq(n)+')">'+_mEsc(n)+'</div>').join('');};
+    const none=()=>{el.innerHTML='<span style="color:var(--muted);font-size:var(--fs-sm);">Nobody is clocked in.</span>'
+      +'<button class="btn" style="margin-left:8px;" onclick="_slManualStaff()">Print without a name (Manager)</button>';};
+    fetch('/api/clocked_on').then(r=>r.json()).then(d=>{const n=((d&&d.names)||[]).filter(Boolean);if(n.length===1){_slStaff=n[0];}n.length?draw(n):none();}).catch(none);
+  }
+  openModal('sauce-modal');
+}
+function _slPick(k){_slKey=k;const sb=document.getElementById('sl-sauces');if(sb)[...sb.querySelectorAll('.lbl-chip')].forEach(c=>c.classList.toggle('on',c.dataset.k===k));_slPrev();}
+function _slPickStaff(n){_slStaff=n;const el=document.getElementById('sl-staff');if(el)[...el.querySelectorAll('.lbl-chip')].forEach(c=>c.classList.toggle('on',c.textContent===n));_slPrev();}
+function _slStep(d){_slQty=Math.max(1,Math.min(20,_slQty+d));const q=document.getElementById('sl-qty');if(q)q.textContent=_slQty;}
+function _slPrev(){const p=document.getElementById('sl-prev');if(!p||!_slKey)return;p.innerHTML='<img src="/api/sauce_label_preview?key='+encodeURIComponent(_slKey)+'&staff='+encodeURIComponent(_slStaff)+'&t='+Date.now()+'" style="max-width:100%;max-height:30vh;border:1px solid var(--line);border-radius:6px;background:#fff;" alt="label preview">';}
+function _slManualStaff(){ requirePin('Manager PIN','Print a sauce label with no name',()=>{ _slStaff=''; _slPrint(true); }, SETTINGS_ROLES); }
+function _slPrint(noName){
+  const st=document.getElementById('sl-status'),btn=document.getElementById('sl-print');
+  if(!_slKey){if(st){st.textContent='Pick a sauce first.';st.style.color='var(--red)';}return;}
+  if(!_slStaff&&!noName){if(st){st.textContent='Tap who’s printing first.';st.style.color='var(--red)';}return;}
+  if(btn)btn.disabled=true; if(st){st.textContent='Sending '+_slQty+' label'+(_slQty>1?'s':'')+'…';st.style.color='var(--muted)';}
+  fetch('/api/sauce_label_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_slKey,staff:_slStaff,qty:_slQty})}).then(r=>r.json()).then(d=>{
+    if(btn)btn.disabled=false;
+    if(d.ok&&d.printed){_toast('✓ '+(d.printed_count||_slQty)+' sauce label'+(_slQty>1?'s':'')+' printed');if(st)st.textContent='';}
+    else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn’t confirm.');st.style.color='var(--red)';}}
+  }).catch(()=>{if(btn)btn.disabled=false;if(st){st.textContent='Could not reach the server.';st.style.color='var(--red)';}});
 }
 function _dgManualStaff(){ requirePin('Manager PIN','Print a dry-goods label with no name',()=>{ _dgStaff=''; _dgPrintGo(); }, SETTINGS_ROLES); }
 function _dgStep(d){_dgQty=Math.max(1,Math.min(50,_dgQty+d));const q=document.getElementById('dg-qty');if(q)q.textContent=_dgQty;_dgPrev();}

@@ -10965,6 +10965,102 @@ def api_print_labels():
     return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
 
 # ── DRY GOODS PACKAGING LABELS — compact tag (contents / packed date / by), saved for easy re-print ──
+# ===== SAUCE BOTTLE LABELS (Marcel 31 Oct 2026) =====================================================
+# Burger-station squeeze bottles look alike, so the LABEL is how staff tell them apart. Black-only Brother
+# tape → each sauce gets its own big badge letter + its own border pattern (Vegan House is inverted, white on
+# black). Sauce name is the big thing; who printed it + the date ride small along the bottom.
+# Drawn 90x62 mm landscape (wraps round the bottle, reads level when it stands) then turned for the tape.
+SAUCE_LABELS=[
+    {"key":"house",   "lines":["HOUSE","SAUCE"],        "sub":"",            "badge":"H",  "pat":"plain",   "inv":False},
+    {"key":"vegan",   "lines":["VEGAN","HOUSE SAUCE"],  "sub":"plant-based", "badge":"V",  "pat":"plain",   "inv":True},
+    {"key":"ketchup", "lines":["KETCHUP"],              "sub":"tomato sauce","badge":"K",  "pat":"stripes", "inv":False},
+    {"key":"mustard", "lines":["MUSTARD"],              "sub":"bulldog",     "badge":"M",  "pat":"dots",    "inv":False},
+    {"key":"aioli",   "lines":["SPICY","AIOLI"],        "sub":"",            "badge":"A",  "pat":"zigzag",  "inv":False},
+    {"key":"hot",     "lines":["HOT","SAUCE"],          "sub":"",            "badge":"HOT","pat":"checks",  "inv":False},
+    {"key":"honey",   "lines":["HOT","HONEY"],          "sub":"",            "badge":"HH", "pat":"hex",     "inv":False},
+]
+def _render_sauce_png(key,staff,date_s):
+    import math
+    from PIL import Image,ImageDraw,ImageFont
+    s=next((x for x in SAUCE_LABELS if x["key"]==key),None)
+    if not s: return None
+    W,H=1063,696
+    def fnt(sz,black=True):
+        for c in (["ariblk.ttf","arialbd.ttf","DejaVuSans-Bold.ttf"] if black else ["arialbd.ttf","DejaVuSans-Bold.ttf"]):
+            for p in (c,os.path.join(r"C:\Windows\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
+                try: return ImageFont.truetype(p,sz)
+                except Exception: pass
+        return ImageFont.load_default()
+    bg,ink=(0,255) if s["inv"] else (255,0)
+    im=Image.new("L",(W,H),bg); d=ImageDraw.Draw(im)
+    def band(y0,y1):
+        p=s["pat"]; my=(y0+y1)//2
+        if p=="stripes":
+            for x in range(-200,W+200,46): d.polygon([(x,y1),(x+23,y1),(x+23+(y1-y0),y0),(x+(y1-y0),y0)],fill=ink)
+        elif p=="dots":
+            for x in range(30,W,52): d.ellipse([x-11,my-11,x+11,my+11],fill=ink)
+        elif p=="zigzag":
+            pts=[(x,(y0+6) if (i%2==0) else (y1-6)) for i,x in enumerate(range(0,W+40,40))]; d.line(pts,fill=ink,width=10)
+        elif p=="checks":
+            sq=(y1-y0)//2
+            for i,x in enumerate(range(0,W,sq)):
+                d.rectangle([x,y0+(0 if i%2 else sq),x+sq,y0+(sq if i%2 else 2*sq)],fill=ink)
+        elif p=="hex":
+            r=(y1-y0)//2-4
+            for x in range(r+10,W,int(r*1.9)):
+                pts=[(x+r*math.cos(math.radians(60*k)),my+r*math.sin(math.radians(60*k))) for k in range(6)]
+                d.polygon(pts,outline=ink,width=6)
+    bh=62
+    band(14,14+bh); band(H-14-bh,H-14)
+    d.rectangle([6,6,W-7,H-7],outline=ink,width=10 if s["pat"]=="plain" else 6)
+    bx0,by0,bx1,by1=40,110,300,H-110
+    d.rectangle([bx0,by0,bx1,by1],fill=ink)
+    b=s["badge"]; fb=fnt(230 if len(b)==1 else 150 if len(b)==2 else 100)
+    while d.textlength(b,font=fb)>bx1-bx0-24 and fb.size>40: fb=fnt(fb.size-8)
+    bb=d.textbbox((0,0),b,font=fb)
+    d.text(((bx0+bx1-(bb[2]-bb[0]))/2-bb[0],(by0+by1)/2-(bb[1]+bb[3])/2),b,font=fb,fill=bg)
+    x0=340; maxw=W-x0-40
+    def fit(t,start):
+        f=fnt(start)
+        while d.textlength(t,font=f)>maxw and f.size>30: f=fnt(f.size-4)
+        return f
+    sizes=[fit(l,190 if len(s["lines"])==1 else 140) for l in s["lines"]]
+    fsub=fnt(50,False); ffoot=fnt(36,False)
+    total=sum(f.size for f in sizes)+12*(len(sizes)-1)+(64 if s["sub"] else 0)
+    y=(H-total)//2-30
+    for l,f in zip(s["lines"],sizes):
+        bb=d.textbbox((0,0),l,font=f); d.text((x0,y-bb[1]),l,font=f,fill=ink); y+=f.size+12
+    if s["sub"]: d.text((x0+4,y),s["sub"].upper(),font=fsub,fill=ink)
+    foot=((staff or "").strip().upper()+"  \u00b7  " if (staff or "").strip() else "")+date_s.upper()
+    d.text((x0+4,by1-ffoot.size+4),foot,font=ffoot,fill=ink)
+    return im.rotate(90,expand=True)      # long side along the tape feed
+@app.route("/api/sauce_labels")
+def api_sauce_labels():
+    return jsonify({"ok":True,"sauces":[{"key":x["key"],"name":" ".join(x["lines"])} for x in SAUCE_LABELS]})
+@app.route("/api/sauce_label_preview")
+def api_sauce_label_preview():
+    img=_render_sauce_png(str(request.args.get("key","")),str(request.args.get("staff","")).strip()[:30],_lbl_date(datetime.now()))
+    if img is None: return ("Unknown sauce",404)
+    import io as _io
+    buf=_io.BytesIO(); img.rotate(-90,expand=True).save(buf,format="PNG")   # preview shown the way it reads on the bottle
+    return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
+@app.route("/api/sauce_label_print",methods=["POST"])
+def api_sauce_label_print():
+    d=request.get_json(silent=True) or {}
+    try: qty=max(1,min(20,int(d.get("qty",1))))
+    except (TypeError,ValueError): qty=1
+    img=_render_sauce_png(str(d.get("key","")),str(d.get("staff","")).strip()[:30],_lbl_date(datetime.now()))
+    if img is None: return jsonify({"ok":False,"error":"Pick a sauce first"})
+    printed=0; note=""
+    for _ in range(qty):
+        try:
+            if _print_label(img,1): printed+=1
+        except Exception as e: note="printer error: %s"%e; break
+    if not printed and not note:
+        _why=(" — "+_LAST_PRINT_ERR) if _LAST_PRINT_ERR else ""
+        note="Label didn't print%s. Is the Brother on + joined to the shop WiFi?"%_why
+    return jsonify({"ok":True,"printed":bool(printed),"printed_count":printed,"qty":qty,"note":note})
+
 @app.route("/api/drygoods",methods=["GET"])
 def api_drygoods():
     """The saved list of dry-goods packs (most-recent first) for one-tap re-print."""
