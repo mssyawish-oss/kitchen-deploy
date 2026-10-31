@@ -10975,7 +10975,8 @@ SAUCE_LABELS=[
     {"key":"house",   "lines":["HOUSE","SAUCE"],        "sub":"",            "badge":"H",  "pat":"plain",   "inv":False},
     {"key":"vegan",   "lines":["VEGAN","HOUSE SAUCE"],  "sub":"plant-based", "badge":"V",  "pat":"plain",   "inv":True},
     {"key":"ketchup", "lines":["KETCHUP"],              "sub":"tomato sauce","badge":"K",  "pat":"stripes", "inv":False},
-    {"key":"mustard", "lines":["MUSTARD"],              "sub":"bulldog",     "badge":"M",  "pat":"dots",    "inv":False},
+    {"key":"mustard", "lines":["MUSTARD"],              "sub":"",            "badge":"M",  "pat":"dots",    "inv":False},
+    {"key":"bulldog", "lines":["BULLDOG","SAUCE"],      "sub":"",            "badge":"B",  "pat":"tri",     "inv":False},
     {"key":"aioli",   "lines":["SPICY","AIOLI"],        "sub":"",            "badge":"A",  "pat":"zigzag",  "inv":False},
     {"key":"hot",     "lines":["HOT","SAUCE"],          "sub":"",            "badge":"HOT","pat":"checks",  "inv":False},
     {"key":"honey",   "lines":["HOT","HONEY"],          "sub":"",            "badge":"HH", "pat":"hex",     "inv":False},
@@ -11006,6 +11007,9 @@ def _render_sauce_png(key,staff,date_s):
             sq=(y1-y0)//2
             for i,x in enumerate(range(0,W,sq)):
                 d.rectangle([x,y0+(0 if i%2 else sq),x+sq,y0+(sq if i%2 else 2*sq)],fill=ink)
+        elif p=="tri":
+            tw=y1-y0
+            for x in range(0,W,tw+14): d.polygon([(x,y1),(x+tw//2,y0),(x+tw,y1)],fill=ink)
         elif p=="hex":
             r=(y1-y0)//2-4
             for x in range(r+10,W,int(r*1.9)):
