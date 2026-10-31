@@ -10969,7 +10969,8 @@ def api_print_labels():
 # Burger-station squeeze bottles look alike, so the LABEL is how staff tell them apart. Black-only Brother
 # tape → each sauce gets its own big badge letter + its own border pattern (Vegan House is inverted, white on
 # black). Sauce name is the big thing; who printed it + the date ride small along the bottom.
-# Drawn 90x62 mm landscape (wraps round the bottle, reads level when it stands) then turned for the tape.
+# 62 x 43 mm (Marcel 31 Oct: 30% smaller than the first 90x62): text runs ACROSS the tape, so no tape is wasted.
+# Drawn at 1000x696 then scaled to the 696-dot tape width.
 SAUCE_LABELS=[
     {"key":"house",   "lines":["HOUSE","SAUCE"],        "sub":"",            "badge":"H",  "pat":"plain",   "inv":False},
     {"key":"vegan",   "lines":["VEGAN","HOUSE SAUCE"],  "sub":"plant-based", "badge":"V",  "pat":"plain",   "inv":True},
@@ -10984,7 +10985,7 @@ def _render_sauce_png(key,staff,date_s):
     from PIL import Image,ImageDraw,ImageFont
     s=next((x for x in SAUCE_LABELS if x["key"]==key),None)
     if not s: return None
-    W,H=1063,696
+    W,H=1000,696
     def fnt(sz,black=True):
         for c in (["ariblk.ttf","arialbd.ttf","DejaVuSans-Bold.ttf"] if black else ["arialbd.ttf","DejaVuSans-Bold.ttf"]):
             for p in (c,os.path.join(r"C:\Windows\Fonts",c),"/Library/Fonts/"+c,"/usr/share/fonts/truetype/dejavu/"+c):
@@ -11025,31 +11026,32 @@ def _render_sauce_png(key,staff,date_s):
         while d.textlength(t,font=f)>maxw and f.size>30: f=fnt(f.size-4)
         return f
     sizes=[fit(l,190 if len(s["lines"])==1 else 140) for l in s["lines"]]
-    fsub=fnt(50,False); ffoot=fnt(36,False)
+    fsub=fnt(50,False); ffoot=fnt(46,False)
     total=sum(f.size for f in sizes)+12*(len(sizes)-1)+(64 if s["sub"] else 0)
     y=(H-total)//2-30
     for l,f in zip(s["lines"],sizes):
         bb=d.textbbox((0,0),l,font=f); d.text((x0,y-bb[1]),l,font=f,fill=ink); y+=f.size+12
     if s["sub"]: d.text((x0+4,y),s["sub"].upper(),font=fsub,fill=ink)
-    foot=((staff or "").strip().upper()+"  \u00b7  " if (staff or "").strip() else "")+date_s.upper()
+    foot="PACKED "+date_s.upper()+(("  \u00b7  "+(staff or "").strip().upper()) if (staff or "").strip() else "")
+    while d.textlength(foot,font=ffoot)>maxw and ffoot.size>24: ffoot=fnt(ffoot.size-2,False)
     d.text((x0+4,by1-ffoot.size+4),foot,font=ffoot,fill=ink)
-    return im.rotate(90,expand=True)      # long side along the tape feed
+    return im.resize((696,int(round(H*696/W))),Image.LANCZOS)   # 62 mm across the tape x ~43 mm long
 @app.route("/api/sauce_labels")
 def api_sauce_labels():
     return jsonify({"ok":True,"sauces":[{"key":x["key"],"name":" ".join(x["lines"])} for x in SAUCE_LABELS]})
 @app.route("/api/sauce_label_preview")
 def api_sauce_label_preview():
-    img=_render_sauce_png(str(request.args.get("key","")),str(request.args.get("staff","")).strip()[:30],_lbl_date(datetime.now()))
+    img=_render_sauce_png(str(request.args.get("key","")),str(request.args.get("staff","")).strip()[:30],_lbl_date(datetime.now(),withtime=True))
     if img is None: return ("Unknown sauce",404)
     import io as _io
-    buf=_io.BytesIO(); img.rotate(-90,expand=True).save(buf,format="PNG")   # preview shown the way it reads on the bottle
+    buf=_io.BytesIO(); img.save(buf,format="PNG")
     return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
 @app.route("/api/sauce_label_print",methods=["POST"])
 def api_sauce_label_print():
     d=request.get_json(silent=True) or {}
     try: qty=max(1,min(20,int(d.get("qty",1))))
     except (TypeError,ValueError): qty=1
-    img=_render_sauce_png(str(d.get("key","")),str(d.get("staff","")).strip()[:30],_lbl_date(datetime.now()))
+    img=_render_sauce_png(str(d.get("key","")),str(d.get("staff","")).strip()[:30],_lbl_date(datetime.now(),withtime=True))
     if img is None: return jsonify({"ok":False,"error":"Pick a sauce first"})
     printed=0; note=""
     for _ in range(qty):
