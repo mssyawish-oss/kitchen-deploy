@@ -4450,7 +4450,7 @@ function _activeAlarmDetails(){
     if(typeof _waitAlarm!=='undefined'&&_waitAlarm)out.push({key:'orders',label:'Orders waiting too long'});
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
-    if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' on charge'});}
+    if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' back on the dock'});}
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
@@ -5473,7 +5473,7 @@ function renderProbes(){
       else dstatus='idle';
     }
     const badges={idle:'badge-idle',none:'badge-idle',standby:'badge-standby',cooking:'badge-cooking',almost:'badge-almost',ready:'badge-ready',overdone:'badge-overdone',charging:'badge-charging',lost:'badge-lost',flat:'badge-lost',offline:'badge-idle',docked:'badge-charging',needcharge:'badge-needcharge'};
-    const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',charging:'&#9889; charging',lost:'lost connection',flat:'battery flat',offline:'offline',docked:'&#9889; on the dock',needcharge:'put on charge',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
+    const labels={idle:'idle',none:'no probe',standby:'standby',cooking:'cooking',charging:'&#9889; charging',lost:'lost connection',flat:'battery flat',offline:'offline',docked:'&#9889; on the dock',needcharge:'back on the dock',almost:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg> ALMOST',ready:'&#10003; READY',overdone:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> OVERDONE'};
     const showAck=!!_probeAlarms[pidN]||((status==='ready'||status==='overdone')&&!acked);   // show the Silence button whenever this probe's alarm is actually sounding (not gated by a stale ack)
     const dnOn=!(appData.rotcam_public&&appData.rotcam_public.doneness_enabled===false);
     const dn=dnOn?_doneForRow(pidN):null;
@@ -5549,7 +5549,7 @@ function renderProbes(){
       <div class="p2-mid${_lostTag?' lost':''}">
         <div class="p2-temp">${t===null?'<span class="p2-dash">&#8212; &#8212; &#8212; &#8212;</span>':t.toFixed(1)}<span class="p2-unit">&#176;C</span></div>
       </div>
-      ${_needCharge?`<span class="p2-needcharge">Put ${_cn} on charge</span>`:''}
+      ${_needCharge?`<span class="p2-needcharge">Put ${_cn} back on the dock</span>`:''}
       ${staleHtml}${sensHtml}
       <div class="p2-spark">${_probeSpark(pidN)}</div>
       <div class="p2-bar"><i style="width:${_pct}%"></i></div>
