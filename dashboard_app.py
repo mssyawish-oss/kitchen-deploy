@@ -5911,15 +5911,21 @@ def _gem_ping(force=False):
     body={"contents":[{"parts":[{"text":"Reply with the single word OK."}]}],"generationConfig":{"temperature":0,"maxOutputTokens":4}}
     if "2.5" in model: body["generationConfig"]["thinkingConfig"]={"thinkingBudget":0}
     url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
-    try:
-        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
-        with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
-        ok=bool((data.get("candidates") or [{}])[0].get("content")); err="" if ok else "empty reply"
-    except urllib.error.HTTPError as e:
-        try: detail=e.read().decode()[:300]
-        except Exception: detail=""
-        ok=False; err="HTTP %s %s"%(e.code,detail)
-    except Exception as e: ok=False; err=str(e)[:200]
+    def _try():
+        try:
+            req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+            ok=bool((data.get("candidates") or [{}])[0].get("content")); return ok,("" if ok else "empty reply")
+        except urllib.error.HTTPError as e:
+            try: detail=e.read().decode()[:300]
+            except Exception: detail=""
+            return False,"HTTP %s %s"%(e.code,detail)
+        except Exception as e: return False,str(e)[:200]
+    ok,err=_try()
+    if not ok and not err.startswith(("HTTP 401","HTTP 402","HTTP 403")):   # a one-off blip (Google busy, network hiccup) is not "AI down" — retry once before flagging it
+        print("gem ping blip (retrying):",err[:200]); time.sleep(8); ok,err=_try()
+    if not ok:   # keep the last few failures so we can see WHAT tripped the red banner
+        print("gem ping FAILED:",err[:200]); GEMH["fails"]=(GEMH.get("fails") or [])[-9:]+[{"at":int(time.time()),"err":err[:300]}]
     GEMH.update(ok=ok,err=("" if ok else _gem_classify(err)),raw=("" if ok else err[:300]),checked=time.time())
     if not ok: GEMH["last_err_at"]=time.time()
     return ok,GEMH["err"]
@@ -5935,7 +5941,7 @@ def _gem_health(force=False):
     return {"ok":ok,"err":err,"raw":GEMH.get("raw",""),"checked":int(GEMH.get("checked",0)),"calls_today":today,
             "cost_today":round(today*_GEM_COST_PER_CALL,2),"yesterday":(hist[-1].get("calls") if hist else None),
             "avg7":(round(sum(last7)/len(last7)) if last7 else None),"cost_month_est":round((sum(last7)/len(last7) if last7 else today)*30*_GEM_COST_PER_CALL,2),
-            "history":hist[-14:],"watch_errors":werr,"billing_url":_GEM_BILLING_URL,"cloud_url":_GEM_CLOUD_URL,"per_call":_GEM_COST_PER_CALL}
+            "history":hist[-14:],"watch_errors":werr,"recent_fails":GEMH.get("fails") or [],"billing_url":_GEM_BILLING_URL,"cloud_url":_GEM_CLOUD_URL,"per_call":_GEM_COST_PER_CALL}
 def _gem_health_notify(h):
     # email once when the key stops working, once when it recovers — never every check
     to=((db.get("report_config") or {}).get("to") or (db.get("email_config") or {}).get("smtp_user") or "").strip()
