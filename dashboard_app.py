@@ -2131,6 +2131,54 @@ def _sq_headers():
     cfg=db.get("square_config",{}) or {}; token=(cfg.get("access_token") or "").strip()
     if not token: return None
     return {"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"}
+# Nested add-on lists (e.g. the dressings under a pack-side salad) live in modifier_data.child_modifier_list_ids,
+# a BETA field Square only reads/writes with Square-Version 2999-01-01. At SQUARE_VERSION it is invisible, so any
+# add-on we recreated (twin-swap, 86-bin restore, pack guard heal) was born without its dressings (2 Nov 2026).
+_SQ_BETA_VERSION="2999-01-01"
+def _sq_beta_hdr(hdr): return dict(hdr,**{"Square-Version":_SQ_BETA_VERSION})
+def _sq_mod_children(vid,hdr):
+    """child_modifier_list_ids of one modifier ([] if none, None if it couldn't be read)."""
+    try:
+        u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=_sq_beta_hdr(hdr)),timeout=20,context=SSL_CTX) as r:
+            o=(json.loads(r.read().decode()) or {}).get("object") or {}
+        return list((o.get("modifier_data") or {}).get("child_modifier_list_ids") or [])
+    except Exception as e:
+        print("sq_mod_children %s: %s"%(vid,str(e)[:120])); return None
+def _sq_create_modifier(new_obj,hdr,children=None):
+    """POST a new MODIFIER; with children it sends child_modifier_list_ids at the beta version. If Square
+    rejects the nested create, retries plain so the add-on still comes back. Returns Square's response."""
+    import uuid as _uuid
+    def _post(obj,h):
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":obj}).encode(),headers=h)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: return json.loads(r.read().decode())
+    if children:
+        o=copy.deepcopy(new_obj); o["modifier_data"]["child_modifier_list_ids"]=list(children)
+        try:
+            res=_post(o,_sq_beta_hdr(hdr))
+            if not res.get("errors"): return res
+            print("sq_create_modifier nested create rejected, retrying plain:",str(res.get("errors"))[:200])
+        except Exception as e:
+            print("sq_create_modifier nested create failed, retrying plain:",str(e)[:160])
+    o=copy.deepcopy(new_obj); (o.get("modifier_data") or {}).pop("child_modifier_list_ids",None)
+    return _post(o,hdr)
+def _sq_set_mod_children(vid,children,hdr):
+    """Re-nest an existing modifier: upsert it with child_modifier_list_ids at the beta version. Returns (ok,err)."""
+    import uuid as _uuid
+    try:
+        bh=_sq_beta_hdr(hdr); u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid)
+        with urllib.request.urlopen(urllib.request.Request(u,headers=bh),timeout=20,context=SSL_CTX) as r:
+            o=(json.loads(r.read().decode()) or {}).get("object") or {}
+        if o.get("type")!="MODIFIER": return False,"not a modifier"
+        o.setdefault("modifier_data",{})["child_modifier_list_ids"]=list(children)
+        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
+            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":o}).encode(),headers=bh)
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        if res.get("errors"): return False,str(res["errors"])[:160]
+        return True,None
+    except Exception as e:
+        return False,str(e)[:160]
 _SQ_OBJ_CACHE={}   # id -> full CatalogObject (variation/modifier) captured during the offline scan, so we can
                    # upsert it back ON without re-fetching by id (Square's retrieve-by-id 404s for these variations)
 def _sq_offline_products():
@@ -2254,11 +2302,10 @@ def _sq_swap_modifier(vid,obj,loc,hdr,dbg):
              "modifier_data":new_md}
     for f in ("present_at_location_ids","absent_at_location_ids"):
         if obj.get(f): new_obj[f]=obj[f]
-    def _post(path,body):
-        req=urllib.request.Request(SQUARE_BASE+path,data=json.dumps(body).encode(),headers=hdr)
-        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: return json.loads(r.read().decode())
+    kids=_sq_mod_children(vid,hdr)          # nested dressings: invisible at SQUARE_VERSION, so read them at beta
+    if kids: dbg["steps"].append({"children":kids})
     try:
-        res=_post("/v2/catalog/object",{"idempotency_key":str(_uuid.uuid4()),"object":new_obj})
+        res=_sq_create_modifier(new_obj,hdr,kids)
     except Exception as e:
         dbg["steps"].append({"twin_create_err":str(e)[:160]});return False,"couldn't create the replacement add-on: "+str(e)[:120]
     if res.get("errors"):
@@ -3451,7 +3498,7 @@ def _sq_disable_modifier(vid):
     with data_lock:
         bin_=db.setdefault("mod_86_bin",{})
         bin_[vid]={"obj":obj,"name":md.get("name") or "?","list_id":md.get("modifier_list_id"),
-                   "at":int(time.time()*1000)}
+                   "children":_sq_mod_children(vid,hdr) or [],"at":int(time.time()*1000)}
         save_data(db)                       # archive FIRST — the delete only happens once this is on disk
     try:
         req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(vid),headers=hdr,method="DELETE")
@@ -3485,11 +3532,8 @@ def _sq_restore_modifier(vid):
              "modifier_data":copy.deepcopy(md)}
     for f in ("present_at_location_ids","absent_at_location_ids"):
         if old.get(f): new_obj[f]=old[f]
-    import uuid as _uuid
     try:
-        req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-            data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":new_obj}).encode(),headers=hdr)
-        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+        res=_sq_create_modifier(new_obj,hdr,b.get("children"))
     except Exception as e:
         return False,"couldn't recreate the add-on: "+str(e)[:120]
     if res.get("errors"): return False,"Square rejected the recreate"
@@ -3968,11 +4012,12 @@ def _packmod_guard_lists():
     ls=db.get("packmod_lists")
     return list(ls) if isinstance(ls,list) and ls else list(_PACKMOD_DEFAULT_LISTS)
 def _packmod_list_members(list_id,hdr):
-    """{NAME_UPPER: modifier_data} for the non-deleted modifiers in a list (live from Square)."""
+    """{NAME_UPPER: modifier_data (+ "_id")} for the non-deleted modifiers in a list (live from Square, read at
+    the beta version so child_modifier_list_ids — the nested dressings — are included)."""
     out={}
     try:
         u=SQUARE_BASE+"/v2/catalog/object/"+urllib.parse.quote(list_id)
-        with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=20,context=SSL_CTX) as r:
+        with urllib.request.urlopen(urllib.request.Request(u,headers=_sq_beta_hdr(hdr)),timeout=20,context=SSL_CTX) as r:
             o=(json.loads(r.read().decode()) or {}).get("object") or {}
     except Exception:
         return None
@@ -3980,7 +4025,7 @@ def _packmod_list_members(list_id,hdr):
         if m.get("is_deleted"): continue
         md=m.get("modifier_data") or {}
         nm=(md.get("name") or "").strip().upper()
-        if nm: out[nm]=md
+        if nm: out[nm]=dict(md,_id=m.get("id"))
     return out
 def _packmod_capture_baseline():
     """Snapshot the current (assumed-good) membership of the guarded lists into db['packmod_baseline']."""
@@ -3991,7 +4036,8 @@ def _packmod_capture_baseline():
         mem=_packmod_list_members(lid,hdr)
         if mem is None: continue
         base[lid]={nm:{"price_money":md.get("price_money"),"image_id":md.get("image_id"),
-                       "ordinal":md.get("ordinal")} for nm,md in mem.items()}
+                       "ordinal":md.get("ordinal"),"children":list(md.get("child_modifier_list_ids") or [])}
+                   for nm,md in mem.items()}
     with data_lock:
         db["packmod_baseline"]=base; db["packmod_baseline_at"]=int(time.time()*1000); save_data(db)
     return {"ok":True,"lists":len(base),"sides":{lid:len(v) for lid,v in base.items()}}
@@ -4011,6 +4057,14 @@ def _packmod_integrity(fix=True):
         live=_packmod_list_members(lid,hdr)
         if live is None: continue
         missing=[nm for nm in expect if nm not in live and _norm_name(nm) not in benched]
+        # present but stripped of its nested dressings (an older recreate dropped them) → put them back
+        for nm,d in expect.items():
+            want=d.get("children") or []
+            if not want or nm not in live or set(live[nm].get("child_modifier_list_ids") or [])>=set(want): continue
+            if not fix: failed.append({"list":lid,"name":nm,"note":"lost nested lists"}); continue
+            ok,err=_sq_set_mod_children(live[nm].get("_id"),want,hdr)
+            if ok: restored.append({"list":lid,"name":nm,"renested":True})
+            else: failed.append({"list":lid,"name":nm,"err":"re-nest: "+(err or "")[:80]})
         if not missing: continue
         if not fix:
             failed+=[{"list":lid,"name":nm,"note":"missing"} for nm in missing]; continue
@@ -4022,14 +4076,10 @@ def _packmod_integrity(fix=True):
             if d.get("ordinal") is not None: md["ordinal"]=d["ordinal"]
             obj={"type":"MODIFIER","id":"#pmheal","modifier_data":md}
             try:
-                req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-                    data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":obj}).encode(),headers=hdr)
-                with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+                res=_sq_create_modifier(obj,hdr,d.get("children"))
                 if res.get("errors"):                       # retry once without the image (stale image_id)
                     md.pop("image_id",None)
-                    req=urllib.request.Request(SQUARE_BASE+"/v2/catalog/object",
-                        data=json.dumps({"idempotency_key":str(_uuid.uuid4()),"object":{"type":"MODIFIER","id":"#pmheal","modifier_data":md}}).encode(),headers=hdr)
-                    with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+                    res=_sq_create_modifier({"type":"MODIFIER","id":"#pmheal","modifier_data":md},hdr,d.get("children"))
                     if res.get("errors"): failed.append({"list":lid,"name":nm}); continue
                 restored.append({"list":lid,"name":nm})
             except Exception as e:
@@ -4038,7 +4088,7 @@ def _packmod_integrity(fix=True):
         try: _psrch_stale()                            # menu changed → rebuild the ITEMS search index
         except Exception: pass
         try:
-            note="Auto-restored %d missing pack side(s): %s"%(len(restored),
+            note="Auto-restored %d pack side(s) (missing, or lost their dressings): %s"%(len(restored),
                  ", ".join(sorted({x["name"].title() for x in restored})))
             with data_lock:
                 notes=db.setdefault("handover_notes",[])
