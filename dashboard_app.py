@@ -748,12 +748,14 @@ def rfx_poll_loop():
     while True:
         cfg=(db.get("thermoworks") or {})
         try:
-            if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("email") and cfg.get("password") and cfg.get("map"):
+            if rfx_bridge and cfg.get("source")=="rfx" and cfg.get("map") and (cfg.get("api_key") or (cfg.get("email") and cfg.get("password"))):
                 # Blank a quiet probe after ~2 missed check-ins (was 5 min, 20 in saver mode) so a probe put on
                 # the block stops showing its old temperature almost straight away. The probe's heartbeat is
                 # ~60s in BOTH modes (measured 14 Oct), so saver mode no longer needs a longer window.
                 rfx_bridge._STALE_SECS=_rfx_silent_secs()
-                temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
+                # API key = the only login ThermoWorks accepts since 3 Nov 2026 (App Check broke email+password)
+                if cfg.get("api_key"): temps=rfx_bridge.rfx_read_temps_key(cfg["api_key"],cfg["map"],log=print)
+                else: temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
                 got=False
                 for pid,info in (temps or {}).items():
                     try: pid=int(pid)
@@ -786,9 +788,12 @@ def rfx_poll_loop():
                         check_probe_status(pid,float(t)); got=True
                     else:   # probe silent (docked/charging) → blank it, don't freeze the last reading
                         with probe_lock: probe_temps[pid]=None
-                _rfx_status.update({"ok":got,"last":time.time(),"error":"" if got else "no readings"})
+                _err=(getattr(rfx_bridge,"_KEY",{}) or {}).get("error","") if cfg.get("api_key") else ""
+                _rfx_status.update({"ok":got,"last":time.time(),"error":"" if got else (_err or "no readings"),"login_ok":(temps is not None and temps!={})})
         except Exception as e:
             _rfx_status.update({"ok":False,"error":str(e)}); print("rfx_poll_loop:",e)
+        # A refused login used to retry every 2 s for days (52,000 tries 3-5 Nov) — back off to a minute.
+        if _rfx_status.get("ok") is False and not _rfx_status.get("login_ok"): time.sleep(60); continue
         time.sleep(max(2,int((cfg.get("poll_secs") or 5) or 5)))   # reads are ~1-2s now (cached login + parallel), so poll fast
 
 async def ble_loop():
@@ -2823,6 +2828,8 @@ def api_rfx_config():
             tw=dict(db.get("thermoworks") or {})
             if "email" in d: tw["email"]=str(d.get("email") or "").strip()
             if str(d.get("password") or "").strip(): tw["password"]=str(d["password"]).strip()   # blank = keep saved
+            if str(d.get("api_key") or "").strip(): tw["api_key"]=str(d["api_key"]).strip()      # blank = keep saved
+            if d.get("clear_api_key"): tw.pop("api_key",None)
             if "source" in d: tw["source"]="rfx" if d.get("source")=="rfx" else "ble"
             if "tx_mode" in d: tw["tx_mode"]="saver" if d.get("tx_mode")=="saver" else "fast"
 
@@ -2835,13 +2842,15 @@ def api_rfx_config():
     tw=db.get("thermoworks") or {}
     return jsonify({"email":tw.get("email",""),"source":tw.get("source","ble"),"tx_mode":tw.get("tx_mode","fast"),
                     "poll_secs":tw.get("poll_secs",20),"map":tw.get("map") or {},
-                    "has_password":bool(tw.get("password")),"status":_rfx_status})
+                    "has_password":bool(tw.get("password")),"has_api_key":bool(tw.get("api_key")),"status":_rfx_status})
 
 @app.route("/api/rfx_test",methods=["POST"])
 def api_rfx_test():
     if not rfx_bridge: return jsonify({"ok":False,"error":"RFX bridge not loaded on the server."})
     d=request.get_json(silent=True) or {}
     tw=db.get("thermoworks") or {}
+    key=(str(d.get("api_key") or "").strip() or tw.get("api_key") or "")   # typed wins, else saved
+    if key: return jsonify(rfx_bridge.rfx_diagnose_key(key,log=print))
     email=(d.get("email") or tw.get("email") or "").strip()
     password=(str(d.get("password") or "").strip() or tw.get("password") or "")   # typed wins, else saved
     return jsonify(rfx_bridge.rfx_diagnose(email,password,log=print))

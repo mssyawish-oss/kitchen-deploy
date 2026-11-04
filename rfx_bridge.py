@@ -340,3 +340,129 @@ def rfx_read_temps(email, password, mapping, log=lambda m: None):
                 log(f"rfx read error: {e}")
                 return {}
     return {}
+
+
+# ── ThermoWorks Cloud API key (official, since 3 Nov 2026) ─────────────────────────────────────────
+# On 3 Nov 2026 ThermoWorks turned on Firebase App Check: the email+password login above now gets
+# "401 Firebase App Check token is invalid" from Google on every try, so the probes went blank.
+# The replacement is a personal API key (ThermoWorks Cloud web app -> Settings -> Account Settings ->
+# Integrations) sent as a Bearer token to one endpoint that returns EVERY device with its channels and
+# battery in a single request. Plain urllib (no library, no event loop). Requests count against a
+# per-key rate limit, so: never more often than _KEY_MIN_SECS, ETag/304 when nothing changed, and
+# honour Retry-After on a 429.
+_KEY_URL = "https://cloud.thermoworks.com/api/v1/devices"
+_KEY_MIN_SECS = 10
+_KEY = {"at": 0.0, "etag": None, "devices": [], "key": None, "hold_until": 0.0, "error": ""}
+
+
+def _key_get(api_key, use_etag=True):
+    import json, urllib.request, urllib.error
+    hdr = {"Authorization": "Bearer " + api_key, "Accept": "application/json"}
+    if use_etag and _KEY["etag"] and _KEY["key"] == api_key:
+        hdr["If-None-Match"] = _KEY["etag"]
+    req = urllib.request.Request(_KEY_URL, headers=hdr)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            body = json.loads(r.read().decode("utf-8"))
+            _KEY.update({"etag": r.headers.get("ETag"), "devices": body.get("devices") or [], "key": api_key})
+    except urllib.error.HTTPError as e:
+        if e.code == 304:
+            pass                                     # unchanged since the last read
+        elif e.code in (401, 403):
+            raise RuntimeError("ThermoWorks rejected the API key (make a new one in ThermoWorks Cloud -> Settings -> Account Settings -> Integrations)")
+        elif e.code == 429:
+            try: wait = int(e.headers.get("Retry-After") or 60)
+            except (TypeError, ValueError): wait = 60
+            _KEY["hold_until"] = time.time() + wait
+            raise RuntimeError("ThermoWorks rate limit hit, waiting %ds" % wait)
+        else:
+            raise RuntimeError("ThermoWorks API error %s" % e.code)
+    _KEY["at"] = time.time()
+    return _KEY["devices"]
+
+
+def _key_devices(api_key):
+    """Every device (cached for _KEY_MIN_SECS, and held off while rate-limited)."""
+    now = time.time()
+    if _KEY["key"] == api_key and (now - _KEY["at"] < _KEY_MIN_SECS or now < _KEY["hold_until"]):
+        return _KEY["devices"]
+    return _key_get(api_key)
+
+
+def _key_snapshot(dev):
+    """Same {"fresh","last","seen"} shape as _device_snapshot, from one device's nested channels."""
+    from datetime import datetime, timezone
+    fresh, last, seen = [], [], None
+    for ch in dev.get("channels") or []:
+        c = _c(ch.get("value"), ch.get("units"))
+        if c is None:
+            continue
+        ls = ch.get("lastSeen") or dev.get("lastSeen")
+        last.append(c)
+        if not _is_stale(ls):
+            fresh.append(c)
+        try:
+            ts = datetime.fromisoformat(str(ls).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            seen = max(seen or 0, ts.timestamp())
+        except Exception:
+            pass
+    return {"fresh": fresh, "last": last, "seen": seen}
+
+
+def rfx_read_temps_key(api_key, mapping, log=lambda m: None):
+    """API-key twin of rfx_read_temps: same {probe_id: {...}} result, {} on failure."""
+    if not (api_key and mapping):
+        return {}
+    try:
+        devs = _key_devices(api_key)
+        _KEY["error"] = ""
+    except Exception as e:
+        if str(e) != _KEY["error"]:
+            log(f"rfx key read error: {e}")          # log each new error once, not every poll
+        _KEY["error"] = str(e)
+        return {}
+    by_serial = {}
+    for d in devs:
+        for k in (d.get("serial"), d.get("id")):
+            if k: by_serial[k] = d
+    out = {}
+    for pid, m in (mapping or {}).items():
+        try: pid = int(pid)
+        except (TypeError, ValueError): continue
+        d = by_serial.get(_serial_of(m)) or {}
+        snap = _key_snapshot(d)
+        v = snap["fresh"]
+        st = str(d.get("batteryState") or "").strip().lower()
+        out[pid] = {"core": (round(min(v), 1) if v else None), "sensors": v,
+                    "last_sensors": snap["last"], "seen": snap["seen"],
+                    "battery": d.get("battery"), "charging": st.startswith("charg")}
+    return out
+
+
+def rfx_diagnose_key(api_key, log=lambda m: None):
+    """'Test connection' with an API key — same shape as rfx_diagnose so the Settings page can map probes."""
+    if not api_key:
+        return {"ok": False, "error": "Paste your ThermoWorks API key first."}
+    try:
+        devs = _key_get(api_key, use_etag=False)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    rows = []
+    for d in devs:
+        chans = [{"channel": str(ch.get("number") or ""), "label": ch.get("label"), "value": ch.get("value"),
+                  "units": ch.get("units"), "value_c": _c(ch.get("value"), ch.get("units")),
+                  "status": ch.get("status"), "last_seen": str(ch.get("lastSeen"))}
+                 for ch in (d.get("channels") or [])]
+        vals = [c["value_c"] for c in chans if c["value_c"] is not None]
+        label = d.get("label") or d.get("model") or d.get("serial")
+        rows.append({
+            "serial": d.get("serial") or d.get("id"), "label": label, "type": d.get("type"),
+            "battery": d.get("battery"), "wifi_strength": d.get("wifiSignal"), "gateway_rssi": d.get("gatewaySignal"),
+            "transmit_secs": d.get("transmitIntervalSeconds"), "last_seen": str(d.get("lastSeen")),
+            "channels": chans, "core": (round(min(vals), 1) if vals else None), "sensor_count": len(chans),
+            "is_probe": bool(vals) and "GATEWAY" not in (label or "").upper(), "raw": {},
+        })
+    return {"ok": True, "account_id": None, "device_count": len(rows),
+            "probe_count": sum(1 for r in rows if r["is_probe"]), "devices": rows}

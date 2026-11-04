@@ -2608,6 +2608,9 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div><div class="label">ThermoWorks email</div><input class="input" id="rfx-email" type="email" placeholder="you@example.com" autocomplete="off"></div>
       <div><div class="label">ThermoWorks password</div><input class="input" id="rfx-pass" type="password" placeholder="leave blank to keep saved" autocomplete="new-password"></div>
     </div>
+    <div class="form-row mt-8"><div class="label">ThermoWorks API key <span style="color:var(--amber);">(needed since 3 Nov 2026)</span></div>
+      <input class="input" id="rfx-key" type="password" placeholder="paste the key here" autocomplete="new-password">
+      <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:4px;">ThermoWorks stopped accepting the email + password login on 3 Nov. Make a key at <b>cloud.thermoworks.com</b> &rarr; Settings &rarr; Account Settings &rarr; Integrations, paste it here, tap <b>Save RFX Settings</b>. When a key is saved the dash uses it instead of the password.</div></div>
     <div class="row mt-8" style="gap:8px;">
       <button class="btn" style="flex:1;" onclick="rfxTest()">Test connection</button>
       <button class="btn btn-primary" style="flex:1;" onclick="rfxSave()">Save RFX Settings</button>
@@ -5759,10 +5762,11 @@ function rfxLoad(){fetch('/api/rfx_config').then(r=>r.json()).then(c=>{
   const _tm=document.getElementById('rfx-txmode');if(_tm)_tm.value=c.tx_mode||'fast';
   document.getElementById('rfx-email').value=c.email||'';
   document.getElementById('rfx-pass').placeholder=c.has_password?'leave blank to keep saved':'ThermoWorks password';
+  const _rk=document.getElementById('rfx-key');if(_rk)_rk.placeholder=c.has_api_key?'(key saved — leave blank to keep)':'paste the key here';
   _rfxMap=c.map||{};
 }).catch(()=>{});}
-function rfxSave(){const body={source:document.getElementById('rfx-source').value,tx_mode:(document.getElementById('rfx-txmode')||{}).value||'fast',poll_secs:parseInt(document.getElementById('rfx-poll').value)||20,email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,map:_rfxMap};
-  fetch('/api/rfx_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{document.getElementById('rfx-pass').value='';_askAlert(d.ok?'RFX settings saved.':'Save failed');});}
+function rfxSave(){const body={source:document.getElementById('rfx-source').value,tx_mode:(document.getElementById('rfx-txmode')||{}).value||'fast',poll_secs:parseInt(document.getElementById('rfx-poll').value)||20,email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,api_key:((document.getElementById('rfx-key')||{}).value||'').trim(),map:_rfxMap};
+  fetch('/api/rfx_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{document.getElementById('rfx-pass').value='';const _rk=document.getElementById('rfx-key');if(_rk)_rk.value='';_askAlert(d.ok?'RFX settings saved.':'Save failed');rfxLoad();});}
 function _rfxAgeMin(ls){
   // minutes since this probe last transmitted (RFX timestamps are UTC); null if unknown
   if(!ls)return null;
@@ -5772,7 +5776,7 @@ function _rfxAgeMin(ls){
   return (Date.now()-t)/60000;
 }
 function rfxTest(){const el=document.getElementById('rfx-result');el.innerHTML='Testing connection…';el.style.color='var(--muted)';
-  fetch('/api/rfx_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value})}).then(r=>r.json()).then(d=>{
+  fetch('/api/rfx_test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('rfx-email').value.trim(),password:document.getElementById('rfx-pass').value,api_key:((document.getElementById('rfx-key')||{}).value||'').trim()})}).then(r=>r.json()).then(d=>{
     if(!d.ok){el.style.color='var(--red)';el.innerHTML='&#9888; '+(d.error||'Failed');return;}
     _rfxProbes=[];
     const probes=(d.devices||[]).filter(dev=>dev.is_probe), others=(d.devices||[]).filter(dev=>!dev.is_probe);
