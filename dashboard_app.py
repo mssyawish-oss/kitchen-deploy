@@ -11045,6 +11045,10 @@ SAUCE_LABELS=[
     {"key":"aioli",   "lines":["SPICY","AIOLI"],        "sub":"",            "badge":"A",  "pat":"zigzag",  "inv":False},
     {"key":"hot",     "lines":["HOT","SAUCE"],          "sub":"",            "badge":"HOT","pat":"checks",  "inv":False},
     {"key":"honey",   "lines":["HOT","HONEY"],          "sub":"",            "badge":"HH", "pat":"hex",     "inv":False},
+    # salad dressings (Marcel 6 Nov) — same label, each with its own badge + border
+    {"key":"hmustard","lines":["HONEY","MUSTARD"],      "sub":"salad dressing","badge":"HM","pat":"waves",  "inv":False},
+    {"key":"lemonoil","lines":["LEMON","OIL"],          "sub":"salad dressing","badge":"LO","pat":"diamonds","inv":False},
+    {"key":"hyoghurt","lines":["HONEY","YOGHURT"],      "sub":"salad dressing","badge":"HY","pat":"plus",   "inv":False},
 ]
 def _render_sauce_png(key,staff,date_s):
     import math
@@ -11075,6 +11079,14 @@ def _render_sauce_png(key,staff,date_s):
         elif p=="tri":
             tw=y1-y0
             for x in range(0,W,tw+14): d.polygon([(x,y1),(x+tw//2,y0),(x+tw,y1)],fill=ink)
+        elif p=="waves":
+            pts=[(x,my+18*math.sin(x/28.0)) for x in range(0,W+4,4)]; d.line(pts,fill=ink,width=10)
+        elif p=="diamonds":
+            r=(y1-y0)//2-4
+            for x in range(r+8,W,2*r+16): d.polygon([(x,my-r),(x+r,my),(x,my+r),(x-r,my)],fill=ink)
+        elif p=="plus":
+            r=(y1-y0)//2-6
+            for x in range(r+12,W,2*r+30): d.rectangle([x-r,my-7,x+r,my+7],fill=ink); d.rectangle([x-7,my-r,x+7,my+r],fill=ink)
         elif p=="hex":
             r=(y1-y0)//2-4
             for x in range(r+10,W,int(r*1.9)):
