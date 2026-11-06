@@ -8786,7 +8786,9 @@ def _noprobe_read(jpeg,cfg):
 def _noprobe_check_once(cfg=None):
     cfg=cfg or _noprobe_cfg(); cam=_cam_by_id(cfg.get("cam"))
     if not cam: NOPROBE["err"]="camera %s not found"%cfg.get("cam"); return None
-    rows=_noprobe_read(_snap_from(cam),cfg); NOPROBE["last"]=time.time()
+    jpeg,serr=_snap_from(cam)
+    if not jpeg: NOPROBE["err"]="camera: %s"%(serr or "no frame"); return None
+    rows=_noprobe_read(jpeg,cfg); NOPROBE["last"]=time.time()
     if rows is None: return None                                   # unsure → keep the previous state
     NOPROBE["rows"]=rows; NOPROBE["probes"]=_noprobe_probes_in()
     short=sum(rows)-NOPROBE["probes"]; now=time.time()
