@@ -1070,6 +1070,10 @@ body.view-wall .probe-card.p2 .p2-temp{font-size:clamp(56px,11vh,108px);}
 .probe-card.p2.pc4 .p2-eta{color:#e0a90a;}
 .probe-card.p2 .p2-eta.muted{color:var(--muted);}   /* quiet states look the same on every card (yellow's colour rule was winning) */
 .p2-eta.muted{color:var(--muted);}
+.oven-chip{font-size:var(--fs-sm);font-weight:800;letter-spacing:.06em;color:var(--text);background:var(--surface-2,rgba(255,255,255,.06));border:1px solid var(--line,rgba(255,255,255,.12));border-radius:999px;padding:3px 12px;text-transform:none;}
+.noprobe-bar{align-items:center;justify-content:space-between;gap:12px;margin:6px 2px;padding:12px 16px;border-radius:12px;background:#f97316;color:#111;font-weight:900;font-size:clamp(16px,2.2vh,22px);animation:npPulse 1.4s ease-in-out infinite;}
+.noprobe-bar .btn{background:#111;color:#fff;border:0;font-weight:800;white-space:nowrap;}
+@keyframes npPulse{0%,100%{opacity:1}50%{opacity:.7}}
 .p2-clk{width:15px;height:15px;flex:0 0 auto;}
 body.view-wall .p2-eta{font-size:clamp(18px,2.7vh,26px);}
 .p2-batt2{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-sm);font-weight:700;color:var(--muted);font-family:var(--font-mono);margin-right:auto;padding-left:2px;}
@@ -1854,8 +1858,9 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
         @keyframes ovenPulse{0%,100%{box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 0 rgba(251,146,60,.55);}50%{box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 14px rgba(251,146,60,0);}}
       </style>
       <div id="oven-tile" class="card"></div>
+      <div id="noprobe-bar" class="noprobe-bar" style="display:none;"></div>
       <div class="pb-split">
-        <div class="pb-sec"><div class="sec-head"><span>Probes</span></div><div class="probes-grid" id="probes-grid"></div></div>
+        <div class="pb-sec"><div class="sec-head"><span>Probes</span><span id="oven-chip" class="oven-chip" style="display:none;"></span></div><div class="probes-grid" id="probes-grid"></div></div>
         <div class="pb-sec"><div class="sec-head" id="batches-head"><span>Batches</span></div><div id="batch-start"></div><div class="timers-grid" id="timers-grid"></div></div>
       </div>
     </div>
@@ -3355,6 +3360,7 @@ const _ALARM_DEF={
  preptasks:{label:'Prep & daily tasks (kitchen)',color:'#34d399',interval:2800,desc:'Prep-item and daily-task reminders. Kitchen business: hide it on the front-of-house iPad with the per-screen toggle.'},
  prepcarry:{label:'Unfinished prep (evening check)',color:'#f59e0b',interval:2800,desc:'At the set time (Prep page → clock chip): pops if today’s prep still has unticked items, with one tap to move them to tomorrow.'},
  probecharge:{label:'Probe needs charging',color:'#f59e0b',interval:3000,bundled:true,flash:false,desc:'A probe is out of the chicken and NOT on the charging block (its card pulses “Put on charge”). Plays the shop’s chosen sound every 3 seconds until it goes on the block or back in a bird. Silence = quiet for 10 minutes, or until another probe is left out.'},
+ noprobe:{label:'Top row cooking without a probe',color:'#f97316',interval:3000,desc:'The rotisserie camera sees chickens on the top 1 or 2 rows, but fewer probes are in a bird than rows loaded, for 5 minutes. An orange bar shows above the probes either way; this switch is the SOUND. OK on the bar quiets every screen for 10 minutes.'},
  probeoffline:{label:'Probe offline / battery flat',color:'#f59e0b',interval:4000,desc:'A meat probe dropped out mid-cook or its battery is nearly flat. Sound is off by default \u2014 the probe card shows it either way.'},
  display:{label:'Display tray empty',color:'#ef4444',interval:2600,desc:'A hot/cold display tray has read EMPTY. The coloured Displays tile ALWAYS shows the levels \u2014 this switch is the SOUND only, and only fires on EMPTY (not LOW).'},
  tables:{label:'Food left on outside table',color:'#f59e0b',interval:2800,desc:'The AI spotted a food tray/plate/rubbish left behind on an outside table with nobody seated. The outside camera view pops up on the dash. Sound + popup like a probe alarm.'},
@@ -3366,7 +3372,7 @@ const _ALARM_DEF={
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',ktimer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','ktimer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepimportant','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','probeoffline'];
+const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','ktimer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepimportant','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','noprobe','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -3897,6 +3903,21 @@ function startOvenAlarm(){if(!_acfg('ovenstep').enabled)return;if(_ovenAlarm)ret
 function stopOvenAlarm(){_ovenAlarm=false;_updateFlash();}
 function ackOven(){stopOvenAlarm();const t=document.getElementById('oven-tile');if(t){t._alert=false;t._since=0;}fetch('/api/oven_ack',{method:'POST'}).catch(()=>{});}
 function _ovenFmt(s){s=Math.max(0,parseInt(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+// ---- oven temp chip + "top row cooking without a probe" (server decides; screens follow) ----
+let _npAlarm=false,_npAckAt=0;
+function handleNoprobe(n){
+  const chip=document.getElementById('oven-chip');
+  const fresh=n.oven_raw!=null&&n.oven_age!=null&&n.oven_age<300;
+  if(chip){chip.style.display=fresh?'':'none';if(fresh)chip.textContent='Oven '+Math.round(n.oven_raw)+'°';}
+  const on=!!n.alert&&(Date.now()-_npAckAt)>600000;
+  const bar=document.getElementById('noprobe-bar');
+  if(bar){bar.style.display=on?'flex':'none';if(on)bar.innerHTML='<span>&#9888; '+_mEsc(n.msg)+'</span><button class="btn" onclick="ackNoprobe()">OK</button>';}
+  if(!on){if(_npAlarm){_npAlarm=false;_updateFlash();}return;}
+  if(_npAlarm||!_acfg('noprobe').enabled||_devPopMuted('noprobe'))return;
+  _npAlarm=true;const t0=Date.now();
+  (function b(){if(!_npAlarm)return;const c=_acfg('noprobe');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_npAlarm=false;_updateFlash();return;}_alarmHit('noprobe');setTimeout(()=>{if(_npAlarm)b();},c.interval);})();
+  _updateFlash();}
+function ackNoprobe(){_npAckAt=Date.now();_npAlarm=false;const bar=document.getElementById('noprobe-bar');if(bar)bar.style.display='none';fetch('/api/noprobe_ack',{method:'POST'}).catch(()=>{});_updateFlash();}
 function handleOven(o){
   const tile=document.getElementById('oven-tile'); if(!tile)return;
   let hidden=(typeof _devPopMuted==='function'&&_devPopMuted('ovenstep'));   // Alarm Center "Hidden on this screen"
@@ -4433,7 +4454,7 @@ function displayStatusPoll(){
   }).catch(()=>{});
 }
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(typeof _pcAlarm!=='undefined'&&_pcAlarm)ks.add('probecharge');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(typeof _pcAlarm!=='undefined'&&_pcAlarm)ks.add('probecharge');if(typeof _npAlarm!=='undefined'&&_npAlarm)ks.add('noprobe');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
 // Every alarm currently sounding, in plain words, with the key needed to silence just that one.
 function _activeAlarmDetails(){
   const out=[];
@@ -4455,6 +4476,7 @@ function _activeAlarmDetails(){
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
     if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' back on the dock'});}
+    if(typeof _npAlarm!=='undefined'&&_npAlarm)out.push({key:'noprobe',label:'Put a probe in the top row'});
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
@@ -4490,6 +4512,7 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='service'){if(typeof silenceAlarm==='function')silenceAlarm();}
   else if(key==='walkin'){if(typeof ackWalkin==='function')ackWalkin();}
   else if(key==='probecharge'){if(typeof ackProbeCharge==='function')ackProbeCharge();}
+  else if(key==='noprobe'){if(typeof ackNoprobe==='function')ackNoprobe();}
   else if(key==='tables'){if(typeof ackTables==='function')ackTables();}
   else if(key==='intables'){if(typeof ackIntables==='function')ackIntables();}
   else if(key==='frontdoor'){if(typeof ackFrontdoor==='function')ackFrontdoor();}
@@ -5961,6 +5984,7 @@ try{handleTables(d.tables||{});}catch(e){console.warn('tables:',e);}try{handlePa
 try{handleIntables(d.intables||{});}catch(e){console.warn('intables:',e);}
 try{handleFrontdoor(d.frontdoor||{});}catch(e){console.warn('frontdoor:',e);}
 try{handleOven(d.oven||{});}catch(e){console.warn('oven:',e);}
+try{handleNoprobe(d.noprobe||{});}catch(e){console.warn('noprobe:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
 try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
 _recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;

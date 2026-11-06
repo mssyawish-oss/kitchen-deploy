@@ -1,5 +1,5 @@
 """Kitchen Operations Dashboard v2"""
-import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil, subprocess
+import asyncio, threading, json, os, sys, socket, smtplib, time, urllib.request, urllib.parse, ssl, base64, re, copy, shutil, subprocess, math
 from datetime import date, datetime, timedelta, timezone
 
 # macOS/python.org ships without root certs — use certifi's CA bundle so HTTPS (Square) + SMTP TLS (email) verify.
@@ -205,21 +205,37 @@ def _fall_rate(ps,window=120):
     if dt<=0: return 0.0
     return max(0.0,(old[1]-now_c)/dt)
 
+def _probe_eta_oven(now_c):
+    # Fresh probe (under 3 min of trail): use this oven's learned k from past cooks + the oven temp now.
+    O=_oven_c(); k=_oven_k(); target=float(settings.get("cooked_temp",88))
+    if not (O and k) or now_c<20 or now_c>=target or O<=target+5: return None
+    mins=math.log((O-now_c)/(O-target))/k
+    if not 0<mins<=240: return None
+    return {"mins":int(round(mins)),"rate":None,"at":int((time.time()+mins*60)*1000),"src":"oven-history","oven":O}
+
 def _probe_eta(pid):
     # Minutes until this probe reaches the Cooked temp, from its own recent rate of climb.
     # Returns None unless the trail is long enough and the temp is genuinely rising.
     ps=probe_state.get(pid) or {}
     hist=ps.get("hist") or []
-    if len(hist)<2: return None
+    if not hist: return None
     now_t,now_c=hist[-1]
     old=next(((t,c) for t,c in hist if (now_t-t)>=180),None)   # need ≥3 min of trail
-    if not old: return None
+    if not old: return _probe_eta_oven(now_c) if (probe_temps.get(pid) is not None and time.time()-now_t<120) else None
     dt=(now_t-old[0])/60.0
     if dt<=0: return None
     rate=(now_c-old[1])/dt                                     # °C per minute
     target=float(settings.get("cooked_temp",88))
     if now_c>=target: return {"mins":0,"rate":round(rate,2)}
     if rate<0.15: return None                                  # flat or falling → no honest estimate
+    O=_oven_c()
+    if O and O>target+5 and O>now_c+1:
+        # oven known: this row's own k from its climb, projected with the CURRENT oven temp, so a hotter or
+        # cooler oven moves the estimate straight away (a straight line ignores both)
+        Ow=_oven_avg(old[0]) or O                              # oven over the same 3 min the rate was measured on
+        k=rate/max(1.0,Ow-(now_c+old[1])/2)
+        mins=math.log((O-now_c)/(O-target))/k
+        if 0<mins<=240: return {"mins":int(round(mins)),"rate":round(rate,2),"at":int((time.time()+mins*60)*1000),"src":"oven","oven":O}
     mins=(target-now_c)/rate
     if mins<0 or mins>240: return None                         # nonsense → say nothing
     return {"mins":int(round(mins)),"rate":round(rate,2),"at":int((time.time()+mins*60)*1000)}
@@ -234,7 +250,7 @@ def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
     entry={"ts":int(now*1000),"probe":pid,"name":name,
            "pull_temp":round(pull_temp,1) if pull_temp is not None else None,
            "peak_temp":round(peak_temp,1) if peak_temp is not None else None,
-           "total_mins":total_mins,"hot_mins":hot_mins,"birds":bpr}
+           "total_mins":total_mins,"hot_mins":hot_mins,"birds":bpr,"oven_avg":_oven_avg(cycle_start)}
     try:
         with data_lock:
             log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]; save_data(db)
@@ -246,7 +262,7 @@ def record_cook(pid,name,temp,cook_mins):
     try:
         with data_lock:
             log=db.setdefault("cook_log",[])
-            log.append({"time":datetime.now().isoformat(),"probe":pid,"name":name,"temp":round(temp,1),"cook_mins":cook_mins})
+            log.append({"time":datetime.now().isoformat(),"probe":pid,"name":name,"temp":round(temp,1),"cook_mins":cook_mins,"oven":_oven_c()})
             db["cook_log"]=log[-1000:]
             save_data(db)
     except Exception as e: print(f"record_cook:{e}")
@@ -472,6 +488,8 @@ def check_probe_status(pid,temp):
         if not hist or (_now-hist[-1][0])>=20:          # a sample every ~20s is plenty
             hist.append((_now,temp))
             while hist and (_now-hist[0][0])>900: hist.pop(0)   # keep 15 minutes
+        try: _oven_learn(ps,pid,temp,_now)
+        except Exception as e: print("oven_learn:",e)
         prev=ps["status"]
         ns="overdone" if temp>=overdone else "ready" if temp>=cooked else "almost" if temp>=almost else "idle"
         ps["status"]=ns
@@ -580,6 +598,56 @@ RFX_SEEN={}      # {pid: unix ts of the last REAL reading} → the card can say 
 RFX_CHARGING={}  # {pid: bool} — probe sitting in its dock (cloud's battery_state), so the card says CHARGING
 RFX_LAST={}      # {pid: {"core":°C,"sensors":[..],"seen":unix}} — last thing the probe said, even after it went quiet
 RFX_HIST={}      # {pid: [(unix, core°C), ...]} — recent LIVE readings, for the "lying around, not on charge" check
+
+# ── OVEN TEMP: the RFX gateway's own wired probe, hanging in the top of the rotisserie (Marcel 6 Nov 2026) ──
+# A hotter oven cooks faster. Chicken heats roughly like dT/dt = k*(oven - T), so each finished cook gives
+# one k for this oven; the median of recent k's lets the dash estimate minutes-left from the moment a probe
+# goes in (before it has 3 min of its own climb), and keeps the estimate honest when the oven runs hot/cold.
+OVEN_T={"c":None,"seen":0.0,"label":""}
+OVEN_HIST=[]     # [(unix, °C)] last 4 h, sampled ~1/min, for the average oven temp over a cook
+def _oven_c():
+    """Oven temp in °C when the oven probe is fresh AND the oven is actually on (hotter than cooked+10), else None."""
+    c=OVEN_T.get("c")
+    if c is None or (time.time()-(OVEN_T.get("seen") or 0))>300: return None
+    return c if c>float(settings.get("cooked_temp",82))+10 else None
+def _oven_note(o):
+    OVEN_T.update(o or {"c":None})
+    if o and (not OVEN_HIST or o["seen"]-OVEN_HIST[-1][0]>=50):
+        OVEN_HIST.append((o["seen"],o["c"]))
+        while OVEN_HIST and OVEN_HIST[0][0]<time.time()-4*3600: OVEN_HIST.pop(0)
+def _oven_avg(since):
+    v=[c for t,c in OVEN_HIST if since and t>=since]
+    return round(sum(v)/len(v),1) if v else None
+def _oven_k():
+    """This oven's learned heating constant (median of the last 30 cooks), or None until 3 cooks are logged."""
+    ks=sorted(e["k"] for e in (db.get("oven_k_log") or [])[-30:] if isinstance(e,dict) and e.get("k"))
+    return ks[len(ks)//2] if len(ks)>=3 else None
+def _oven_k_add(entry):
+    try:
+        with data_lock:
+            log=db.setdefault("oven_k_log",[]); log.append(entry); db["oven_k_log"]=log[-300:]; save_data(db)
+    except Exception as e: print(f"oven_k_add:{e}")
+def _oven_learn(ps,pid,temp,now):
+    """Called on every probe reading (state_lock held). Times the climb from the first reading >=20°C to
+    Cooked with the oven temp averaged over it, and logs one k per cook. Never touches the cook/stock logic."""
+    if ps.get("k_cyc")!=ps.get("cycle_start"):
+        ps.update({"k_cyc":ps.get("cycle_start"),"k_t0":None,"k_T0":None,"k_os":0.0,"k_on":0,"k_done":False})
+    if ps.get("k_done") or ps.get("removed"): return
+    o=_oven_c()
+    if ps.get("k_t0") is None:
+        if o and 20<=temp<=55: ps.update({"k_t0":now,"k_T0":temp})
+        return
+    if o: ps["k_os"]+=o; ps["k_on"]+=1
+    target=float(settings.get("cooked_temp",82))
+    if temp<target: return
+    ps["k_done"]=True
+    if not ps["k_on"]: return
+    O=ps["k_os"]/ps["k_on"]; mins=(now-ps["k_t0"])/60.0
+    if mins<10 or O<=target+5 or O<=ps["k_T0"]: return          # too short / oven too cool to be a real cook
+    k=math.log((O-ps["k_T0"])/(O-temp))/mins
+    if 0.002<k<0.2:
+        threading.Thread(target=_oven_k_add,args=({"ts":int(now),"probe":pid,"k":round(k,5),"oven":round(O,1),
+                         "mins":round(mins,1),"from":round(ps["k_T0"],1),"to":round(temp,1)},),daemon=True).start()
 
 def _ps_num(k,default):
     try: return float(settings.get(k,default))
@@ -754,7 +822,10 @@ def rfx_poll_loop():
                 # ~60s in BOTH modes (measured 14 Oct), so saver mode no longer needs a longer window.
                 rfx_bridge._STALE_SECS=_rfx_silent_secs()
                 # API key = the only login ThermoWorks accepts since 3 Nov 2026 (App Check broke email+password)
-                if cfg.get("api_key"): temps=rfx_bridge.rfx_read_temps_key(cfg["api_key"],cfg["map"],log=print)
+                if cfg.get("api_key"):
+                    temps=rfx_bridge.rfx_read_temps_key(cfg["api_key"],cfg["map"],log=print)
+                    try: _oven_note(rfx_bridge.rfx_oven_key())
+                    except Exception as e: print("oven probe:",e)
                 else: temps=rfx_bridge.rfx_read_temps(cfg["email"],cfg["password"],cfg["map"],log=print)
                 got=False
                 for pid,info in (temps or {}).items():
@@ -8650,6 +8721,131 @@ def intables_loop():
         except Exception as e:
             print("intables_loop:",str(e)[:120])
         time.sleep(iv)
+# ===== NO-PROBE WATCH — top rows cooking with no probe in them (Marcel 6 Nov 2026) ================
+# The probes go in the top 2 rows. Every couple of minutes, while the oven is on, the rotisserie camera
+# (EZ-IP, ceiling, through the glass) is asked whether rows 1 and 2 have chickens on; if more of those rows
+# are loaded than there are probes reading a bird, for `grace_min` minutes, the dash says so. No stock or
+# cook logic depends on it — it is a reminder only.
+NOPROBE={"rows":None,"probes":0,"short_since":0.0,"alert":False,"last":0.0,"err":"","snooze_until":0.0,"img":None,"img_at":0.0}
+_NOPROBE_DEF={"enabled":True,"cam":"dca23f9f","interval":120,"grace_min":5,"start_hour":9,"end_hour":20,
+              "rows":[[.19,.02,.64,.145],[.19,.15,.64,.258]]}   # full-frame fractions, fitted 6 Nov on a 6-row load
+_NOPROBE_PROMPT=("This image shows 2 horizontal strips, numbered 1 and 2 (green number, top-left). Each strip is a "
+                 "close-up, through glass, of ONE spit of a rotisserie chicken oven (1 = top spit, 2 = the one below). "
+                 "There may be bright white glare from the heating elements and reflections in the glass. For EACH strip "
+                 "answer 1 if whole chickens (raw OR cooked, any colour) are on that spit, or 0 if the spit is empty "
+                 "(only metal rods, wire, glass, glare or dark space). If the glass is fogged, misty or blurred and you cannot "
+                 "clearly see a chicken's shape on a spit, answer 0 for it. Reply with exactly 2 digits, strip 1 first, e.g. 10.")
+def _noprobe_cfg():
+    c=dict(_NOPROBE_DEF); c.update(db.get("noprobe") or {}); return c
+def _noprobe_open(cfg):
+    h=datetime.now().hour
+    return int(cfg.get("start_hour",9))<=h<int(cfg.get("end_hour",21))
+def _noprobe_probes_in():
+    """Probes that are reading a bird right now: sending live (not docked/charging/lying in open air) and warm."""
+    n=0; now=time.time()
+    for pid in (1,2,3,4):
+        if probe_temps.get(pid) is None: continue
+        st=_rfx_probe_state(pid,now) if _probe_source()=="rfx" else {"s":"live"}
+        if st.get("s")=="live" and probe_temps[pid]>=_ps_num("probe_out_max",38)-20: n+=1
+    return n
+def _noprobe_read(jpeg,cfg):
+    """[r1,r2] (1 = chickens on that spit) or None if the camera/AI couldn't say. Never guesses."""
+    key=(_rotcam_cfg().get("gemini_key") or "").strip()
+    if not key or not jpeg: return None
+    try:
+        from PIL import Image,ImageDraw
+        import io as _io
+        im=Image.open(_io.BytesIO(jpeg)).convert("RGB"); W,H=im.size; strips=[]
+        for r in cfg["rows"][:2]:
+            c=im.crop((int(W*r[0]),int(H*r[1]),int(W*r[2]),int(H*r[3])))
+            strips.append(c.resize((720,max(1,int(c.height*720/c.width)))))
+        comp=Image.new("RGB",(720,sum(s.height for s in strips)+6),(0,0,0)); y=0
+        for i,s in enumerate(strips):
+            comp.paste(s,(0,y)); ImageDraw.Draw(comp).text((8,y+6),str(i+1),fill=(0,255,0)); y+=s.height+6
+        buf=_io.BytesIO(); comp.save(buf,"JPEG",quality=80); NOPROBE["img"]=buf.getvalue(); NOPROBE["img_at"]=time.time()
+    except Exception as e:
+        NOPROBE["err"]="crop: "+str(e)[:80]; return None
+    _gem_count_call()
+    model=(_rotcam_cfg().get("model") or "gemini-2.5-flash").strip()
+    gencfg={"temperature":0,"maxOutputTokens":8}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_NOPROBE_PROMPT},
+          {"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(NOPROBE["img"]).decode()}}]}],
+          "generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt=re.sub(r"[\s,;/|.\-]+","","".join(p.get("text","") for p in parts if isinstance(p,dict)))
+        m=re.search(r"[01]{2}",txt)
+        if not m: NOPROBE["err"]="AI said: "+txt[:20]; return None
+        NOPROBE["err"]=""; return [int(m.group()[0]),int(m.group()[1])]
+    except Exception as e:
+        NOPROBE["err"]=str(e)[:120]; return None
+def _noprobe_check_once(cfg=None):
+    cfg=cfg or _noprobe_cfg(); cam=_cam_by_id(cfg.get("cam"))
+    if not cam: NOPROBE["err"]="camera %s not found"%cfg.get("cam"); return None
+    rows=_noprobe_read(_snap_from(cam),cfg); NOPROBE["last"]=time.time()
+    if rows is None: return None                                   # unsure → keep the previous state
+    NOPROBE["rows"]=rows; NOPROBE["probes"]=_noprobe_probes_in()
+    short=sum(rows)-NOPROBE["probes"]; now=time.time()
+    if short>0:
+        if not NOPROBE["short_since"]: NOPROBE["short_since"]=now
+        NOPROBE["alert"]=(now-NOPROBE["short_since"])>=float(cfg.get("grace_min",5))*60
+    else:
+        NOPROBE.update({"short_since":0.0,"alert":False})
+    return rows
+def _noprobe_reset():
+    NOPROBE.update({"rows":None,"short_since":0.0,"alert":False})
+def noprobe_loop():
+    while True:
+        cfg=_noprobe_cfg(); iv=max(30,int(cfg.get("interval",120) or 120))
+        try:
+            # only while the oven is on (oven probe hot) and the shop is open: no AI calls on a cold oven
+            if cfg.get("enabled") and _oven_c() and _noprobe_open(cfg) and (_rotcam_cfg().get("gemini_key") or "").strip():
+                _noprobe_check_once(cfg)
+            else: _noprobe_reset()
+        except Exception as e:
+            print("noprobe_loop:",str(e)[:120])
+        time.sleep(iv)
+def _noprobe_payload():
+    cfg=_noprobe_cfg(); rows=NOPROBE.get("rows") or [0,0]
+    alert=bool(NOPROBE["alert"]) and time.time()>=NOPROBE["snooze_until"]
+    short=max(0,sum(rows)-NOPROBE["probes"])
+    if rows==[1,1] and short>=2: msg="Top 2 rows are cooking with no probe in"
+    elif rows==[1,1]: msg="Top 2 rows are cooking but only 1 probe is in"
+    else: msg="Row %d is cooking with no probe in"%(1 if rows[0] else 2)
+    return {"on":bool(cfg.get("enabled")),"alert":alert,"msg":msg if alert else "","rows":NOPROBE.get("rows"),
+            "probes":NOPROBE["probes"],"oven":_oven_c(),"oven_raw":OVEN_T.get("c"),
+            "oven_age":(int(time.time()-OVEN_T["seen"]) if OVEN_T.get("seen") else None),"err":NOPROBE.get("err","")}
+@app.route("/api/noprobe_ack",methods=["POST"])
+def api_noprobe_ack():
+    NOPROBE["snooze_until"]=time.time()+600            # one tap quiets every screen for 10 min
+    return jsonify({"ok":True})
+@app.route("/api/noprobe_frame.jpg")
+def api_noprobe_frame():
+    if not NOPROBE.get("img"): return ("no frame",404)
+    return Response(NOPROBE["img"],mimetype="image/jpeg",headers={"Cache-Control":"no-store"})
+@app.route("/api/noprobe_test",methods=["POST"])
+def api_noprobe_test():
+    cfg=_noprobe_cfg(); rows=_noprobe_check_once(cfg)
+    return jsonify({"ok":rows is not None,"rows":rows,"probes_in":_noprobe_probes_in(),"err":NOPROBE.get("err",""),
+                    "state":_noprobe_payload(),"oven_k":_oven_k(),"oven_k_cooks":len(db.get("oven_k_log") or [])})
+@app.route("/api/noprobe_config",methods=["GET","POST"])
+def api_noprobe_config():
+    if request.method=="POST":
+        d=request.get_json(silent=True) or {}
+        with data_lock:
+            c=dict(db.get("noprobe") or {})
+            if "enabled" in d: c["enabled"]=bool(d["enabled"])
+            for k,lo,hi in (("interval",30,900),("grace_min",1,60),("start_hour",0,23),("end_hour",1,24)):
+                if k in d:
+                    try: c[k]=max(lo,min(hi,int(d[k])))
+                    except (TypeError,ValueError): pass
+            db["noprobe"]=c; save_data(db)
+    return jsonify({"ok":True,"config":_noprobe_cfg()})
+
 @app.route("/api/intables_frame.jpg")
 def api_intables_frame():
     pth=os.path.join(INTABLES_DIR,"intables_last.jpg")
@@ -9877,7 +10073,7 @@ def temps():
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
-"tables":_tables_payload(),"packev":_packev_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload()}),mimetype="application/json")
+"tables":_tables_payload(),"packev":_packev_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload(),"noprobe":_noprobe_payload()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -10033,7 +10229,7 @@ _PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/bl
 # Keys the SERVER owns. They are shipped in GET /api/data (so clients hold them) but nothing in the UI
 # ever saves them back — and a client posting e.g. {"timers":[]} would kill every countdown and make
 # trigger_timer_start raise inside a Timer thread, silently breaking the use-by clock after a probe pull.
-_SERVER_KEYS=("device_seen","timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
+_SERVER_KEYS=("device_seen","oven_k_log","noprobe","timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
               "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state",
               # label_printer has its own endpoint (/api/label_printer). Tablets doing a bulk
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
@@ -13161,6 +13357,7 @@ if __name__=="__main__":
     threading.Thread(target=gem_health_loop,daemon=True).start() # Gemini key/billing ping every 6 h + email on failure/recovery
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
+    threading.Thread(target=noprobe_loop,daemon=True).start()
     threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)
     threading.Thread(target=kds_loop,daemon=True).start()                            # KDS-screen reader for in-store ready (db.kds_reader.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)

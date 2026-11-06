@@ -466,3 +466,29 @@ def rfx_diagnose_key(api_key, log=lambda m: None):
         })
     return {"ok": True, "account_id": None, "device_count": len(rows),
             "probe_count": sum(1 for r in rows if r["is_probe"]), "devices": rows}
+
+
+def rfx_oven_key():
+    """The gateway's own wired probe (Marcel put it in the top of the rotisserie, 6 Nov 2026) from the
+    device list already fetched for the meat probes, so it costs no extra request.
+    {"c": °C, "seen": unix, "label": str} or None when there is no gateway probe or it has gone quiet."""
+    from datetime import datetime, timezone
+    for d in _KEY["devices"] or []:
+        if "gateway" not in str(d.get("model") or "").lower():
+            continue
+        for ch in d.get("channels") or []:
+            c = _c(ch.get("value"), ch.get("units"))
+            if c is None or ch.get("probeFailed"):
+                continue
+            ls = ch.get("lastTelemetrySaved") or ch.get("lastSeen") or d.get("lastSeen")
+            try:
+                ts = datetime.fromisoformat(str(ls).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                seen = ts.timestamp()
+            except Exception:
+                continue
+            if time.time() - seen > 300:
+                return None
+            return {"c": round(c, 1), "seen": seen, "label": (ch.get("label") or "").strip()}
+    return None
