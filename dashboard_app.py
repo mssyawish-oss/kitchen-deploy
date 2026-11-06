@@ -1202,6 +1202,189 @@ def _cook_plan():
     return {"next_hour":nexth,"expected":round(exp,1),"current_stock":round(cur,1),
             "suggest_birds":sb,"suggest_rows":int(-(-sb//bpr)),"have_history":have,"samples":len(vals)}   # rows derived from birds so they agree
 
+# ── COOK GUIDE (Marcel 7 Nov 2026): how many rotisserie birds to have cooked, and when to load the next row ──
+# Demand  = birds sold per 15-min slot on the same weekday over the last 8 weeks (Square, recent weeks weigh
+#           more), scaled by how today is tracking so far (pace).
+# Supply  = cooked stock now + rows on the spit (each lands at its probe/oven ETA).
+# Plan    = step through the rest of the day; whenever stock would fall under the safety margin, schedule a row
+#           to go on one cook-time earlier. Birds older than the hold limit (quality_minutes) count as waste.
+# The profile + safety margin are rebuilt nightly (~3am) from Square — read only, never writes to Square.
+CG_SLOTS=96                                                    # 15-min slots in a day
+def _cg_square_days(days=57):
+    """{date: {slot: birds}} from Square orders (read only). Scheduled pre-orders count at their pickup time."""
+    cfg=db.get("square_config",{}) or {}
+    token=(cfg.get("access_token") or "").strip(); loc=(cfg.get("location_id") or "").strip()
+    if not token or not loc: return {}
+    bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP
+    begin=(datetime.now(timezone.utc)-timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out={}; cursor=None
+    for _pg in range(80):
+        q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":begin}},"state_filter":{"states":["OPEN","COMPLETED"]}},"sort":{"sort_field":"CREATED_AT","sort_order":"ASC"}},"limit":500}
+        if cursor: q["cursor"]=cursor
+        req=urllib.request.Request(SQUARE_BASE+"/v2/orders/search",data=json.dumps(q).encode(),headers={"Authorization":"Bearer "+token,"Square-Version":SQUARE_VERSION,"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=30,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        for o in data.get("orders") or []:
+            birds=0.0
+            for li in o.get("line_items") or []:
+                k=(li.get("name") or "").strip()+"|"+(li.get("variation_name") or "").strip()
+                if k in bm:
+                    try: birds+=float(li.get("quantity") or 0)*bm[k]
+                    except Exception: pass
+            if birds<=0: continue
+            t=_parse_dt(o.get("created_at"))
+            for fu in o.get("fulfillments") or []:
+                pd=fu.get("pickup_details") or {}
+                if pd.get("schedule_type")=="SCHEDULED" and pd.get("pickup_at"): t=_parse_dt(pd["pickup_at"]) or t
+            if not t: continue
+            t=t.astimezone(); dd=out.setdefault(t.date().isoformat(),[0.0]*CG_SLOTS)
+            dd[(t.hour*60+t.minute)//15]+=birds
+        cursor=data.get("cursor")
+        if not cursor: break
+    return out
+def _cg_profile(days,dow,skip=None,decay=0.85):
+    """Recency-weighted mean of the same weekday's slots (newest date weighs 1, then 0.85, 0.72…)."""
+    ds=sorted((d for d in days if d!=skip and datetime.fromisoformat(d).weekday()==dow),reverse=True)
+    if not ds: return None
+    ws=[decay**i for i in range(len(ds))]; tw=sum(ws)
+    return [sum(w*days[d][s] for d,w in zip(ds,ws))/tw for s in range(CG_SLOTS)]
+def cook_guide_build():
+    """Nightly: rebuild the per-weekday demand profile + learn the safety margin from how wrong the forecast was."""
+    today=datetime.now().date().isoformat()
+    days={d:v for d,v in _cg_square_days().items() if d<today and sum(v)>=5}   # skip today (partial) + closed days
+    if len(days)<7: return {"ok":False,"error":"only %d days of sales"%len(days)}
+    prof={str(w):[round(x,3) for x in (_cg_profile(days,w) or [0.0]*CG_SLOTS)] for w in range(7)}
+    # Safety: forecast each of the last 28 days from the OTHER same-weekday days (leave one out), then look at
+    # every 60-min window 11am–8pm. The 80th-percentile shortfall = how many spare birds keep us covered 4 times in 5.
+    errs=[]
+    for d in sorted(days)[-28:]:
+        p=_cg_profile(days,datetime.fromisoformat(d).weekday(),skip=d)
+        if not p: continue
+        a=days[d]; pace=(sum(a[40:84])+8)/(sum(p[40:84])+8)   # same pace correction the live guide gets
+        for s in range(44,80): errs.append(sum(a[s:s+4])-pace*sum(p[s:s+4]))
+    errs.sort()
+    safety=max(2.0,min(8.0,errs[int(len(errs)*0.8)])) if errs else float((db.get("rotisserie") or {}).get("safety",2))
+    cg={"built":int(time.time()),"prof":prof,"safety":round(safety,1),"days":len(days),
+        "day_avg":{w:round(sum(prof[w]),1) for w in prof}}
+    with data_lock: db["cook_guide"]=cg; save_data(db)
+    return {"ok":True,"days":len(days),"safety":cg["safety"],"day_avg":cg["day_avg"]}
+def cook_guide_loop():
+    time.sleep(90)
+    while True:
+        try:
+            cg=db.get("cook_guide") or {}; now=datetime.now()
+            if time.time()-(cg.get("built") or 0)>20*3600 and (now.hour>=3 or not cg.get("prof")):
+                print("cook_guide:",cook_guide_build())
+        except Exception as e: print("cook_guide build:",e)
+        time.sleep(600)
+def _cg_cook_mins():
+    """Minutes for a fresh row to cook: oven physics when the oven probe is live and k is learned, else the
+    median of recent probe pulls, else the configured average."""
+    O=_oven_c(); k=_oven_k(); target=float(settings.get("cooked_temp",82))
+    if O and k and O>target+5:
+        m=math.log((O-4.0)/(O-target))/k                       # birds go on fridge-cold (~4°C)
+        if 30<=m<=150: return int(round(m)),"oven %d°"%round(O)
+    v=sorted(e["total_mins"] for e in (db.get("pull_log") or [])[-40:] if isinstance(e,dict) and isinstance(e.get("total_mins"),(int,float)) and 40<=e["total_mins"]<=120)
+    if len(v)>=5: return int(v[len(v)//2]),"last %d pulls"%len(v)
+    return int((db.get("rotisserie") or {}).get("cook_min",65)),"average"
+def _cg_on_spit(now,cook):
+    """Rows on the spit → [(unix ready, birds)]. Probed rows use their ETA (0 if already cooked, not yet pulled);
+    extra rows the camera sees without a probe are assumed half-way through."""
+    bpr=_rot_cfg().get("bpr",4) or 4; target=float(settings.get("cooked_temp",82)); rows=[]
+    for pid in list(probe_state.keys()):
+        ps=probe_state.get(pid) or {}; t=probe_temps.get(pid); hist=ps.get("hist") or []
+        if t is None or not hist or now-hist[-1][0]>180 or ps.get("removed"): continue
+        if t>=target: rows.append((now,bpr)); continue
+        if t<20: continue                                      # probe lying about / just inserted into cold birds
+        e=_probe_eta(pid)
+        rows.append((now+(e["mins"] if e else cook/2)*60,bpr))
+    try:
+        if (db.get("rotcam_config") or {}).get("enabled") and now-(ROTCAM.get("last_ts") or 0)<900:
+            for _ in range(max(0,int(ROTCAM.get("cooking") or 0)-len(rows))): rows.append((now+cook*30,bpr))
+    except Exception: pass
+    return rows
+def _cook_guide(now=None):
+    cg=db.get("cook_guide") or {}
+    if not cg.get("prof"): return {"ok":False,"msg":"Learning sales history…"}
+    rc=db.get("rotisserie") or {}; bpr=_rot_cfg().get("bpr",4) or 4
+    now=now or time.time(); dt=datetime.fromtimestamp(now); midnight=datetime(dt.year,dt.month,dt.day).timestamp()
+    prof=cg["prof"].get(str(dt.weekday())) or [0.0]*CG_SLOTS
+    close=midnight+int(rc.get("close_hour",21))*3600; open_t=midnight+int(rc.get("open_hour",10))*3600
+    last_load=midnight+int(rc.get("stop_load_hour",19))*3600; rows_max=int(rc.get("rows_max",6))
+    hold=float(settings.get("quality_minutes",90) or 90)*60; safety=float(cg.get("safety") or rc.get("safety",2))
+    cook,cook_src=_cg_cook_mins()
+    # pace: today's sales vs what this weekday normally sells by now (pulled toward 1 while it's early)
+    slot_now=(now-midnight)/900.0
+    exp_so_far=sum(prof[:int(slot_now)])+(prof[int(slot_now)]*(slot_now%1) if slot_now<CG_SLOTS else 0)
+    try:
+        with rot_lock: _rot_reset_if_needed(); sold=float(ROT_LIVE.get("sold_today",0)); avail=max(0.0,float(ROT_LIVE.get("available",0)))
+    except Exception: sold=0.0; avail=0.0
+    pace=max(0.6,min(1.6,(sold+8)/(exp_so_far+8))) if exp_so_far>=3 else 1.0
+    def dem(t0,t1):                                            # expected birds sold between two unix times
+        tot=0.0; t=t0
+        while t<t1:
+            s=int((t-midnight)//900); e=min(t1,midnight+(s+1)*900)
+            if 0<=s<CG_SLOTS: tot+=prof[s]*(e-t)/900.0
+            t=e
+        return tot*pace
+    step=300; spit=_cg_on_spit(now,cook)
+    def sim(loads):
+        """FIFO through the day in 5-min steps → (first time stock < safety, stock series, waste, leftover)."""
+        lots=[[now,avail]]+[[r,b] for r,b in spit]+[[t+cook*60,bpr] for t in loads]   # [ready_at, birds]
+        t=now; short=None; early=None; series=[]; waste=0.0
+        fix_t=now+cook*60                                      # a row loaded now can't help before this
+        while t<close:
+            need=dem(t,t+step)
+            for L in sorted(lots):
+                if L[0]>t or need<=0: continue
+                take=min(L[1],need); L[1]-=take; need-=take
+            for L in lots:
+                if L[0]<=t and L[1]>0 and t-L[0]>hold: waste+=L[1]; L[1]=0
+            stock=sum(L[1] for L in lots if L[0]<=t+step)
+            series.append((t,stock))
+            if stock<safety and t>=open_t and t<close-1800:
+                if t<fix_t: early=early or t                   # already too late to cook for this dip
+                elif short is None: short=t
+            t+=step
+        return short,series,waste,sum(L[1] for L in lots if L[0]<=close),early
+    loads=[]
+    for _ in range(40):
+        short,series,waste,left,early=sim(loads)
+        if short is None: break
+        L=max(now,short-cook*60-step)
+        if L>last_load: break
+        busy=sum(1 for r,b in spit if r>L)+sum(1 for x in loads if x<=L<x+cook*60)
+        if busy>=rows_max: break
+        loads.append(L); loads.sort()
+    short,series,waste,left,early=sim(loads)
+    hm=lambda t: datetime.fromtimestamp(t).strftime("%-I:%M%p" if os.name!="nt" else "%#I:%M%p").lower()
+    soon=[x for x in loads if x<=now+300]
+    if soon: action="Put on %d row%s now"%(len(soon),"" if len(soon)==1 else "s"); act_kind="now"
+    elif loads: action="Next row at %s"%hm(loads[0]); act_kind="later"
+    elif now>=last_load: action="No more rows today"; act_kind="none"
+    else: action="Enough cooked for now"; act_kind="none"
+    groups=[]
+    for x in loads:
+        if groups and x-groups[-1]["t"]<=600: groups[-1]["rows"]+=1
+        else: groups.append({"t":int(x),"at":hm(x),"rows":1})
+    aim=[]
+    for h in range(int(dt.hour)+1,int(rc.get("close_hour",21))):
+        ht=midnight+h*3600
+        if ht<open_t: continue
+        aim.append({"hour":h,"at":hm(ht),"birds":int(round(safety+dem(ht,ht+2700)))})   # cover the next 45 min + margin
+    chart=[{"t":int(t),"stock":round(s,1),"demand":round(dem(t,t+900),1)} for t,s in series if (t-now)<=3*3600 and int((t-midnight)//300)%3==0]
+    return {"ok":True,"action":action,"kind":act_kind,"loads":groups,"aim":aim,"chart":chart,
+            "stock":round(avail,1),"on_spit":len(spit),"cook_mins":cook,"cook_src":cook_src,"pace":round(pace,2),
+            "sold":round(sold,1),"day_expected":round(sum(prof)*pace,0),"safety":safety,
+            "short_at":(hm(early) if early else None),"waste":round(waste,1),"leftover":round(left,1),
+            "built":cg.get("built"),"days":cg.get("days")}
+_CG_CACHE={"t":0,"v":None}
+def _cook_guide_payload():                                     # /temps is polled every few seconds by every screen
+    if time.time()-_CG_CACHE["t"]>30:
+        try: _CG_CACHE["v"]=_cook_guide()
+        except Exception as e: _CG_CACHE["v"]={"ok":False,"msg":"error"}; print("cook_guide:",e)
+        _CG_CACHE["t"]=time.time()
+    return _CG_CACHE["v"]
+
 # ── "Hand out now" alarm: orders containing a ready-now item (salad, whole chicken…) ──
 DEFAULT_NOWAIT=["SALAD","BBQ CHICKEN","WHOLE CHICKEN","DINNER PACK"]
 WAIT_LIVE={"day":None,"orders":{},"done":set(),"acked":set()}
@@ -10051,6 +10234,17 @@ def _ui_ver():
     except Exception: pass
     return _UI_VER["tag"]
 
+@app.route("/api/cook_guide")
+def api_cook_guide():
+    _CG_CACHE["t"]=0
+    return jsonify(_cook_guide_payload())
+@app.route("/api/cook_guide_rebuild",methods=["POST"])
+def api_cook_guide_rebuild():
+    try: r=cook_guide_build()
+    except Exception as e: r={"ok":False,"error":str(e)}
+    _CG_CACHE["t"]=0
+    return jsonify(r)
+
 @app.route("/temps")
 def temps():
     _now=time.time()
@@ -10075,7 +10269,7 @@ def temps():
 "save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
-"tables":_tables_payload(),"packev":_packev_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload(),"noprobe":_noprobe_payload()}),mimetype="application/json")
+"tables":_tables_payload(),"packev":_packev_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload(),"noprobe":_noprobe_payload(),"cookguide":_cook_guide_payload()}),mimetype="application/json")
 
 @app.route("/set_name",methods=["POST"])
 def set_name():
@@ -10231,7 +10425,7 @@ _PROTECT_KEYS=("prep_presets","products","staff")   # populated lists a stale/bl
 # Keys the SERVER owns. They are shipped in GET /api/data (so clients hold them) but nothing in the UI
 # ever saves them back — and a client posting e.g. {"timers":[]} would kill every countdown and make
 # trigger_timer_start raise inside a Timer thread, silently breaking the use-by clock after a probe pull.
-_SERVER_KEYS=("device_seen","oven_k_log","noprobe","timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
+_SERVER_KEYS=("device_seen","oven_k_log","noprobe","cook_guide","timers","rot_live","fry_live","cook_log","prodoff_since","prodoff_autolog",
               "prodoff_auto_lastrun","probe_settings","rotcam_credit_seq","slips_state",
               # label_printer has its own endpoint (/api/label_printer). Tablets doing a bulk
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
@@ -13360,6 +13554,7 @@ if __name__=="__main__":
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
     threading.Thread(target=noprobe_loop,daemon=True).start()
+    threading.Thread(target=cook_guide_loop,daemon=True).start()
     threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)
     threading.Thread(target=kds_loop,daemon=True).start()                            # KDS-screen reader for in-store ready (db.kds_reader.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)
