@@ -1888,7 +1888,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div id="stock-empty" class="empty-state" style="display:none;"><div class="empty-illu illu-roast"></div>No products yet. Tap Setup.</div>
     </div>
     <div class="page" id="page-packdown">
-      <div class="page-header"><div class="page-title">Packdown &amp; Cleaning Checklist</div><div class="row" style="gap:6px;"><button class="btn" onclick="openPackdownAdmin()">Setup</button><button class="btn btn-danger" id="packdown-reset-btn" onclick="resetPackdown()">Reset</button></div></div>
+      <div class="page-header"><div class="page-title">Packdown &amp; Cleaning Checklist</div><div class="row" style="gap:6px;"><button class="btn" onclick="openDailyLog()">History</button><button class="btn" onclick="openPackdownAdmin()">Setup</button><button class="btn btn-danger" id="packdown-reset-btn" onclick="resetPackdown()">Reset</button></div></div>
       <div class="stock-filter-chips" id="packdown-shift-tabs"></div>
       <div id="packdown-progress"></div>
       <div id="packdown-list"></div><div id="packdown-empty" class="empty-state"><div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No tasks yet.</div>
@@ -7219,11 +7219,65 @@ function toggleTask(taskId){
   const cur=appData.packdown_checks[taskId]||{done:false};
   if(cur.done){ appData.packdown_checks[taskId]={done:false}; _logPackdown(taskId,null,false); saveKeys(['packdown_checks','packdown_log']); renderPackdownPage(); return; }
   const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);
-  completeWithProof('Complete Task',task?task.name:'',function(rec){
-    appData.packdown_checks[taskId]=Object.assign({done:true},rec);
-    _logPackdown(taskId,rec,true);
-    saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
-  },'cl');   // checklist → the separate checklist camera
+  // WHO did it (Marcel 7 Nov): with the camera on, ticks used to save no name at all. Ask first — one tap on a
+  // clocked-on name (auto when only one person is on). With no camera, completeWithProof's PIN gives the name.
+  _pdWho(task?task.name:'Task',function(who){
+    completeWithProof('Complete Task',task?task.name:'',function(rec){
+      if(who&&!rec.who)rec.who=who;
+      appData.packdown_checks[taskId]=Object.assign({done:true},rec);
+      _logPackdown(taskId,rec,true);
+      saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
+    },'cl');   // checklist → the separate checklist camera
+  });
+}
+function _pdWho(title,onPick){
+  if(!((appData.camera_cl_enabled)||appData.camera_enabled)){onPick('');return;}   // PIN path asks who anyway
+  const pin=()=>requirePin(title,'Nobody is clocked in \u2014 enter your PIN',u=>onPick(u.name));
+  fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
+    const n=((d&&d.names)||[]).filter(Boolean);
+    if(n.length===1){onPick(n[0]);return;}
+    if(!n.length){pin();return;}
+    let o=document.getElementById('pd-who');
+    if(!o){o=document.createElement('div');o.id='pd-who';o.style.cssText='position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px;';document.body.appendChild(o);}
+    o.innerHTML='<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;max-width:560px;width:100%;"><div style="font-size:var(--fs-lg);font-weight:800;margin-bottom:4px;">Who did this?</div><div style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:14px;">'+_mEsc(title)+'</div><div id="pd-who-chips" style="display:flex;flex-wrap:wrap;gap:10px;"></div><button class="btn" style="margin-top:16px;width:100%;" id="pd-who-x">Cancel</button></div>';
+    const box=o.querySelector('#pd-who-chips');
+    n.forEach(name=>{const c=document.createElement('div');c.className='lbl-chip';c.style.cssText='padding:14px 22px;font-size:var(--fs-lg);';c.textContent=name;c.onclick=()=>{o.style.display='none';onPick(name);};box.appendChild(c);});
+    o.querySelector('#pd-who-x').onclick=()=>{o.style.display='none';};
+    o.style.display='flex';
+  }).catch(pin);
+}
+// ---- Daily log: every tick (who/when/photo), every row pull and cooked temp, any past day ----
+let _dlDay=null;
+function _dlYmd(x){return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
+function _dlClose(){const o=document.getElementById('daily-log');if(o)o.style.display='none';}
+function openDailyLog(day){
+  _dlDay=day||_dlYmd(new Date());
+  let o=document.getElementById('daily-log');
+  if(!o){o=document.createElement('div');o.id='daily-log';o.style.cssText='position:fixed;inset:0;z-index:590;background:rgba(0,0,0,.75);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto;';document.body.appendChild(o);}
+  const box=inner=>'<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:18px;max-width:900px;width:100%;">'+inner+'</div>';
+  o.style.display='flex';o.innerHTML=box('Loading&hellip;');
+  fetch('/api/daily_log?date='+_dlDay).then(r=>r.json()).then(d=>{
+    const fmt=e=>{const t=e.ts?new Date(e.ts>1e11?e.ts:e.ts*1000):new Date(e.time);return t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});};
+    const shift=n=>{const x=new Date(_dlDay+'T12:00:00');x.setDate(x.getDate()+n);return _dlYmd(x);};
+    const nice=new Date(_dlDay+'T12:00:00').toLocaleDateString([],{weekday:'long',day:'numeric',month:'short',year:'numeric'});
+    const th='style="text-align:left;padding:6px 8px;color:var(--muted);font-size:var(--fs-sm);border-bottom:1px solid var(--border2);"';
+    const td='style="padding:6px 8px;border-bottom:1px solid var(--border);font-size:var(--fs-sm);vertical-align:middle;"';
+    const cell=v=>'<td '+td+'>'+v+'</td>';
+    const ck=(d.checklist||[]).map(e=>'<tr>'+cell(fmt(e))+cell(_mEsc(e.taskName||''))+cell(e.staff?'<b>'+_mEsc(e.staff)+'</b>':'<span style="color:var(--muted)">no name</span>')
+      +cell(e.done?'<span style="color:var(--green);font-weight:700;">&#10003; Done</span>':'<span style="color:#f87171;">Un-ticked</span>')
+      +cell(e.photo?'<img src="/photos/'+e.photo+'" onclick="enlargePhoto(\''+e.photo+'\')" style="width:34px;height:34px;object-fit:cover;border-radius:6px;cursor:pointer;">':'')+'</tr>').join('');
+    const pl=(d.pulls||[]).filter(e=>!e.kind||e.kind==='pull').map(e=>'<tr>'+cell(fmt(e))+cell(_mEsc(e.name||('Probe '+e.probe)))
+      +cell('<b>'+(e.peak_temp!=null?e.peak_temp+'&deg;':'&ndash;')+'</b>')+cell(e.pull_temp!=null?e.pull_temp+'&deg;':'&ndash;')
+      +cell(e.total_mins!=null?e.total_mins+' min':'')+cell(e.oven_avg?Math.round(e.oven_avg)+'&deg;':'')+'</tr>').join('');
+    const cks=(d.cooks||[]).map(e=>'<tr>'+cell(fmt(e))+cell(_mEsc(e.name||''))+cell('<b>'+e.temp+'&deg;</b>')
+      +cell(e.cook_mins!=null?e.cook_mins+' min':'')+cell(e.oven?Math.round(e.oven)+'&deg;':'')+'</tr>').join('');
+    const sec=(t,head,rows,empty)=>'<div style="font-weight:800;margin:16px 0 6px;">'+t+'</div>'+(rows?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tr>'+head.map(h=>'<th '+th+'>'+h+'</th>').join('')+'</tr>'+rows+'</table></div>':'<div style="color:var(--muted);font-size:var(--fs-sm);">'+empty+'</div>');
+    o.innerHTML=box('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><div style="font-size:var(--fs-lg);font-weight:800;flex:1;min-width:200px;">Daily log &middot; '+nice+'</div>'
+      +'<button class="btn" onclick="openDailyLog(\''+shift(-1)+'\')">&lsaquo; Prev</button><input type="date" value="'+_dlDay+'" onchange="openDailyLog(this.value)" style="padding:6px;border-radius:8px;"><button class="btn" onclick="openDailyLog(\''+shift(1)+'\')">Next &rsaquo;</button><button class="btn" onclick="_dlClose()">Close</button></div>'
+      +sec('Checklist ('+(d.checklist||[]).filter(e=>e.done).length+' ticked)',['Time','Task','Who','',''],ck,'No checklist ticks this day.')
+      +sec('Chicken rows pulled',['Pulled','Probe','Peak temp','Temp at pull','Cook time','Oven'],pl,'No row pulls logged this day.')
+      +sec('Reached cooked temp',['Time','Probe','Temp','Cook time','Oven'],cks,'None logged this day.'));
+  }).catch(()=>{o.innerHTML=box('Could not load the log. <button class="btn" onclick="_dlClose()">Close</button>');});
 }
 function resetPackdown(){const shift=packdownShift==='auto'?autoShift():packdownShift;const lbl=shift==='day'?'Day':'Night';_askConfirm('Reset the '+lbl+' Shift checklist?','Only '+lbl.toLowerCase()+'-shift tasks are cleared (the other shift and the daily log stay).',function(){appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();},'Reset checklist');}
 function _packdownDailyReset(){const today=_prepToday();if(appData.packdown_reset_day===today)return;if(appData.packdown_reset_day){appData.packdown_checks={};(appData.packdown_tasks||[]).forEach(t=>packdownDueDismissed[t.id]=true);saveKeys(['packdown_checks']);}appData.packdown_reset_day=today;saveKeys(['packdown_reset_day']);const pg=document.getElementById('page-packdown');if(pg&&pg.classList.contains('active'))renderPackdownPage();}

@@ -240,6 +240,52 @@ def _probe_eta(pid):
     if mins<0 or mins>240: return None                         # nonsense → say nothing
     return {"mins":int(round(mins)),"rate":round(rate,2),"at":int((time.time()+mins*60)*1000)}
 
+# ── PERMANENT DAILY LOGS (Marcel 7 Nov 2026): every checklist tick (with who), every row pull and every
+# cooked temp is ALSO appended to daily_logs/<kind>/<YYYY-MM-DD>.jsonl. The lists inside kitchen_data.json stay
+# capped (300/500/1000) for speed; these files are never trimmed, so any past day can be looked up.
+LOGS_DIR=os.path.join(BASE_DIR,"daily_logs")
+_arch_lock=threading.Lock()
+def _arch_day(e):
+    ts=e.get("ts") if isinstance(e,dict) else None
+    if isinstance(ts,(int,float)) and ts>0: return datetime.fromtimestamp(ts/1000.0 if ts>1e11 else ts).strftime("%Y-%m-%d")
+    t=_parse_dt((e or {}).get("time")) if isinstance(e,dict) else None
+    return (t.astimezone() if t and t.tzinfo else (t or datetime.now())).strftime("%Y-%m-%d")
+def _archive(kind,entries):
+    try:
+        d=os.path.join(LOGS_DIR,kind); os.makedirs(d,exist_ok=True)
+        with _arch_lock:
+            for e in entries:
+                with open(os.path.join(d,_arch_day(e)+".jsonl"),"a",encoding="utf-8") as f: f.write(json.dumps(e,ensure_ascii=False)+"\n")
+    except Exception as ex: print("archive %s: %s"%(kind,ex))
+def _archive_checklist(old,new):
+    """Called (data_lock held) when a screen saves packdown_log: archive ticks we haven't seen, and photos that
+    attached to an already-archived tick a moment later."""
+    if not isinstance(new,list): return
+    have={e.get("ts"):e for e in (old or []) if isinstance(e,dict)}
+    out=[]
+    for e in new:
+        if not isinstance(e,dict) or not e.get("ts"): continue
+        o=have.get(e["ts"])
+        if o is None: out.append(dict(e))
+        elif e.get("photo") and not o.get("photo"): out.append({"ts":e["ts"],"photo":e["photo"],"photo_update":True})
+    if out: _archive("checklist",out)
+def _archive_backfill():
+    """One-off: copy what the capped lists still hold (checklist back to 2 Sep, pulls to 13 Oct) into the files."""
+    mark=os.path.join(LOGS_DIR,".backfilled")
+    if os.path.exists(mark): return
+    _archive("checklist",[e for e in (db.get("packdown_log") or []) if isinstance(e,dict)])
+    _archive("pulls",[e for e in (db.get("pull_log") or []) if isinstance(e,dict)])
+    _archive("cooks",[e for e in (db.get("cook_log") or []) if isinstance(e,dict)])
+    os.makedirs(LOGS_DIR,exist_ok=True); open(mark,"w").write(datetime.now().isoformat())
+def _read_day(kind,day):
+    fp=os.path.join(LOGS_DIR,kind,day+".jsonl"); out=[]
+    if not os.path.exists(fp): return out
+    with open(fp,encoding="utf-8") as f:
+        for ln in f:
+            try: out.append(json.loads(ln))
+            except Exception: pass
+    return out
+
 def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
     # One row per confirmed probe pull, so the owner can see when the last row came off, how hot it got,
     # what it read when pulled, and how long it was on. Kept newest-last, capped.
@@ -254,6 +300,7 @@ def _record_pull(pid,name,pull_temp,peak_temp,cook_start,cycle_start):
     try:
         with data_lock:
             log=db.setdefault("pull_log",[]); log.append(entry); db["pull_log"]=log[-300:]; save_data(db)
+        _archive("pulls",[entry])
         _batch_auto_start(entry.get("pull_temp"))   # a pull IS a batch landing on the bench
     except Exception as e: print(f"record_pull:{e}")
 
@@ -262,7 +309,8 @@ def record_cook(pid,name,temp,cook_mins):
     try:
         with data_lock:
             log=db.setdefault("cook_log",[])
-            log.append({"time":datetime.now().isoformat(),"probe":pid,"name":name,"temp":round(temp,1),"cook_mins":cook_mins,"oven":_oven_c()})
+            ent={"time":datetime.now().isoformat(),"probe":pid,"name":name,"temp":round(temp,1),"cook_mins":cook_mins,"oven":_oven_c()}
+            log.append(ent); _archive("cooks",[ent])
             db["cook_log"]=log[-1000:]
             save_data(db)
     except Exception as e: print(f"record_cook:{e}")
@@ -10234,6 +10282,23 @@ def _ui_ver():
     except Exception: pass
     return _UI_VER["tag"]
 
+@app.route("/api/daily_log")
+def api_daily_log():
+    """One day of the permanent logs: checklist ticks (photo updates merged in), row pulls, cooked temps."""
+    day=(request.args.get("date") or datetime.now().strftime("%Y-%m-%d")).strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$",day): return jsonify({"ok":False,"error":"bad date"})
+    ck=[]; idx={}
+    for e in _read_day("checklist",day):
+        if e.get("photo_update"):
+            if e.get("ts") in idx: idx[e["ts"]]["photo"]=e.get("photo")
+            continue
+        idx[e.get("ts")]=e; ck.append(e)
+    days=set()
+    for k in ("checklist","pulls","cooks"):
+        try: days|={f[:10] for f in os.listdir(os.path.join(LOGS_DIR,k)) if f.endswith(".jsonl")}
+        except Exception: pass
+    return jsonify({"ok":True,"date":day,"checklist":ck,"pulls":_read_day("pulls",day),"cooks":_read_day("cooks",day),"days":sorted(days)})
+
 @app.route("/api/cook_guide")
 def api_cook_guide():
     _CG_CACHE["t"]=0
@@ -10509,6 +10574,7 @@ def update_db():
             lost=cur_ids-new_ids
             if len(lost)>=3:
                 payload.pop(k); dropped.append("%s(stale: would drop %d)"%(k,len(lost)))
+        if "packdown_log" in payload: _archive_checklist(db.get("packdown_log"),payload.get("packdown_log"))
         db.update(payload); save_data(db)
     if dropped:
         try: app.logger.warning("api/data: ignored empty overwrite of %s (kept existing)",dropped)
@@ -13555,6 +13621,8 @@ if __name__=="__main__":
     threading.Thread(target=intables_loop,daemon=True).start()
     threading.Thread(target=noprobe_loop,daemon=True).start()
     threading.Thread(target=cook_guide_loop,daemon=True).start()
+    try: _archive_backfill()
+    except Exception as e: print("archive backfill:",e)
     threading.Thread(target=frontdoor_loop,daemon=True).start()                      # front-door customer-arrival watch (db.frontdoor_watch.enabled)
     threading.Thread(target=kds_loop,daemon=True).start()                            # KDS-screen reader for in-store ready (db.kds_reader.enabled)                      # inside-tables abandoned-food watch (db.intables_watch.enabled)                        # outside-tables abandoned-food watch (db.tables_watch.enabled)
     threading.Thread(target=timecard_audit_loop,daemon=True).start()                 # Sunday 11pm timecard tidy-up REPORT (read-only; never edits Square)

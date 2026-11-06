@@ -12,3 +12,4 @@ kitchen_data.json
 # camera stills of customers/staff — NEVER commit to this PUBLIC repo
 walkin_log/
 task_photos/
+daily_logs/
