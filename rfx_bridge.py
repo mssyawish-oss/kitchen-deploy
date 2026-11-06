@@ -351,7 +351,7 @@ def rfx_read_temps(email, password, mapping, log=lambda m: None):
 # per-key rate limit, so: never more often than _KEY_MIN_SECS, ETag/304 when nothing changed, and
 # honour Retry-After on a 429.
 _KEY_URL = "https://cloud.thermoworks.com/api/v1/devices"
-_KEY_MIN_SECS = 10
+_KEY_MIN_SECS = 35   # free key: 4 requests/min and 3,000/day (resets midnight UTC) -> 35 s = ~2,470/day, room for Tests
 _KEY = {"at": 0.0, "etag": None, "devices": [], "key": None, "hold_until": 0.0, "error": ""}
 
 
