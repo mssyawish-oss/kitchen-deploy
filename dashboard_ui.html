@@ -3929,10 +3929,21 @@ function handleNoprobe(n){
   (function b(){if(!_npAlarm)return;const c=_acfg('noprobe');if(c.autostop&&(Date.now()-t0)>c.autostop*60000){_npAlarm=false;_updateFlash();return;}_alarmHit('noprobe');setTimeout(()=>{if(_npAlarm)b();},c.interval);})();
   _updateFlash();}
 // ---- Cook Guide: how many birds to have cooked + when the next row goes on (server works it out) ----
+// Simple view by default (Marcel 7 Nov: "too much detail"): just what to do now + the next target. Details is per screen.
+let _cgLast=null;
+function _cgFull(){try{return localStorage.getItem('cg_full')==='1';}catch(e){return false;}}
+function cgToggle(){try{localStorage.setItem('cg_full',_cgFull()?'0':'1');}catch(e){}handleCookGuide(_cgLast);}
 function handleCookGuide(g){
   const el=document.getElementById('cg-card'); if(!el)return;
   if(!g||!g.ok){el.style.display='none';return;}
+  _cgLast=g;
   el.style.display='flex'; el.classList.toggle('cg-now',g.kind==='now');
+  const btn=full=>'<button class="btn" style="align-self:center;margin-left:auto;padding:6px 14px;font-size:var(--fs-sm);" onclick="cgToggle()">'+(full?'Less &#9652;':'Details &#9662;')+'</button>';
+  if(!_cgFull()){
+    const a=(g.aim||[])[0];
+    el.innerHTML='<div class="cg-act" style="min-width:0;"><div class="cg-sub" style="margin:0 0 2px;">COOK GUIDE</div><div class="cg-big">'+_mEsc(g.action)+'</div></div>'+
+      (a?'<div class="cg-col" style="font-size:var(--fs-md);"><div>Have <b>'+a.birds+'</b> cooked by <b>'+_mEsc(a.at)+'</b></div></div>':'')+btn(false);
+    return;}
   const aim=(g.aim||[]).slice(0,3).map(a=>'<div>'+_mEsc(a.at)+' &rarr; have <b>'+a.birds+'</b> cooked</div>').join('');
   const loads=(g.loads||[]).slice(0,4).map(l=>'<div><b>'+_mEsc(l.at)+'</b> '+l.rows+' row'+(l.rows>1?'s':'')+'</div>').join('')||'<div>No more rows planned</div>';
   let svg='';const c=g.chart||[];
@@ -3943,7 +3954,7 @@ function handleCookGuide(g){
   el.innerHTML='<div class="cg-act"><div class="cg-sub" style="margin:0 0 2px;">COOK GUIDE</div><div class="cg-big">'+_mEsc(g.action)+'</div>'+
     '<div class="cg-sub">'+Math.round(g.sold)+' sold of ~'+Math.round(g.day_expected)+' expected today'+(g.pace!==1?' ('+(g.pace>1?'busier':'quieter')+' than usual)':'')+'</div>'+
     (g.short_at?'<div class="cg-sub" style="color:#f97316;">May run short around '+_mEsc(g.short_at)+'</div>':'')+'</div>'+
-    '<div class="cg-col">'+aim+'</div><div class="cg-col">'+loads+'<div style="opacity:.8">Row takes ~'+g.cook_mins+' min</div></div><div class="cg-chart">'+svg+'</div>';}
+    '<div class="cg-col">'+aim+'</div><div class="cg-col">'+loads+'<div style="opacity:.8">Row takes ~'+g.cook_mins+' min</div></div><div class="cg-chart">'+svg+'</div>'+btn(true);}
 function ackNoprobe(){_npAckAt=Date.now();_npAlarm=false;const bar=document.getElementById('noprobe-bar');if(bar)bar.style.display='none';fetch('/api/noprobe_ack',{method:'POST'}).catch(()=>{});_updateFlash();}
 function handleOven(o){
   const tile=document.getElementById('oven-tile'); if(!tile)return;
