@@ -7230,32 +7230,11 @@ function toggleTask(taskId){
   const cur=appData.packdown_checks[taskId]||{done:false};
   if(cur.done){ appData.packdown_checks[taskId]={done:false}; _logPackdown(taskId,null,false); saveKeys(['packdown_checks','packdown_log']); renderPackdownPage(); return; }
   const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);
-  // WHO did it (Marcel 7 Nov): with the camera on, ticks used to save no name at all. Ask first — one tap on a
-  // clocked-on name (auto when only one person is on). With no camera, completeWithProof's PIN gives the name.
-  _pdWho(task?task.name:'Task',function(who){
-    completeWithProof('Complete Task',task?task.name:'',function(rec){
-      if(who&&!rec.who)rec.who=who;
-      appData.packdown_checks[taskId]=Object.assign({done:true},rec);
-      _logPackdown(taskId,rec,true);
-      saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
-    },'cl');   // checklist → the separate checklist camera
-  });
-}
-function _pdWho(title,onPick){
-  if(!((appData.camera_cl_enabled)||appData.camera_enabled)){onPick('');return;}   // PIN path asks who anyway
-  const pin=()=>requirePin(title,'Nobody is clocked in \u2014 enter your PIN',u=>onPick(u.name));
-  fetch('/api/clocked_on').then(r=>r.json()).then(d=>{
-    const n=((d&&d.names)||[]).filter(Boolean);
-    if(n.length===1){onPick(n[0]);return;}
-    if(!n.length){pin();return;}
-    let o=document.getElementById('pd-who');
-    if(!o){o=document.createElement('div');o.id='pd-who';o.style.cssText='position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px;';document.body.appendChild(o);}
-    o.innerHTML='<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;max-width:560px;width:100%;"><div style="font-size:var(--fs-lg);font-weight:800;margin-bottom:4px;">Who did this?</div><div style="color:var(--muted);font-size:var(--fs-sm);margin-bottom:14px;">'+_mEsc(title)+'</div><div id="pd-who-chips" style="display:flex;flex-wrap:wrap;gap:10px;"></div><button class="btn" style="margin-top:16px;width:100%;" id="pd-who-x">Cancel</button></div>';
-    const box=o.querySelector('#pd-who-chips');
-    n.forEach(name=>{const c=document.createElement('div');c.className='lbl-chip';c.style.cssText='padding:14px 22px;font-size:var(--fs-lg);';c.textContent=name;c.onclick=()=>{o.style.display='none';onPick(name);};box.appendChild(c);});
-    o.querySelector('#pd-who-x').onclick=()=>{o.style.display='none';};
-    o.style.display='flex';
-  }).catch(pin);
+  completeWithProof('Complete Task',task?task.name:'',function(rec){
+    appData.packdown_checks[taskId]=Object.assign({done:true},rec);
+    _logPackdown(taskId,rec,true);
+    saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
+  },'cl');   // checklist → the separate checklist camera
 }
 // ---- Daily log: every tick (who/when/photo), every row pull and cooked temp, any past day ----
 let _dlDay=null;
