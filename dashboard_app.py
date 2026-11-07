@@ -8958,7 +8958,7 @@ def intables_loop():
 # are loaded than there are probes reading a bird, for `grace_min` minutes, the dash says so. No stock or
 # cook logic depends on it — it is a reminder only.
 NOPROBE={"rows":None,"probes":0,"short_since":0.0,"alert":False,"last":0.0,"err":"","snooze_until":0.0,"img":None,"img_at":0.0}
-_NOPROBE_DEF={"enabled":True,"cam":"dca23f9f","interval":120,"grace_min":5,"start_hour":9,"end_hour":20,
+_NOPROBE_DEF={"enabled":True,"cam":"dca23f9f","interval":120,"grace_min":10,"start_hour":9,"end_hour":20,
               "rows":[[.19,.02,.64,.145],[.19,.15,.64,.258]]}   # full-frame fractions, fitted 6 Nov on a 6-row load
 _NOPROBE_PROMPT=("This image shows 2 horizontal strips, numbered 1 and 2 (green number, top-left). Each strip is a "
                  "close-up, through glass, of ONE spit of a rotisserie chicken oven (1 = top spit, 2 = the one below). "
@@ -8972,12 +8972,15 @@ def _noprobe_open(cfg):
     h=datetime.now().hour
     return int(cfg.get("start_hour",9))<=h<int(cfg.get("end_hour",21))
 def _noprobe_probes_in():
-    """Probes that are reading a bird right now: sending live (not docked/charging/lying in open air) and warm."""
+    """Probes that are in a bird right now = any probe still sending that isn't on its dock. A docked RFX probe
+    switches off, so a sending probe is almost always in a chicken. 7 Nov (Marcel): no temperature test and no
+    'lying in open air' guess — fridge-cold birds read under 18° and turned-down birds sit at a steady temp, and
+    both were raising "Put a probe in" with the probe already in."""
     n=0; now=time.time()
     for pid in (1,2,3,4):
         if probe_temps.get(pid) is None: continue
         st=_rfx_probe_state(pid,now) if _probe_source()=="rfx" else {"s":"live"}
-        if st.get("s")=="live" and probe_temps[pid]>=_ps_num("probe_out_max",38)-20: n+=1
+        if st.get("s") in ("live","out"): n+=1
     return n
 def _noprobe_read(jpeg,cfg):
     """[r1,r2] (1 = chickens on that spit) or None if the camera/AI couldn't say. Never guesses."""
