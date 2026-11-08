@@ -1909,7 +1909,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <div class="page-header" style="flex-wrap:wrap;row-gap:8px;"><div class="page-title">Prep / Daily Tasks</div><div class="row" style="gap:6px;margin-left:auto;"><button class="btn btn-primary" onclick="openPrepBuild()">Set list</button><button class="btn" id="prep-clear-btn" onclick="resetPrepDone()">Clear list</button><button class="btn" onclick="openPrepManage()">Items</button><button class="btn" onclick="openLabelModal()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Labels</button><button class="btn" onclick="openDryGoods()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:3px;"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Dry Goods</button></div><div id="prep-tabs-slot" class="prep-tabs"></div><div id="prep-sub-slot"></div></div>
       <div id="kt-strip" class="kt-strip"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:var(--fs-sm);color:var(--muted);">
-        <span>Unfinished-prep check at</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="prep-carry-on" style="width:20px;height:20px;" onchange="appData.prep_carry_on=this.checked;saveKeys(['prep_carry_on']);_toast&&_toast(this.checked?'Evening prep check on':'Evening prep check off');">Unfinished-prep check at</label>
         <input class="input" type="time" id="prep-carry-time" style="width:110px;height:34px;font-size:var(--fs-md);"
                onchange="appData.prep_carry_time=this.value||'21:00';saveKeys(['prep_carry_time']);_toast&&_toast('Evening prep check set to '+appData.prep_carry_time);">
         <span>— pops up if anything is unticked, offers to move it to tomorrow</span>
@@ -8593,7 +8593,7 @@ function _promoteScheduledPrep(){const today=_prepToday();appData.prep_scheduled
   }
   Object.keys(sch).forEach(d=>{if(d<today){delete sch[d];changed=true;}});
   if(changed)saveKeys(['prep_today','prep_scheduled','prep_yesterday','prep_history']);}
-function _prepCarryTimeSync(){const i=document.getElementById('prep-carry-time');if(i&&document.activeElement!==i)i.value=appData.prep_carry_time||'21:00';}
+function _prepCarryTimeSync(){const _o=document.getElementById('prep-carry-on');if(_o)_o.checked=appData.prep_carry_on===true;const i=document.getElementById('prep-carry-time');if(i&&document.activeElement!==i)i.value=appData.prep_carry_time||'21:00';}
 function renderPrepUpcoming(){const el=document.getElementById('prep-upcoming');if(!el)return;const sch=appData.prep_scheduled||{};const today=_prepToday();
   const dates=Object.keys(sch).filter(d=>d>today&&(sch[d].items||[]).length).sort();
   if(!dates.length){el.style.display='none';el.innerHTML='';return;}
@@ -9415,7 +9415,7 @@ function checkAllReminders(){
     }
   }catch(e){}
   try{
-    const ct=appData.prep_carry_time||'21:00';
+    const ct=appData.prep_carry_time||'21:00';   // Marcel 9 Nov: off unless switched on (tick on the Prep page)
     // Pops on EVERY screen someone can actually see (background tabs excluded — on 7 Aug a hidden
     // Chrome tab claimed the once-a-day flag and the popup was never seen). The day is only claimed
     // when a human ACTS: reschedule or dismiss. Handling it on one screen clears the others.
@@ -9425,7 +9425,7 @@ function checkAllReminders(){
     const _ctm=_hhmm(ct),_m=s=>(+s.slice(0,2))*60+(+s.slice(3));
     const _dueAll=_ctm&&_m(now)>=_m(_ctm);
     const _showingPC=!!(activeAlarmId&&window._ovKind==='prepcarry');
-    if(_dueAll&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length
+    if(appData.prep_carry_on===true&&_dueAll&&appData.prep_carry_last!==dateKey&&_prepUnfinished().length
        &&document.visibilityState==='visible'&&!_devPopMuted('prepcarry')&&!_showingPC){
       _prepCarryPop();
     }
