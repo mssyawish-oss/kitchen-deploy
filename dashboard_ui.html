@@ -7951,7 +7951,7 @@ function _poWatchJob(jid){
       _poProgress(j.done,j.total,(j.action==='off'?'Switching off ':'Switching on ')+(j.current||j.label||''),col);
       _poJobT=setTimeout(tick,800);return;}
     _poStatus(_poJobSummary(j),(j.fail||j.addon||j.pending)?'var(--amber)':'var(--green)');
-    checkProductsOff();if((document.getElementById('po-search')||{}).value)poSearch();
+    checkProductsOff();_poIdxLoad(poSearch);
   }).catch(()=>{_poJobT=setTimeout(tick,2000);});   // network blip: the job keeps running server-side
   tick();
 }
@@ -8048,71 +8048,79 @@ function _poNeverChips(){
     +'</div>';
 }
 function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(i,1);saveKeys(['prodoff_never']);_prodOffRenderModal();}
-let _poQT=null,_poHits=[];
-function poSearch(){clearTimeout(_poQT);_poQT=setTimeout(()=>{
-  const q=(document.getElementById('po-search').value||'').trim();
-  const box=document.getElementById('po-search-results');
-  if(q.length<2){box.innerHTML='';_poHits=[];return;}
-  box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">Searching&hellip;</div>';
-  const incCat=!!(document.getElementById('po-inc-catering')||{}).checked;
-  fetch('/api/product_search?q='+encodeURIComponent(q)+'&scope='+(incCat?'both':'retail')).then(r=>r.json()).then(d=>{
-    if(!d.ok){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">'+_mEsc(d.error||'search failed')+'</div>';return;}
-    _poHits=d.items||[];
-    // when catering twins are hidden, offer a one-tap way to include them
-    const catNote=(!incCat&&d.hidden_catering)?('<div style="font-size:var(--fs-sm);color:var(--muted);padding:4px 0;">'+d.hidden_catering+' catering item'+(d.hidden_catering>1?'s':'')+' hidden &middot; <a href="#" onclick="document.getElementById(\'po-inc-catering\').checked=true;poSearch();return false;" style="color:var(--amber);">include catering</a></div>'):'';
-    if(!_poHits.length){box.innerHTML=catNote+'<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">No match'+(!incCat&&d.hidden_catering?' in retail.':'.')+'</div>';return;}
-    const allBtn=(_poHits.length>1)?('<div style="display:flex;justify-content:flex-end;margin:4px 0;"><button class="po-btn" style="background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;" onclick="poSwitchOffAll()">Switch OFF all '+_poHits.length+' results</button></div>'):'';
-    const RED='background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;';
-    box.innerHTML=catNote+allBtn+_poHits.map((it,i)=>{
-      const vs=(it.vars||[]).length?it.vars:[{id:(it.ids||[])[0],name:'',off:it.off}];
-      const multi=vs.length>1;
-      let head='<div class="prodoff-row">'
-        +'<div style="min-width:0;flex:1;"><div class="prodoff-name">'+_mEsc(it.name)
-        +(it.sizes||[]).map(t=>'<span class="prodoff-tag">'+_mEsc(t)+'</span>').join('')+((it.kind==='modifier'&&it.copies>1)?'<span style="font-size:var(--fs-sm);color:var(--muted);margin-left:7px;">in '+it.copies+' menus</span>':'')+'</div>'
-        +(it.off?'<div style="font-size:var(--fs-sm);color:var(--amber);">already has something switched off</div>':'')+'</div>'
-        +'<div class="po-ctl"><button class="po-btn" style="'+RED+'" onclick="poSwitchOff('+i+')">Switch OFF'+(multi?' all':'')+'</button></div>'
-        +'</div>';
-      if(multi){
-        head+=vs.map((v,j)=>{
-          const nm=(!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name;
-          const ctl=v.off
-            ?'<span style="font-size:var(--fs-sm);color:var(--amber);align-self:center;">already off</span>'
-            :'<button class="po-btn" style="'+RED+'" onclick="poSwitchOffOne('+i+','+j+')">Switch OFF</button>';
-          return '<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;">'
-            +'<div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+_mEsc(nm)+'</div>'
-            +'<div class="po-ctl">'+ctl+'</div>'
-          +'</div>';
-        }).join('');
-      }
-      return head;
-    }).join('');
-  }).catch(()=>{box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">search failed</div>';});
-},350);}
-function _poOps(it){
-  // an add-on row stands for EVERY copy of it (one per menu) — one id is enough, the server cascades
-  if(it.kind==='modifier')return [{id:(it.ids||[])[0],kind:'modifier',name:it.name}];
-  return (it.ids||[]).map(id=>({id:id,kind:'',name:it.name}));
+// ITEMS search (Marcel 9 Nov): the whole menu is held on the tablet so every letter filters instantly. One row per
+// product family (GREEK SALAD = sizes + pack side + add-on) with Turn off all and a dropdown for each one. A tap
+// shows straight away; the server job does Square in the background, and the row settles when the index agrees.
+let _poIdx=null,_poFams=[],_poOpt={},_poOpen={},_poIdxBusy=false;
+const _PO_ALIAS={'POTATO PUMPKIN':'ROAST POTATOES PUMPKIN'};
+function _poIdxLoad(then){
+  if(_poIdxBusy){return;}_poIdxBusy=true;
+  fetch('/api/product_index',{cache:'no-store'}).then(r=>r.json()).then(d=>{_poIdxBusy=false;
+    if(d&&d.ok){_poIdx=d.items||[];if(then)then();}
+    else if(!_poIdx){const b=document.getElementById('po-search-results');if(b)b.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">'+_mEsc((d&&d.error)||'search failed')+'</div>';}
+  }).catch(()=>{_poIdxBusy=false;});
 }
-function poSwitchOffAll(){const hits=_poHits.slice();if(!hits.length)return;
-  const ops=[].concat(...hits.map(_poOps));
-  _askConfirm('Switch off ALL '+hits.length+' results?','Marks '+ops.length+' item'+(ops.length>1?'s':'')+' unavailable in Square. It keeps going even if you close this screen.',
-    ()=>_poRunJob('off',ops,'All results'),'Switch all off');}
-function poSwitchOff(i){const it=_poHits[i];if(!it)return;
-  const ops=_poOps(it),n=ops.length;
-  const what=it.kind==='modifier'?('the add-on everywhere it appears'+(it.copies>1?(' ('+it.copies+' menus)'):'')):(n>1?('all '+n+' sizes'):'it');
-  _askConfirm('Switch off '+it.name+'?','Marks '+what+' SOLD OUT in Square — on the POS and online too. It keeps going even if you close this screen.',
-    ()=>_poRunJob('off',ops,it.name),'Switch off');}
-function poSwitchOffOne(i,j){const it=_poHits[i];if(!it)return;
-  const vs=(it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:''}));
-  const v=vs[j];if(!v)return;
-  const sz=(!v.name||v.name.toLowerCase()==='regular')?'Regular':v.name;
-  // name stays the PRODUCT name (not "X — SML") so the add-on sweep still matches it
-  _askConfirm('Switch off '+it.name+' — '+sz+'?','Marks just this one SOLD OUT in Square — on the POS and online too.',
-    ()=>_poRunJob('off',[{id:v.id,kind:it.kind||'',name:it.name}],it.name+' — '+sz),'Switch off');}
+function _poKey(n){
+  const k=String(n||'').toUpperCase().replace(/\(PACK\)/g,' ').replace(/^\s*CHRISTMAS\s+/,'').replace(/&/g,' ').replace(/\bSALAD\b/g,' ').replace(/\s+/g,' ').trim();
+  return _PO_ALIAS[k]||k||String(n||'').toUpperCase();
+}
+function _poOff(id,srv){const o=_poOpt[id];if(!o)return !!srv;
+  if(Date.now()-o.t>180000||(o.a==='off')===!!srv){delete _poOpt[id];return !!srv;}return o.a==='off';}
+function _poRows(items){   // one row for each separate thing that can be switched: sizes, pack side, add-on, Christmas last
+  const rows=[];
+  items.forEach(it=>{
+    if(it.kind==='modifier'){rows.push({label:'Add-on on packs'+(it.copies>1?(' ('+it.copies+' menus)'):''),ids:it.ids||[],kind:'modifier',name:it.name,off:_poOff((it.ids||[])[0],it.off),xmas:false,ord:2});return;}
+    const pack=/\(PACK\)/i.test(it.name),xmas=/^\s*christmas/i.test(it.name);
+    ((it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:'',off:it.off}))).forEach(v=>{
+      const sz=(!v.name||v.name.toLowerCase()==='regular')?'':v.name;
+      const label=pack?'Pack side':(xmas?('Christmas '+(sz||'')).trim():(it.catering?('Catering '+(sz||'')).trim():(sz||'Regular')));
+      rows.push({label:label,ids:[v.id],kind:'',name:it.name,off:_poOff(v.id,v.off),xmas:xmas,ord:xmas?3:(pack?1:0)});
+    });
+  });
+  return rows.sort((a,b)=>a.ord-b.ord);
+}
+function poSearch(){
+  const box=document.getElementById('po-search-results');if(!box)return;
+  const q=(document.getElementById('po-search').value||'').trim().toLowerCase();
+  if(q.length<2){box.innerHTML='';_poFams=[];return;}
+  if(!_poIdx){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">Loading the menu&hellip;</div>';_poIdxLoad(poSearch);return;}
+  const incCat=!!(document.getElementById('po-inc-catering')||{}).checked;
+  const fam={};let hidCat=0;
+  _poIdx.forEach(it=>{if(String(it.name||'').toLowerCase().indexOf(q)<0)return;if(it.catering&&!incCat){hidCat++;return;}const k=_poKey(it.name);(fam[k]=fam[k]||[]).push(it);});
+  _poFams=Object.keys(fam).map(k=>{
+    const its=fam[k],plain=its.filter(x=>x.kind!=='modifier'&&!/\(PACK\)/i.test(x.name)&&!/^\s*christmas/i.test(x.name));
+    return {key:k,name:(plain[0]||its[0]).name.replace(/\s*\(PACK\)/i,''),rows:_poRows(its)};
+  }).sort((a,b)=>(a.name.toLowerCase().indexOf(q)!==0)-(b.name.toLowerCase().indexOf(q)!==0)||a.name.localeCompare(b.name)).slice(0,30);
+  const note=hidCat?('<div style="font-size:var(--fs-sm);color:var(--muted);padding:4px 0;">'+hidCat+' catering item'+(hidCat>1?'s':'')+' hidden &middot; <a href="#" onclick="document.getElementById(\'po-inc-catering\').checked=true;poSearch();return false;" style="color:var(--amber);">show</a></div>'):'';
+  if(!_poFams.length){box.innerHTML=note+'<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">No match.</div>';return;}
+  const RED='background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;';
+  box.innerHTML=note+_poFams.map((f,i)=>{
+    const main=f.rows.filter(r=>!r.xmas),nOff=f.rows.filter(r=>r.off).length,multi=f.rows.length>1,open=!!_poOpen[f.key];
+    const allOff=main.length&&main.every(r=>r.off);
+    const btn=allOff?'<button class="po-btn go" onclick="poFamAll('+i+',\'on\')">Turn on'+(multi?' all':'')+'</button>'
+      :'<button class="po-btn" style="'+RED+'" onclick="poFamAll('+i+',\'off\')">Turn off'+(multi?' all':'')+'</button>';
+    let h='<div class="prodoff-row"><div class="prodoff-name" style="flex:1;">'+_mEsc(f.name)+(nOff?'<span class="prodoff-tag">'+(nOff===f.rows.length?'all off':nOff+' of '+f.rows.length+' off')+'</span>':'')+'</div>'
+      +'<div class="po-ctl">'+btn+(multi?'<button class="po-btn" style="min-width:52px;" onclick="poFamToggle('+i+')">'+(open?'&#9650;':'&#9660;')+'</button>':'')+'</div></div>';
+    if(multi&&open)h+=f.rows.map((r,j)=>'<div class="prodoff-row" style="padding-left:16px;border-left:2px solid var(--border2);margin-left:6px;"><div class="prodoff-name" style="font-size:var(--fs-md);font-weight:600;flex:1;">'+_mEsc(r.label)+'</div><div class="po-ctl">'
+      +(r.off?'<button class="po-btn go" onclick="poFamOne('+i+','+j+')">Turn on</button>':'<button class="po-btn" style="'+RED+'" onclick="poFamOne('+i+','+j+')">Turn off</button>')+'</div></div>').join('');
+    return h;
+  }).join('');
+}
+function poFamToggle(i){const f=_poFams[i];if(!f)return;_poOpen[f.key]=!_poOpen[f.key];poSearch();}
+function _poSend(action,rows,label){
+  const ops=[];const t=Date.now();
+  rows.forEach(r=>{r.ids.forEach(id=>{_poOpt[id]={a:action,t:t};});
+    if(r.kind==='modifier'){if(action==='off')ops.push({id:r.ids[0],kind:'modifier',name:r.name});else r.ids.forEach(id=>ops.push({id:id,name:r.name}));}
+    else ops.push({id:r.ids[0],kind:'',name:action==='off'?'':r.name});});   // no name on an item OFF: the add-on is its own row, so a single size must not take it too
+  poSearch();_poRunJob(action,ops,label);
+}
+function poFamAll(i,action){const f=_poFams[i];if(!f)return;   // Christmas versions only change from the dropdown
+  _poSend(action,f.rows.filter(r=>!r.xmas&&(action==='off'?!r.off:r.off)),f.name);}
+function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.off?'on':'off',[r],f.name+' — '+r.label);}
 function prodOffOpen(){
   const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
   const box=document.getElementById('po-search-results');if(box)box.innerHTML='';        // and no stale results from last time
-  _poHits=[];clearTimeout(_poQT);
+  _poFams=[];_poIdxLoad();
   _prodOffRenderModal();_poSummary();openModal('prodoff-modal');_poResumeJobs();}
 // bell / silence-all / Alarm Center silence → mute every currently-off product for 1 hour
 function silenceProductsOff(){_prodOffMuteAll();if(typeof stopAlarm==='function')stopAlarm('prod-off');checkProductsOff();if(typeof _broadcastSilence==='function')_broadcastSilence('prodoff');}

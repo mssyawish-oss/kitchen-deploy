@@ -3678,6 +3678,23 @@ def api_product_search():
     hits.sort(key=lambda it:(it.get("kind")=="modifier",not it["name"].lower().startswith(q)))   # items first, best match first
     return jsonify({"ok":True,"items":hits[:30],"scope":scope,"hidden_catering":(n_catering if scope!="both" else 0)})
 
+@app.route("/api/product_index")
+def api_product_index():
+    """The whole search index in one go, so the ITEMS panel searches on the tablet with no server trip per letter
+    (Marcel 9 Nov: search too laggy). Add-ons switched off from the dash are deleted from Square and live in
+    mod_86_bin, so they are added back here as off rows."""
+    if not _PSRCH_CACHE["items"]: _psrch_build()
+    elif time.time()-_PSRCH_CACHE["at"]>180 and not _PSRCH_CACHE["building"]:
+        threading.Thread(target=_psrch_build,daemon=True).start()
+    if not _PSRCH_CACHE["items"]: return jsonify({"ok":False,"error":"couldn't load the menu from Square - try again"})
+    binned={}
+    for bid,b in (db.get("mod_86_bin") or {}).items():
+        g=binned.setdefault(_norm_name(b.get("name")),{"name":b.get("name") or "?","ids":[],"sizes":["ADD-ON"],"off":True,"kind":"modifier"})
+        g["ids"].append(bid)
+    for g in binned.values(): g["copies"]=len(g["ids"])
+    items=[it for it in _PSRCH_CACHE["items"] if not (it.get("kind")=="modifier" and _norm_name(it["name"]) in binned)]
+    return jsonify({"ok":True,"items":items+list(binned.values())})
+
 def _sq_disable_variation(vid):
     """Mark one item-variation SOLD OUT at this location (86 it) — the reverse of enable.
     Variations honour this write (modifiers do not — those stay POS-only for switching OFF)."""
@@ -13758,6 +13775,7 @@ if __name__=="__main__":
     threading.Thread(target=oven_loop,daemon=True).start()                        # UNOX oven step alerts (only acts when db['oven_watch'].enabled)
     threading.Thread(target=intables_loop,daemon=True).start()
     threading.Thread(target=noprobe_loop,daemon=True).start()
+    threading.Thread(target=_psrch_build,daemon=True).start()   # ITEMS search ready before the first tap
     threading.Thread(target=cook_guide_loop,daemon=True).start()
     try: _archive_backfill()
     except Exception as e: print("archive backfill:",e)
