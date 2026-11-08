@@ -15,11 +15,50 @@ BASE_DIR     = os.path.dirname(os.path.abspath(__file__))   # all data lives nex
 HISTORY_FILE = os.path.join(BASE_DIR, "bbq_history.json")
 DATA_FILE    = os.path.join(BASE_DIR, "kitchen_data.json")
 
-def load_data():
+LOAD_STATE={"warning":""}   # set when the data file was damaged and a backup was used; shown on every screen
+
+def _data_ok(d):
+    """Real kitchen data has a menu, recipes or staff in it. A blank start has none of them."""
+    return isinstance(d,dict) and bool(d.get("products") or d.get("recipes") or d.get("staff"))
+
+def _read_data(path):
     try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE,encoding="utf-8") as f: return json.load(f)
-    except Exception as e: print(f"Load error:{e}")
+        with open(path,encoding="utf-8") as f: return json.load(f)
+    except Exception as e:
+        print(f"Load error ({os.path.basename(path)}): {e}"); return None
+
+def _durable_copy(src,dst):
+    """Copy that is really on the disk before it takes the new name, so a power cut can't leave a file of zeros."""
+    tmp=dst+".tmp"
+    shutil.copyfile(src,tmp)
+    with open(tmp,"rb+") as f: os.fsync(f.fileno())
+    os.replace(tmp,dst)
+
+def _recovery_sources():
+    bdir=os.path.join(BASE_DIR,"backups")
+    try: names=sorted((f for f in os.listdir(bdir) if f.startswith("kitchen_data_") and f.endswith(".json")),reverse=True)
+    except Exception: names=[]
+    return [DATA_FILE+".bak"]+[os.path.join(bdir,f) for f in names]
+
+def load_data():
+    """A damaged or blanked file must never bring the dash up empty (9 Nov 2026: a hard restart left zeros in the file
+    and in .bak, the dash started blank and went on saving blank). Falls back to the newest backup that is really usable."""
+    d=_read_data(DATA_FILE) if os.path.exists(DATA_FILE) else None
+    if _data_ok(d): return d
+    for src in _recovery_sources():
+        if not os.path.exists(src): continue
+        b=_read_data(src)
+        if not _data_ok(b): continue
+        try:
+            if os.path.exists(DATA_FILE):
+                shutil.copyfile(DATA_FILE,DATA_FILE+".bad-"+datetime.now().strftime("%Y%m%d-%H%M%S"))
+            _durable_copy(src,DATA_FILE)
+        except Exception as e: print(f"Recovery copy failed: {e}")
+        when=datetime.fromtimestamp(os.path.getmtime(src)).strftime("%a %d %b %I:%M%p")
+        LOAD_STATE["warning"]=f"The dash data was damaged and has been restored from the backup of {when}. Changes after that time are gone."
+        print("RECOVERED:",src,LOAD_STATE["warning"])
+        return b
+    if isinstance(d,dict): return d
     return {"suppliers":[],"products":[],"recipes":[],"packdown_tasks":[],"packdown_log":[],"service_alerts":[],"quiet_jobs":[],"email_config":{},"staff":[]}
 
 _save_lock=threading.RLock()
@@ -44,11 +83,13 @@ def save_data(data):
             _fail("could not serialise (5 retries)"); return
         try:
             tmp=DATA_FILE+".tmp"
-            with open(tmp,"w",encoding="utf-8") as f: f.write(s)
+            with open(tmp,"w",encoding="utf-8") as f:
+                f.write(s); f.flush(); os.fsync(f.fileno())   # on the disk BEFORE the rename, or a power cut leaves zeros
             now=time.time()
             try:    # roll a backup of the CURRENT good file before replacing it
                 if os.path.exists(DATA_FILE) and now-getattr(save_data,"_bak_at",0)>_BAK_EVERY:
-                    shutil.copy2(DATA_FILE,DATA_FILE+".bak"); save_data._bak_at=now
+                    save_data._bak_at=now
+                    if _data_ok(_read_data(DATA_FILE)): _durable_copy(DATA_FILE,DATA_FILE+".bak")   # never replace a good .bak with a bad file
             except Exception: pass
             os.replace(tmp,DATA_FILE)
             SAVE_STATE.update({"error":"","since":0.0,"fails":0,"last_ok":now})
@@ -472,7 +513,8 @@ def backup_loop():
             os.makedirs(bdir,exist_ok=True)
             dest=os.path.join(bdir,"kitchen_data_"+datetime.now().strftime("%Y%m%d")+".json")
             if os.path.exists(DATA_FILE) and not os.path.exists(dest):
-                import shutil; shutil.copy2(DATA_FILE,dest); print("backup: saved",dest)
+                if not _data_ok(_read_data(DATA_FILE)): print("backup: skipped, data file is not usable"); time.sleep(3600); continue
+                _durable_copy(DATA_FILE,dest); print("backup: saved",dest)
                 keep=sorted(f for f in os.listdir(bdir) if f.startswith("kitchen_data_") and f.endswith(".json"))
                 for old in keep[:-14]:
                     try: os.remove(os.path.join(bdir,old))
@@ -10351,7 +10393,7 @@ def temps():
 "rfx_charging":({p:True for p,c in RFX_CHARGING.items() if c} if _probe_source()=="rfx" else {}),
 "rfx_dock":({"pids":DOCK_SEEN["pids"],"age":(int(_now-DOCK_SEEN["at"]) if DOCK_SEEN["at"] else None)} if _probe_source()=="rfx" else {}),
 "rfx_state":({p:_rfx_probe_state(p,_now) for p in (1,2,3,4) if str(p) in ((db.get("thermoworks") or {}).get("map") or {})} if _probe_source()=="rfx" else {}),
-"save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),
+"save_error":(SAVE_STATE["error"] if SAVE_STATE["fails"]>=2 else ""),"load_warning":LOAD_STATE["warning"],
 "walkin":{"alert":bool(WALKIN.get("alert")),"since":WALKIN.get("since",0),
           "alarm":bool(_walkin_cfg().get("alarm_on")),"on":bool(_walkin_cfg().get("enabled"))},
 "tables":_tables_payload(),"packev":_packev_payload(),"intables":_intables_payload(),"frontdoor":_frontdoor_payload(),"oven":_oven_payload(),"noprobe":_noprobe_payload(),"cookguide":_cook_guide_payload()}),mimetype="application/json")

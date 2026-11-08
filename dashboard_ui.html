@@ -5338,6 +5338,17 @@ function _battCheck(){
 }
 // The server couldn't write its data file — settings/stock changes are being LOST. Silent before; now a
 // persistent red bar, because the only other symptom is edits mysteriously reverting later.
+let _loadWarnOff='';
+function _loadWarnCheck(msg){   // data was restored from a backup after damage: tap to dismiss on this screen
+  let el=document.getElementById('load-warn');
+  if(!msg||msg===_loadWarnOff){if(el)el.remove();return;}
+  if(el)return;
+  el=document.createElement('div');el.id='load-warn';
+  el.style.cssText='position:fixed;left:0;right:0;top:0;z-index:625;background:#92400e;color:#fff;font-size:var(--fs-md);font-weight:700;padding:10px 14px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.5);';
+  el.textContent='\u26A0 '+msg+' (tap to close)';
+  el.onclick=function(){_loadWarnOff=msg;el.remove();};
+  document.body.appendChild(el);
+}
 function _saveErrCheck(err){
   let el=document.getElementById('save-err');
   if(!err){if(el)el.remove();return;}
@@ -6025,7 +6036,7 @@ try{handleOven(d.oven||{});}catch(e){console.warn('oven:',e);}
 try{handleNoprobe(d.noprobe||{});}catch(e){console.warn('noprobe:',e);}
 try{handleCookGuide(d.cookguide);}catch(e){console.warn('cookguide:',e);}
 try{_battCheck();}catch(e){console.warn('batt:',e);}
-try{_saveErrCheck(d.save_error||'');}catch(e){console.warn('saveErr:',e);}
+try{_saveErrCheck(d.save_error||'');_loadWarnCheck(d.load_warning||'');}catch(e){console.warn('saveErr:',e);}
 _recordTempHist();if(d.names)Object.entries(d.names).forEach(([pid,name])=>{probeData[parseInt(pid)].name=name;});if(d.states)Object.entries(d.states).forEach(([pid,st])=>{const p=parseInt(pid);probeStates[p].status=st.status;if(st.alerted)probeStates[p].alerted=true;
       // SERVER-SIDE SNOOZE (26 Aug): a 10-min silence pressed on ONE screen used to live only in that
       // screen's localStorage — every other screen re-rang ~80s later (staff silenced the same bird 5×
