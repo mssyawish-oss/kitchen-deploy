@@ -8052,7 +8052,7 @@ function poNeverRemove(i){if(appData.prodoff_never)appData.prodoff_never.splice(
 // product family (GREEK SALAD = sizes + pack side + add-on) with Turn off all and a dropdown for each one. A tap
 // shows straight away; the server job does Square in the background, and the row settles when the index agrees.
 let _poIdx=null,_poFams=[],_poOpt={},_poOpen={},_poIdxBusy=false;
-const _PO_ALIAS={'POTATO PUMPKIN':'ROAST POTATOES PUMPKIN'};
+const _PO_ALIAS={'POTATO PUMPKIN':'ROAST POTATOES PUMPKIN','SCALLOP POTATOES':'SCALLOPED POTATOES'};
 function _poIdxLoad(then){
   if(_poIdxBusy){return;}_poIdxBusy=true;
   fetch('/api/product_index',{cache:'no-store'}).then(r=>r.json()).then(d=>{_poIdxBusy=false;
