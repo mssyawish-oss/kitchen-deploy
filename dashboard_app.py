@@ -12022,38 +12022,34 @@ tick();load(1);
 </script></body></html>"""
 
 
-# /fried page (owner 8 Nov): NO tickets — just the combined counts to cook, as big as the screen allows.
-FRIED_PAGE=r"""<!doctype html><html><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no"><title>Fried Chicken</title><style>
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:#0b0b0c;color:#f2f2f4;overflow:hidden;
-font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;user-select:none}
-#top{height:44px;display:flex;align-items:center;gap:16px;padding:0 18px;font-size:18px;font-weight:700;color:#c7c7cc}
-#st{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:6px}.dot{width:10px;height:10px;border-radius:50%;background:#30d158}
-#tot{position:absolute;top:44px;left:10px;right:10px;bottom:10px;display:flex;gap:10px}
-.tl{flex:1;border-radius:16px;background:#1c1c1e;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
-.tl b{font-size:min(15vw,46vh);line-height:1;font-weight:800;color:#ff9f0a;font-variant-numeric:tabular-nums}
-.tl span{font-size:min(4.2vw,7vh);font-weight:800;letter-spacing:.05em;color:#e5e5ea;margin-top:2vh;text-align:center}
-.tl i{font-style:normal;font-size:min(2.6vw,4.5vh);color:#8e8e93;margin-top:1vh;min-height:1.2em}
-.tl.z b{color:#3a3a3c}.tl.z span{color:#636366}
-@media (orientation:portrait){#tot{flex-direction:column}.tl b{font-size:min(17vh,40vw)}.tl span{font-size:min(7vw,3.6vh);margin-top:1vh}.tl i{font-size:min(4vw,2.4vh);margin-top:.5vh}}
-</style></head><body>
-<div id=top><span id=clock></span><span>TO COOK NOW</span><span id=st><span class=dot id=dot></span><span id=on>Online</span></span></div>
-<div id=tot></div>
-<script>
-const NM={chicken:'FRIED PIECES',fillet:'THIGH FILLETS',tender:'TENDERS',wing:'WINGS',nugget:'NUGGETS',popcorn:'POPCORN'};
-const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let okAt=Date.now(),last='';
-async function load(){
- try{const d=await (await fetch('/api/fried_board',{cache:'no-store'})).json();okAt=Date.now();
-  const h=(d.totals||[]).map(t=>{const x=[];if(t.soon)x.push('+'+t.soon+' pre-order soon');if(t.trays.length)x.push('+'+t.trays.join(', '));
-   return `<div class="tl${t.n?'':' z'}"><b>${t.n}</b><span>${NM[t.kind]||t.kind}</span><i>${esc(x.join(' · '))}</i></div>`}).join('');
-  if(h!==last){last=h;document.getElementById('tot').innerHTML=h}
- }catch(e){}
-}
-function tick(){const d=new Date();let h=d.getHours()%12||12;document.getElementById('clock').textContent=h+':'+String(d.getMinutes()).padStart(2,'0');
- const off=Date.now()-okAt>30000;document.getElementById('dot').style.background=off?'#ee2a24':'#30d158';document.getElementById('on').textContent=off?'Offline':'Online'}
-setInterval(load,2000);setInterval(tick,1000);load();tick();
-</script></body></html>"""
+# /fried page (owner 8 Nov) = the /fryer tickets shown just as Square shows them, under three BIG total boxes
+# (tenders / thigh fillets / wings for every open order added together).
+def _fried_page():
+    pg=FRYER_PAGE
+    for a,b in [("<title>Fryer</title>","<title>Fried Chicken</title>"),
+                ("'/api/fryer_board'","'/api/fried_board'"),("'/api/fryer_action'","'/api/fried_action'"),
+                ("<b>FRYER</b><b>No Open Tickets</b>","<b>FRIED CHICKEN</b><b>Nothing to cook</b>"),
+                ("#grid{position:absolute;top:84px;","#grid{position:absolute;top:calc(84px + 38vh);"),
+                ("grid-template-rows:repeat(2,1fr)}","grid-template-rows:1fr}"),
+                ("#empty{position:absolute;top:84px;","#empty{position:absolute;top:calc(84px + 38vh);"),
+                ("</style>","""#tot{position:absolute;top:84px;left:8px;right:8px;height:calc(38vh - 8px);display:flex;gap:8px}
+.tl{flex:1;border-radius:14px;background:#1c1c1e;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
+.tl b{font-size:min(10vw,24vh);line-height:1;font-weight:800;color:#ff9f0a;font-variant-numeric:tabular-nums}
+.tl span{font-size:min(3vw,4.5vh);font-weight:700;letter-spacing:.06em;color:#e5e5ea;margin-top:4px}
+.tl i{font-style:normal;font-size:min(1.8vw,2.8vh);color:#8e8e93;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:95%}
+.tl.z b{color:#48484a}.tl.z span{color:#636366}
+</style>"""),
+                ("<div id=grid></div>","<div id=tot></div><div id=grid></div>"),
+                ("per=c*2,","per=c,"),
+                ("document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';",
+                 "document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';"
+                 "const NM={chicken:'FRIED PIECES',fillet:'THIGH FILLETS',tender:'TENDERS',wing:'WINGS',nugget:'NUGGETS',popcorn:'POPCORN'};"
+                 "document.getElementById('tot').innerHTML=(D.totals||[]).map(t=>{const x=[];if(t.soon)x.push('+'+t.soon+' pre-order soon');"
+                 "if(t.trays.length)x.push('+'+t.trays.join(', '));return `<div class=\"tl${t.n||x.length?'':' z'}\"><b>${t.n}</b><span>${NM[t.kind]||t.kind}</span><i>${esc(x.join(' · '))||'&nbsp;'}</i></div>`}).join('');")]:
+        assert pg.count(a)==1,a
+        pg=pg.replace(a,b)
+    return pg
+FRIED_PAGE=_fried_page()
 
 # ── FRYER BOARD (/fryer) — our own prep screen for the chip fryer (25 Oct 2026) ───────────────────
 # Square routes a MODIFIER with its parent item, so a chicken pack's CHIPS side lands on the Chicken KDS,
