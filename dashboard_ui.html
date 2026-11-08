@@ -8060,21 +8060,22 @@ function _poIdxLoad(then){
     else if(!_poIdx){const b=document.getElementById('po-search-results');if(b)b.innerHTML='<div style="font-size:var(--fs-sm);color:var(--red);">'+_mEsc((d&&d.error)||'search failed')+'</div>';}
   }).catch(()=>{_poIdxBusy=false;});
 }
-function _poKey(n){
+function _poKey(it){   // Christmas and catering versions are never in the everyday row (Marcel 9 Nov)
+  const n=it.name,pre=/^\s*christmas/i.test(n)?'XMAS ':(it.catering?'CATERING ':'');
   const k=String(n||'').toUpperCase().replace(/\(PACK\)/g,' ').replace(/^\s*CHRISTMAS\s+/,'').replace(/&/g,' ').replace(/\bSALAD\b/g,' ').replace(/\s+/g,' ').trim();
-  return _PO_ALIAS[k]||k||String(n||'').toUpperCase();
+  return pre+(_PO_ALIAS[k]||k||String(n||'').toUpperCase());
 }
 function _poOff(id,srv){const o=_poOpt[id];if(!o)return !!srv;
   if(Date.now()-o.t>180000||(o.a==='off')===!!srv){delete _poOpt[id];return !!srv;}return o.a==='off';}
-function _poRows(items){   // one row for each separate thing that can be switched: sizes, pack side, add-on, Christmas last
+function _poRows(items){   // one row for each separate thing that can be switched: sizes, pack side, add-on
   const rows=[];
   items.forEach(it=>{
-    if(it.kind==='modifier'){rows.push({label:'Add-on on packs'+(it.copies>1?(' ('+it.copies+' menus)'):''),ids:it.ids||[],kind:'modifier',name:it.name,off:_poOff((it.ids||[])[0],it.off),xmas:false,ord:2});return;}
-    const pack=/\(PACK\)/i.test(it.name),xmas=/^\s*christmas/i.test(it.name);
+    if(it.kind==='modifier'){rows.push({label:'Add-on on packs'+(it.copies>1?(' ('+it.copies+' menus)'):''),ids:it.ids||[],kind:'modifier',name:it.name,off:_poOff((it.ids||[])[0],it.off),ord:2});return;}
+    const pack=/\(PACK\)/i.test(it.name);
     ((it.vars||[]).length?it.vars:(it.ids||[]).map(id=>({id:id,name:'',off:it.off}))).forEach(v=>{
       const sz=(!v.name||v.name.toLowerCase()==='regular')?'':v.name;
-      const label=pack?'Pack side':(xmas?('Christmas '+(sz||'')).trim():(it.catering?('Catering '+(sz||'')).trim():(sz||'Regular')));
-      rows.push({label:label,ids:[v.id],kind:'',name:it.name,off:_poOff(v.id,v.off),xmas:xmas,ord:xmas?3:(pack?1:0)});
+      const label=pack?'Pack side':(sz||'Regular');
+      rows.push({label:label,ids:[v.id],kind:'',name:it.name,off:_poOff(v.id,v.off),ord:pack?1:0});
     });
   });
   return rows.sort((a,b)=>a.ord-b.ord);
@@ -8086,16 +8087,16 @@ function poSearch(){
   if(!_poIdx){box.innerHTML='<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">Loading the menu&hellip;</div>';_poIdxLoad(poSearch);return;}
   const incCat=!!(document.getElementById('po-inc-catering')||{}).checked;
   const fam={};let hidCat=0;
-  _poIdx.forEach(it=>{if(String(it.name||'').toLowerCase().indexOf(q)<0)return;if(it.catering&&!incCat){hidCat++;return;}const k=_poKey(it.name);(fam[k]=fam[k]||[]).push(it);});
+  _poIdx.forEach(it=>{if(String(it.name||'').toLowerCase().indexOf(q)<0)return;if(it.catering&&!incCat){hidCat++;return;}const k=_poKey(it);(fam[k]=fam[k]||[]).push(it);});
   _poFams=Object.keys(fam).map(k=>{
     const its=fam[k],plain=its.filter(x=>x.kind!=='modifier'&&!/\(PACK\)/i.test(x.name)&&!/^\s*christmas/i.test(x.name));
-    return {key:k,name:(plain[0]||its[0]).name.replace(/\s*\(PACK\)/i,''),rows:_poRows(its)};
+    return {key:k,name:(plain[0]||its[0]).name.replace(/\s*\(PACK\)/i,'')+(its[0].catering?' (Catering)':''),rows:_poRows(its)};
   }).sort((a,b)=>(a.name.toLowerCase().indexOf(q)!==0)-(b.name.toLowerCase().indexOf(q)!==0)||a.name.localeCompare(b.name)).slice(0,30);
   const note=hidCat?('<div style="font-size:var(--fs-sm);color:var(--muted);padding:4px 0;">'+hidCat+' catering item'+(hidCat>1?'s':'')+' hidden &middot; <a href="#" onclick="document.getElementById(\'po-inc-catering\').checked=true;poSearch();return false;" style="color:var(--amber);">show</a></div>'):'';
   if(!_poFams.length){box.innerHTML=note+'<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0;">No match.</div>';return;}
   const RED='background:#7f1d1d;border-color:#7f1d1d;color:#fecaca;';
   box.innerHTML=note+_poFams.map((f,i)=>{
-    const main=f.rows.filter(r=>!r.xmas),nOff=f.rows.filter(r=>r.off).length,multi=f.rows.length>1,open=!!_poOpen[f.key];
+    const main=f.rows,nOff=f.rows.filter(r=>r.off).length,multi=f.rows.length>1,open=!!_poOpen[f.key];
     const allOff=main.length&&main.every(r=>r.off);
     const btn=allOff?'<button class="po-btn go" onclick="poFamAll('+i+',\'on\')">Turn on'+(multi?' all':'')+'</button>'
       :'<button class="po-btn" style="'+RED+'" onclick="poFamAll('+i+',\'off\')">Turn off'+(multi?' all':'')+'</button>';
@@ -8114,8 +8115,8 @@ function _poSend(action,rows,label){
     else ops.push({id:r.ids[0],kind:'',name:action==='off'?'':r.name});});   // no name on an item OFF: the add-on is its own row, so a single size must not take it too
   poSearch();_poRunJob(action,ops,label);
 }
-function poFamAll(i,action){const f=_poFams[i];if(!f)return;   // Christmas versions only change from the dropdown
-  _poSend(action,f.rows.filter(r=>!r.xmas&&(action==='off'?!r.off:r.off)),f.name);}
+function poFamAll(i,action){const f=_poFams[i];if(!f)return;
+  _poSend(action,f.rows.filter(r=>action==='off'?!r.off:r.off),f.name);}
 function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.off?'on':'off',[r],f.name+' — '+r.label);}
 function prodOffOpen(){
   const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
