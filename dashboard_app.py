@@ -12042,7 +12042,7 @@ def _fried_page():
                 ("<div class=n>${esc(l.n.toUpperCase())}</div>","<div class=n>${esc(l.n.toUpperCase())}</div>${l.say?'<div class=sy>'+esc(l.say)+'</div>':''}"),
                 ("document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';",
                  "document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';"
-                 "const NM={chicken:'FRIED PIECES',fillet:'BURGER FILLETS',tender:'TENDERS',wing:'WINGS',nugget:'NUGGETS',popcorn:'POPCORN'};"
+                 "const NM={chicken:'FRIED PIECES',fillet:'THIGH FILLETS',tender:'TENDERS',wing:'WINGS',nugget:'NUGGETS',popcorn:'POPCORN'};"
                  "document.getElementById('tot').innerHTML=(D.totals||[]).map(t=>{const x=[];if(t.soon)x.push('+'+t.soon+' pre-order');"
                  "if(t.trays.length)x.push('+'+t.trays.join(', '));return `<div class=\"tl${t.n||x.length?'':' z'}\"><b>${t.n}</b><span>${NM[t.kind]||t.kind}</span><i>${esc(x.join(' · '))||'&nbsp;'}</i></div>`}).join('');")]:
         assert pg.count(a)==1,a
@@ -12202,14 +12202,14 @@ def fryer_page():
 # 3 tenders, TINY TENDERS = 2, ...). "FRIED CHICKEN" chosen as the whole chicken in a pack = 9 pieces.
 # Grilled tenders (Choose tenders: GRILLED) and the $1 hot-bar wings are not counted. Kinds shown and
 # per-item counts can be changed in db["fried_board"] without a code change.
-_FRIED_DEFAULTS={"kinds":["chicken","fillet","tender","wing","nugget","popcorn"],"exclude":[],
+_FRIED_DEFAULTS={"kinds":["tender","fillet","wing"],"exclude":[],                  # owner 8 Nov: only these three for now
                  "pos_timeout_min":30,"sched_lead_min":45,"warn_min":5,"late_min":10,"completed_hours":3,
                  "title":"FRIED CHICKEN - Back fryer","whole_fried_pcs":9,
                  "items":{"TENDER BOX":["tender",3],"4 CHICKEN TENDERS":["tender",4],"2 TENDERS + CHIPS":["tender",2],
                           "TINY TENDERS PACK":["tender",2],"FRIED CHICKEN BURGER":["fillet",1],
                           "BULLDOG CHICKEN SANDWICH":["fillet",1],"FRIED CHICKEN FAMILY PACK":["chicken",9],
                           "6 HOT WINGS":["wing",6],"MINI BRUNOS NUGGET PACK":["nugget",6],"POPCORN CHICKEN":["popcorn",1]}}
-_FRIED_LABEL={"chicken":"piece","fillet":"fillet","tender":"tender","wing":"wing","nugget":"nugget","popcorn":"popcorn"}
+_FRIED_LABEL={"chicken":"piece","fillet":"thigh fillet","tender":"tender","wing":"wing","nugget":"nugget","popcorn":"popcorn"}
 def _fried_cfg():
     c=dict(_FRIED_DEFAULTS); c.update(db.get("fried_board") or {}); return c
 def _fried_pieces(nm,var,mods,cfg):
