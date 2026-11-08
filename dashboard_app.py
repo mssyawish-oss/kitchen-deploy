@@ -11317,8 +11317,9 @@ def api_label_preview():
     except (TypeError,ValueError): qty=1
     if not item: return ("no item",400)
     now=datetime.now()
+    simple=str(request.args.get("simple","")).lower() in ("1","true")
     useby_s="" if simple else (_lbl_date(now+timedelta(days=shelf),withtime=(0<shelf<1)) if shelf>0 else "-")
-    img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s,1 if qty>1 else 0,qty)
+    img=_render_label_png(item,staff,_lbl_date(now,withtime=True),useby_s,1 if qty>1 else 0,qty,simple=simple)
     if img is None: return ("Pillow not installed on the server",500)
     import io as _io
     buf=_io.BytesIO(); img.save(buf,format="PNG")
