@@ -12110,11 +12110,17 @@ def _fryer_payload():
     cfg=_fryer_cfg(); cat=_fryer_catalog(); excl=[x.upper() for x in cfg["exclude"] if x]
     p=_station_payload(cfg,_fryer_state(),lambda o:_fryer_lines(o,cat,excl))
     p.update({"cat_err":cat["err"],"cat_n":len(cat["names"])}); return p
+_PASS_SEEN={}            # order id -> last time the Pass screen-reader saw its ticket open (runtime only)
 def _station_payload(cfg,st,lines_of):
     # shared ticket feed for our own station boards (/fryer, /fried): which orders are open / done, from _KDS_RAW
     now=time.time()
     hide={s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}
     pass_bumped={str(b.get("name","")).strip().lstrip('#') for b in (KDS_SCREEN.get("bumped") or {}).values()}
+    # The Pass screen-reader can miss the moment of a bump (misread frame, Completed tab open...). So also:
+    # a ticket we have SEEN on the Pass that is no longer there while the reader is healthy = cleared (8 Nov).
+    pass_open=set((KDS_SCREEN.get("open") or {}).keys())
+    reader_ok=now-(KDS_SCREEN.get("at") or 0)<30 and not KDS_SCREEN.get("err")
+    for k in [k for k,v in _PASS_SEEN.items() if now-v>2*86400]: _PASS_SEEN.pop(k,None)
     open_t=[]; done_t=[]
     for o in (_KDS_RAW.get("orders") or []):
         oid=o.get("id")
@@ -12146,11 +12152,13 @@ def _station_payload(cfg,st,lines_of):
         fulfilled=bool(ff) and all(s in ("PREPARED","COMPLETED","CANCELED","CANCELLED","FAILED") for s in ff)
         ispos=src.lower()=="point of sale"
         recalled=oid in st["recalled"] and oid not in st["bumped"]
+        if _kds_key(name) in pass_open: _PASS_SEEN[oid]=now
         why=""
         if oid in st["bumped"]: why="fryer"
         elif recalled: why="timeout" if now-st["recalled"][oid]>cfg["pos_timeout_min"]*60 else ""
         elif not ispos and fulfilled: why="pass"
         elif ispos and num and num in pass_bumped: why="pass"
+        elif reader_ok and oid in _PASS_SEEN and _kds_key(name) not in pass_open and now-_PASS_SEEN[oid]>20: why="pass"
         elif ispos and now-created.timestamp()>cfg["pos_timeout_min"]*60: why="timeout"
         elif not due and now-created.timestamp()>18*3600: why="timeout"
         ref=(o.get("reference_id") or "").strip()
