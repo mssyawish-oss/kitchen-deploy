@@ -12022,6 +12022,34 @@ tick();load(1);
 </script></body></html>"""
 
 
+# /fried page = the /fryer page plus a totals strip (what to drop now) and a "cook" line under each item.
+def _fried_page():
+    pg=FRYER_PAGE
+    for a,b in [("<title>Fryer</title>","<title>Fried Chicken</title>"),
+                ("'/api/fryer_board'","'/api/fried_board'"),("'/api/fryer_action'","'/api/fried_action'"),
+                ("<b>FRYER</b><b>No Open Tickets</b>","<b>FRIED CHICKEN</b><b>Nothing to cook</b>"),
+                ("#grid{position:absolute;top:84px;","#grid{position:absolute;top:196px;"),
+                ("#empty{position:absolute;top:84px;","#empty{position:absolute;top:196px;"),
+                ("</style>","""#tot{position:absolute;top:84px;left:8px;right:8px;height:104px;display:flex;gap:8px}
+.tl{flex:1;border-radius:10px;background:#1c1c1e;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
+.tl b{font-size:46px;line-height:1;font-weight:800;color:#ff9f0a;font-variant-numeric:tabular-nums}
+.tl span{font-size:14px;font-weight:700;letter-spacing:.06em;color:#e5e5ea;margin-top:4px}
+.tl i{font-style:normal;font-size:12px;color:#8e8e93;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:95%}
+.tl.z b{color:#48484a}.tl.z span{color:#636366}
+.ln .sy{color:#c25e00;font-size:17px;font-weight:800;margin-top:3px}
+</style>"""),
+                ("<div id=grid></div>","<div id=tot></div><div id=grid></div>"),
+                ("<div class=n>${esc(l.n.toUpperCase())}</div>","<div class=n>${esc(l.n.toUpperCase())}</div>${l.say?'<div class=sy>'+esc(l.say)+'</div>':''}"),
+                ("document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';",
+                 "document.getElementById('title').textContent=D.cfg.title||'FRYER - Prep';"
+                 "const NM={chicken:'FRIED PIECES',fillet:'BURGER FILLETS',tender:'TENDERS',wing:'WINGS',nugget:'NUGGETS',popcorn:'POPCORN'};"
+                 "document.getElementById('tot').innerHTML=(D.totals||[]).map(t=>{const x=[];if(t.soon)x.push('+'+t.soon+' pre-order');"
+                 "if(t.trays.length)x.push('+'+t.trays.join(', '));return `<div class=\"tl${t.n||x.length?'':' z'}\"><b>${t.n}</b><span>${NM[t.kind]||t.kind}</span><i>${esc(x.join(' · '))||'&nbsp;'}</i></div>`}).join('');")]:
+        assert pg.count(a)==1,a
+        pg=pg.replace(a,b)
+    return pg
+FRIED_PAGE=_fried_page()
+
 # ── FRYER BOARD (/fryer) — our own prep screen for the chip fryer (25 Oct 2026) ───────────────────
 # Square routes a MODIFIER with its parent item, so a chicken pack's CHIPS side lands on the Chicken KDS,
 # never the Fryer one. This board rebuilds the fryer's work from the order data the dash already polls
@@ -12056,8 +12084,8 @@ def _fryer_catalog():
     except Exception as e:
         _FRYER_CAT["err"]=str(e)[:160]; _FRYER_CAT["ts"]=time.time()-1500   # retry in ~5 min
     return _FRYER_CAT
-def _fryer_state():
-    st=db.setdefault("fryer_board_state",{})
+def _fryer_state(key="fryer_board_state"):
+    st=db.setdefault(key,{})
     for k in ("bumped","struck","recalled"): st.setdefault(k,{})
     return st
 def _fryer_lines(o,cat,excl):
@@ -12079,8 +12107,12 @@ def _fryer_lines(o,cat,excl):
             out.append({"k":"%d"%i,"q":q,"n":nm,"v":var,"mods":sides,"note":"","for":""})
     return out
 def _fryer_payload():
-    cfg=_fryer_cfg(); cat=_fryer_catalog(); st=_fryer_state(); now=time.time()
-    excl=[x.upper() for x in cfg["exclude"] if x]
+    cfg=_fryer_cfg(); cat=_fryer_catalog(); excl=[x.upper() for x in cfg["exclude"] if x]
+    p=_station_payload(cfg,_fryer_state(),lambda o:_fryer_lines(o,cat,excl))
+    p.update({"cat_err":cat["err"],"cat_n":len(cat["names"])}); return p
+def _station_payload(cfg,st,lines_of):
+    # shared ticket feed for our own station boards (/fryer, /fried): which orders are open / done, from _KDS_RAW
+    now=time.time()
     hide={s.strip().lower() for s in (db.get("orders_hide_sources") or ["Payment Links"]) if str(s).strip()}
     pass_bumped={str(b.get("name","")).strip().lstrip('#') for b in (KDS_SCREEN.get("bumped") or {}).values()}
     open_t=[]; done_t=[]
@@ -12094,7 +12126,7 @@ def _fryer_payload():
         created=_parse_dt(o.get("created_at"))
         if not created: continue
         if now-created.timestamp()>2*86400 and not any(s in ("PROPOSED","RESERVED") for s in ff): continue
-        lines=_fryer_lines(o,cat,excl)
+        lines=lines_of(o)
         if not lines: continue
         due=None; rname=""; dtype=""
         for f in o.get("fulfillments") or []:
@@ -12135,16 +12167,18 @@ def _fryer_payload():
     open_t.sort(key=lambda t:(t["due"] or t["created"]))
     done_t.sort(key=lambda t:t["done_at"],reverse=True)
     return {"open":open_t,"done":done_t[:60],"ts":int(now*1000),"board_age_s":int(now-(_KDS_RAW.get("ts") or 0)),
-            "cfg":{k:cfg[k] for k in ("warn_min","late_min","title")},"cat_err":cat["err"],"cat_n":len(cat["names"])}
+            "cfg":{k:cfg[k] for k in ("warn_min","late_min","title")}}
 @app.route("/api/fryer_board")
 def api_fryer_board():
     return jsonify(_fryer_payload())
 @app.route("/api/fryer_action",methods=["POST"])
 def api_fryer_action():
+    return _station_action("fryer_board_state")
+def _station_action(key):
     d=request.get_json(silent=True) or {}; oid=str(d.get("id") or ""); act=d.get("act")
     if not oid: return jsonify({"ok":False})
     with data_lock:
-        st=_fryer_state(); now=time.time()
+        st=_fryer_state(key); now=time.time()
         if act=="bump": st["bumped"][oid]=now; st["recalled"].pop(oid,None)
         elif act=="recall": st["bumped"].pop(oid,None); st["recalled"][oid]=now
         elif act=="strike":
@@ -12159,6 +12193,98 @@ def api_fryer_action():
 @app.route("/fryer")
 def fryer_page():
     return Response(FRYER_PAGE,mimetype="text/html")
+
+
+# ── FRIED CHICKEN BOARD (/fried) — what the back-kitchen chicken fryer has to cook (8 Nov 2026) ──────────
+# Same ticket feed as /fryer, but each line is turned into fried PIECES (bone-in pieces, burger fillets,
+# tenders, wings, nuggets, popcorn) and the open tickets are added up in big tiles at the top, so the cook
+# sees "drop 7 pieces + 4 tenders" at a glance. Piece counts come from the menu descriptions (TENDER BOX =
+# 3 tenders, TINY TENDERS = 2, ...). "FRIED CHICKEN" chosen as the whole chicken in a pack = 9 pieces.
+# Grilled tenders (Choose tenders: GRILLED) and the $1 hot-bar wings are not counted. Kinds shown and
+# per-item counts can be changed in db["fried_board"] without a code change.
+_FRIED_DEFAULTS={"kinds":["chicken","fillet","tender","wing","nugget","popcorn"],"exclude":[],
+                 "pos_timeout_min":30,"sched_lead_min":45,"warn_min":5,"late_min":10,"completed_hours":3,
+                 "title":"FRIED CHICKEN - Back fryer","whole_fried_pcs":9,
+                 "items":{"TENDER BOX":["tender",3],"4 CHICKEN TENDERS":["tender",4],"2 TENDERS + CHIPS":["tender",2],
+                          "TINY TENDERS PACK":["tender",2],"FRIED CHICKEN BURGER":["fillet",1],
+                          "BULLDOG CHICKEN SANDWICH":["fillet",1],"FRIED CHICKEN FAMILY PACK":["chicken",9],
+                          "6 HOT WINGS":["wing",6],"MINI BRUNOS NUGGET PACK":["nugget",6],"POPCORN CHICKEN":["popcorn",1]}}
+_FRIED_LABEL={"chicken":"piece","fillet":"fillet","tender":"tender","wing":"wing","nugget":"nugget","popcorn":"popcorn"}
+def _fried_cfg():
+    c=dict(_FRIED_DEFAULTS); c.update(db.get("fried_board") or {}); return c
+def _fried_pieces(nm,var,mods,cfg):
+    """fried pieces in ONE of this line item: [(kind, count, 'tray' or '')]"""
+    N=_fryer_norm(nm); V=(var or "").upper(); M=[(re.sub(r'\s+',' ',m.upper()).strip(),q) for m,q in mods]
+    if "$1 WING" in N or any(m=="GRILLED" for m,_ in M): return []      # hot-bar wings / grilled tenders
+    out=[]
+    tray="CATERING TRAY" in V
+    num=re.search(r'(\d+)',V)
+    if tray and N in ("POPCORN CHICKEN","CHICKEN NUGGETS"):
+        out.append(("popcorn" if "POPCORN" in N else "nugget",1,V.replace(" CATERING TRAY","").strip()+" tray"))
+    elif N in cfg["items"]:
+        k,n=cfg["items"][N]; out.append((k,n,""))
+    elif N=="FRIED CHICKEN":
+        m=re.search(r'(\d+)\s*PC',V) or next((re.search(r'(\d+)\s*PC',m) for m,_ in M if re.search(r'(\d+)\s*PC',m)),None)
+        out.append(("chicken",int(m.group(1)) if m else 1,""))
+    elif re.fullmatch(r'(\d+) PCS FRIED CHICKEN PACK',N):
+        out.append(("chicken",int(N.split()[0]),""))
+    elif N=="WINGS" and num: out.append(("wing",int(num.group(1)),""))
+    elif N=="CHICKEN NUGGETS": out.append(("nugget",int(num.group(1)) if num else 6,""))
+    for m,q in M:
+        a=re.fullmatch(r'ADD (\d+) TENDERS?',m)
+        if a: out.append(("tender",int(a.group(1))*q,""))
+        elif m in ("ADD CHICKEN PATTY","ADD FRIED CHICKEN PATTY"): out.append(("fillet",q,""))
+        elif m=="FRIED CHICKEN": out.append(("chicken",cfg["whole_fried_pcs"]*q,""))
+    return [x for x in out if x[0] in cfg["kinds"]]
+def _fried_lines(o,cfg):
+    out=[]; excl=[x.upper() for x in cfg["exclude"] if x]
+    for i,li in enumerate(o.get("line_items") or []):
+        nm=(li.get("name") or "").strip()
+        if not nm or any(x in nm.upper() for x in excl): continue
+        var=(li.get("variation_name") or "").strip()
+        try: q=int(float(li.get("quantity") or 1))
+        except (TypeError,ValueError): q=1
+        mods=[]
+        for m in li.get("modifiers") or []:
+            if not m.get("name"): continue
+            try: mq=int(float(m.get("quantity") or 1))
+            except (TypeError,ValueError): mq=1
+            mods.append(((m.get("name") or "").strip(),mq))
+        pcs=_fried_pieces(nm,var,mods,cfg)
+        if not pcs: continue
+        cook=[{"kind":k,"n":n*q,"tray":t} for k,n,t in pcs]
+        per={}                                            # one figure per kind: TENDER BOX + ADD 1 TENDER = "4 TENDERS"
+        for c in cook:
+            if not c["tray"]: per[c["kind"]]=per.get(c["kind"],0)+c["n"]
+        say=", ".join(["%d %s%s"%(n,_FRIED_LABEL[k].upper(),"" if n==1 else "S") for k,n in per.items()]+
+                      ["%d × %s"%(q,c["tray"].upper()) for c in cook if c["tray"]])
+        if var.lower()=="regular": var=""
+        out.append({"k":"%d"%i,"q":q,"n":nm,"v":var,"mods":[m for m,_ in mods],
+                    "note":(li.get("note") or "").strip(),"for":"","cook":cook,"say":say})
+    return out
+def _fried_payload():
+    cfg=_fried_cfg(); p=_station_payload(cfg,_fryer_state("fried_board_state"),lambda o:_fried_lines(o,cfg))
+    tot={k:{"n":0,"trays":[],"soon":0} for k in cfg["kinds"]}; now_ms=time.time()*1000
+    for t in p["open"]:
+        later=bool(t["due"] and t["due"]-now_ms>15*60000)          # pre-order more than 15 min away
+        for l in t["lines"]:
+            if l["k"] in (t["struck"] or []): continue
+            for c in l["cook"]:
+                d=tot[c["kind"]]
+                if c["tray"]: d["trays"].append(c["tray"])
+                elif later: d["soon"]+=c["n"]
+                else: d["n"]+=c["n"]
+    p["totals"]=[dict(kind=k,**tot[k]) for k in cfg["kinds"]]
+    return p
+@app.route("/api/fried_board")
+def api_fried_board():
+    return jsonify(_fried_payload())
+@app.route("/api/fried_action",methods=["POST"])
+def api_fried_action():
+    return _station_action("fried_board_state")
+@app.route("/fried")
+def fried_page():
+    return Response(FRIED_PAGE,mimetype="text/html")
 @app.route("/api/orders_debug2")
 def api_orders_debug2():
     """Board triage: every order Square returned, with its fulfillment verdict and whether the board
