@@ -1158,6 +1158,11 @@ def _probe_credit_stock(pid,name,temp):
 
 # ── LIVE FRIED-CHICKEN STOCK (whole pieces; 18/batch, ~15 min) ──
 DEFAULT_FRIED_MAP={"2 PCS FRIED CHICKEN PACK|Regular":2,"3 PCS FRIED CHICKEN PACK|Regular":3,"2 PCS PACK SPECIAL|Regular":2}
+# Chicken packs are combos from Nov 2026: Square records only the pieces, so the pack's chicken line is what gets counted.
+ONE_LINE_ROT_MAP={"1/4 BBQ CHICKEN|Regular":0.25,"1/2 BBQ CHICKEN|Regular":0.5}
+ONE_LINE_FRIED_MAP={"2 PCS FRIED CHICKEN|Regular":2,"3 PCS FRIED CHICKEN|Regular":3,"4 PCS FRIED CHICKEN|Regular":4}
+def _rot_map(): return {**((db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP),**ONE_LINE_ROT_MAP}
+def _fried_map(): return {**((db.get("fried") or {}).get("map") or DEFAULT_FRIED_MAP),**ONE_LINE_FRIED_MAP}
 FRY_LIVE={"day":None,"available":0.0,"sold_today":0.0,"seen":[]}
 fry_lock=threading.Lock()
 _fl0=db.get("fry_live")                                   # restore across restarts
@@ -1305,7 +1310,7 @@ def _cg_square_days(days=57):
     cfg=db.get("square_config",{}) or {}
     token=(cfg.get("access_token") or "").strip(); loc=(cfg.get("location_id") or "").strip()
     if not token or not loc: return {}
-    bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP
+    bm=_rot_map()
     begin=(datetime.now(timezone.utc)-timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     out={}; cursor=None
     for _pg in range(80):
@@ -1556,8 +1561,8 @@ def query_square_sales(cfg,minutes=40,states=("OPEN","COMPLETED")):
     token=(cfg.get("access_token") or "").strip();loc=(cfg.get("location_id") or "").strip()
     if not token or not loc: return []
     begin=(datetime.now(timezone.utc)-timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP
-    fm=(db.get("fried") or {}).get("map") or DEFAULT_FRIED_MAP;kws=_nowait_keywords();wkws=_wait_keywords();out=[];allo=[];cursor=None
+    bm=_rot_map()
+    fm=_fried_map();kws=_nowait_keywords();wkws=_wait_keywords();out=[];allo=[];cursor=None
     for _pg in range(8):   # paginate so a full-day catch-up isn't truncated
         q={"location_ids":[loc],"query":{"filter":{"date_time_filter":{"created_at":{"start_at":begin}},"state_filter":{"states":list(states)}},"sort":{"sort_field":"CREATED_AT","sort_order":"ASC"}},"limit":500}
         if cursor: q["cursor"]=cursor
@@ -1634,7 +1639,7 @@ def _kds_fetch(cfg):
     global _KDS_RAW
     _KDS_RAW={"ts":time.time(),"orders":allo}   # raw orders (with fulfillment uids/versions) for the auto-complete tick
     out=[]
-    bm=(db.get("rotisserie") or {}).get("map") or DEFAULT_ROT_MAP   # same whole-bird equivalents the stock deduction uses
+    bm=_rot_map()   # same whole-bird equivalents the stock deduction uses
     for o in allo:
         oid=o.get("id")
         if not oid: continue
@@ -12295,7 +12300,7 @@ def _fried_pieces(nm,var,mods,cfg):
     elif N=="FRIED CHICKEN":
         m=re.search(r'(\d+)\s*PC',V) or next((re.search(r'(\d+)\s*PC',m) for m,_ in M if re.search(r'(\d+)\s*PC',m)),None)
         out.append(("chicken",int(m.group(1)) if m else 1,""))
-    elif re.fullmatch(r'(\d+) PCS FRIED CHICKEN PACK',N):
+    elif re.fullmatch(r'(\d+) PCS FRIED CHICKEN(?: PACK)?',N):
         out.append(("chicken",int(N.split()[0]),""))
     elif N=="WINGS" and num: out.append(("wing",int(num.group(1)),""))
     elif N=="CHICKEN NUGGETS": out.append(("nugget",int(num.group(1)) if num else 6,""))
@@ -12968,7 +12973,7 @@ def rotisserie_upload():
     try:
         text=request.get_data(as_text=True)
         rot=db.get("rotisserie") or {}
-        mapping=rot.get("map") or DEFAULT_ROT_MAP
+        mapping={**(rot.get("map") or DEFAULT_ROT_MAP),**ONE_LINE_ROT_MAP}
         profile,weeks,total=build_rotisserie_profile(text,mapping)
         if total<=0: return jsonify({"ok":False,"error":"No matching BBQ chicken sales found in that file."})
         with data_lock:
