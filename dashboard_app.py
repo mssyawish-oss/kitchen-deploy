@@ -13617,7 +13617,7 @@ _ck_lock=threading.Lock()
 def _ck_cfg():
     c=dict(db.get("chicken_slips") or {})
     c.setdefault("enabled",True);c.setdefault("url","http://192.168.0.3:8080");c.setdefault("printer_ip","192.168.0.62")
-    c.setdefault("interval",2);c.setdefault("confirm_secs",6);c.setdefault("lookback_min",480)
+    c.setdefault("interval",1);c.setdefault("confirm_secs",2);c.setdefault("lookback_min",240)
     return c
 def _ck_log(msg):
     print("chicken slips:",msg)
