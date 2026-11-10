@@ -13760,8 +13760,15 @@ def _ck_step(st,tickets,count,now,confirm):
     for k in cur:
         st["pending"].pop(k,None);st["offpage"].pop(k,None)
     st["open"]=dict(cur);st["count"]=count
+    # every open ticket is visible, so a ticket parked as off-page has really been cleared (10 Nov: 11 missed in the rush)
+    allseen=(count is not None and len(cur)>=count)
+    if allseen:
+        for k,n in list(st["offpage"].items()):
+            st["pending"][k]={"since":now,"name":n,"was_off":True};st["offpage"].pop(k,None)
     fire=[]
     for k,p in list(st["pending"].items()):
+        if p.get("was_off") and not allseen:
+            st["offpage"][k]=p["name"];st["pending"].pop(k,None);continue
         if now-p["since"]>=confirm:
             fire.append(p["name"]);st["pending"].pop(k,None)
     return fire
