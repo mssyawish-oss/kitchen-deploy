@@ -13657,28 +13657,62 @@ def _ck_slips(order):
     return out
 def _ck_is_dine_in(order):
     return any((f.get("type") or "").upper() in ("IN_STORE","DINE_IN") for f in (order.get("fulfillments") or []))
+def _ck_font(sz,bold=True):
+    from PIL import ImageFont
+    for p in ((r"C:\Windows\Fonts\arialbd.ttf",r"C:\Windows\Fonts\arial.ttf") if bold else (r"C:\Windows\Fonts\arial.ttf",)):
+        try: return ImageFont.truetype(p,sz)
+        except Exception: pass
+    return ImageFont.load_default()
+def _ck_wrap(d,text,font,maxw):
+    out=[];cur=""
+    for w in str(text).split():
+        t=(cur+" "+w).strip()
+        if d.textlength(t,font=font)<=maxw or not cur: cur=t
+        else: out.append(cur);cur=w
+    if cur: out.append(cur)
+    return out or [""]
+def _ck_slip_image(number,src,tm,box,slip,dine_in):
+    # drawn as a picture, laid out like Square's kitchen tickets: 576 dots wide (80mm paper)
+    from PIL import Image,ImageDraw
+    W=576;P=20;im=Image.new("L",(W,2400),255);d=ImageDraw.Draw(im);y=0
+    fnum=_ck_font(66);ftype=_ck_font(34);fitem=_ck_font(36);fmod=_ck_font(29,False);ffoot=_ck_font(24,False);fband=_ck_font(68)
+    def band(y):
+        d.rectangle((0,y,W,y+104),fill=0)
+        w=d.textlength("DINE IN",font=fband);d.text(((W-w)/2,y+15),"DINE IN",font=fband,fill=255)
+        return y+104
+    def rule(y):
+        d.rectangle((P,y,W-P,y+1),fill=0);return y+2
+    def item(y,li_label,li,indent):
+        for i,line in enumerate(_ck_wrap(d,"1 x  "+li_label,fitem,W-2*P-indent)):
+            d.text((P+(indent if i==0 else 0),y),line,font=fitem,fill=0);y+=45
+        for m in (li.get("modifiers") or []):
+            if m.get("name"):
+                for line in _ck_wrap(d,str(m["name"]).upper(),fmod,W-2*P-indent-58):
+                    d.text((P+indent+58,y),line,font=fmod,fill=0);y+=37
+        if (li.get("note") or "").strip():
+            for line in _ck_wrap(d,"! "+li["note"].strip(),fmod,W-2*P-indent-58):
+                d.text((P+indent+58,y),line,font=fmod,fill=0);y+=37
+        return y
+    if dine_in: y=band(y)+18
+    else: y=10
+    d.text((P,y),str(number),font=fnum,fill=0);y+=84
+    if not dine_in:
+        d.text((P,y),"TAKEAWAY",font=ftype,fill=0);y+=52
+    y=rule(y)+24
+    y=item(y,slip["label"],slip["chicken"],16)
+    for s in slip["sides"]:
+        y=item(y+12,_slip_sideclean(s.get("name")),s,40)
+    y=rule(y+20)+12
+    d.text((P,y),box,font=ffoot,fill=0)
+    r=(str(src)+"  "+str(tm)).strip();d.text((W-P-d.textlength(r,font=ffoot),y),r,font=ffoot,fill=0);y+=40
+    if dine_in: y=band(y+6)
+    return im.crop((0,0,W,y+8))
 def _ck_slip_bytes(number,src,tm,box,slip,dine_in):
     E=_SLIP_ESC;G=_SLIP_GS
-    def t(s): return str(s).encode("ascii","replace")
-    def mods(li):
-        b=bytearray()
-        for m in (li.get("modifiers") or []):
-            if m.get("name"): b+=t("  - "+m["name"].lower())+b"\n"
-        if (li.get("note") or "").strip(): b+=t("  ! "+li["note"].strip())+b"\n"
-        return bytes(b)
-    o=bytearray();o+=E+b"@"+E+b"\x61\x01"
-    o+=_slip_logo_bytes()
-    o+=G+b"\x21\x11"+E+b"\x45\x01"+t(number)+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
-    if dine_in:
-        o+=G+b"\x21\x11"+E+b"\x45\x01"+G+b"\x42\x01"+t("DINE IN".center(21))+b"\n"+t(" "*21)+G+b"\x42\x00"+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
-    else:
-        o+=E+b"\x45\x01"+t("TAKEAWAY")+E+b"\x45\x00"+b"\n"
-    o+=E+b"\x61\x00"+t("-"*42)+b"\n"
-    o+=G+b"\x21\x01"+E+b"\x45\x01"+t(slip["label"])+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"+mods(slip["chicken"])
-    for s in slip["sides"]:
-        o+=E+b"J\x10"+G+b"\x21\x01"+E+b"\x45\x01"+t(_slip_sideclean(s.get("name")))+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"+mods(s)
-    o+=E+b"\x61\x01"+E+b"M\x01"+E+b"\x45\x01"+t(box)+E+b"\x45\x00"+t("  "+src+" "+tm)+E+b"M\x00"+b"\n"
-    o+=E+b"J\x14"+G+b"\x56\x41\x00"+E+b"e\x06"
+    im=_ck_slip_image(number,src,tm,box,slip,dine_in).convert("L").point(lambda v:255 if v<128 else 0).convert("1")
+    w,h=im.size;rb=(w+7)//8
+    o=bytearray();o+=E+b"@"+G+b"v0\x00"+bytes((rb&255,rb>>8,h&255,h>>8))+im.tobytes()
+    o+=E+b"J\x30"+G+b"\x56\x41\x00"
     return bytes(o)
 def _ck_send(payload):
     ip=_ck_cfg()["printer_ip"];last=None
