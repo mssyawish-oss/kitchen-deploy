@@ -13600,6 +13600,238 @@ def slip_loop():
                 st["printed"]=list(printed);_slip_state_save(st);first=False
         except Exception as e: print(f"slip_loop: {e}")
         time.sleep(SLIP_POLL)
+# ===== CHICKEN SLIPS =====================================================================================
+# Staff clear a whole ticket on the Square Chicken KDS, then pack. Square exposes no per-screen "cleared" signal,
+# so this reads the Chicken tablet's Screen Stream: a ticket gone for a few seconds, with the "N Open" count
+# agreeing it left (not just moved to another page), prints that order's slips once on the cash drawer printer.
+# Packs (one box) = one slip with chicken + its sides. Family packs / specials / chicken on its own = chicken only.
+CK_STATE_FILE=os.path.join(BASE_DIR,"ck_slip_state.json")
+CK_PACK_CHICKEN={"NIVQXPSXYQOKYSVCE7MR6JFJ","W2XQMQQTJSFHF3QSZQHM4NO2","YA7FNXU3WMC6NMTGQ5NRIWZB","U4JS765EGUOXQXXXQPVSKFI7",
+                 "65NQWXI7RWOH22VBV6E653DI","72BJ7RN5EO2XTGW7QIU7TIMB","NPTYJEMQLNFZJAVDTH7DVHDA"}
+CK_PACK_SIDE={"DDIY6UHAQXNBUWKCSNJGWSJ7","DE3Y27AII4YR5DO6MMER3TBR","VUC4GH6SLYOWE5TBODZ3VM66","5SVD53XYU6R3RQ5PDQH4XZSF","V4IHL5YFJBR6EHPVENPWRCYO",
+              "P6X2IG7KZGSWDE6ICYZHCSMH","SDVLOI32NDZIYW76UFLXRJJO","YZYCWTE5GEB4ONZHYWVS7CJ3","WAO3EJVXOVYXTJGSPMYLFIBJ","JGT7B6AVGGXGFBYAVNXPUUZX",
+              "U7L33ZUGJZRVZ6SIDSMZGLYZ","5FGD6DCZGLT5FIKA2SI6BH5D","TCYXZJAQEU74BRMXF7DCUWDH"}
+CK_MAIN_NAMES={"BBQ CHICKEN","BUTTERFLIED CHICKEN (GF)","GLUTEN FREE BUTTERFLIED CHICKEN","FRIED CHICKEN","WHOLE CHICKEN","WHOLE BUTTERFLIED CHICKEN"}
+CK={"open":{},"pending":{},"offpage":{},"count":None,"ready":False,"at":0.0,"err":"","sig":None,"raw":"","log":[]}
+_ck_lock=threading.Lock()
+def _ck_cfg():
+    c=dict(db.get("chicken_slips") or {})
+    c.setdefault("enabled",True);c.setdefault("url","http://192.168.0.3:8080");c.setdefault("printer_ip","192.168.0.62")
+    c.setdefault("interval",2);c.setdefault("confirm_secs",6);c.setdefault("lookback_min",480)
+    return c
+def _ck_log(msg):
+    print("chicken slips:",msg)
+    CK["log"]=([{"t":int(time.time()),"m":str(msg)[:200]}]+CK["log"])[:60]
+def _ck_state():
+    try:
+        with open(CK_STATE_FILE,encoding="utf-8") as f: s=json.load(f)
+        return {"printed":list(s.get("printed") or []),"progress":dict(s.get("progress") or {})}
+    except Exception: return {"printed":[],"progress":{}}
+def _ck_save(s):
+    s["printed"]=s["printed"][-3000:];tmp=CK_STATE_FILE+".tmp"
+    with open(tmp,"w",encoding="utf-8") as f: json.dump(s,f)
+    os.replace(tmp,CK_STATE_FILE)
+def _ck_qty(li):
+    try: return max(1,int(float(li.get("quantity") or 1)))
+    except Exception: return 1
+def _ck_chicken_label(li):
+    n=_slip_norm(li.get("name"));v=(li.get("variation_name") or "").strip()
+    return n+(" "+v.upper() if v and v.lower()!="regular" else "")
+def _ck_slips(order):
+    # -> [{"chicken":line,"sides":[lines],"label":str}], one per box/chicken to pack
+    lines=order.get("line_items") or [];out=[];j=0;n=len(lines)
+    while j<n:
+        li=lines[j];vid=li.get("catalog_object_id") or ""
+        if vid in CK_PACK_CHICKEN:
+            k=j+1;sides=[]
+            while k<n and (lines[k].get("catalog_object_id") or "") in CK_PACK_SIDE: sides.append(lines[k]);k+=1
+            q=_ck_qty(li);units=[]
+            for s in sides: units+=[s]*_ck_qty(s)
+            per=(len(units)//q) if q and len(units)%q==0 else 0
+            for c in range(q):
+                out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":units[c*per:(c+1)*per] if per else (units if c==0 else [])})
+            j=k;continue
+        if _slip_norm(li.get("name")) in CK_MAIN_NAMES:
+            for _ in range(_ck_qty(li)): out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":[]})
+        j+=1
+    return out
+def _ck_is_dine_in(order):
+    return any((f.get("type") or "").upper() in ("IN_STORE","DINE_IN") for f in (order.get("fulfillments") or []))
+def _ck_slip_bytes(number,src,tm,box,slip,dine_in):
+    E=_SLIP_ESC;G=_SLIP_GS
+    def t(s): return str(s).encode("ascii","replace")
+    def mods(li):
+        b=bytearray()
+        for m in (li.get("modifiers") or []):
+            if m.get("name"): b+=t("  - "+m["name"].lower())+b"\n"
+        if (li.get("note") or "").strip(): b+=t("  ! "+li["note"].strip())+b"\n"
+        return bytes(b)
+    o=bytearray();o+=E+b"@"+E+b"\x61\x01"
+    o+=_slip_logo_bytes()
+    o+=G+b"\x21\x11"+E+b"\x45\x01"+t(number)+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
+    if dine_in:
+        o+=G+b"\x21\x11"+E+b"\x45\x01"+G+b"\x42\x01"+t("DINE IN".center(21))+b"\n"+t(" "*21)+G+b"\x42\x00"+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"
+    else:
+        o+=E+b"\x45\x01"+t("TAKEAWAY")+E+b"\x45\x00"+b"\n"
+    o+=E+b"\x61\x00"+t("-"*42)+b"\n"
+    o+=G+b"\x21\x01"+E+b"\x45\x01"+t(slip["label"])+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"+mods(slip["chicken"])
+    for s in slip["sides"]:
+        o+=E+b"J\x10"+G+b"\x21\x01"+E+b"\x45\x01"+t(_slip_sideclean(s.get("name")))+E+b"\x45\x00"+G+b"\x21\x00"+b"\n"+mods(s)
+    o+=E+b"\x61\x01"+E+b"M\x01"+E+b"\x45\x01"+t(box)+E+b"\x45\x00"+t("  "+src+" "+tm)+E+b"M\x00"+b"\n"
+    o+=E+b"J\x14"+G+b"\x56\x41\x00"+E+b"e\x06"
+    return bytes(o)
+def _ck_send(payload):
+    ip=_ck_cfg()["printer_ip"];last=None
+    for attempt in range(3):
+        try:
+            with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+                s.settimeout(6);s.connect((ip,PRINTER_PORT));s.sendall(payload)
+            return True
+        except Exception as e:
+            last=e;time.sleep(1.5)
+    _ck_log("printer failed: %s"%str(last)[:100]);return False
+def _ck_print_order(order,force=False):
+    # prints any boxes not yet out; resumes after a printer failure and never repeats unless force=True
+    with _ck_lock:
+        oid=order.get("id");st=_ck_state()
+        if not force and oid in st["printed"]: return 0
+        slips=_ck_slips(order)
+        if not slips:
+            st["printed"].append(oid);_ck_save(st);return 0
+        num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);dine=_ck_is_dine_in(order)
+        start=0 if force else int(st["progress"].get(oid,0));n=0
+        for i,s in enumerate(slips):
+            if i<start: continue
+            if not _ck_send(_ck_slip_bytes(num,src,tm,"Box %d of %d"%(i+1,len(slips)),s,dine)):
+                st["progress"][oid]=i;_ck_save(st);return n
+            n+=1
+        st["progress"].pop(oid,None)
+        if oid not in st["printed"]: st["printed"].append(oid)
+        _ck_save(st);_ck_log("order %s: printed %d slip(s)%s"%(num,n," DINE IN" if dine else ""))
+        return n
+def _ck_step(st,tickets,count,now,confirm):
+    # pure tracker: tickets=[{"name":..}], count=the screen's "N Open". Returns the names to print now.
+    cur={}
+    for t in tickets:
+        k=_kds_key(t["name"])
+        if k: cur[k]=t["name"]
+    if not st["ready"]:
+        st.update({"ready":True,"open":{k:n for k,n in cur.items()},"count":count,"pending":{},"offpage":{}});return []
+    prev=st["open"];gone=[k for k in prev if k not in cur];new=[k for k in cur if k not in prev]
+    pc=st["count"]
+    left=(count is not None and pc is not None and count<=pc+len(new)-len(gone))
+    for k in gone:
+        if left: st["pending"][k]={"since":now,"name":prev[k]}
+        else: st["offpage"][k]=prev[k]
+    for k in cur:
+        st["pending"].pop(k,None);st["offpage"].pop(k,None)
+    st["open"]=dict(cur);st["count"]=count
+    fire=[]
+    for k,p in list(st["pending"].items()):
+        if now-p["since"]>=confirm:
+            fire.append(p["name"]);st["pending"].pop(k,None)
+    return fire
+_CK_PROMPT=("This is a kitchen order-display screen. The FIRST output line must be 'OPEN_COUNT: N' where N is the number in the "
+  "selected pill at the top that reads like 'N Open'; if you cannot read it, output 'OPEN_COUNT: ?'. Then ")+_KDS_PROMPT[0].lower()+_KDS_PROMPT[1:]
+def _ck_read(jpeg):
+    cfg=_rotcam_cfg();key=(cfg.get("gemini_key") or "").strip()
+    if not key or not jpeg: return None,None,"no key/frame"
+    img=_downscale_jpeg(jpeg,1100);_gem_count_call()
+    model=(cfg.get("model") or "gemini-2.5-flash").strip();gencfg={"temperature":0,"maxOutputTokens":400}
+    if "2.5" in model or "thinking" in model.lower(): gencfg["thinkingConfig"]={"thinkingBudget":0}
+    body={"contents":[{"parts":[{"text":_CK_PROMPT},{"inline_data":{"mime_type":"image/jpeg","data":base64.b64encode(img).decode()}}]}],"generationConfig":gencfg}
+    url="https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"%(model,urllib.parse.quote(key))
+    try:
+        req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+        with urllib.request.urlopen(req,timeout=25,context=SSL_CTX) as r: data=json.loads(r.read().decode())
+        parts=(((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        txt="".join(p.get("text","") for p in parts if isinstance(p,dict)).strip()
+    except Exception as e: return None,None,"error: "+str(e)[:120]
+    return _ck_parse(txt)+(txt,)
+def _ck_parse(txt):
+    if "COMPLETED_VIEW" in txt.upper(): return "COMPLETED_VIEW",None
+    m=re.search(r'OPEN_COUNT:\s*(\d+)',txt);count=int(m.group(1)) if m else None
+    out=[]
+    for line in txt.splitlines():
+        line=line.strip().lstrip("-*• ").strip()
+        if "|" not in line: continue
+        nm=line.partition("|")[0].strip()
+        if nm and not _kds_ticket_junk(nm): out.append({"name":nm})
+    return out,count
+def _ck_find_order(name,lookback):
+    key=_kds_key(name);st=_ck_state();hit=None
+    for o in _slip_orders(lookback):
+        if _kds_key(_slip_number(o))==key and _ck_slips(o) and o.get("id") not in st["printed"]: hit=o
+    return hit
+def ck_loop():
+    while True:
+        cfg=_ck_cfg();iv=max(1,int(cfg.get("interval",2) or 2))
+        try:
+            if not cfg.get("enabled") or not (_rotcam_cfg().get("gemini_key") or "").strip():
+                time.sleep(iv);continue
+            jpeg,err=_kds_frame({"url":cfg["url"]})
+            if err or not jpeg:
+                CK["err"]=err or "no frame";time.sleep(max(iv,5));continue
+            sig=_frame_sig(jpeg);prev=CK.get("sig");CK["sig"]=sig;moved=True
+            if prev is not None and sig is not None and len(prev)==len(sig):
+                moved=(sum(abs(a-b) for a,b in zip(prev,sig))/float(len(sig)))>=6.0
+            if not moved and CK["ready"] and not CK["pending"]:
+                CK["at"]=time.time();time.sleep(iv);continue
+            tickets,count,raw=_ck_read(jpeg);CK["raw"]=raw;CK["at"]=time.time()
+            if tickets=="COMPLETED_VIEW" or tickets is None:
+                CK["err"]="" if tickets else str(raw)[:120];time.sleep(iv);continue
+            CK["err"]=""
+            for name in _ck_step(CK,tickets,count,time.time(),float(cfg.get("confirm_secs",6))):
+                o=_ck_find_order(name,int(cfg.get("lookback_min",480)))
+                if o: _ck_print_order(o)
+                else: _ck_log("ticket %s cleared: no chicken order to print"%name)
+        except Exception as e: print("ck_loop:",str(e)[:160])
+        time.sleep(iv)
+@app.route("/api/ck_status")
+def api_ck_status():
+    cfg=_ck_cfg();st=_ck_state();rows=[]
+    try:
+        bumped=KDS_SCREEN.get("bumped") or {}
+        for o in _slip_orders(240):
+            sl=_ck_slips(o)
+            if not sl: continue
+            k=_kds_key(_slip_number(o));done=o.get("id") in st["printed"]
+            rows.append({"id":o.get("id"),"number":_slip_number(o),"time":_slip_time(o),"src":_slip_src(o),"boxes":len(sl),"printed":done,
+                         "dine_in":_ck_is_dine_in(o),"missed":(not done and k in bumped and k not in CK["open"])})
+    except Exception as e: CK["err"]=str(e)[:120]
+    return jsonify({"ok":True,"cfg":cfg,"open":list(CK["open"].values()),"count":CK["count"],"pending":list(CK["pending"].values()),"offpage":list(CK["offpage"].values()),
+                    "ready":CK["ready"],"age":int(time.time()-CK["at"]) if CK["at"] else None,"err":CK["err"],"log":CK["log"][:25],"orders":rows[-40:][::-1]})
+@app.route("/api/ck_print",methods=["POST"])
+def api_ck_print():
+    oid=str((request.get_json(silent=True) or {}).get("id") or "")
+    for o in _slip_orders(720):
+        if o.get("id")==oid:
+            return jsonify({"ok":True,"printed":_ck_print_order(o,force=True)})
+    return jsonify({"ok":False,"error":"order not found"})
+@app.route("/api/ck_test",methods=["POST"])
+def api_ck_test():
+    side={"name":"CHIPS","modifiers":[{"name":"NO SALT"}]}
+    a=_ck_send(_ck_slip_bytes("TEST","POS","--:--","Box 1 of 1",{"label":"1/4 BUTTERFLIED CHICKEN (GF)","chicken":{},"sides":[side]},False))
+    b=_ck_send(_ck_slip_bytes("TEST","POS","--:--","Box 1 of 1",{"label":"BBQ CHICKEN WHOLE","chicken":{"modifiers":[{"name":"CUT IN 4"}]},"sides":[]},True))
+    return jsonify({"ok":bool(a and b),"printer":_ck_cfg()["printer_ip"]})
+@app.route("/api/ck_config",methods=["POST"])
+def api_ck_config():
+    d=request.get_json(silent=True) or {};cur=dict(_ck_cfg())
+    if "enabled" in d: cur["enabled"]=bool(d["enabled"])
+    for k in ("url","printer_ip"):
+        if d.get(k): cur[k]=str(d[k]).strip()
+    with data_lock: db["chicken_slips"]=cur;save_data(db)
+    return jsonify({"ok":True,"cfg":cur})
+@app.route("/chickenslips")
+def chickenslips_page():
+    return Response('''<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>Chicken slips</title>
+<style>body{font:17px system-ui;margin:16px;background:#111;color:#eee}h1{font-size:22px}.r{display:flex;gap:10px;align-items:center;padding:10px;border-bottom:1px solid #333}.g{flex:1}.m{background:#7a1414}button{font:inherit;padding:8px 14px}small{color:#aaa}</style>
+<h1>Chicken slips</h1><div id=s></div><div id=o></div><script>
+async function p(id){await fetch('/api/ck_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});l()}
+async function l(){const d=await (await fetch('/api/ck_status',{cache:'no-store'})).json();
+s.innerHTML='<p>'+(d.err?'Chicken screen feed problem: '+d.err:'Watching Chicken screen: '+d.open.length+' tickets')+'</p>';
+o.innerHTML=d.orders.map(x=>'<div class="r '+(x.missed?'m':'')+'"><div class=g><b>'+x.number+'</b> '+(x.dine_in?'DINE IN ':'')+'<small>'+x.time+' '+x.src+' - '+x.boxes+' slip(s)'+(x.missed?' - MISSED':x.printed?' - printed':' - waiting')+'</small></div><button onclick="p(\\''+x.id+'\\')">Print</button></div>').join('')}
+l();setInterval(l,8000)</script>''',mimetype="text/html")
 # ===== SELF-UPDATE — the app pulls its own updates straight from GitHub ============
 # The Windows scheduled task kept stalling, and the app folder on the server is not a git
 # checkout — so this uses plain HTTPS to GitHub (no git needed): read the branch head, and
@@ -13803,6 +14035,7 @@ if __name__=="__main__":
     threading.Thread(target=pl_report_loop,daemon=True).start()
     threading.Thread(target=reminder_loop,daemon=True).start()
     if _slips_enabled(): threading.Thread(target=slip_loop,daemon=True).start()   # combo box slips (server only)
+    if _slips_enabled(): threading.Thread(target=ck_loop,daemon=True).start()                      # chicken slips when a Chicken KDS ticket is cleared
     # morning auto-switch-on writes to LIVE Square — server only, never a dev copy
     if sys.platform=="win32" or os.environ.get("DASH_AUTOON")=="1":
         threading.Thread(target=prodoff_auto_loop,daemon=True).start()
