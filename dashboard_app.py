@@ -13820,12 +13820,17 @@ def _ck_pass_cleared(name,since,before=15,after=30):
     return bool(b and since-before<=b.get("ts",0)<=since+after)
 def _ck_release(cfg,now=None):
     now=now or time.time()
+    passchk=bool(cfg.get("pass_check",True))
     for k,h in list((CK.get("hold") or {}).items()):
-        if _ck_pass_cleared(h["name"],h["since"]):
-            CK["hold"].pop(k,None);CK.setdefault("passed",{})[k]=now
-            _ck_log("ticket %s cleared on the Pass: no slip"%h["name"]);continue
-        fresh=KDS_SCREEN.get("at",0)>=h["since"]+4 and not KDS_SCREEN.get("err")
-        if not (fresh or now-h["since"]>=20): continue
+        if k in (CK.get("open") or {}):                      # came back on the next read: a misread, not a clear
+            CK["hold"].pop(k,None);continue
+        if CK.get("read_at",0)<h["since"]+0.5: continue      # wait for ONE more Chicken read showing it gone
+        if passchk:
+            if _ck_pass_cleared(h["name"],h["since"]):
+                CK["hold"].pop(k,None);CK.setdefault("passed",{})[k]=now
+                _ck_log("ticket %s cleared on the Pass: no slip"%h["name"]);continue
+            fresh=KDS_SCREEN.get("at",0)>=h["since"]+4 and not KDS_SCREEN.get("err")
+            if not (fresh or now-h["since"]>=20): continue
         CK["hold"].pop(k,None)
         o=_ck_find_order(h["name"],int(cfg.get("lookback_min",480)))
         if o: _ck_print_order(o)
@@ -13857,7 +13862,7 @@ def ck_loop():
             CK["err"]=""
             conf=float(cfg.get("confirm_secs",6))
             for name in _ck_step(CK,tickets,count,time.time(),conf):
-                CK.setdefault("hold",{})[_kds_key(name)]={"name":name,"since":time.time()-conf}
+                CK.setdefault("hold",{})[_kds_key(name)]={"name":name,"since":time.time()}
             _ck_release(cfg)
         except Exception as e: print("ck_loop:",str(e)[:160])
         try: _ck_release(cfg)
@@ -13896,6 +13901,8 @@ def api_ck_config():
     if "enabled" in d: cur["enabled"]=bool(d["enabled"])
     for k in ("url","printer_ip"):
         if d.get(k): cur[k]=str(d[k]).strip()
+    if "pass_check" in d: cur["pass_check"]=bool(d["pass_check"])
+    if "confirm_secs" in d: cur["confirm_secs"]=max(0.0,min(10.0,float(d["confirm_secs"])))
     with data_lock: db["chicken_slips"]=cur;save_data(db)
     return jsonify({"ok":True,"cfg":cur})
 @app.route("/chickenslips")
