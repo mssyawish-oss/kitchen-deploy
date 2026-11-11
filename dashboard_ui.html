@@ -994,6 +994,11 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .alarm-card{background:var(--surface);border:1px solid rgba(251,155,36,.45);border-radius:var(--radius-lg);padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 @keyframes alarm-card-pulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 26px -8px var(--alarm-accent,#ef4444);}50%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 64px 2px var(--alarm-accent,#ef4444);}}
 .alarm-bell{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(251,155,36,.08);border:2px solid #fb9b24;color:#fb9b24;box-shadow:0 0 26px rgba(251,155,36,.25);}
+/* Items job pill: shows a running switch on/off job on every page (12 Nov 2026) */
+#pj-bar{position:fixed;left:50%;top:8px;transform:translate(-50%,-170%);z-index:470;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--pjc,#22c55e);border-radius:999px;padding:8px 20px 10px;font-size:15px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .3s ease;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+#pj-bar.show{transform:translate(-50%,0);}
+#pj-bar b{color:var(--pjc,#22c55e);}
+#pj-bar .pj-fill{position:absolute;left:0;bottom:0;height:3px;background:var(--pjc,#22c55e);transition:width .4s;}
 /* checklist reminder card: sound once, shows 20 s, goes by itself (owner, 11 Nov 2026) */
 #task-remind{position:fixed;left:50%;top:18px;transform:translate(-50%,-160%);z-index:480;width:min(580px,calc(100vw - 32px));background:var(--surface);border:1px solid rgba(34,197,94,.45);border-left:6px solid #22c55e;border-radius:16px;padding:16px 18px 14px;box-shadow:0 18px 50px rgba(0,0,0,.6);transition:transform .35s ease;cursor:pointer;}
 #task-remind.show{transform:translate(-50%,0);}
@@ -8091,9 +8096,32 @@ function _poRunJob(action,ops,label){
   if(!ops.length){_poStatus('Nothing to do','var(--green)');return;}
   _poProgress(0,ops.length,(action==='off'?'Switching off ':'Switching on ')+(label||''),action==='off'?'var(--amber)':'var(--green)');
   fetch('/api/product_job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action,ops:ops,label:label||''})})
-    .then(r=>r.json()).then(d=>{if(d&&d.ok)_poWatchJob(d.job);else _poStatus('Could not start: '+_mEsc((d&&d.error)||'?'),'var(--red)');})
+    .then(r=>r.json()).then(d=>{if(d&&d.ok){_poWatchJob(d.job);_pjBarTick();}else _poStatus('Could not start: '+_mEsc((d&&d.error)||'?'),'var(--red)');})
     .catch(()=>_poStatus('Failed — could not reach the server','var(--red)'));
 }
+// Items jobs keep running on the server after the panel closes (owner, 12 Nov 2026: show it's still going).
+// A small pill at the top of every page shows the running job, then a tick (or a warning) and goes away.
+let _pjBarSeen={},_pjBarT=null;
+function _pjBarShow(html,col,pct){let el=document.getElementById('pj-bar');
+  if(!el){el=document.createElement('div');el.id='pj-bar';document.body.appendChild(el);}
+  el.style.setProperty('--pjc',col);el.innerHTML='<span>'+html+'</span><div class="pj-fill" style="width:'+pct+'%"></div>';el.classList.add('show');}
+function _pjBarHide(){const e=document.getElementById('pj-bar');if(e)e.classList.remove('show');}
+function _pjBarTick(){clearTimeout(_pjBarT);
+  fetch('/api/product_jobs',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    const js=(d&&d.jobs)||[];const live=js.filter(j=>j.state!=='done');
+    if(live.length){const j=live[0];const more=live.length>1?(' · '+(live.length-1)+' more waiting'):'';
+      _pjBarShow('<b>'+(j.action==='off'?'Switching off ':'Switching on ')+_mEsc(j.label||j.current||'')+'</b> · '+j.done+' of '+j.total+more,
+        j.action==='off'?'#f59e0b':'#22c55e',j.total?Math.round(j.done/j.total*100):0);
+      live.forEach(x=>{_pjBarSeen[x.id]=1;});_pjBarT=setTimeout(_pjBarTick,1500);return;}
+    const fin=js.filter(j=>j.state==='done'&&_pjBarSeen[j.id]);
+    if(fin.length){const j=fin[fin.length-1];fin.forEach(x=>{delete _pjBarSeen[x.id];});
+      const bad=(j.fail||0)+(j.pending||0);
+      _pjBarShow(bad?('<b>'+_mEsc(j.label)+'</b> · '+bad+' couldn’t be changed — open Items to see why'):('<b>✓ '+_mEsc(j.label)+'</b> · done'),bad?'#f59e0b':'#22c55e',100);
+      setTimeout(_pjBarHide,bad?12000:4000);}
+    _pjBarT=setTimeout(_pjBarTick,6000);
+  }).catch(()=>{_pjBarT=setTimeout(_pjBarTick,8000);});
+}
+setTimeout(_pjBarTick,5000);
 function _poResumeJobs(){   // panel opened (or page reloaded) while a job is running → pick its progress back up
   fetch('/api/product_jobs',{cache:'no-store'}).then(r=>r.json()).then(d=>{
     const js=(d&&d.jobs)||[];const live=js.filter(j=>j.state!=='done');
