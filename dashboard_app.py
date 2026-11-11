@@ -13804,6 +13804,27 @@ def _ck_find_order(name,lookback):
     for o in _slip_orders(lookback):
         if _kds_key(_slip_number(o))==key and _ck_slips(o) and o.get("id") not in st["printed"]: hit=o
     return hit
+# 11 Nov (Marcel): clearing an order on the PASS also takes it off the Chicken screen, and that printed
+# slips. Slips are only for tickets cleared ON the Chicken screen, so a ticket that left the Chicken screen
+# is held until the Pass reader has looked again; if the Pass cleared that order at about the same moment,
+# no slip. (Pass clear first, Chicken clear minutes later = still a Chicken clear, still prints.)
+def _ck_pass_cleared(name,since,before=15,after=30):
+    b=(KDS_SCREEN.get("bumped") or {}).get(_kds_key(name))
+    return bool(b and since-before<=b.get("ts",0)<=since+after)
+def _ck_release(cfg,now=None):
+    now=now or time.time()
+    for k,h in list((CK.get("hold") or {}).items()):
+        if _ck_pass_cleared(h["name"],h["since"]):
+            CK["hold"].pop(k,None);CK.setdefault("passed",{})[k]=now
+            _ck_log("ticket %s cleared on the Pass: no slip"%h["name"]);continue
+        fresh=KDS_SCREEN.get("at",0)>=h["since"]+4 and not KDS_SCREEN.get("err")
+        if not (fresh or now-h["since"]>=20): continue
+        CK["hold"].pop(k,None)
+        o=_ck_find_order(h["name"],int(cfg.get("lookback_min",480)))
+        if o: _ck_print_order(o)
+        else: _ck_log("ticket %s cleared: no chicken order to print"%h["name"])
+    for k,t in list((CK.get("passed") or {}).items()):
+        if now-t>7200: CK["passed"].pop(k,None)
 def ck_loop():
     while True:
         cfg=_ck_cfg();iv=max(1,int(cfg.get("interval",2) or 2))
@@ -13822,11 +13843,13 @@ def ck_loop():
             if tickets=="COMPLETED_VIEW" or tickets is None:
                 CK["err"]="" if tickets else str(raw)[:120];time.sleep(iv);continue
             CK["err"]=""
-            for name in _ck_step(CK,tickets,count,time.time(),float(cfg.get("confirm_secs",6))):
-                o=_ck_find_order(name,int(cfg.get("lookback_min",480)))
-                if o: _ck_print_order(o)
-                else: _ck_log("ticket %s cleared: no chicken order to print"%name)
+            conf=float(cfg.get("confirm_secs",6))
+            for name in _ck_step(CK,tickets,count,time.time(),conf):
+                CK.setdefault("hold",{})[_kds_key(name)]={"name":name,"since":time.time()-conf}
+            _ck_release(cfg)
         except Exception as e: print("ck_loop:",str(e)[:160])
+        try: _ck_release(cfg)
+        except Exception as e: print("ck_release:",str(e)[:160])
         time.sleep(iv)
 @app.route("/api/ck_status")
 def api_ck_status():
@@ -13838,7 +13861,7 @@ def api_ck_status():
             if not sl: continue
             k=_kds_key(_slip_number(o));done=o.get("id") in st["printed"]
             rows.append({"id":o.get("id"),"number":_slip_number(o),"time":_slip_time(o),"src":_slip_src(o),"boxes":len(sl),"printed":done,
-                         "dine_in":_ck_is_dine_in(o),"missed":(not done and k in bumped and k not in CK["open"])})
+                         "dine_in":_ck_is_dine_in(o),"missed":(not done and k in bumped and k not in CK["open"] and k not in (CK.get("passed") or {}))})
     except Exception as e: CK["err"]=str(e)[:120]
     return jsonify({"ok":True,"cfg":cfg,"open":list(CK["open"].values()),"count":CK["count"],"pending":list(CK["pending"].values()),"offpage":list(CK["offpage"].values()),
                     "ready":CK["ready"],"age":int(time.time()-CK["at"]) if CK["at"] else None,"err":CK["err"],"log":CK["log"][:25],"orders":rows[-40:][::-1]})
