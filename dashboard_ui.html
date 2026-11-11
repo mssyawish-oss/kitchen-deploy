@@ -7317,6 +7317,8 @@ function _taskRemind(taskId){
 // End of shift: any job still unticked → the regular alarm (repeats) with the list, each job with its own
 // Done, plus Silence 5 / 10 min. Comes back until every job is ticked. 21:10 = before the screens sleep at 21:15.
 const _PD_END={day:'15:45',night:'21:10',kitchen:'21:10'};   // day shift ends 4pm, night 9pm (owner, 11 Nov 2026)
+// one-off "this list is already done today" (owner, 11 Nov 2026): appData.pd_skip_day={'YYYY-MM-DD':['day']} — no reminders, no end alarm
+function _pdSkipToday(shift){const s=(appData.pd_skip_day||{})[_prepToday()];return Array.isArray(s)&&s.includes(shift);}
 function _pdOpen(shift){const ch=appData.packdown_checks||{};return (appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift&&!t.notbusy&&_taskActiveToday(t)&&!(ch[t.id]||{}).done);}
 function _endCheckPop(shift){
   if(!_pdOpen(shift).length)return;
@@ -9590,6 +9592,7 @@ function checkAllReminders(){
     if(!t.remind_at||!_dueWithin(t.remind_at,now,_REMIND_GRACE))return;
     if(!_taskActiveToday(t))return;   // weekly / fortnightly / set-date scheduling
     if(!_pdShiftsHere().includes(t.shift||'day'))return;   // front screen alarms Day/Night jobs, kitchen screen the Kitchen jobs
+    if(_pdSkipToday(t.shift||'day'))return;                  // that list was already done today
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
@@ -9600,7 +9603,7 @@ function checkAllReminders(){
     document.getElementById('packdown-badge')?.classList.add('show');
   });}catch(e){}
   try{_pdShiftsHere().forEach(sh=>{   // end of shift: unticked jobs → the regular alarm until they're all ticked
-    const e=_PD_END[sh];if(!e||!_dueWithin(e,now,_REMIND_GRACE))return;
+    const e=_PD_END[sh];if(!e||_pdSkipToday(sh)||!_dueWithin(e,now,_REMIND_GRACE))return;
     const key='pdend-'+sh+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;
     if(!_pdOpen(sh).length)return;
     _markFired(key);_endCheckPop(sh);
