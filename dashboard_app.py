@@ -13678,41 +13678,63 @@ def _ck_wrap(d,text,font,maxw):
         else: out.append(cur);cur=w
     if cur: out.append(cur)
     return out or [""]
+def _ck_pack_name(slip):
+    # Orders API has only the pack's pieces, so rebuild the pack name: "1/4 CHICKEN PACK 2 SIDES"
+    if not slip.get("sides") or (slip.get("chicken") or {}).get("catalog_object_id") not in CK_PACK_CHICKEN: return ""
+    n=_slip_norm((slip.get("chicken") or {}).get("name"));k=len(slip["sides"])
+    base="1/4 CHICKEN PACK" if n.startswith("1/4") else "1/2 CHICKEN PACK" if n.startswith("1/2") else "FRIED CHICKEN PACK" if "FRIED" in n else ""
+    return (base+(" %d SIDE%s"%(k,"" if k==1 else "S"))) if base else ""
 def _ck_slip_image(number,src,tm,box,slip,dine_in):
-    # drawn as a picture, laid out like Square's kitchen tickets: 576 dots wide (80mm paper)
+    # Marcel 11 Nov layout: pack name big on ONE line, the chicken below with its options under it,
+    # then each side as "- SIDE" with its options under it. Plain Arial, close to Square's tickets.
     from PIL import Image,ImageDraw
-    W=576;P=20;im=Image.new("L",(W,2400),255);d=ImageDraw.Draw(im);y=0
-    fnum=_ck_font(66);ftype=_ck_font(34);fitem=_ck_font(36);fmod=_ck_font(29,False);ffoot=_ck_font(24,False);fband=_ck_font(68)
-    def band(y):
-        d.rectangle((0,y,W,y+104),fill=0)
-        w=d.textlength("DINE IN",font=fband);d.text(((W-w)/2,y+15),"DINE IN",font=fband,fill=255)
-        return y+104
-    def rule(y):
-        d.rectangle((P,y,W-P,y+1),fill=0);return y+2
-    def item(y,li_label,li,indent):
-        for i,line in enumerate(_ck_wrap(d,"1 x  "+li_label,fitem,W-2*P-indent)):
-            d.text((P+(indent if i==0 else 0),y),line,font=fitem,fill=0);y+=45
-        for m in (li.get("modifiers") or []):
-            if m.get("name"):
-                for line in _ck_wrap(d,str(m["name"]).upper(),fmod,W-2*P-indent-58):
-                    d.text((P+indent+58,y),line,font=fmod,fill=0);y+=37
-        if (li.get("note") or "").strip():
-            for line in _ck_wrap(d,"! "+li["note"].strip(),fmod,W-2*P-indent-58):
-                d.text((P+indent+58,y),line,font=fmod,fill=0);y+=37
+    W=576;P=24;im=Image.new("L",(W,2400),255);d=ImageDraw.Draw(im);y=0
+    fnum=_ck_font(64);ftype=_ck_font(30,False);fchk=_ck_font(32,False);fmod=_ck_font(27,False);ffoot=_ck_font(23,False);fband=_ck_font(60)
+    def dashes(y):                                   # thick dashed edge so dine-in slips stand out
+        for x in range(0,W,36): d.rectangle((x,y,x+22,y+9),fill=0)
+        return y+9
+    def band(y,top=True):
+        if top: y=dashes(y)+8
+        d.rectangle((0,y,W,y+90),fill=0)
+        w=d.textlength("DINE IN",font=fband);d.text(((W-w)/2,y+13),"DINE IN",font=fband,fill=255)
+        y+=90
+        if not top: y=dashes(y+8)
         return y
-    if dine_in: y=band(y)+18
-    else: y=10
-    d.text((P,y),str(number),font=fnum,fill=0);y+=84
+    def rule(y):
+        d.rectangle((P,y,W-P,y+2),fill=0);return y+3
+    def one_line(y,text,start=40):
+        sz=start
+        while sz>22 and d.textlength(text,font=_ck_font(sz))>W-2*P: sz-=1
+        d.text((P,y),text,font=_ck_font(sz),fill=0);return y+sz+12
+    def lines(y,text,font,x,step):
+        for line in _ck_wrap(d,text,font,W-P-x):
+            d.text((x,y),line,font=font,fill=0);y+=step
+        return y
+    def mods(y,li,x):
+        for m in (li.get("modifiers") or []):
+            if m.get("name"): y=lines(y,str(m["name"]).upper(),fmod,x,36)
+        if (li.get("note") or "").strip(): y=lines(y,"! "+li["note"].strip(),fmod,x,36)
+        return y
+    y=band(y)+16 if dine_in else 14
+    d.text((P,y),str(number),font=fnum,fill=0);y+=78
     if not dine_in:
-        d.text((P,y),"TAKEAWAY",font=ftype,fill=0);y+=52
-    y=rule(y)+24
-    y=item(y,slip["label"],slip["chicken"],16)
-    for s in slip["sides"]:
-        y=item(y+12,_slip_sideclean(s.get("name")),s,40)
-    y=rule(y+20)+12
+        d.text((P,y),"TAKEAWAY",font=ftype,fill=0);y+=48
+    y=rule(y)+22
+    pack=_ck_pack_name(slip);chk=slip.get("chicken") or {}
+    if pack:
+        y=one_line(y,pack)+4
+        y=lines(y,slip["label"],fchk,P+20,42)
+        y=mods(y,chk,P+56)+8
+    else:
+        y=one_line(y,slip["label"])+4
+        y=mods(y,chk,P+36)+8
+    for sd in slip["sides"]:
+        y=lines(y,"- "+_slip_sideclean(sd.get("name")),fchk,P+20,42)
+        y=mods(y,sd,P+56)
+    y=rule(y+16)+12
     d.text((P,y),box,font=ffoot,fill=0)
     r=(str(src)+"  "+str(tm)).strip();d.text((W-P-d.textlength(r,font=ffoot),y),r,font=ffoot,fill=0);y+=40
-    if dine_in: y=band(y+6)
+    if dine_in: y=band(y+6,top=False)
     return im.crop((0,0,W,y+8))
 def _ck_slip_bytes(number,src,tm,box,slip,dine_in):
     E=_SLIP_ESC;G=_SLIP_GS
