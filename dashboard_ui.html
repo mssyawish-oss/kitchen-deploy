@@ -1417,6 +1417,26 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .pdrow.overdue .pd-time{color:#f87171;}
 /* Checklist in prep-style cards: shift tasks 2/3, "If not busy" 1/3 */
 .pdx-cols{display:grid;grid-template-columns:2fr 1fr;gap:12px;align-items:start;}
+/* compact checklist grid (11 Nov 2026) */
+.pdg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+@media(max-width:1150px){.pdg{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:900px){.pdg{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:560px){.pdg{grid-template-columns:1fr;}}
+.pdg-t{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 10px;min-height:58px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.pdg-box{width:30px;height:30px;min-width:30px;border:2px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;color:#fff;}
+.pdg-tx{min-width:0;flex:1;}
+.pdg-nm{font-size:14px;font-weight:700;line-height:1.22;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.pdg-sub{font-size:12px;color:var(--muted);margin-top:2px;font-weight:600;}
+.pdg-t.due{border-color:#f59e0b;background:rgba(245,158,11,.10);}
+.pdg-t.due .pdg-box{border-color:#f59e0b;}
+.pdg-t.due .pdg-sub{color:#fbbf24;}
+.pdg-t.done{opacity:.5;}
+.pdg-t.done .pdg-box{background:var(--green);border-color:var(--green);}
+.pdg-t.done .pdg-nm{text-decoration:line-through;}
+.pdg-t.done .pdg-sub{color:var(--green);}
+.pdg-ph{width:34px;height:34px;object-fit:cover;border-radius:6px;}
+.pdg-relax-h{margin:12px 0 6px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#a78bfa;}
+.pdg-relax .pdg-t{border-style:dashed;}
 @media(max-width:900px){.pdx-cols{grid-template-columns:1fr;}}
 .pdx-narrow .prep-col-body{grid-template-columns:1fr!important;}
 .pdx-tick{width:40px;height:40px;min-width:40px;border:2px solid var(--border2);border-radius:var(--radius);background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--green);font-size:20px;font-weight:800;flex-shrink:0;}
@@ -7272,23 +7292,18 @@ function renderPackdownPage(){
   const doneN=tasks.filter(t=>(checks[t.id]||{}).done).length,total=tasks.length,pct=total?Math.round(doneN/total*100):0;
   const odN=main.filter(t=>{const tm=_pdMin(t.remind_at);return tm!==null&&tm<nowM&&!((checks[t.id]||{}).done);}).length;
   if(prog)prog.innerHTML='<div class="pd-prog"><div class="pd-prog-top"><span><b>'+doneN+'</b> of <b>'+total+'</b> done \u00b7 <b>'+pct+'%</b></span>'+(odN?('<span style="color:#f87171;font-weight:800;">'+odN+' overdue</span>'):'')+'</div><div class="pd-prog-bar"><div class="pd-prog-fill" style="width:'+pct+'%;"></div></div></div>';
-  const card=t=>{
-    const st=checks[t.id]||{done:false};
-    const tm=_pdMin(t.remind_at);
-    const due=!st.done&&tm!==null&&tm<nowM;
-    const timeChip=t.remind_at?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+t.remind_at+(due?' \u00b7 due':'')+'</span>'):'';
-    const doneMeta=st.done?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; Done'+(st.time?' '+st.time:'')+(st.who?' \u00b7 '+_mEsc(st.who):'')+'</span>'):'';
-    const meta=(timeChip||doneMeta)?('<div class="pc-meta">'+(st.done?doneMeta:timeChip)+'</div>'):'';
-    const pthumb=(st.done&&st.photo)?('<img class="pc-pthumb" src="/photos/'+st.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+st.photo+'\')" title="Tap to enlarge">'):'';
-    const cls='prep-card'+(st.done?' done':'')+(due?' pdx-due':'');
-    return '<div class="'+cls+'" onclick="toggleTask(\''+t.id+'\')"><div class="pc-row"><div class="pdx-tick">'+(st.done?'&#10003;':'')+'</div><div class="pc-mid"><div class="pc-name">'+_mEsc(t.name)+'</div>'+meta+'</div>'+pthumb+'</div></div>';
+  // Compact grid (owner, 11 Nov 2026: "too many items to scroll through"): small tick tiles, 3 across,
+  // time order. Due jobs stand out, ticked ones fade, upcoming ones are plain; 'If not busy' is a strip below.
+  const ampm=h=>{const a=String(h).split(':').map(Number);return ((a[0]%12)||12)+':'+String(a[1]).padStart(2,'0')+(a[0]<12?'am':'pm');};
+  const tile=t=>{
+    const st=checks[t.id]||{done:false};const tm=_pdMin(t.remind_at);
+    const due=!st.done&&tm!==null&&tm<=nowM;
+    const sub=st.done?('✓ '+(st.time||'Done')+(st.who?' · '+_mEsc(st.who):'')):(t.remind_at?(ampm(t.remind_at)+(due?' · due':'')):'');
+    const ph=(st.done&&st.photo)?('<img class="pdg-ph" src="/photos/'+st.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+st.photo+'\')">'):'';
+    return '<div class="pdg-t'+(st.done?' done':due?' due':'')+'" onclick="toggleTask(\''+t.id+'\')"><div class="pdg-box">'+(st.done?'✓':'')+'</div><div class="pdg-tx"><div class="pdg-nm">'+_mEsc(t.name)+'</div><div class="pdg-sub">'+sub+'</div></div>'+ph+'</div>';
   };
-  const secBox=(label,color,arr,extraCls)=>{
-    const dC=arr.filter(t=>(checks[t.id]||{}).done).length;
-    const body=arr.length?arr.map(card).join(''):'<div class="prep-col-empty">None</div>';
-    return '<div class="prep-col'+(extraCls?(' '+extraCls):'')+'"><div class="prep-col-accent" style="background:'+color+';"></div><div class="prep-col-head" style="color:'+color+';border-color:'+color+';"><span>'+label+'</span><span class="pcq">'+dC+'/'+arr.length+'</span></div><div class="prep-col-body">'+body+'</div></div>';
-  };
-  list.innerHTML='<div class="pdx-cols"'+(relax.length?'':' style="grid-template-columns:1fr;display:grid;"')+'>'+secBox(shift==='kitchen'?'Kitchen tasks':((shift==='day'?'Day':'Night')+' shift tasks'),'#f59e0b',main)+(relax.length?secBox('If not busy','#a78bfa',relax,'pdx-narrow'):'')+'</div>';   // no empty 'If not busy' column
+  list.innerHTML='<div class="pdg">'+main.map(tile).join('')+'</div>'
+    +(relax.length?('<div class="pdg-relax-h">If not busy</div><div class="pdg pdg-relax">'+relax.map(tile).join('')+'</div>'):'');
 }
 function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.length!==2)return null;const h=parseInt(a[0],10),m=parseInt(a[1],10);return (isNaN(h)||isNaN(m))?null:h*60+m;}
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
