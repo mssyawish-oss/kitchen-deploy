@@ -13853,7 +13853,7 @@ def ck_loop():
             if prev is not None and sig is not None and len(prev)==len(sig):
                 moved=(sum(abs(a-b) for a,b in zip(prev,sig))/float(len(sig)))>=6.0
             stale=bool(CK["open"]) and time.time()-CK.get("read_at",0)>=15
-            if not moved and not stale and CK["ready"] and not CK["pending"]:
+            if not moved and not stale and CK["ready"] and not CK["pending"] and not CK.get("hold"):
                 CK["at"]=time.time();time.sleep(iv);continue
             tickets,count,raw=_ck_read(jpeg);CK["raw"]=raw;CK["at"]=time.time();CK["read_at"]=CK["at"]
             if tickets is not None: CK["read_sig"]=sig
