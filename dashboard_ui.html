@@ -3198,7 +3198,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="modal-header"><div class="modal-title">PACKDOWN SETUP</div><button class="modal-close" onclick="closeModal('packdown-admin-modal')">Close</button></div>
     <div id="packdown-task-admin-list"></div>
     <div class="form-row mt-8"><div class="label">Task Name</div><input class="input" id="new-task-name" placeholder="Clean fryers"></div>
-    <div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option></select></div>
+    <div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option><option value="kitchen">Kitchen (dish hand)</option></select></div>
     <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-task-recur" style="background:var(--surface2);" onchange="onTaskRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="new-task-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-task-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
     <div id="new-task-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-task-anchor"><div style="font-size:var(--fs-sm);color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
@@ -7195,16 +7195,43 @@ async function removeProduct(ref){
 
 // PACKDOWN
 function autoShift(){const h=new Date().getHours();return h>=17?'night':'day';}
+// Which checklist lists show on a screen (owner, 11 Nov 2026): the front dash shows Day + Night,
+// the kitchen dash shows only the Kitchen (dish hand) list. Stored per screen in device_prefs[name].pdarea;
+// a screen with nothing set shows all three. Alarms and the tab badge follow the same rule.
+const _PD_LISTS={day:'Day Shift',night:'Night Shift',kitchen:'Kitchen'};
+const _PD_HINT={day:'10am–5pm',night:'5pm–10pm',kitchen:'dish hand · 5pm–9pm'};
+function _pdArea(name){const a=_devEntry(name||devName()).pdarea;return (a==='front'||a==='kitchen')?a:'all';}
+function _pdShiftsHere(){const a=_pdArea();return a==='front'?['day','night']:a==='kitchen'?['kitchen']:['day','night','kitchen'];}
+function _pdAutoHere(){const s=_pdShiftsHere();return s.length===1?s[0]:autoShift();}
+function _pdCurShift(){const s=_pdShiftsHere();const v=packdownShift==='auto'?_pdAutoHere():packdownShift;return s.includes(v)?v:_pdAutoHere();}
+function _pdAreaSet(v){const tgt=_acDevTarget();const names=tgt===_ALLDEV?_devAllNames():[tgt];
+  appData.device_prefs=appData.device_prefs||{};
+  names.forEach(n=>{const e=appData.device_prefs[n]=appData.device_prefs[n]||{};if(v==='all')delete e.pdarea;else e.pdarea=v;});
+  saveKeys(['device_prefs']);packdownShift='auto';
+  if(typeof updatePackdownBadge==='function')updatePackdownBadge();
+  const pg=document.getElementById('page-packdown');if(pg&&pg.classList.contains('active'))renderPackdownPage();
+  renderAlarmCenter();}
+function _pdAreaCard(){
+  const tgt=_acDevTarget();
+  const cur=tgt===_ALLDEV?null:_pdArea(tgt);
+  const opt=(v,l)=>'<button class="btn'+(cur===v?' btn-primary':'')+'" style="font-size:var(--fs-sm);margin:3px;padding:6px 10px;" onclick="event.stopPropagation();_pdAreaSet(\''+v+'\')">'+(cur===v?'✓ ':'')+l+'</button>';
+  return '<div class="ac-card" style="padding:12px 14px;">'
+    +'<div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Checklist on <b>'+_mEsc(tgt)+'</b> — which lists this screen shows and alarms for.</div>'
+    +'<div style="display:flex;flex-wrap:wrap;">'+opt('front','Front (Day + Night)')+opt('kitchen','Kitchen only')+opt('all','All lists')+'</div></div>';
+}
 function setPackdownShift(s){packdownShift=s;renderPackdownPage();}
 function renderPackdownPage(){
   const allTasks=appData.packdown_tasks||[],list=document.getElementById('packdown-list'),empty=document.getElementById('packdown-empty');
-  const shift=packdownShift==='auto'?autoShift():packdownShift;
-  const rb=document.getElementById('packdown-reset-btn');if(rb)rb.textContent='Reset '+(shift==='day'?'Day':'Night');
+  const shift=_pdCurShift(),here=_pdShiftsHere();
+  const rb=document.getElementById('packdown-reset-btn');if(rb)rb.textContent='Reset '+(shift==='day'?'Day':shift==='night'?'Night':'Kitchen');
   const tabs=document.getElementById('packdown-shift-tabs');
-  if(tabs){tabs.style.display='flex';tabs.innerHTML=[['day','<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> Day Shift'],['night','<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> Night Shift']].map(([v,lbl])=>`<div class="filter-chip ${shift===v?'on':''}" onclick="setPackdownShift('${v}')">${lbl}</div>`).join('')+`<span style="font-size:var(--fs-sm);color:var(--muted);align-self:center;margin-left:6px;">${shift==='day'?'10am–5pm':'5pm–10pm'}${packdownShift==='auto'?' · auto':''}</span>`;}
+  const ICO={day:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    night:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+    kitchen:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16v7a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z"/><path d="M2 11h20M8 7c0-1.5 1-2 1-3M12 7c0-1.5 1-2 1-3M16 7c0-1.5 1-2 1-3"/></svg>'};
+  if(tabs){tabs.style.display='flex';tabs.innerHTML=here.map(v=>`<div class="filter-chip ${shift===v?'on':''}" onclick="setPackdownShift('${v}')">${ICO[v]} ${_PD_LISTS[v]}</div>`).join('')+`<span style="font-size:var(--fs-sm);color:var(--muted);align-self:center;margin-left:6px;">${_PD_HINT[shift]}${packdownShift==='auto'&&here.length>1?' · auto':''}</span>`;}
   const prog=document.getElementById('packdown-progress');
   const tasks=allTasks.filter(t=>(t.shift||'day')===shift&&_taskActiveToday(t));
-  if(tasks.length===0){list.innerHTML='';if(prog)prog.innerHTML='';empty.style.display='block';empty.innerHTML='<div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No '+(shift==='day'?'day':'night')+' shift tasks yet.';return;}
+  if(tasks.length===0){list.innerHTML='';if(prog)prog.innerHTML='';empty.style.display='block';empty.innerHTML='<div style="font-size:36px;margin-bottom:10px;">&#10003;</div>No '+_PD_LISTS[shift].toLowerCase()+' tasks yet.';return;}
   empty.style.display='none';
   const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());
   // Prep-style layout: the shift's tasks fill 2/3 of the screen, optional "If not busy"
@@ -7232,7 +7259,7 @@ function renderPackdownPage(){
     const body=arr.length?arr.map(card).join(''):'<div class="prep-col-empty">None</div>';
     return '<div class="prep-col'+(extraCls?(' '+extraCls):'')+'"><div class="prep-col-accent" style="background:'+color+';"></div><div class="prep-col-head" style="color:'+color+';border-color:'+color+';"><span>'+label+'</span><span class="pcq">'+dC+'/'+arr.length+'</span></div><div class="prep-col-body">'+body+'</div></div>';
   };
-  list.innerHTML='<div class="pdx-cols">'+secBox((shift==='day'?'Day':'Night')+' shift tasks','#f59e0b',main)+secBox('If not busy','#a78bfa',relax,'pdx-narrow')+'</div>';
+  list.innerHTML='<div class="pdx-cols"'+(relax.length?'':' style="grid-template-columns:1fr;display:grid;"')+'>'+secBox(shift==='kitchen'?'Kitchen tasks':((shift==='day'?'Day':'Night')+' shift tasks'),'#f59e0b',main)+(relax.length?secBox('If not busy','#a78bfa',relax,'pdx-narrow'):'')+'</div>';   // no empty 'If not busy' column
 }
 function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.length!==2)return null;const h=parseInt(a[0],10),m=parseInt(a[1],10);return (isNaN(h)||isNaN(m))?null:h*60+m;}
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
@@ -7280,7 +7307,7 @@ function openDailyLog(day){
       +sec('Reached cooked temp',['Time','Probe','Temp','Cook time','Oven'],cks,'None logged this day.'));
   }).catch(()=>{o.innerHTML=box('Could not load the log. <button class="btn" onclick="_dlClose()">Close</button>');});
 }
-function resetPackdown(){const shift=packdownShift==='auto'?autoShift():packdownShift;const lbl=shift==='day'?'Day':'Night';_askConfirm('Reset the '+lbl+' Shift checklist?','Only '+lbl.toLowerCase()+'-shift tasks are cleared (the other shift and the daily log stay).',function(){appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();},'Reset checklist');}
+function resetPackdown(){const shift=_pdCurShift();const lbl=shift==='day'?'Day':shift==='night'?'Night':'Kitchen';_askConfirm('Reset the '+lbl+' checklist?','Only '+lbl.toLowerCase()+' tasks are cleared (the other shift and the daily log stay).',function(){appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();},'Reset checklist');}
 function _packdownDailyReset(){const today=_prepToday();if(appData.packdown_reset_day===today)return;if(appData.packdown_reset_day){appData.packdown_checks={};(appData.packdown_tasks||[]).forEach(t=>packdownDueDismissed[t.id]=true);saveKeys(['packdown_checks']);}appData.packdown_reset_day=today;saveKeys(['packdown_reset_day']);const pg=document.getElementById('page-packdown');if(pg&&pg.classList.contains('active'))renderPackdownPage();}
 function _taskWkIdx(ds){const a=ds.split('-').map(Number);const x=new Date(a[0],a[1]-1,a[2]);const d=(x.getDay()+6)%7;const m=new Date(a[0],a[1]-1,a[2]-d);return Math.floor(Date.UTC(m.getFullYear(),m.getMonth(),m.getDate())/86400000/7);}
 function _taskActiveToday(t){
@@ -7310,7 +7337,7 @@ function addTaskDate(){const i=document.getElementById('new-task-date'),v=i.valu
 function removeTaskDate(d){_taskDates=_taskDates.filter(x=>x!==d);renderTaskDates();}
 function _resetTaskForm(){['new-task-name','new-task-time','new-task-anchor'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('new-task-shift').value='day';document.getElementById('new-task-recur').value='daily';document.getElementById('new-task-alarm').checked=true;document.getElementById('new-task-notbusy').checked=false;document.querySelectorAll('#new-task-days .day-pill').forEach(p=>p.classList.remove('on'));_taskDates=[];renderTaskDates();onTaskRecurChange();}
 function openPackdownAdmin(){editingTask=null;setBtn('btn-add-task','+ Add Task');_resetTaskForm();renderPackdownTaskAdmin();openModal('packdown-admin-modal');}
-function renderPackdownTaskAdmin(){document.getElementById('packdown-task-admin-list').innerHTML=(appData.packdown_tasks||[]).map((t,i)=>`<div class="row-between" style="padding:6px 0;border-bottom:1px solid var(--border);"><div style="min-width:0;"><div style="font-size:var(--fs-md);">${t.name}</div><div style="font-size:var(--fs-sm);color:var(--muted);">${(t.shift||'day')==='night'?'Night':'Day'}${t.notbusy?' · if not busy':''} · ${_recurLabel(t)}${t.remind_at?' · '+t.remind_at+(t.alarm?' &#9201;':''):''}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editPackdownTask(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removePackdownTask(${i})">&#10005;</button></span></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No tasks yet.</div>';}
+function renderPackdownTaskAdmin(){document.getElementById('packdown-task-admin-list').innerHTML=(appData.packdown_tasks||[]).map((t,i)=>`<div class="row-between" style="padding:6px 0;border-bottom:1px solid var(--border);"><div style="min-width:0;"><div style="font-size:var(--fs-md);">${t.name}</div><div style="font-size:var(--fs-sm);color:var(--muted);">${_PD_LISTS[t.shift||'day']||'Day Shift'}${t.notbusy?' · if not busy':''} · ${_recurLabel(t)}${t.remind_at?' · '+t.remind_at+(t.alarm?' &#9201;':''):''}</div></div><span style="white-space:nowrap;"><button class="btn" style="padding:3px 8px;font-size:var(--fs-sm);margin-right:4px;" onclick="editPackdownTask(${i})">Edit</button><button class="btn btn-danger" style="padding:3px 8px;font-size:var(--fs-sm);" onclick="removePackdownTask(${i})">&#10005;</button></span></div>`).join('')||'<div style="color:var(--muted);font-size:var(--fs-sm);padding:6px 0;">No tasks yet.</div>';}
 function addPackdownTask(){
   const name=document.getElementById('new-task-name').value.trim();
   const remind_at=document.getElementById('new-task-time').value.trim();
@@ -9147,7 +9174,7 @@ function renderAlarmCenter(){const host=document.getElementById('alarm-center');
     +(tgt!==my?'<span style="font-size:var(--fs-sm);color:var(--amber);font-weight:700;">'+(tgt===_ALLDEV?'The per-screen toggles below now change EVERY registered screen at once':'The per-screen toggles below now change '+_mEsc(tgt)+' — it picks them up within ~20s')+'</span>':'')
     +'<label style="flex-basis:100%;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox"'+(_audioWarnOn()?' checked':'')+' onclick="event.stopPropagation();" onchange="_audioWarnSet(this.checked)" style="width:16px;height:16px;">Warn me on <b>this screen</b> if alarm sound is blocked <span style="color:var(--muted);">(on by default; untick only on a visual-only screen like the iPad)</span></label>'
     +'</div>';
-  host.innerHTML=picker+_hideCard()+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
+  host.innerHTML=picker+_hideCard()+_pdAreaCard()+_ALARM_ORDER.map(key=>{const d=_ALARM_DEF[key];const c=_acfg(key);
     const open=!!_acOpen[key];const style=_acStyleOf(key,c);
     const opts=(['service','checklist','preptasks','prepimportant','prepcarry'].includes(key))?[['sp','Sound + popup'],['s','Sound only'],['p','Popup only'],['off','Off']]
                                 :[['on','Sound on'],['off','Sound off']];
@@ -9485,6 +9512,7 @@ function checkAllReminders(){
   try{(appData.packdown_tasks||[]).forEach(t=>{
     if(!t.remind_at||!_dueWithin(t.remind_at,now,_REMIND_GRACE))return;
     if(!_taskActiveToday(t))return;   // weekly / fortnightly / set-date scheduling
+    if(!_pdShiftsHere().includes(t.shift||'day'))return;   // front screen alarms Day/Night jobs, kitchen screen the Kitchen jobs
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
@@ -9540,7 +9568,7 @@ function checkAllReminders(){
 }
 function updatePackdownBadge(){  // Checklist tab badge shows the number of OVERDUE tasks for the current shift
   const b=document.getElementById('packdown-badge');if(!b)return;
-  const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());const shift=autoShift();
+  const checks=appData.packdown_checks||{};const nowM=_pdMin(nowHHMM());const shift=_pdAutoHere();
   let overdue=0;
   (appData.packdown_tasks||[]).forEach(t=>{
     if(t.notbusy)return;   // optional 'if not busy' tasks are never overdue
