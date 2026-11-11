@@ -13841,12 +13841,17 @@ def ck_loop():
             jpeg,err=_kds_frame({"url":cfg["url"]})
             if err or not jpeg:
                 CK["err"]=err or "no frame";time.sleep(max(iv,5));continue
-            sig=_frame_sig(jpeg);prev=CK.get("sig");CK["sig"]=sig;moved=True
+            # Compare with the LAST FRAME WE ACTUALLY READ, not the previous grab: a read caught mid-clear
+            # (ticket still fading) then saw a settled, "unchanged" screen and skipped re-reading for 1-2 min
+            # (Marcel 11 Nov: slips 90-120 s late). Also re-read every 15 s while tickets are open.
+            sig=_frame_sig(jpeg);prev=CK.get("read_sig");CK["sig"]=sig;moved=True
             if prev is not None and sig is not None and len(prev)==len(sig):
                 moved=(sum(abs(a-b) for a,b in zip(prev,sig))/float(len(sig)))>=6.0
-            if not moved and CK["ready"] and not CK["pending"]:
+            stale=bool(CK["open"]) and time.time()-CK.get("read_at",0)>=15
+            if not moved and not stale and CK["ready"] and not CK["pending"]:
                 CK["at"]=time.time();time.sleep(iv);continue
-            tickets,count,raw=_ck_read(jpeg);CK["raw"]=raw;CK["at"]=time.time()
+            tickets,count,raw=_ck_read(jpeg);CK["raw"]=raw;CK["at"]=time.time();CK["read_at"]=CK["at"]
+            if tickets is not None: CK["read_sig"]=sig
             if tickets=="COMPLETED_VIEW" or tickets is None:
                 CK["err"]="" if tickets else str(raw)[:120];time.sleep(iv);continue
             CK["err"]=""
