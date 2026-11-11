@@ -994,6 +994,14 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .alarm-card{background:var(--surface);border:1px solid rgba(251,155,36,.45);border-radius:var(--radius-lg);padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 @keyframes alarm-card-pulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 26px -8px var(--alarm-accent,#ef4444);}50%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 64px 2px var(--alarm-accent,#ef4444);}}
 .alarm-bell{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(251,155,36,.08);border:2px solid #fb9b24;color:#fb9b24;box-shadow:0 0 26px rgba(251,155,36,.25);}
+/* checklist TASK DUE card (owner, 11 Nov 2026): green Done + Silence 5 / 10 only */
+#alarm-overlay.task-mode .alarm-card{border-color:rgba(34,197,94,.35);padding:28px 28px 22px;max-width:560px;}
+#alarm-overlay.task-mode .alarm-bell{width:60px;height:60px;margin-bottom:12px;border-color:#22c55e;color:#22c55e;background:rgba(34,197,94,.08);box-shadow:0 0 22px rgba(34,197,94,.22);}
+#alarm-overlay.task-mode #alarm-title{font-size:15px!important;letter-spacing:.14em;color:#86efac!important;text-transform:uppercase;}
+#alarm-overlay.task-mode #alarm-sub{font-size:24px!important;font-weight:700;color:#fff!important;line-height:1.35!important;max-width:480px!important;margin-top:10px!important;}
+#alarm-overlay.task-mode #alarm-action-btn{font-size:22px;padding:18px 20px;margin-top:22px!important;border-radius:14px;box-shadow:0 6px 20px rgba(22,163,74,.35);}
+#alarm-overlay.task-mode #alarm-snooze-row .alarm-silence-btn{padding:13px 10px;font-size:var(--fs-md);color:#c7ccd6;}
+#alarm-overlay.task-mode .ov-1min,#alarm-overlay.task-mode #alarm-dismiss-btn{display:none!important;}
 .alarm-silence-btn{background:transparent;color:#e7e9ee;border:1px solid rgba(255,255,255,.22);padding:15px 20px;border-radius:var(--radius);font-size:var(--fs-md);font-weight:700;cursor:pointer;width:100%;margin-top:18px;letter-spacing:.02em;}
 .alarm-silence-btn:active{transform:scale(.98);}
 
@@ -1793,9 +1801,9 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <button class="alarm-silence-btn" id="alarm-action-btn" style="display:none;background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800;margin-top:14px;"></button>
     <button class="alarm-silence-btn" id="alarm-action2-btn" style="display:none;background:#dc2626;border-color:#dc2626;color:#fff;font-weight:800;margin-top:10px;"></button>
     <div id="alarm-snooze-row" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
-      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:96px;" onclick="_ovSnooze(1)">SILENCE 1 MIN</button>
-      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(5)">5 MIN</button>
-      <button class="alarm-silence-btn" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(10)">10 MIN&hellip;</button>
+      <button class="alarm-silence-btn ov-1min" style="margin:0;flex:1;min-width:96px;" onclick="_ovSnooze(1)">SILENCE 1 MIN</button>
+      <button class="alarm-silence-btn" id="ov-snz5" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(5)">5 MIN</button>
+      <button class="alarm-silence-btn" id="ov-snz10" style="margin:0;flex:1;min-width:78px;" onclick="_ovSnooze(10)">10 MIN&hellip;</button>
     </div>
     <button class="alarm-silence-btn" id="alarm-dismiss-btn" onclick="silenceAlarm()">DISMISS</button>
   </div>
@@ -3580,12 +3588,12 @@ function _ovSnooze(mins){
     const pay={at:Date.now()+mins*60000,key:window._ovKey||'service',
                title:(document.getElementById('alarm-title')||{}).textContent||'REMINDER',
                sub:(document.getElementById('alarm-sub')||{}).textContent||'',
-               kind:window._ovKind||''};
+               kind:window._ovKind||'',task:window._ovTask||''};
     try{localStorage.setItem('ovSnoozePop',JSON.stringify(pay));}catch(e){}
     silenceAlarm();
     _toast&&_toast('Silenced '+mins+' min — it will come back if still due');
   };
-  if(mins>=10&&typeof _askConfirm==='function')_askConfirm('Silence for 10 minutes?','No sound and no card for the whole 10 minutes.',go,'Silence 10 min');
+  if(mins>=10&&!window._ovTask&&typeof _askConfirm==='function')_askConfirm('Silence for 10 minutes?','No sound and no card for the whole 10 minutes.',go,'Silence 10 min');
   else go();
 }
 function _ovSnoozeCheck(){
@@ -3594,6 +3602,7 @@ function _ovSnoozeCheck(){
   if(!p||Date.now()<p.at)return;
   try{localStorage.removeItem('ovSnoozePop');}catch(e){}
   if(p.kind==='prepcarry'){_prepCarryPop();return;}          // rebuilt fresh — the unfinished list may have changed
+  if(p.task){_taskDuePop(p.task);return;}                     // checklist task: only if it still isn't ticked
   triggerAlarmKey(p.key||'service',p.title,p.sub);
 }
 function triggerAlarm(title,sub,action){return triggerAlarmKey('service',title,sub,action);}
@@ -3602,12 +3611,16 @@ function triggerAlarmKey(key,title,sub,action,action2,opts){
   // Two INDEPENDENT Alarm Center switches per key: 'Popup' (the on-screen card + lock banner) and
   // 'Sound'. Both off = fully silent — an explicit choice, never a side effect.
   const cfg=_acfg(key);
-  window._ovKey=key; window._ovKind=(key==='prepcarry'?'prepcarry':'');
+  window._ovKey=key; window._ovKind=(key==='prepcarry'?'prepcarry':''); window._ovTask=(opts&&opts.task)||'';
   if(cfg.popup){
     activeAlarmId=Date.now();
     document.getElementById('alarm-title').textContent=title;
     document.getElementById('alarm-sub').textContent=sub;
     const ov=document.getElementById('alarm-overlay');
+    ov.classList.toggle('task-mode',!!window._ovTask);
+    const _s5=document.getElementById('ov-snz5'),_s10=document.getElementById('ov-snz10');
+    if(_s5)_s5.textContent=window._ovTask?'Silence 5 min':'5 MIN';
+    if(_s10)_s10.innerHTML=window._ovTask?'Silence 10 min':'10 MIN&hellip;';
     ov.style.setProperty('--alarm-accent','#fb9b24');   // ONE colour across every popup (owner, 7 Aug)
     ov.classList.add('active');
     const _ab=document.getElementById('alarm-action-btn');
@@ -7263,6 +7276,16 @@ function renderPackdownPage(){
 }
 function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.length!==2)return null;const h=parseInt(a[0],10),m=parseInt(a[1],10);return (isNaN(h)||isNaN(m))?null:h*60+m;}
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
+// TASK DUE pop-up for a checklist job: big green Done (ticks it, same name/photo step as the list),
+// Silence 5 / 10 min brings it back if still not done. Nothing else (owner, 11 Nov 2026).
+function _taskDuePop(taskId){
+  const t=(appData.packdown_tasks||[]).find(x=>x.id===taskId);if(!t)return;
+  if(((appData.packdown_checks||{})[taskId]||{}).done)return;
+  const when=t.remind_at?(' · '+(function(h){const a=h.split(':').map(Number);return ((a[0]%12)||12)+':'+String(a[1]).padStart(2,'0')+(a[0]<12?' am':' pm');})(t.remind_at)):'';
+  triggerAlarmKey('checklist','Task due'+when,t.name,
+    {label:'✓  Done',fn:function(){silenceAlarm();if(!((appData.packdown_checks||{})[taskId]||{}).done)toggleTask(taskId);}},
+    null,{task:taskId});
+}
 function toggleTask(taskId){
   appData.packdown_checks=appData.packdown_checks||{};
   const cur=appData.packdown_checks[taskId]||{done:false};
@@ -9516,7 +9539,7 @@ function checkAllReminders(){
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
-    if(t.alarm){triggerAlarmKey('checklist','TASK DUE',t.name);}
+    if(t.alarm){_taskDuePop(t.id);}
     else{const _sc=_acfg('checklist');
       if(_sc.enabled&&!_devMuted('checklist')&&!_devPopMuted('checklist'))playChime();
       if(_sc.popup&&!_devPopMuted('checklist'))showLockBanner('TASK DUE',t.name);}
