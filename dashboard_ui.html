@@ -994,6 +994,22 @@ body.hide-fried #rl-fry{display:none!important;}   /* Settings → hide the frie
 .alarm-card{background:var(--surface);border:1px solid rgba(251,155,36,.45);border-radius:var(--radius-lg);padding:34px 30px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.75);}
 @keyframes alarm-card-pulse{0%,100%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 26px -8px var(--alarm-accent,#ef4444);}50%{box-shadow:0 22px 60px rgba(0,0,0,.7),0 0 64px 2px var(--alarm-accent,#ef4444);}}
 .alarm-bell{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(251,155,36,.08);border:2px solid #fb9b24;color:#fb9b24;box-shadow:0 0 26px rgba(251,155,36,.25);}
+/* checklist reminder card: sound once, shows 20 s, goes by itself (owner, 11 Nov 2026) */
+#task-remind{position:fixed;left:50%;top:18px;transform:translate(-50%,-160%);z-index:480;width:min(580px,calc(100vw - 32px));background:var(--surface);border:1px solid rgba(34,197,94,.45);border-left:6px solid #22c55e;border-radius:16px;padding:16px 18px 14px;box-shadow:0 18px 50px rgba(0,0,0,.6);transition:transform .35s ease;cursor:pointer;}
+#task-remind.show{transform:translate(-50%,0);}
+#task-remind .tr-top{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#86efac;font-weight:800;display:flex;align-items:center;gap:8px;}
+#task-remind .tr-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;}
+#task-remind .tr-name{font-size:21px;font-weight:700;color:#fff;margin:6px 0 12px;line-height:1.3;}
+#task-remind .tr-done{background:#16a34a;color:#fff;border:0;border-radius:10px;padding:10px 24px;font-size:17px;font-weight:800;cursor:pointer;}
+#task-remind .tr-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:12px;overflow:hidden;}
+#task-remind .tr-bar div{height:100%;background:#22c55e;width:100%;}
+#task-remind.show .tr-bar div{animation:trbar 20s linear forwards;}
+@keyframes trbar{from{width:100%}to{width:0}}
+/* end-of-shift card: unticked jobs, each with its own Done */
+#alarm-overlay.task-mode .ec-list{text-align:left;max-height:46vh;overflow:auto;margin-top:6px;}
+#alarm-overlay.task-mode .ec-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:18px;font-weight:600;}
+#alarm-overlay.task-mode .ec-row span{flex:1;}
+#alarm-overlay.task-mode .ec-done{background:#16a34a;color:#fff;border:0;border-radius:10px;padding:9px 16px;font-size:16px;font-weight:800;cursor:pointer;white-space:nowrap;}
 /* checklist TASK DUE card (owner, 11 Nov 2026): green Done + Silence 5 / 10 only */
 #alarm-overlay.task-mode .alarm-card{border-color:rgba(34,197,94,.35);padding:28px 28px 22px;max-width:560px;}
 #alarm-overlay.task-mode .alarm-bell{width:60px;height:60px;margin-bottom:12px;border-color:#22c55e;color:#22c55e;background:rgba(34,197,94,.08);box-shadow:0 0 22px rgba(34,197,94,.22);}
@@ -3206,7 +3222,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="modal-header"><div class="modal-title">PACKDOWN SETUP</div><button class="modal-close" onclick="closeModal('packdown-admin-modal')">Close</button></div>
     <div id="packdown-task-admin-list"></div>
     <div class="form-row mt-8"><div class="label">Task Name</div><input class="input" id="new-task-name" placeholder="Clean fryers"></div>
-    <div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–5pm)</option><option value="night">Night Shift (5pm–10pm)</option><option value="kitchen">Kitchen (dish hand)</option></select></div>
+    <div class="form-row"><div class="label">Shift</div><select class="input" id="new-task-shift" style="background:var(--surface2);"><option value="day">Day Shift (10am–4pm)</option><option value="night">Night Shift (4pm–9pm)</option><option value="kitchen">Kitchen (dish hand)</option></select></div>
     <div class="form-row mt-8"><div class="label">Repeat</div><select class="input" id="new-task-recur" style="background:var(--surface2);" onchange="onTaskRecurChange()"><option value="daily">Every day</option><option value="weekly">Weekly (chosen days)</option><option value="fortnightly">Fortnightly (every 2 weeks)</option><option value="dates">Specific dates only</option></select></div>
     <div id="new-task-days-wrap" style="display:none;margin-top:8px;"><div class="label">On which days</div><div class="day-pills" id="new-task-days"><div class="day-pill" data-d="0" onclick="toggleDayPill(this)">Mon</div><div class="day-pill" data-d="1" onclick="toggleDayPill(this)">Tue</div><div class="day-pill" data-d="2" onclick="toggleDayPill(this)">Wed</div><div class="day-pill" data-d="3" onclick="toggleDayPill(this)">Thu</div><div class="day-pill" data-d="4" onclick="toggleDayPill(this)">Fri</div><div class="day-pill" data-d="5" onclick="toggleDayPill(this)">Sat</div><div class="day-pill" data-d="6" onclick="toggleDayPill(this)">Sun</div></div></div>
     <div id="new-task-anchor-wrap" style="display:none;margin-top:8px;"><div class="label">Start from (first day it runs)</div><input class="input" type="date" id="new-task-anchor"><div style="font-size:var(--fs-sm);color:var(--muted);margin-top:3px;">Leave blank to start now. For fortnightly this also sets which week runs (then every 2nd week).</div></div>
@@ -3602,7 +3618,7 @@ function _ovSnoozeCheck(){
   if(!p||Date.now()<p.at)return;
   try{localStorage.removeItem('ovSnoozePop');}catch(e){}
   if(p.kind==='prepcarry'){_prepCarryPop();return;}          // rebuilt fresh — the unfinished list may have changed
-  if(p.task){_taskDuePop(p.task);return;}                     // checklist task: only if it still isn't ticked
+  if(p.task){if(String(p.task).indexOf('__end:')===0)_endCheckPop(p.task.slice(6));else _taskDuePop(p.task);return;}   // checklist: only if still not ticked
   triggerAlarmKey(p.key||'service',p.title,p.sub);
 }
 function triggerAlarm(title,sub,action){return triggerAlarmKey('service',title,sub,action);}
@@ -7207,12 +7223,12 @@ async function removeProduct(ref){
 }
 
 // PACKDOWN
-function autoShift(){const h=new Date().getHours();return h>=17?'night':'day';}
+function autoShift(){const h=new Date().getHours();return h>=16?'night':'day';}   // day shift ends 4pm
 // Which checklist lists show on a screen (owner, 11 Nov 2026): the front dash shows Day + Night,
 // the kitchen dash shows only the Kitchen (dish hand) list. Stored per screen in device_prefs[name].pdarea;
 // a screen with nothing set shows all three. Alarms and the tab badge follow the same rule.
 const _PD_LISTS={day:'Day Shift',night:'Night Shift',kitchen:'Kitchen'};
-const _PD_HINT={day:'10am–5pm',night:'5pm–10pm',kitchen:'dish hand · 5pm–9pm'};
+const _PD_HINT={day:'10am–4pm',night:'4pm–9pm',kitchen:'dish hand · 5pm–9pm'};
 function _pdArea(name){const a=_devEntry(name||devName()).pdarea;return (a==='front'||a==='kitchen')?a:'all';}
 function _pdShiftsHere(){const a=_pdArea();return a==='front'?['day','night']:a==='kitchen'?['kitchen']:['day','night','kitchen'];}
 function _pdAutoHere(){const s=_pdShiftsHere();return s.length===1?s[0]:autoShift();}
@@ -7278,10 +7294,47 @@ function _pdMin(hhmm){if(!hhmm)return null;const a=String(hhmm).split(':');if(a.
 function _logPackdown(taskId,rec,done){const task=(appData.packdown_tasks||[]).find(t=>t.id===taskId);appData.packdown_log=appData.packdown_log||[];appData.packdown_log.push({taskId,taskName:task?task.name:'',staff:(rec&&rec.who)||'',photo:(rec&&rec.photo)||'',done,time:new Date().toISOString(),ts:(rec&&rec.ts)||_nextTs()});appData.packdown_log=appData.packdown_log.slice(-500);}
 // TASK DUE pop-up for a checklist job: big green Done (ticks it, same name/photo step as the list),
 // Silence 5 / 10 min brings it back if still not done. Nothing else (owner, 11 Nov 2026).
+function _tWhen(t){return t&&t.remind_at?(' · '+(function(h){const a=h.split(':').map(Number);return ((a[0]%12)||12)+':'+String(a[1]).padStart(2,'0')+(a[0]<12?' am':' pm');})(t.remind_at)):'';}
+// Job reminder (owner, 11 Nov 2026): the sound plays once, the card shows the job for 20 s and goes away
+// by itself — nobody has to dismiss it. Done ticks it straight away; a tap anywhere else just closes it.
+let _trTimer=null;
+function _trHide(){clearTimeout(_trTimer);const el=document.getElementById('task-remind');if(el)el.classList.remove('show');}
+function _taskRemind(taskId){
+  const t=(appData.packdown_tasks||[]).find(x=>x.id===taskId);if(!t)return;
+  if(((appData.packdown_checks||{})[taskId]||{}).done)return;
+  if(_devPopMuted('checklist'))return;
+  const c=_acfg('checklist');
+  if(c.enabled&&!_devMuted('checklist'))_alarmHit('checklist');
+  if(!c.popup)return;
+  let el=document.getElementById('task-remind');
+  if(!el){el=document.createElement('div');el.id='task-remind';document.body.appendChild(el);}
+  el.innerHTML='<div class="tr-top"><span class="tr-dot"></span>Reminder'+_tWhen(t)+'</div><div class="tr-name">'+_mEsc(t.name)+'</div><button class="tr-done">✓ Done</button><div class="tr-bar"><div></div></div>';
+  el.querySelector('.tr-done').onclick=function(e){e.stopPropagation();_trHide();if(!((appData.packdown_checks||{})[taskId]||{}).done)toggleTask(taskId);};
+  el.onclick=_trHide;
+  el.classList.remove('show');void el.offsetWidth;el.classList.add('show');
+  clearTimeout(_trTimer);_trTimer=setTimeout(_trHide,20000);
+}
+// End of shift: any job still unticked → the regular alarm (repeats) with the list, each job with its own
+// Done, plus Silence 5 / 10 min. Comes back until every job is ticked. 21:10 = before the screens sleep at 21:15.
+const _PD_END={day:'15:45',night:'21:10',kitchen:'21:10'};   // day shift ends 4pm, night 9pm (owner, 11 Nov 2026)
+function _pdOpen(shift){const ch=appData.packdown_checks||{};return (appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift&&!t.notbusy&&_taskActiveToday(t)&&!(ch[t.id]||{}).done);}
+function _endCheckPop(shift){
+  if(!_pdOpen(shift).length)return;
+  triggerAlarmKey('checklist','Jobs not done','',null,null,{task:'__end:'+shift});
+  _endCheckRender(shift);
+}
+function _endCheckRender(shift){
+  if(window._ovTask!=='__end:'+shift)return;
+  const open=_pdOpen(shift);
+  if(!open.length){silenceAlarm();if(typeof _toast==='function')_toast('All jobs done ✓');return;}
+  document.getElementById('alarm-title').textContent=(open.length===1?'1 job':open.length+' jobs')+' not done';
+  document.getElementById('alarm-sub').innerHTML='<div class="ec-list">'+open.map(t=>'<div class="ec-row"><span>'+_mEsc(t.name)+'</span><button class="ec-done" onclick="_endDone(\''+t.id+'\',\''+shift+'\')">✓ Done</button></div>').join('')+'</div>';
+}
+function _endDone(id,shift){if(!((appData.packdown_checks||{})[id]||{}).done)toggleTask(id);setTimeout(function(){_endCheckRender(shift);},300);}
 function _taskDuePop(taskId){
   const t=(appData.packdown_tasks||[]).find(x=>x.id===taskId);if(!t)return;
   if(((appData.packdown_checks||{})[taskId]||{}).done)return;
-  const when=t.remind_at?(' · '+(function(h){const a=h.split(':').map(Number);return ((a[0]%12)||12)+':'+String(a[1]).padStart(2,'0')+(a[0]<12?' am':' pm');})(t.remind_at)):'';
+  const when=_tWhen(t);
   triggerAlarmKey('checklist','Task due'+when,t.name,
     {label:'✓  Done',fn:function(){silenceAlarm();if(!((appData.packdown_checks||{})[taskId]||{}).done)toggleTask(taskId);}},
     null,{task:taskId});
@@ -7295,6 +7348,7 @@ function toggleTask(taskId){
     appData.packdown_checks[taskId]=Object.assign({done:true},rec);
     _logPackdown(taskId,rec,true);
     saveKeys(['packdown_checks','packdown_log']); renderPackdownPage();
+    if(String(window._ovTask||'').indexOf('__end:')===0)_endCheckRender(window._ovTask.slice(6));   // end-of-shift card updates as jobs get ticked
   },'cl');   // checklist → the separate checklist camera
 }
 // ---- Daily log: every tick (who/when/photo), every row pull and cooked temp, any past day ----
@@ -9539,11 +9593,17 @@ function checkAllReminders(){
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
-    if(t.alarm){_taskDuePop(t.id);}
+    if(t.alarm){_taskRemind(t.id);}   // 20-second reminder card + one sound; the end-of-shift check does the nagging
     else{const _sc=_acfg('checklist');
       if(_sc.enabled&&!_devMuted('checklist')&&!_devPopMuted('checklist'))playChime();
       if(_sc.popup&&!_devPopMuted('checklist'))showLockBanner('TASK DUE',t.name);}
     document.getElementById('packdown-badge')?.classList.add('show');
+  });}catch(e){}
+  try{_pdShiftsHere().forEach(sh=>{   // end of shift: unticked jobs → the regular alarm until they're all ticked
+    const e=_PD_END[sh];if(!e||!_dueWithin(e,now,_REMIND_GRACE))return;
+    const key='pdend-'+sh+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;
+    if(!_pdOpen(sh).length)return;
+    _markFired(key);_endCheckPop(sh);
   });}catch(e){}
   try{(appData.quiet_jobs||[]).forEach(j=>{
     if(!j.remind_time||!_dueWithin(j.remind_time,now,_REMIND_GRACE))return;
