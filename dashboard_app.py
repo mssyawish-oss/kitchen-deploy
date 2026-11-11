@@ -3969,6 +3969,12 @@ def _norm_name(s):
     s=re.sub(r'&|\band\b',' ',(s or "").lower())
     return re.sub(r'[^a-z0-9]','',s)
 
+# Catering function-pack choice lists (THE FEED / SPREAD / WORKS). Staff 86-ing a retail side must NOT
+# delete the same-named option from these: the cascade silently emptied them from 11 to 5 (Oct-Nov 2026).
+# Extra list ids can be added in db["mod86_protect_lists"].
+MOD86_PROTECT_LISTS={"KBONGMALTPKOSSD3XTEAX6CR","ZPFPO5XNANJBZIU7RKRWNASQ","BHCJY3J3VR3DIMNV4C2EJBE6","JEEAEM2QCT3MR23W3GO3OD64"}
+def _mod86_protected():
+    return MOD86_PROTECT_LISTS|set(db.get("mod86_protect_lists") or [])
 def _sq_all_modifier_ids_by_norm(name):
     """Every LIVE modifier id whose name matches `name` after normalising — so
     'PUMPKIN & BEETROOT SALAD' and 'PUMPKIN BEETROOT SALAD' are treated as one add-on."""
@@ -3976,13 +3982,14 @@ def _sq_all_modifier_ids_by_norm(name):
     if not target: return []
     hdr=_sq_headers()
     if not hdr: return []
-    ids=[]; cursor=None
+    ids=[]; cursor=None; prot=_mod86_protected()
     try:
         for _pg in range(40):
             u=SQUARE_BASE+"/v2/catalog/list?types=MODIFIER_LIST"+(("&cursor="+urllib.parse.quote(cursor)) if cursor else "")
             with urllib.request.urlopen(urllib.request.Request(u,headers=hdr),timeout=25,context=SSL_CTX) as r:
                 data=json.loads(r.read().decode())
             for ml in data.get("objects") or []:
+                if ml.get("id") in prot: continue          # catering function lists are never cascaded
                 for mod in ((ml.get("modifier_list_data") or {}).get("modifiers") or []):
                     if _norm_name((mod.get("modifier_data") or {}).get("name"))==target:
                         ids.append(mod.get("id"))
