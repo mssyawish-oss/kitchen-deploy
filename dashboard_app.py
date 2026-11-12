@@ -1875,16 +1875,20 @@ def square_poll_loop():
                     orders=open_orders+query_square_sales(cfg,minutes=comp_min,states=("COMPLETED",))
                     _first_sweep=True
                     # count TODAY's sales when due (scheduled → at due-15min; else at order time). skip future + pre-today (stale).
-                    def _due(s,d,c):
+                    # Marcel 13 Nov: a pre-order comes off today's chicken stock 1 HOUR before pickup (was 15 min);
+                    # the hand-out alarm keeps its 15 min. db['sched_stock_lead_min'] changes the stock lead.
+                    try: _slead=int(db.get("sched_stock_lead_min",60) or 60)
+                    except Exception: _slead=60
+                    def _due(s,d,c,lead=15):
                         eff=d if (s and d) else c
                         if eff is None: return False   # no determinable time → don't count/alarm (was True: let undated stale orders slip through)
-                        return now>=eff-timedelta(minutes=15) and eff.astimezone().date()==today
+                        return now>=eff-timedelta(minutes=(lead if (s and d) else 15)) and eff.astimezone().date()==today
                     rb=fb=0.0;rids=[];fids=[];_pass=set();_stat_dirty=False
                     with rot_lock: _rseen=set(ROT_LIVE["seen"])      # snapshot under the lock → no double-count race vs rot_deduct mutating 'seen'
                     with fry_lock: _fseen=set(FRY_LIVE["seen"])
                     for (oid,b,p,s,d,c,items,src,nowait,name,fulfilled,kind,total,allitems) in orders:
                         if oid in _pass: continue                    # the SAME order can be in BOTH the OPEN and COMPLETED lists this poll → count it once
-                        if not _due(s,d,c): continue
+                        if not _due(s,d,c,_slead): continue
                         _pass.add(oid)
                         if _sales_stat_add(oid,(d if (s and d) else c),total,allitems,b,p): _stat_dirty=True   # sales $ / items / hourly (self-dedups per day)
                         _sos_track(oid,c,fulfilled,src)              # speed-of-service: order→ready timing
