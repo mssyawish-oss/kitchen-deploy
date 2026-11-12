@@ -4490,8 +4490,70 @@ def api_packmod_check():
     return jsonify(_packmod_integrity(fix=bool((request.get_json(silent=True) or {}).get("fix",True))))
 
 _PACKMOD_LAST_RUN=0
+# ── Pack-copy sync (13 Nov 2026) ──────────────────────────────────────────────────────────────────────
+# Since the small packs became Square COMBOS, every side lives as separate catalog items with the SAME name:
+# the normal item (SML/MED/LRG/FAM), a catering copy, and single "Regular" copies that only the combo slots
+# use (1/4, 1/2, fried 1/2-side packs; Tender Box). Staff 86 the normal item on the POS or the dash, but the
+# pack copies aren't POS tiles, so online orders kept getting the side inside a pack (Marcel 13 Nov).
+# Rule: when EVERY size of the normal item is sold out, switch its pack copies off too; when any size is back
+# on, switch back on only the copies this sync switched off (a pack copy switched off by hand stays off).
+# Catering and Christmas copies are left alone. db['pack_copy_sync']=False turns it off.
+def _pack_copy_sync():
+    if db.get("pack_copy_sync") is False: return
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip()
+    if not _sq_headers() or not loc: return
+    objs=_sq_catalog_list("ITEM,CATEGORY")
+    if not objs: return
+    catering_ids={o.get("id") for o in objs if o.get("type")=="CATEGORY"
+                  and (o.get("category_data") or {}).get("name") in _CATERING_CATS}
+    items=[o for o in objs if o.get("type")=="ITEM" and not (o.get("item_data") or {}).get("is_archived")]
+    v2i={}; in_combo=set()
+    for o in items:
+        for v in (o.get("item_data") or {}).get("variations") or []: v2i[v.get("id")]=o.get("id")
+    for o in items:
+        for s in ((o.get("item_data") or {}).get("combo_type_details") or {}).get("slots") or []:
+            for i in s.get("item_ids") or []: in_combo.add(i)
+            for v in s.get("item_variation_ids") or []: in_combo.add(v2i.get(v,v))
+    def _off(v):
+        return any(x.get("location_id")==loc and x.get("sold_out")
+                   for x in ((v.get("item_variation_data") or {}).get("location_overrides") or []))
+    mains={}; copies={}
+    for o in items:
+        idt=o.get("item_data") or {}; nm=idt.get("name") or ""
+        if idt.get("product_type")=="COMBO" or idt.get("combo_type_details"): continue
+        if re.match(r"\s*christmas",nm,re.I): continue
+        if any(c.get("id") in catering_ids for c in (idt.get("categories") or [])): continue
+        vs=idt.get("variations") or []; key=_norm_name(nm)
+        if not key or not vs: continue
+        if len(vs)>1: mains.setdefault(key,[]).append(o)
+        elif o.get("id") in in_combo: copies.setdefault(key,[]).append((o,vs[0]))
+    rec=dict(db.get("pack_copy_auto_off") or {}); changed=False
+    for key,cl in copies.items():
+        ml=mains.get(key) or []
+        if len(ml)!=1: continue                                  # no single normal item to follow - leave it
+        mv=(ml[0].get("item_data") or {}).get("variations") or []
+        all_off=all(_off(v) for v in mv)
+        for o,v in cl:
+            vid=v.get("id"); nm=(o.get("item_data") or {}).get("name") or "?"
+            if all_off and not _off(v):
+                if vid in rec and time.time()*1000-rec[vid].get("at",0)<180000: continue   # still landing (PENDING)
+                ok,err=_sq_disable_variation(vid)
+                print("pack-copy sync OFF:",nm,vid,"ok" if ok else err)
+                if ok or str(err or "").startswith("PENDING"): rec[vid]={"name":nm,"at":int(time.time()*1000)}; changed=True
+            elif not all_off and vid in rec:
+                if _off(v):
+                    ok,err,_w=_product_enable_one(vid)
+                    print("pack-copy sync ON:",nm,vid,"ok" if ok else err)
+                    if not ok: continue
+                rec.pop(vid,None); changed=True
+    for vid in [k for k in rec if k not in v2i]: rec.pop(vid,None); changed=True   # copy deleted/archived
+    if changed:
+        with data_lock: db["pack_copy_auto_off"]=rec; save_data(db)
+        _psrch_stale(); _offl_stale()
 def prodoff_auto_loop():
     while True:
+        try: _pack_copy_sync()
+        except Exception as e: print("pack-copy sync:",str(e)[:160])
         try:
             if db.get("prodoff_auto_on") is not False:
                 hhmm=str(db.get("prodoff_auto_time") or "09:45")
