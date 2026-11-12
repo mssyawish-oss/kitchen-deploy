@@ -3676,7 +3676,8 @@ def _psrch_build():
             catering=any(c.get("id") in catering_ids for c in (idata.get("categories") or []))
             if vs: items.append({"name":idata.get("name") or "?","ids":[x["id"] for x in vs],
                                  "sizes":[x["name"] for x in vs if (x["name"] or "").lower() not in ("","regular")],
-                                 "vars":vs,"off":off,"catering":catering})
+                                 "vars":vs,"off":off,"catering":catering,
+                                 "combo":idata.get("product_type")=="COMBO" or bool(idata.get("combo_type_details"))})
         groups={}
         for obj in _sq_catalog_list("MODIFIER"):
             md=obj.get("modifier_data") or {}; nm=md.get("name") or "?"
@@ -3741,6 +3742,84 @@ def api_product_index():
     for g in binned.values(): g["copies"]=len(g["ids"])
     items=[it for it in _PSRCH_CACHE["items"] if not (it.get("kind")=="modifier" and _norm_name(it["name"]) in binned)]
     return jsonify({"ok":True,"items":items+list(binned.values())})
+
+# ── PRODUCTS page (13 Nov 2026, TEST next to ITEMS) — the Items switch laid out like the Square POS ──
+# Sections = the BRUNOS MENU menu groups in the POS nav order; tiles = their items in menu order with the
+# item photo. On/off state + switching reuse /api/product_index and /api/product_job (the ITEMS machinery).
+_POSMENU_ORDER=["CHICKEN & PACKS","SIDES & SNACKS","BURGERS","SALADS & BAKED DISHES","KIDS MEALS","DRINKS","DESSERT",
+                "MERCH & RETAIL","MONDAY SPECIALS","TUESDAY SPECIALS","WEDNESDAY SPECIALS","SUNDAY SPECIALS"]
+_POSMENU_CACHE={"at":0,"data":None}
+@app.route("/api/pos_menu")
+def api_pos_menu():
+    if _POSMENU_CACHE["data"] and time.time()-_POSMENU_CACHE["at"]<600 and not request.args.get("fresh"):
+        return jsonify(_POSMENU_CACHE["data"])
+    if not _sq_headers(): return jsonify({"ok":False,"error":"Square not configured"})
+    objs=_sq_catalog_list("ITEM,CATEGORY,IMAGE")
+    if not objs: return jsonify({"ok":False,"error":"couldn't load the menu from Square - try again"})
+    cats={o["id"]:o for o in objs if o.get("type")=="CATEGORY"}
+    imgs={o["id"]:(o.get("image_data") or {}).get("url") for o in objs if o.get("type")=="IMAGE"}
+    items={o["id"]:o for o in objs if o.get("type")=="ITEM"}
+    menu_id=next((c["id"] for c in cats.values() if (c.get("category_data") or {}).get("name")=="BRUNOS MENU"
+                  and (c.get("category_data") or {}).get("category_type")=="MENU_CATEGORY"),None)
+    groups={}
+    for c in cats.values():
+        cd=c.get("category_data") or {}
+        if menu_id and (cd.get("parent_category") or {}).get("id")==menu_id: groups[cd.get("name")]=c["id"]
+    v2i={v.get("id"):o["id"] for o in items.values() for v in ((o.get("item_data") or {}).get("variations") or [])}
+    def _nm(iid): return ((items.get(iid) or {}).get("item_data") or {}).get("name") or ""
+    secs=[]
+    for sname in _POSMENU_ORDER+sorted(k for k in groups if k not in _POSMENU_ORDER):
+        cid=groups.get(sname)
+        if not cid: continue
+        rows=[]
+        for o in items.values():
+            d=o.get("item_data") or {}
+            if d.get("is_archived"): continue
+            ent=next((c for c in (d.get("categories") or []) if c.get("id")==cid),None)
+            if not ent: continue
+            combo=d.get("product_type")=="COMBO" or bool(d.get("combo_type_details"))
+            parts=[]
+            if combo:
+                for s in ((d.get("combo_type_details") or {}).get("slots") or []):
+                    ids=list(s.get("item_ids") or [])+[v2i.get(v) for v in (s.get("item_variation_ids") or [])]
+                    parts.append({"slot":s.get("name") or "","items":sorted({_nm(i) for i in ids if i and _nm(i)})})
+            u=imgs.get((d.get("image_ids") or [None])[0]) or ""
+            rows.append({"id":o["id"],"name":d.get("name") or "?","ord":ent.get("ordinal") or 0,"combo":combo,"parts":parts,
+                         "img":("/api/pos_img?u="+urllib.parse.quote(u,safe="")) if u else ""})
+        rows.sort(key=lambda r:r["ord"])
+        secs.append({"name":sname,"items":rows})
+    # which packs use each variation, so a pack-only copy can be labelled "In Tender Box" / "In chicken packs"
+    uses={}
+    for o in items.values():
+        d=o.get("item_data") or {}
+        if d.get("is_archived") or not d.get("combo_type_details"): continue
+        for s in (d["combo_type_details"].get("slots") or []):
+            vids=list(s.get("item_variation_ids") or [])
+            for iid in s.get("item_ids") or []:
+                vids+=[v.get("id") for v in (((items.get(iid) or {}).get("item_data") or {}).get("variations") or [])]
+            for v in vids:
+                if v: uses.setdefault(v,set()).add(d.get("name") or "?")
+    data={"ok":True,"sections":secs,"uses":{k:sorted(v) for k,v in uses.items()},"at":int(time.time()*1000)}
+    _POSMENU_CACHE.update({"at":time.time(),"data":data})
+    return jsonify(data)
+
+_POSIMG_DIR=os.path.join(BASE_DIR,"pos_img_cache")
+@app.route("/api/pos_img")
+def api_pos_img():
+    # Square's item photos are ~1500 px originals; 80+ of them made the PRODUCTS page heavy on the tablets.
+    # Fetch once, shrink to 360 px, keep on disk. Only Square's own image host is allowed.
+    u=request.args.get("u") or ""
+    if not re.match(r"^https://items-images-production\.s3\.[a-z0-9-]+\.amazonaws\.com/",u): return ("bad image",400)
+    fn=os.path.join(_POSIMG_DIR,hashlib.sha1(u.encode()).hexdigest()+".jpg")
+    if not os.path.exists(fn):
+        try:
+            from PIL import Image; import io
+            with urllib.request.urlopen(u,timeout=20,context=SSL_CTX) as r: raw=r.read()
+            im=Image.open(io.BytesIO(raw)).convert("RGB"); im.thumbnail((360,360))
+            os.makedirs(_POSIMG_DIR,exist_ok=True); tmp=fn+".tmp"; im.save(tmp,"JPEG",quality=78); os.replace(tmp,fn)
+        except Exception as e:
+            return redirect(u)                                          # fall back to the original
+    resp=send_file(fn,mimetype="image/jpeg"); resp.headers["Cache-Control"]="public, max-age=604800"; return resp
 
 def _sq_disable_variation(vid):
     """Mark one item-variation SOLD OUT at this location (86 it) — the reverse of enable.
@@ -4549,6 +4628,43 @@ def _pack_copy_sync():
     for vid in [k for k in rec if k not in v2i]: rec.pop(vid,None); changed=True   # copy deleted/archived
     if changed:
         with data_lock: db["pack_copy_auto_off"]=rec; save_data(db)
+        _psrch_stale(); _offl_stale()
+    # A combo whose slot has NO option left (e.g. all 4 tender sizes off) can't be built, but Uber/DoorDash may
+    # still list it. Switch the combo itself off, and back on when an option returns (Square Menu chat, 13 Nov).
+    # Only combos this sync switched off are switched back on. Uses this scan's state (next pass sees new 86s).
+    byid={o.get("id"):o for o in items}; vby={}
+    for o in items:
+        for v in (o.get("item_data") or {}).get("variations") or []: vby[v.get("id")]=v
+    crec=dict(db.get("combo_auto_off") or {}); cchg=False
+    for o in items:
+        d=o.get("item_data") or {}
+        slots=(d.get("combo_type_details") or {}).get("slots") or []
+        if not slots: continue
+        def _avail(s):
+            for i in s.get("item_ids") or []:
+                it=byid.get(i)
+                if it and any(not _off(v) for v in ((it.get("item_data") or {}).get("variations") or [])): return True
+            for vid in s.get("item_variation_ids") or []:
+                v=vby.get(vid)
+                if v is not None and not _off(v): return True
+            return not (s.get("item_ids") or s.get("item_variation_ids"))      # empty slot: don't judge it
+        dead=[s.get("name") or "?" for s in slots if not _avail(s)]
+        for v in d.get("variations") or []:
+            vid=v.get("id")
+            if dead and not _off(v):
+                if vid in crec and time.time()*1000-crec[vid].get("at",0)<180000: continue
+                ok,err=_sq_disable_variation(vid)
+                print("combo sync OFF:",d.get("name"),"(nothing left in",dead,")","ok" if ok else err)
+                if ok or str(err or "").startswith("PENDING"): crec[vid]={"name":d.get("name"),"at":int(time.time()*1000)}; cchg=True
+            elif not dead and vid in crec:
+                if _off(v):
+                    ok,err,_w=_product_enable_one(vid)
+                    print("combo sync ON:",d.get("name"),"ok" if ok else err)
+                    if not ok: continue
+                crec.pop(vid,None); cchg=True
+    for vid in [k for k in crec if k not in vby]: crec.pop(vid,None); cchg=True
+    if cchg:
+        with data_lock: db["combo_auto_off"]=crec; save_data(db)
         _psrch_stale(); _offl_stale()
 def prodoff_auto_loop():
     while True:

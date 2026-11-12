@@ -1549,6 +1549,42 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .prodoff-sub{font-size:var(--fs-sm);color:#e7a7a7;margin-top:1px;}
 .prodoff-silence{flex-shrink:0;align-self:flex-start;background:transparent;border:1px solid var(--border2);color:var(--text);border-radius:var(--r-sm);padding:6px 12px;font-size:var(--fs-sm);font-weight:600;cursor:pointer;}
 .prodoff-silence:hover{background:rgba(255,255,255,.1);}
+/* PRODUCTS page (13 Nov 2026, test next to ITEMS): the switch laid out like the Square POS */
+#page-products{padding:0;}
+.pdp-top{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);}
+.pdp-title{font-size:var(--fs-lg);font-weight:800;white-space:nowrap;}
+.pdp-beta{font-size:11px;background:var(--amber);color:#111;border-radius:6px;padding:2px 6px;vertical-align:middle;}
+#pdp-search{flex:1;}
+.pdp-wrap{display:flex;height:calc(100vh - 150px);}
+.pdp-side{width:190px;flex:0 0 190px;padding:8px;display:flex;flex-direction:column;gap:7px;border-right:1px solid var(--border);overflow:auto;}
+.pdp-nav{background:#000;color:#fff;border:1px solid #333;border-radius:10px;padding:12px 10px;font-weight:800;font-size:var(--fs-sm);text-align:left;cursor:pointer;}
+.pdp-nav.on{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 2px color-mix(in srgb,var(--amber) 35%,transparent);}
+.pdp-nav .pdp-n{float:right;background:#b91c1c;color:#fff;border-radius:8px;padding:0 6px;font-size:12px;}
+.pdp-sps{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:auto;}
+.pdp-sps .pdp-nav{text-align:center;padding:8px 0;font-size:11px;}
+.pdp-grid{flex:1;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));grid-auto-rows:150px;gap:10px;align-content:start;overflow:auto;}
+.pdp-msg{grid-column:1/-1;color:var(--muted);padding:20px;}
+.pdp-t{position:relative;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;}
+.pdp-im{flex:1;background:#222 center/cover no-repeat;}
+.pdp-nm{padding:7px 9px;font-weight:800;font-size:var(--fs-sm);line-height:1.15;}
+.pdp-t.off .pdp-im{filter:grayscale(1) brightness(.45);} .pdp-t.off{border-color:#b91c1c;}
+.pdp-tg{position:absolute;top:7px;right:7px;border-radius:8px;padding:3px 9px;font-size:13px;font-weight:800;}
+.pdp-tg.off{background:#b91c1c;color:#fff;} .pdp-tg.part{background:var(--amber);color:#111;} .pdp-tg.pack{background:#000a;color:#fff;font-weight:600;}
+.pdp-pop h2{margin:0 0 4px;font-size:22px;} .pdp-sub{color:var(--muted);font-size:var(--fs-sm);margin-bottom:12px;}
+.pdp-big{display:block;width:100%;border:0;border-radius:12px;padding:15px;font-size:18px;font-weight:800;margin:9px 0;text-align:left;cursor:pointer;}
+.pdp-big small{display:block;font-weight:500;font-size:13px;opacity:.88;margin-top:3px;}
+.pdp-big.red{background:#b91c1c;color:#fff;} .pdp-big.grn{background:#15803d;color:#fff;} .pdp-big.amb{background:var(--surface2);color:var(--amber);border:2px solid var(--amber);}
+.pdp-lbl{color:var(--muted);font-size:12px;margin-top:12px;text-transform:uppercase;letter-spacing:.05em;}
+.pdp-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px;}
+.pdp-chip{flex:1;min-width:100px;text-align:center;border-radius:10px;padding:11px 6px;font-weight:800;background:var(--bg);border:1px solid var(--border2);cursor:pointer;color:var(--text);}
+.pdp-chip.o{background:#3a1212;border-color:#b91c1c;color:#fca5a5;}
+.pdp-chip small{display:block;font-weight:600;font-size:11px;opacity:.8;}
+.pdp-list{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+.pdp-li{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;cursor:pointer;}
+.pdp-li b{font-size:var(--fs-md);} .pdp-li small{display:block;color:var(--muted);font-size:11px;margin-top:2px;}
+.pdp-li.o{background:#3a1212;border-color:#b91c1c;}
+.pdp-sw{min-width:64px;text-align:center;border-radius:20px;padding:6px 10px;font-weight:800;font-size:13px;background:#b91c1c;color:#fff;}
+.pdp-sw.on{background:#15803d;}
 .prodoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 12px;margin-top:7px;transition:opacity .3s;}
 .prodoff-name{font-size:var(--fs-md);color:var(--text);font-weight:600;min-width:0;line-height:1.7;}
 .prodoff-tag{display:inline-block;font-size:var(--fs-xs);font-weight:700;letter-spacing:.3px;color:#d8ccff;background:rgba(124,92,255,.2);border-radius:var(--r-sm);padding:1px 6px;margin-left:7px;vertical-align:middle;}
@@ -2050,6 +2086,10 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 
       </div>
     </div>
+    <div class="page" id="page-products">
+      <div class="pdp-top"><div class="pdp-title">Products <span class="pdp-beta">TEST</span></div><input class="input" id="pdp-search" placeholder="Search any item&hellip;" oninput="pdpRender()"><button class="po-btn" onclick="pdpLoad(true)">Refresh</button></div>
+      <div class="pdp-wrap"><div class="pdp-side" id="pdp-side"></div><div class="pdp-grid" id="pdp-grid"><div class="pdp-msg">Loading the menu&hellip;</div></div></div>
+    </div>
     <div class="page" id="page-orders">
       <div class="page-header"><div class="page-title">Live Orders</div><div class="row" style="gap:10px;margin-left:auto;align-items:center;"><span id="orders-count" style="font-size:var(--fs-md);color:var(--muted);"></span></div></div>
       <div id="orders-grid" class="orders-grid"></div>
@@ -2117,6 +2157,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <button class="nav-btn" data-page="orders" onclick="navTo('orders',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l3 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Orders</span></div><div class="nav-badge" id="orders-badge">!</div></button>
     <button class="nav-btn" data-page="comp" onclick="openComp(this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 12h20"/><path d="M12 7v14"/><path d="M12 7S9.5 3.5 7.5 4.2 6.4 7 8 7Z"/><path d="M12 7s2.5-3.5 4.5-2.8S17.6 7 16 7Z"/></svg><span>Comp</span></div></button>
     <button class="nav-btn" id="nav-prodoff" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9m9 5h-9m9 5h-9M5 7l1 1 2-2m-3 6 1 1 2-2m-3 6 1 1 2-2"/></svg><span>ITEMS</span></div><div class="nav-badge" id="prodoff-nav-badge" style="display:block;">!</div></button>
+    <button class="nav-btn" data-page="products" onclick="navTo('products',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>PRODUCTS</span></div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -5184,7 +5225,7 @@ function closeSidebar(){document.getElementById('app-shell').classList.remove('d
 function buildSidebar(){const sn=document.getElementById('side-nav');if(!sn)return;const items=[...document.querySelectorAll('#bottom-nav .nav-btn')];
   sn.innerHTML=items.map(b=>{const page=b.dataset.page;const label=b.querySelector('span')?b.querySelector('span').textContent:page;return `<button class="side-item ${b.classList.contains('active')?'active':''}" data-page="${page}" onclick="navTo('${page}')">${_sideSvg(page)}<span>${label}</span></button>`;}).join('')+`<button class="side-item" onclick="closeSidebar();openSettingsModal()"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2 17 7M7 17l-1.8 1.8"/></svg><span>Settings</span></button>`;}
 function navTo(page,btn){closeSidebar();if(_isPageHidden(page)){navTo(_viewHome());return;}if(GATED_PAGES.includes(page)&&!gateUnlocked(page)){const LBL={stock:'Stock',recipes:'Recipes',cameras:'Cameras',sales:'Sales',team:'Team'};const mgr=['cameras','sales','team'].includes(page);requirePin(mgr?'Manager Code':'Enter Code',mgr?((LBL[page]||'This section')+' needs a Manager or Admin PIN'):'Code required to open '+(LBL[page]||page),u=>{sectionUnlockedAt[page]=Date.now();navTo(page,btn);},mgr?SETTINGS_ROLES:null);return;}document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));document.getElementById('page-'+page).classList.add('active');if(btn)btn.classList.add('active');else{const nb=document.querySelector('.nav-btn[data-page="'+page+'"]');if(nb)nb.classList.add('active');}document.querySelectorAll('#side-nav .side-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='stock'){if(_orunSup&&!Object.keys(_orunHave).length&&!Object.keys(_orunSkip).length&&!Object.keys(_orunAdj).length)_orunSup=null;renderStockPage();}if(page==='packdown'){packdownShift='auto';renderPackdownPage();}if(page==='recipes')renderRecipesPage();if(page==='jobs'){_prepView='today';renderPrepPage();}if(page==='orders')renderOrdersPage();if(page!=='sales')_salesHidden=true;   // leaving the Sales page → re-hide the totals
-if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();}
+if(page==='service')renderServicePage();if(page==='cameras')renderCamerasPage();if(page==='team')renderTeamPage();if(page==='sales')renderSalesPage();if(page==='products')pdpOpen();}
 // ===== Cameras page (live snapshot feeds) =====
 let _camPageTimer=null;
 function renderCamerasPage(){
@@ -8278,6 +8319,92 @@ function _poSend(action,rows,label){
 function poFamAll(i,action){const f=_poFams[i];if(!f)return;
   _poSend(action,f.rows.filter(r=>action==='off'?!r.off:r.off),f.name);}
 function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.off?'on':'off',[r],f.name+' — '+r.label);}
+// ===== PRODUCTS page (13 Nov 2026, TEST next to ITEMS — Marcel: keep ITEMS, try this on the side) =====
+// Sections + tiles come from /api/pos_menu (Square BRUNOS MENU groups, POS order, item photos). On/off state and
+// switching reuse the ITEMS index (/api/product_index) and server jobs (/api/product_job), so both pages agree.
+let _pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
+const _PDP_NAV=[['CHICKEN & PACKS','CHICKEN & PACKS'],['SIDES & SNACKS','SIDES & SNACKS'],['BURGERS','BURGERS'],['SALADS & BAKED DISHES','SALADS & BAKED'],['KIDS MEALS','KIDS MEALS'],['DRINKS','DRINKS'],['DESSERT','DESSERT'],['MERCH & RETAIL','MERCH']];
+// "switch off everything with ..." groups (Marcel 13 Nov): offered as a choice, never done silently
+const _PDP_KW=[{k:'TENDERS',re:/TENDER/},{k:'NUGGETS',re:/NUGGET/},{k:'SLIDERS',re:/SLIDER/},{k:'WINGS',re:/WING/},{k:'CHIPS (incl. kids fries)',re:/^(CHIPS|KIDS FRIES)$/}];
+function pdpOpen(){if(!_pdpMenu)pdpLoad();else pdpRender();_poIdxLoad(pdpRender);
+  clearInterval(_pdpT);_pdpT=setInterval(()=>{const pg=document.getElementById('page-products');
+    if(!pg||!pg.classList.contains('active')){clearInterval(_pdpT);_pdpT=null;return;}_poIdxLoad(()=>{pdpRender();_pdpPopRefresh();});},8000);}
+function pdpLoad(fresh){fetch('/api/pos_menu'+(fresh?'?fresh=1':''),{cache:'no-store'}).then(r=>r.json()).then(d=>{
+  if(d&&d.ok){_pdpMenu=d.sections||[];_pdpUses=d.uses||{};if(!_pdpSec&&_pdpMenu.length)_pdpSec=_pdpMenu[0].name;}
+  else{const g=document.getElementById('pdp-grid');if(g)g.innerHTML='<div class="pdp-msg" style="color:var(--red);">'+_mEsc((d&&d.error)||'menu failed')+'</div>';}
+  if(fresh)_poIdxLoad(pdpRender);pdpRender();}).catch(()=>{});}
+function _pdpPlain(it){return !it.catering&&!/^\s*christmas/i.test(it.name||'');}
+function _pdpFam(name){   // every index entry that is "this product": sizes, pack/box copies, the add-on
+  if(!_poIdx)return [];const k=_poKey({name:name});
+  const nn=x=>String(x||'').toLowerCase().replace(/&|and/g,' ').replace(/[^a-z0-9]/g,''),full=nn(name);
+  // add-ons must match the WHOLE name: the 'GREEK' salad dressing is not GREEK SALAD (13 Nov)
+  return _poIdx.filter(it=>_pdpPlain(it)&&!it.combo&&_poKey(it)===k&&(it.kind!=='modifier'||nn(it.name)===full));}
+function _pdpRows(name){const rows=_poRows(_pdpFam(name));
+  const sized=rows.some(x=>x.kind!=='modifier'&&x.label!=='Regular');
+  rows.forEach(r=>{
+    if(r.kind==='modifier'){r.label='As an add-on';return;}
+    if(r.label!=='Regular'||!sized)return;
+    const u=_pdpUses[r.ids[0]]||[];r.sub=[...new Set(u.map(n=>n.replace(/\s*(CHICKEN )?PACK.*$/i,'').trim()||n))].join(', ')+(u.some(n=>/PACK/i.test(n))?' packs':'');
+    r.label=!u.length?'In packs & boxes':(u.every(n=>/TENDER BOX/i.test(n))?'In Tender Box':(u.some(n=>/CHICKEN PACK/i.test(n))?'In chicken packs':'In '+u[0].toLowerCase()));});
+  return rows;}
+function _pdpState(rows){const n=rows.filter(r=>r.off).length;return {n:n,all:rows.length>0&&n===rows.length};}
+function _pdpKwRows(name){const N=String(name||'').toUpperCase();const kw=_PDP_KW.find(x=>x.re.test(N));if(!kw||!_poIdx)return null;
+  const its=_poIdx.filter(it=>_pdpPlain(it)&&!it.combo&&kw.re.test(String(it.name||'').toUpperCase()));
+  return {k:kw.k,rows:_poRows(its),names:[...new Set(its.map(i=>i.kind==='modifier'?(i.name+' (add-on)'):i.name))]};}
+function pdpRender(){const side=document.getElementById('pdp-side'),grid=document.getElementById('pdp-grid');if(!side||!grid||!_pdpMenu)return;
+  const q=((document.getElementById('pdp-search')||{}).value||'').trim().toLowerCase();
+  const offIn=sec=>sec.items.filter(i=>!i.combo&&_pdpState(_pdpRows(i.name)).n).length;
+  const bySec={};_pdpMenu.forEach(s=>bySec[s.name]=s);
+  const btn=(k,l,n)=>'<button class="pdp-nav'+(k===_pdpSec&&!q?' on':'')+'" data-sec="'+_mEsc(k)+'" onclick="pdpSec(this.dataset.sec)">'+_mEsc(l)+(n?'<span class="pdp-n">'+n+'</span>':'')+'</button>';
+  side.innerHTML=_PDP_NAV.filter(([k])=>bySec[k]).map(([k,l])=>btn(k,l,offIn(bySec[k]))).join('')
+    +'<div class="pdp-sps">'+_pdpMenu.filter(s=>/SPECIALS$/.test(s.name)).map(s=>btn(s.name,s.name.slice(0,3),0)).join('')+'</div>';
+  let items=[];
+  if(q){const seen={};_pdpMenu.forEach(s=>s.items.forEach(i=>{if(i.name.toLowerCase().indexOf(q)>=0&&!seen[i.name]){seen[i.name]=1;items.push(i);}}));}
+  else items=(bySec[_pdpSec]||{items:[]}).items;
+  if(!items.length){grid.innerHTML='<div class="pdp-msg">'+(q?'No match.':'Nothing in this section.')+'</div>';return;}
+  grid.innerHTML=items.map(i=>{let tag='',cls='';
+    if(i.combo)tag='<b class="pdp-tg pack">PACK</b>';
+    else if(_poIdx){const st=_pdpState(_pdpRows(i.name));if(st.all){tag='<b class="pdp-tg off">OFF</b>';cls=' off';}else if(st.n)tag='<b class="pdp-tg part">'+st.n+' off</b>';}
+    return '<div class="pdp-t'+cls+'" data-id="'+i.id+'" onclick="pdpTap(this.dataset.id)"><div class="pdp-im"'+(i.img?' style="background-image:url(\''+i.img+'\')"':'')+'></div><div class="pdp-nm">'+_mEsc(i.name)+'</div>'+tag+'</div>';}).join('');}
+function pdpSec(k){_pdpSec=k;const s=document.getElementById('pdp-search');if(s)s.value='';pdpRender();}
+function _pdpFind(id){for(const s of (_pdpMenu||[]))for(const i of s.items)if(i.id===id)return i;return null;}
+let _pdpPopKind=null;   // {combo:item} or {name}
+function _pdpPopShow(html){let o=document.getElementById('pdp-pop-o');
+  if(!o){o=document.createElement('div');o.id='pdp-pop-o';o.style.cssText='position:fixed;inset:0;z-index:460;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:14px;';
+    o.onclick=e=>{if(e.target===o)pdpPopClose();};document.body.appendChild(o);}
+  o.innerHTML='<div class="pdp-pop" style="width:min(640px,96vw);max-height:90vh;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:20px;">'
+    +'<button class="po-btn" style="float:right;" onclick="pdpPopClose()">Close</button>'+html+'</div>';o.style.display='flex';}
+function pdpPopClose(){const o=document.getElementById('pdp-pop-o');if(o)o.style.display='none';_pdpPopKind=null;}
+function _pdpPopRefresh(){const o=document.getElementById('pdp-pop-o');if(!o||o.style.display==='none'||!_pdpPopKind)return;
+  if(_pdpPopKind.combo)pdpTap(_pdpPopKind.combo);else pdpTapName(_pdpPopKind.name);}
+function pdpTap(id){const it=_pdpFind(id);if(!it)return;
+  if(!_poIdx){_poIdxLoad(()=>pdpTap(id));return;}
+  if(!it.combo){pdpTapName(it.name);return;}
+  _pdpPopKind={combo:id};
+  let h='<h2>'+_mEsc(it.name)+'</h2><div class="pdp-sub">This is a pack. It goes off by itself when what goes in it is off. Tap a part to switch it.</div>';
+  (it.parts||[]).forEach(p=>{h+='<div class="pdp-lbl">'+_mEsc(p.slot)+'</div><div class="pdp-chips">'+p.items.map(n=>{const st=_pdpState(_pdpRows(n));
+    return '<div class="pdp-chip'+(st.all?' o':'')+'" data-n="'+_mEsc(n)+'" onclick="pdpTapName(this.dataset.n)">'+_mEsc(n)+'<small>'+(st.all?'OFF':(st.n?st.n+' off':'on'))+'</small></div>';}).join('')+'</div>';});
+  _pdpPopShow(h);}
+function pdpTapName(n){_pdpCur=n;_pdpPopKind={name:n};_pdpPopShow('<h2>'+_mEsc(n)+'</h2>'+_pdpPopBody(n));}
+function _pdpPopBody(name){const rows=_pdpRows(name),st=_pdpState(rows),kw=_pdpKwRows(name);
+  let h='<div class="pdp-sub">Switches on the POS, kiosk, online, Uber and DoorDash. Catering and Christmas items are never touched.</div>';
+  if(!rows.length)return h+'<div class="pdp-sub" style="color:var(--amber);">Can\'t find this item in the switch list. Tap Refresh, or use ITEMS.</div>';
+  const what=[...new Set(rows.map(r=>r.label))].join(' · ');
+  if(st.all)h+='<button class="pdp-big grn" onclick="pdpAll(\'on\')">Switch ON all '+_mEsc(name)+'<small>'+_mEsc(what)+'</small></button>';
+  else h+='<button class="pdp-big red" onclick="pdpAll(\'off\')">Switch off '+(rows.length>1?'ALL ':'')+_mEsc(name)+(rows.length>1?'<small>'+_mEsc(what)+'</small>':'')+'</button>'
+    +(st.n?'<button class="pdp-big grn" onclick="pdpAll(\'on\')">Switch back ON the '+st.n+' that are off</button>':'');
+  if(kw&&kw.names.length>1){const ks=_pdpState(kw.rows);
+    h+=ks.all?'<button class="pdp-big grn" onclick="pdpKw(\'on\')">Switch ON all '+_mEsc(kw.k.toLowerCase())+' ('+kw.names.length+' items)<small>'+_mEsc(kw.names.join(' · '))+'</small></button>'
+      :'<button class="pdp-big amb" onclick="pdpKw(\'off\')">Switch off EVERYTHING with '+_mEsc(kw.k.toLowerCase())+' ('+kw.names.length+' items)<small>'+_mEsc(kw.names.join(' · '))+'</small></button>';}
+  if(rows.length>1)h+='<div class="pdp-lbl">Or one at a time</div><div class="pdp-list">'+rows.map((r,j)=>'<div class="pdp-li'+(r.off?' o':'')+'" onclick="pdpOne('+j+')"><div><b>'+_mEsc(r.label)+'</b>'+(r.sub?'<small>'+_mEsc(r.sub)+'</small>':'')+'</div><span class="pdp-sw'+(r.off?'':' on')+'">'+(r.off?'OFF':'ON')+'</span></div>').join('')+'</div>';
+  return h;}
+function _pdpGo(action,rows,label){rows=rows.filter(r=>action==='off'?!r.off:r.off);
+  if(!rows.length){_toast('Already '+action);return;}
+  _poSend(action,rows,label);pdpPopClose();setTimeout(pdpRender,50);
+  _toast((action==='off'?'Switching off ':'Switching on ')+label+'. The bar at the top shows progress.');}
+function pdpAll(a){_pdpGo(a,_pdpRows(_pdpCur),_pdpCur);}
+function pdpKw(a){const kw=_pdpKwRows(_pdpCur);if(kw)_pdpGo(a,kw.rows,'all '+kw.k.toLowerCase());}
+function pdpOne(j){const r=_pdpRows(_pdpCur)[j];if(r)_pdpGo(r.off?'on':'off',[r],_pdpCur+' — '+r.label);}
 function prodOffOpen(){
   const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
   const box=document.getElementById('po-search-results');if(box)box.innerHTML='';        // and no stale results from last time
