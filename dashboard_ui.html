@@ -1555,7 +1555,16 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .pdp-title{font-size:var(--fs-lg);font-weight:800;white-space:nowrap;}
 .pdp-beta{font-size:11px;background:var(--amber);color:#111;border-radius:6px;padding:2px 6px;vertical-align:middle;}
 #pdp-search{flex:1;}
-.pdp-wrap{display:flex;height:calc(100vh - 150px);}
+#page-products.active{display:flex;flex-direction:column;}
+.pdp-wrap{display:flex;flex:1;min-height:0;}
+/* always-visible strip: what's switched off + stock limits (Marcel 13 Nov) */
+.pdp-bot{flex:0 0 84px;border-top:2px solid #b91c1c;background:color-mix(in srgb,#b91c1c 8%,var(--bg));padding:6px 10px;display:flex;gap:10px;align-items:flex-start;overflow:hidden;}
+.pdp-bot-h{flex:0 0 auto;font-weight:800;font-size:12px;letter-spacing:.05em;color:#fca5a5;padding-top:6px;width:64px;line-height:1.2;}
+.pdp-bot-l{flex:1;display:flex;flex-wrap:wrap;gap:6px;overflow:auto;max-height:72px;align-content:flex-start;}
+.pdp-oc{background:#3a1212;border:1px solid #b91c1c;color:#fecaca;border-radius:18px;padding:5px 11px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.pdp-oc small{font-weight:500;opacity:.8;margin-left:4px;}
+.pdp-oc.lim{background:color-mix(in srgb,var(--amber) 16%,transparent);border-color:var(--amber);color:var(--amber);}
+.pdp-none{color:var(--green);font-weight:700;font-size:var(--fs-sm);padding-top:6px;}
 .pdp-side{width:190px;flex:0 0 190px;padding:8px;display:flex;flex-direction:column;gap:7px;border-right:1px solid var(--border);overflow:auto;}
 .pdp-nav{background:#000;color:#fff;border:1px solid #333;border-radius:10px;padding:12px 10px;font-weight:800;font-size:var(--fs-sm);text-align:left;cursor:pointer;}
 .pdp-nav.on{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 2px color-mix(in srgb,var(--amber) 35%,transparent);}
@@ -2089,6 +2098,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="page" id="page-products">
       <div class="pdp-top"><div class="pdp-title">Products <span class="pdp-beta">TEST</span></div><input class="input" id="pdp-search" placeholder="Search any item&hellip;" oninput="pdpRender()"><button class="po-btn" onclick="pdpLoad(true)">Refresh</button></div>
       <div class="pdp-wrap"><div class="pdp-side" id="pdp-side"></div><div class="pdp-grid" id="pdp-grid"><div class="pdp-msg">Loading the menu&hellip;</div></div></div>
+      <div class="pdp-bot" id="pdp-bot"></div>
     </div>
     <div class="page" id="page-orders">
       <div class="page-header"><div class="page-title">Live Orders</div><div class="row" style="gap:10px;margin-left:auto;align-items:center;"><span id="orders-count" style="font-size:var(--fs-md);color:var(--muted);"></span></div></div>
@@ -8322,13 +8332,14 @@ function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.
 // ===== PRODUCTS page (13 Nov 2026, TEST next to ITEMS — Marcel: keep ITEMS, try this on the side) =====
 // Sections + tiles come from /api/pos_menu (Square BRUNOS MENU groups, POS order, item photos). On/off state and
 // switching reuse the ITEMS index (/api/product_index) and server jobs (/api/product_job), so both pages agree.
-let _pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
+let _pdpLim=[],_pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
 const _PDP_NAV=[['CHICKEN & PACKS','CHICKEN & PACKS'],['SIDES & SNACKS','SIDES & SNACKS'],['BURGERS','BURGERS'],['SALADS & BAKED DISHES','SALADS & BAKED'],['KIDS MEALS','KIDS MEALS'],['DRINKS','DRINKS'],['DESSERT','DESSERT'],['MERCH & RETAIL','MERCH']];
 // "switch off everything with ..." groups (Marcel 13 Nov): offered as a choice, never done silently
 const _PDP_KW=[{k:'TENDERS',re:/TENDER/},{k:'NUGGETS',re:/NUGGET/},{k:'SLIDERS',re:/SLIDER/},{k:'WINGS',re:/WING/},{k:'CHIPS (incl. kids fries)',re:/^(CHIPS|KIDS FRIES)$/}];
-function pdpOpen(){if(!_pdpMenu)pdpLoad();else pdpRender();_poIdxLoad(pdpRender);
+function _pdpLimLoad(){fetch('/api/pos_limits',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(d&&d.ok){_pdpLim=d.limits||[];_pdpBot();}}).catch(()=>{});}
+function pdpOpen(){if(!_pdpMenu)pdpLoad();else pdpRender();_poIdxLoad(pdpRender);_pdpLimLoad();
   clearInterval(_pdpT);_pdpT=setInterval(()=>{const pg=document.getElementById('page-products');
-    if(!pg||!pg.classList.contains('active')){clearInterval(_pdpT);_pdpT=null;return;}_poIdxLoad(()=>{pdpRender();_pdpPopRefresh();});},8000);}
+    if(!pg||!pg.classList.contains('active')){clearInterval(_pdpT);_pdpT=null;return;}_poIdxLoad(()=>{pdpRender();_pdpPopRefresh();});_pdpLimLoad();},8000);}
 function pdpLoad(fresh){fetch('/api/pos_menu'+(fresh?'?fresh=1':''),{cache:'no-store'}).then(r=>r.json()).then(d=>{
   if(d&&d.ok){_pdpMenu=d.sections||[];_pdpUses=d.uses||{};if(!_pdpSec&&_pdpMenu.length)_pdpSec=_pdpMenu[0].name;}
   else{const g=document.getElementById('pdp-grid');if(g)g.innerHTML='<div class="pdp-msg" style="color:var(--red);">'+_mEsc((d&&d.error)||'menu failed')+'</div>';}
@@ -8351,7 +8362,21 @@ function _pdpState(rows){const n=rows.filter(r=>r.off).length;return {n:n,all:ro
 function _pdpKwRows(name){const N=String(name||'').toUpperCase();const kw=_PDP_KW.find(x=>x.re.test(N));if(!kw||!_poIdx)return null;
   const its=_poIdx.filter(it=>_pdpPlain(it)&&!it.combo&&kw.re.test(String(it.name||'').toUpperCase()));
   return {k:kw.k,rows:_poRows(its),names:[...new Set(its.map(i=>i.kind==='modifier'?(i.name+' (add-on)'):i.name))]};}
-function pdpRender(){const side=document.getElementById('pdp-side'),grid=document.getElementById('pdp-grid');if(!side||!grid||!_pdpMenu)return;
+function _pdpBot(){const el=document.getElementById('pdp-bot');if(!el)return;
+  if(!_poIdx){el.innerHTML='';return;}
+  // one chip per product with anything off (plain menu only — catering/Christmas are never in here)
+  const fams={};_poIdx.filter(it=>_pdpPlain(it)&&!it.combo).forEach(it=>{const k=_poKey(it);
+    const f=fams[k]=fams[k]||{name:'',sized:false};const sz=(it.vars||[]).length>1;
+    if(it.kind!=='modifier'&&(!f.name||(sz&&!f.sized))){f.name=it.name;f.sized=sz;}else if(!f.name)f.name=it.name;});
+  const offs=[];Object.values(fams).forEach(f=>{const rows=_pdpRows(f.name),st=_pdpState(rows);if(!st.n)return;
+    offs.push({name:f.name,what:st.all?'all':rows.filter(r=>r.off).map(r=>r.label).join(', ')});});
+  offs.sort((a,b)=>a.name.localeCompare(b.name));
+  const chip=(o)=>'<span class="pdp-oc" data-n="'+_mEsc(o.name)+'" onclick="pdpTapName(this.dataset.n)">'+_mEsc(o.name)+'<small>'+_mEsc(o.what)+'</small></span>';
+  const lim=(_pdpLim||[]).map(l=>'<span class="pdp-oc lim">'+_mEsc(l.name)+'<small>'+l.left+' left</small></span>').join('');
+  el.innerHTML='<div class="pdp-bot-h">SWITCHED OFF'+(offs.length?' ('+offs.length+')':'')+'</div><div class="pdp-bot-l">'
+    +(offs.length?offs.map(chip).join(''):'<span class="pdp-none">Everything is on ✓</span>')
+    +(lim?'<span style="width:100%;height:0;"></span><span class="pdp-bot-h" style="width:auto;padding:5px 4px 0 0;color:var(--amber);">LIMITS</span>'+lim:'')+'</div>';}
+function pdpRender(){_pdpBot();const side=document.getElementById('pdp-side'),grid=document.getElementById('pdp-grid');if(!side||!grid||!_pdpMenu)return;
   const q=((document.getElementById('pdp-search')||{}).value||'').trim().toLowerCase();
   const offIn=sec=>sec.items.filter(i=>!i.combo&&_pdpState(_pdpRows(i.name)).n).length;
   const bySec={};_pdpMenu.forEach(s=>bySec[s.name]=s);

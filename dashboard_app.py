@@ -3803,6 +3803,43 @@ def api_pos_menu():
     _POSMENU_CACHE.update({"at":time.time(),"data":data})
     return jsonify(data)
 
+_POSLIM_CACHE={"at":0,"data":None}
+@app.route("/api/pos_limits")
+def api_pos_limits():
+    """Items with a stock limit (Square inventory tracking on, e.g. 'Set stock' on the POS) and how many are
+    left — shown at the bottom of the PRODUCTS page (Marcel 13 Nov). Sold-out ones are in the OFF list instead."""
+    if _POSLIM_CACHE["data"] and time.time()-_POSLIM_CACHE["at"]<45: return jsonify(_POSLIM_CACHE["data"])
+    cfg=db.get("square_config",{}) or {}; loc=(cfg.get("location_id") or "").strip(); hdr=_sq_headers()
+    if not hdr or not loc: return jsonify({"ok":False,"error":"Square not configured"})
+    tr={}
+    for o in _sq_catalog_list("ITEM"):
+        d=o.get("item_data") or {}
+        if d.get("is_archived"): continue
+        for v in d.get("variations") or []:
+            vd=v.get("item_variation_data") or {}
+            ov=next((x for x in (vd.get("location_overrides") or []) if x.get("location_id")==loc),{})
+            if (vd.get("track_inventory") or ov.get("track_inventory")) and not ov.get("sold_out"):
+                vn=(vd.get("name") or "").strip()
+                tr[v.get("id")]=d.get("name","?")+((" "+vn) if vn and vn.lower()!="regular" else "")
+    out=[]
+    ids=list(tr)
+    try:
+        for k in range(0,len(ids),500):
+            req=urllib.request.Request(SQUARE_BASE+"/v2/inventory/counts/batch-retrieve",headers=hdr,
+                data=json.dumps({"catalog_object_ids":ids[k:k+500],"location_ids":[loc],"states":["IN_STOCK"]}).encode())
+            with urllib.request.urlopen(req,timeout=20,context=SSL_CTX) as r: res=json.loads(r.read().decode())
+            for c in res.get("counts") or []:
+                try: q=float(c.get("quantity") or 0)
+                except Exception: q=0
+                out.append({"id":c.get("catalog_object_id"),"name":tr.get(c.get("catalog_object_id"),"?"),"left":int(q) if q==int(q) else q})
+        seen={x["id"] for x in out}
+        out+=[{"id":i,"name":n,"left":0} for i,n in tr.items() if i not in seen]
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)[:160]})
+    data={"ok":True,"limits":sorted(out,key=lambda x:x["name"])}
+    _POSLIM_CACHE.update({"at":time.time(),"data":data})
+    return jsonify(data)
+
 _POSIMG_DIR=os.path.join(BASE_DIR,"pos_img_cache")
 @app.route("/api/pos_img")
 def api_pos_img():
