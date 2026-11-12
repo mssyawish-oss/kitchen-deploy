@@ -1871,7 +1871,7 @@ def square_poll_loop():
                     now=datetime.now(timezone.utc);today=now.astimezone().date()
                     mid=now.astimezone().replace(hour=0,minute=0,second=0,microsecond=0)
                     comp_min=(int((now.astimezone()-mid).total_seconds()/60)+5) if not _first_sweep else 45  # first run = all of today
-                    open_orders=query_square_sales(cfg,minutes=4320,states=("OPEN",))
+                    open_orders=query_square_sales(cfg,minutes=43200,states=("OPEN",))   # 30 days: a pre-order can be placed weeks ahead (Danielle, placed 7 Nov for 22 Nov)
                     orders=open_orders+query_square_sales(cfg,minutes=comp_min,states=("COMPLETED",))
                     _first_sweep=True
                     # count TODAY's sales when due (scheduled → at due-15min; else at order time). skip future + pre-today (stale).
