@@ -1588,6 +1588,13 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .pdp-chip{flex:1;min-width:100px;text-align:center;border-radius:10px;padding:11px 6px;font-weight:800;background:var(--bg);border:1px solid var(--border2);cursor:pointer;color:var(--text);}
 .pdp-chip.o{background:#3a1212;border-color:#b91c1c;color:#fca5a5;}
 .pdp-chip small{display:block;font-weight:600;font-size:11px;opacity:.8;}
+.pdp-pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-top:6px;}
+.pdp-pt{position:relative;background:var(--bg);border:1px solid var(--border2);border-radius:10px;overflow:hidden;cursor:pointer;}
+.pdp-pt.off{border-color:#b91c1c;} .pdp-pt.off .pdp-pim{filter:grayscale(1) brightness(.45);}
+.pdp-pim{height:70px;background:#222 center/cover no-repeat;}
+.pdp-pn{padding:5px 7px 22px;font-weight:800;font-size:12px;line-height:1.15;}
+.pdp-ps{position:absolute;left:7px;bottom:5px;font-size:11px;font-weight:800;color:#86efac;}
+.pdp-ps.off{color:#fca5a5;} .pdp-ps.part{color:var(--amber);}
 .pdp-list{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
 .pdp-li{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;cursor:pointer;}
 .pdp-li b{font-size:var(--fs-md);} .pdp-li small{display:block;color:var(--muted);font-size:11px;margin-top:2px;}
@@ -8332,7 +8339,7 @@ function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.
 // ===== PRODUCTS page (13 Nov 2026, TEST next to ITEMS — Marcel: keep ITEMS, try this on the side) =====
 // Sections + tiles come from /api/pos_menu (Square BRUNOS MENU groups, POS order, item photos). On/off state and
 // switching reuse the ITEMS index (/api/product_index) and server jobs (/api/product_job), so both pages agree.
-let _pdpLim=[],_pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
+let _pdpPartImg={},_pdpLim=[],_pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
 const _PDP_NAV=[['CHICKEN & PACKS','CHICKEN & PACKS'],['SIDES & SNACKS','SIDES & SNACKS'],['BURGERS','BURGERS'],['SALADS & BAKED DISHES','SALADS & BAKED'],['KIDS MEALS','KIDS MEALS'],['DRINKS','DRINKS'],['DESSERT','DESSERT'],['MERCH & RETAIL','MERCH']];
 // "switch off everything with ..." groups (Marcel 13 Nov): offered as a choice, never done silently
 const _PDP_KW=[{k:'TENDERS',re:/TENDER/},{k:'NUGGETS',re:/NUGGET/},{k:'SLIDERS',re:/SLIDER/},{k:'WINGS',re:/WING/},{k:'CHIPS (incl. kids fries)',re:/^(CHIPS|KIDS FRIES)$/}];
@@ -8341,7 +8348,7 @@ function pdpOpen(){if(!_pdpMenu)pdpLoad();else pdpRender();_poIdxLoad(pdpRender)
   clearInterval(_pdpT);_pdpT=setInterval(()=>{const pg=document.getElementById('page-products');
     if(!pg||!pg.classList.contains('active')){clearInterval(_pdpT);_pdpT=null;return;}_poIdxLoad(()=>{pdpRender();_pdpPopRefresh();});_pdpLimLoad();},8000);}
 function pdpLoad(fresh){fetch('/api/pos_menu'+(fresh?'?fresh=1':''),{cache:'no-store'}).then(r=>r.json()).then(d=>{
-  if(d&&d.ok){_pdpMenu=d.sections||[];_pdpUses=d.uses||{};if(!_pdpSec&&_pdpMenu.length)_pdpSec=_pdpMenu[0].name;}
+  if(d&&d.ok){_pdpMenu=d.sections||[];_pdpUses=d.uses||{};_pdpPartImg=d.part_imgs||{};if(!_pdpSec&&_pdpMenu.length)_pdpSec=_pdpMenu[0].name;}
   else{const g=document.getElementById('pdp-grid');if(g)g.innerHTML='<div class="pdp-msg" style="color:var(--red);">'+_mEsc((d&&d.error)||'menu failed')+'</div>';}
   if(fresh)_poIdxLoad(pdpRender);pdpRender();}).catch(()=>{});}
 function _pdpPlain(it){return !it.catering&&!/^\s*christmas/i.test(it.name||'');}
@@ -8407,8 +8414,7 @@ function pdpTap(id){const it=_pdpFind(id);if(!it)return;
   if(!it.combo){pdpTapName(it.name);return;}
   _pdpPopKind={combo:id};
   let h='<h2>'+_mEsc(it.name)+'</h2><div class="pdp-sub">This is a pack. It goes off by itself when what goes in it is off. Tap a part to switch it.</div>';
-  (it.parts||[]).forEach(p=>{h+='<div class="pdp-lbl">'+_mEsc(p.slot)+'</div><div class="pdp-chips">'+p.items.map(n=>{const st=_pdpState(_pdpRows(n));
-    return '<div class="pdp-chip'+(st.all?' o':'')+'" data-n="'+_mEsc(n)+'" onclick="pdpTapName(this.dataset.n)">'+_mEsc(n)+'<small>'+(st.all?'OFF':(st.n?st.n+' off':'on'))+'</small></div>';}).join('')+'</div>';});
+  (it.parts||[]).forEach(p=>{h+='<div class="pdp-lbl">'+_mEsc(p.slot)+'</div><div class="pdp-pgrid">'+p.items.map(n=>{const st=_pdpState(_pdpRows(n)),im=_pdpPartImg[n];return '<div class="pdp-pt'+(st.all?' off':'')+'" data-n="'+_mEsc(n)+'" onclick="pdpTapName(this.dataset.n)"><div class="pdp-pim"'+(im?' style="background-image:url(\''+im+'\')"':'')+'></div><div class="pdp-pn">'+_mEsc(n)+'</div><b class="pdp-ps'+(st.all?' off':(st.n?' part':''))+'">'+(st.all?'OFF':(st.n?st.n+' off':'ON'))+'</b></div>';}).join('')+'</div>';});
   _pdpPopShow(h);}
 function pdpTapName(n){_pdpCur=n;_pdpPopKind={name:n};_pdpPopShow('<h2>'+_mEsc(n)+'</h2>'+_pdpPopBody(n));}
 function _pdpPopBody(name){const rows=_pdpRows(name),st=_pdpState(rows),kw=_pdpKwRows(name);

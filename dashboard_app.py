@@ -3819,7 +3819,14 @@ def api_pos_menu():
                 vids+=[v.get("id") for v in (((items.get(iid) or {}).get("item_data") or {}).get("variations") or [])]
             for v in vids:
                 if v: uses.setdefault(v,set()).add(d.get("name") or "?")
-    data={"ok":True,"sections":secs,"uses":{k:sorted(v) for k,v in uses.items()},"at":int(time.time()*1000)}
+    # a photo for every pack part (Marcel 13 Nov): its own photo, else any same-name item's photo
+    pimg={}
+    for o in items.values():
+        d=o.get("item_data") or {}; u=imgs.get((d.get("image_ids") or [None])[0])
+        if u and not d.get("is_archived"): pimg.setdefault((d.get("name") or "").strip().upper(),u)
+    need={n for sct in secs for r in sct["items"] for pt in r["parts"] for n in pt["items"]}
+    part_imgs={n:"/api/pos_img?u="+urllib.parse.quote(pimg[n.strip().upper()],safe="") for n in need if n.strip().upper() in pimg}
+    data={"ok":True,"sections":secs,"uses":{k:sorted(v) for k,v in uses.items()},"part_imgs":part_imgs,"at":int(time.time()*1000)}
     _POSMENU_CACHE.update({"at":time.time(),"data":data})
     return jsonify(data)
 
