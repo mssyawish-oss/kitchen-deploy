@@ -2073,6 +2073,22 @@ def _order_status_payload():
         else:
             inprog.append(row)
     ki,kr=_kds_instore_orders()                            # in-store orders read from the KDS screen
+    # The screen reader sometimes takes an ONLINE ticket for an in-store one ('Ollie Pontifex' read off the KDS next to
+    # Square Online's 'Ollie P', 13 Nov). Any name that matches a recent non-POS Square order belongs to that order.
+    def _pkey(nm):
+        ps=[x for x in re.split(r'\s+',(nm or '').strip()) if x]
+        return (_norm_name(ps[0])+'|'+ps[-1][:1].lower()) if len(ps)>=2 else _norm_name(nm)
+    _online=set()
+    for o in (_KDS_RAW.get('orders') or []):
+        _s=((o.get('source') or {}).get('name') or '').lower()
+        if _s in cfg['est_sources'] or 'point of sale' in _s: continue
+        _online.add(_pkey(_status_name(o)))
+    def _short(r):                                         # same privacy rule as Square names: first + initial
+        ps=[x for x in (r.get('name') or '').split() if x]
+        if len(ps)>=2 and ps[0][:1].isalpha() and not (r.get('name') or '').lower().startswith('order'): r['name']=ps[0]+' '+ps[-1][:1].upper()
+        return r
+    ki=[_short(r) for r in ki if _pkey(r.get('name'))not in _online]
+    kr=[_short(r) for r in kr if _pkey(r.get('name')) not in _online]
     inprog+=ki; ready+=kr
     inprog.sort(key=lambda r:r["created"])                 # longest-waiting at the top
     ready.sort(key=lambda r:r.get("_r",0),reverse=True)    # most recently ready first
