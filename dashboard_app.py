@@ -11930,7 +11930,9 @@ def api_fry_status():
             except Exception: pass
         for it in tk.get("items") or []:
             n=(it.get("n") or "").upper(); q=int(it.get("q") or 1)
-            if "CHIP" in n and "SWEET" not in n and "CATER" not in n:
+            if n in ("CHIPS","KIDS FRIES"):         # since 12 Nov combos ring a plain CHIPS / KIDS FRIES line = side portion
+                counts["SIDE"]=counts.get("SIDE",0)+q; served+=FRY_W["SIDE"]*q
+            elif "CHIP" in n and "SWEET" not in n and "CATER" not in n:
                 size=next((z for z in ("SML","MED","LRG","FAM","REGULAR") if n.endswith(z)),"MED")
                 size="MED" if size=="REGULAR" else size
                 counts[size]=counts.get(size,0)+q; served+=FRY_W[size]*q
@@ -12371,6 +12373,10 @@ def _fried_pieces(nm,var,mods,cfg):
         out.append(("chicken",int(m.group(1)) if m else 1,""))
     elif re.fullmatch(r'(\d+) PCS FRIED CHICKEN(?: PACK)?',N):
         out.append(("chicken",int(N.split()[0]),""))
+    elif re.fullmatch(r'(\d+) (?:TINY )?TENDERS?',N):          # combo parts since 12 Nov (Tender Box, kids, specials)
+        out.append(("tender",int(N.split()[0]),""))
+    elif re.fullmatch(r'(\d+) NUGGETS?',N):
+        out.append(("nugget",int(N.split()[0]),""))
     elif N=="WINGS" and num: out.append(("wing",int(num.group(1)),""))
     elif N=="CHICKEN NUGGETS": out.append(("nugget",int(num.group(1)) if num else 6,""))
     for m,q in M:
@@ -13744,6 +13750,13 @@ def _ck_pack_name(slip):
     # Orders API has only the pack's pieces, so rebuild the pack name: "1/4 CHICKEN PACK 2 SIDES"
     if not slip.get("sides") or (slip.get("chicken") or {}).get("catalog_object_id") not in CK_PACK_CHICKEN: return ""
     n=_slip_norm((slip.get("chicken") or {}).get("name"));k=len(slip["sides"])
+    # 2 PCS PACK SPECIAL ($12) rings as the SAME 2 PCS chicken + pack CHIPS as FRIED CHICKEN PACK 1 SIDE ($15+);
+    # Square leaves no combo marker, so the price tells them apart (13 Nov: slips said FRIED CHICKEN PACK 1 SIDE)
+    if k==1 and n.startswith("2 PCS") and "CHIP" in _slip_norm(slip["sides"][0].get("name")):
+        try:
+            tot=sum(int(((x or {}).get("base_price_money") or {}).get("amount") or 0) for x in (slip.get("chicken"),slip["sides"][0]))
+            if 0<tot<1400: return "2 PCS PACK SPECIAL"
+        except Exception: pass
     base="1/4 CHICKEN PACK" if n.startswith("1/4") else "1/2 CHICKEN PACK" if n.startswith("1/2") else "FRIED CHICKEN PACK" if "FRIED" in n else ""
     return (base+(" %d SIDE%s"%(k,"" if k==1 else "S"))) if base else ""
 def _ck_slip_image(number,src,tm,box,slip,dine_in):
