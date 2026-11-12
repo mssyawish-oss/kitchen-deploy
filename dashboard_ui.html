@@ -235,7 +235,7 @@ body.style-v2 #rot-live .rl-heroRow{width:auto;gap:10px;}
 body.style-v2 #rot-live .rl-hero-num{font-size:clamp(30px,4.8vh,44px);}
 body.style-v2 #rot-live .rl-trial{margin-top:3px;font-size:11px;color:var(--muted);letter-spacing:.02em;opacity:.85;} .rl-trial b{color:var(--muted);font-family:var(--font-mono);}
 .rl-hero-lab{margin:0;}
-body.style-v2 #rot-live .rl-step{width:36px;height:36px;font-size:var(--fs-lg);}
+body.style-v2 #rot-live .rl-step{width:54px;height:54px;font-size:32px;}   /* bigger + fixed place (Marcel 13 Nov) */
 body.style-v2 #rot-live .rl-foot{margin:0;flex-direction:column;align-items:flex-start;gap:2px;}
 body.style-v2 #rot-live .rl-actions{margin-left:0;width:auto;flex:0 0 auto;flex-direction:column;gap:14px;}
 /* flex:0 0 auto is the fix: in a COLUMN the inherited flex:1 was shrinking the buttons to ~16px */
@@ -815,7 +815,7 @@ body.view-pad .pd-name,body.view-pad .pc-name{font-size:var(--fs-md);}
 body.view-phone .probes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 body.view-phone .rl-actions{flex-direction:column;gap:6px;}
 body.view-phone .nav-btn span{font-size:var(--fs-sm);}
-body.view-phone .rl-step{width:44px;height:44px;}
+body.view-phone .rl-step{width:54px;height:54px;}
 /* Phone: the probes grid normally splits the section height between rows so it fits without
    scrolling. On a phone that squeezes each card shorter than its own contents, so the temps
    spilled out and the cards visibly overlapped. Let the rows size to their content and scroll. */
@@ -828,9 +828,10 @@ body.view-phone .rl-step{width:44px;height:44px;}
   #page-probes .pb-sec+.pb-sec{margin-top:12px;}   /* stop the BATCHES heading clipping the card above */
 }
 .rl-heroRow{display:flex;align-items:center;justify-content:center;gap:clamp(6px,2vw,18px);width:100%;min-width:0;}
-.rl-step{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);width:clamp(40px,7vh,58px);height:clamp(40px,7vh,58px);font-size:clamp(24px,3.4vh,34px);font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;}
+.rl-step{flex-shrink:0;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);width:clamp(54px,8vh,68px);height:clamp(54px,8vh,68px);font-size:clamp(30px,4vh,40px);font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;}
 .rl-step:active{transform:scale(.93);}
-.rl-hero-num{font-family:var(--font-mono);font-weight:800;font-size:clamp(56px,12vh,116px);line-height:.9;letter-spacing:-.02em;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:clip;}
+/* fixed-width number box so the -/+ buttons never move when the count changes (13 Nov) */
+.rl-hero-num{flex:0 0 auto;width:clamp(120px,19vh,190px);text-align:center;font-family:var(--font-mono);font-weight:800;font-size:clamp(56px,12vh,116px);line-height:.9;letter-spacing:-.02em;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:clip;}
 .rl-hero-lab{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.2em;color:var(--muted);margin-top:10px;}
 .rl-lowpill{font-size:var(--fs-sm);font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:4px 13px;border-radius:999px;margin-bottom:16px;}
 .rl-lowpill.warn{color:#3a2a06;background:var(--amber);}
