@@ -3775,6 +3775,18 @@ function startTablesAlarm(){if(!_acfg('tables').enabled)return;if(_tablesAlarm)r
 function stopTablesAlarm(){_tablesAlarm=false;_updateFlash();}
 let _tablesLiveTimer=null,_tablesLiveWatch=null,_tablesLiveOn=false,_tablesAutoHide=null;
 function _tablesLiveStop(){_tablesLiveOn=false;if(_tablesLiveTimer){clearTimeout(_tablesLiveTimer);_tablesLiveTimer=null;}if(_tablesLiveWatch){clearTimeout(_tablesLiveWatch);_tablesLiveWatch=null;}const im=document.getElementById('tables-live');if(im){im.onload=null;im.onerror=null;im.src='';}}
+// Shared live loop for the camera pop-ups: fetch each frame off-screen and only replace the picture when a
+// real frame arrives (8 s timeout). Until then the box keeps showing the saved alert photo - never black.
+function _camLiveFetch(id,cam,isOn,setTimer){
+  const go=function(){if(!isOn())return;const ac=(typeof AbortController!=='undefined')?new AbortController():null;
+    const to=setTimeout(function(){if(ac)ac.abort();},8000);
+    fetch('/api/cam/'+cam+'.jpg?ts='+Date.now(),ac?{signal:ac.signal,cache:'no-store'}:{cache:'no-store'})
+      .then(function(r){if(!r.ok)throw new Error('cam '+r.status);return r.blob();})
+      .then(function(b){const i=document.getElementById(id);if(!i||!isOn()||!b||!b.size)return;
+        const old=i._ou;i._ou=URL.createObjectURL(b);i.src=i._ou;if(old)URL.revokeObjectURL(old);})
+      .catch(function(){})
+      .then(function(){clearTimeout(to);if(isOn())setTimer(setTimeout(go,200));});};
+  go();}
 function _tablesLiveStart(cam){
   _tablesLiveStop();
   const img=document.getElementById('tables-live'); if(!img||!cam)return;
@@ -3789,9 +3801,7 @@ function _tablesLiveSnap(cam){
   // camera delivers, roughly every 2s), self-throttling so requests never stack up.
   if(_tablesLiveWatch){clearTimeout(_tablesLiveWatch);_tablesLiveWatch=null;}
   const img=document.getElementById('tables-live'); if(!img||!cam){_tablesLiveStop();return;}
-  const next=function(){if(!_tablesLiveOn)return;_tablesLiveTimer=setTimeout(function(){const i=document.getElementById('tables-live');if(!i||!_tablesLiveOn){return;}i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},200);};
-  img.onload=next; img.onerror=next;
-  img.src='/api/cam/'+cam+'.jpg?ts='+Date.now();
+  _camLiveFetch('tables-live',cam,function(){return _tablesLiveOn;},function(t){_tablesLiveTimer=t;});
 }
 function ackTables(){stopTablesAlarm();_tablesLiveStop();if(_tablesAutoHide){clearTimeout(_tablesAutoHide);_tablesAutoHide=null;}const t=document.getElementById('tables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/tables_ack',{method:'POST'}).catch(()=>{});}
 // Per-screen popup show/hide for the camera watchers. Sets db.device_prefs[thisScreen].pop[key]; the
@@ -3822,7 +3832,7 @@ function handleTables(t){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
       const cap=_mEsc(t.desc||t.note||'Food left on an outside table');
       const cam=t.cam||'';
-      const live=cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):((t.img||'/api/tables_frame.jpg')+'?ts='+Date.now());
+      const live=t.img||('/api/tables_frame.jpg?ts='+Date.now());   // alert photo first; live frames replace it as they arrive
       tile.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
         +'<b style="color:var(--amber);font-size:var(--fs-md);flex:1;min-width:0;">\u26A0 Uncleared table \u2014 outside area</b>'
         +'<span style="font-size:var(--fs-sm);color:var(--green);white-space:nowrap;">\u25CF live</span></div>'
@@ -4163,7 +4173,7 @@ function startIntablesAlarm(){if(!_acfg('intables').enabled)return;if(_intablesA
 function stopIntablesAlarm(){_intablesAlarm=false;_updateFlash();}
 let _intablesLiveTimer=null,_intablesLiveOn=false,_intablesAutoHide=null;
 function _intablesLiveStop(){_intablesLiveOn=false;if(_intablesLiveTimer){clearTimeout(_intablesLiveTimer);_intablesLiveTimer=null;}const im=document.getElementById('intables-live');if(im){im.onload=null;im.onerror=null;im.src='';}}
-function _intablesLiveStart(cam){_intablesLiveStop();const img=document.getElementById('intables-live');if(!img||!cam)return;_intablesLiveOn=true;const next=function(){if(!_intablesLiveOn)return;_intablesLiveTimer=setTimeout(function(){const i=document.getElementById('intables-live');if(!i||!_intablesLiveOn)return;i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},200);};img.onload=next;img.onerror=next;img.src='/api/cam/'+cam+'.jpg?ts='+Date.now();}
+function _intablesLiveStart(cam){_intablesLiveStop();const img=document.getElementById('intables-live');if(!img||!cam)return;_intablesLiveOn=true;_camLiveFetch('intables-live',cam,function(){return _intablesLiveOn;},function(t){_intablesLiveTimer=t;});}
 function ackIntables(){stopIntablesAlarm();_intablesLiveStop();if(_intablesAutoHide){clearTimeout(_intablesAutoHide);_intablesAutoHide=null;}const t=document.getElementById('intables-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/intables_ack',{method:'POST'}).catch(()=>{});}
 let _intablesZoomTimer=null;
 function _intablesZoomStop(){if(_intablesZoomTimer){clearInterval(_intablesZoomTimer);_intablesZoomTimer=null;}}
@@ -4177,7 +4187,7 @@ function handleIntables(t){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid var(--amber)';
       const cap=_mEsc(t.desc||t.note||'Food left on an inside table');
       const cam=t.cam||'';
-      const live=cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):((t.img||'/api/intables_frame.jpg')+'?ts='+Date.now());
+      const live=t.img||('/api/intables_frame.jpg?ts='+Date.now());
       tile.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
         +'<b style="color:var(--amber);font-size:var(--fs-md);flex:1;min-width:0;">⚠ Uncleared table — dining room</b>'
         +'<span style="font-size:var(--fs-sm);color:var(--green);white-space:nowrap;">● live</span></div>'
@@ -4333,7 +4343,7 @@ function startFrontdoorAlarm(){if(!_acfg('frontdoor').enabled)return;if(_frontdo
 function stopFrontdoorAlarm(){_frontdoorAlarm=false;_updateFlash();}
 let _frontdoorLiveTimer=null,_frontdoorLiveOn=false,_frontdoorAutoHide=null;
 function _frontdoorLiveStop(){_frontdoorLiveOn=false;if(_frontdoorLiveTimer){clearTimeout(_frontdoorLiveTimer);_frontdoorLiveTimer=null;}const im=document.getElementById('frontdoor-live');if(im){im.onload=null;im.onerror=null;im.src='';}}
-function _frontdoorLiveStart(cam){_frontdoorLiveStop();const img=document.getElementById('frontdoor-live');if(!img||!cam)return;_frontdoorLiveOn=true;const next=function(){if(!_frontdoorLiveOn)return;_frontdoorLiveTimer=setTimeout(function(){const i=document.getElementById('frontdoor-live');if(!i||!_frontdoorLiveOn)return;i.src='/api/cam/'+cam+'.jpg?ts='+Date.now();},200);};img.onload=next;img.onerror=next;img.src='/api/cam/'+cam+'.jpg?ts='+Date.now();}
+function _frontdoorLiveStart(cam){_frontdoorLiveStop();const img=document.getElementById('frontdoor-live');if(!img||!cam)return;_frontdoorLiveOn=true;_camLiveFetch('frontdoor-live',cam,function(){return _frontdoorLiveOn;},function(t){_frontdoorLiveTimer=t;});}
 function ackFrontdoor(){stopFrontdoorAlarm();_frontdoorLiveStop();if(_frontdoorAutoHide){clearTimeout(_frontdoorAutoHide);_frontdoorAutoHide=null;}const t=document.getElementById('frontdoor-tile');if(t){t._on=false;t.style.display='none';}fetch('/api/frontdoor_ack',{method:'POST'}).catch(()=>{});}
 let _frontdoorZoomTimer=null;
 function _frontdoorZoomStop(){if(_frontdoorZoomTimer){clearInterval(_frontdoorZoomTimer);_frontdoorZoomTimer=null;}}
@@ -4346,7 +4356,7 @@ function handleFrontdoor(t){
     if(!tile._on){
       tile._on=true; tile.style.display=''; tile.style.border='2px solid #38bdf8';
       const cam=t.cam||'';
-      const live=cam?('/api/cam/'+cam+'.jpg?ts='+Date.now()):((t.img||'/api/frontdoor_frame.jpg')+'?ts='+Date.now());
+      const live=t.img||('/api/frontdoor_frame.jpg?ts='+Date.now());
       // front-door box is text-free by Marcel's choice — just the live view + a live badge + dismiss
       tile.innerHTML='<div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:6px;">'
         +'<span style="font-size:var(--fs-sm);color:var(--green);white-space:nowrap;">● live</span></div>'
