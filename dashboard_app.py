@@ -3774,11 +3774,12 @@ def api_pos_menu():
     if _POSMENU_CACHE["data"] and time.time()-_POSMENU_CACHE["at"]<600 and not request.args.get("fresh"):
         return jsonify(_POSMENU_CACHE["data"])
     if not _sq_headers(): return jsonify({"ok":False,"error":"Square not configured"})
-    objs=_sq_catalog_list("ITEM,CATEGORY,IMAGE")
+    objs=_sq_catalog_list("ITEM,CATEGORY,IMAGE,MODIFIER_LIST")
     if not objs: return jsonify({"ok":False,"error":"couldn't load the menu from Square - try again"})
     cats={o["id"]:o for o in objs if o.get("type")=="CATEGORY"}
     imgs={o["id"]:(o.get("image_data") or {}).get("url") for o in objs if o.get("type")=="IMAGE"}
     items={o["id"]:o for o in objs if o.get("type")=="ITEM"}
+    mlists={o["id"]:o for o in objs if o.get("type")=="MODIFIER_LIST"}
     menu_id=next((c["id"] for c in cats.values() if (c.get("category_data") or {}).get("name")=="BRUNOS MENU"
                   and (c.get("category_data") or {}).get("category_type")=="MENU_CATEGORY"),None)
     groups={}
@@ -3804,7 +3805,13 @@ def api_pos_menu():
                     ids=list(s.get("item_ids") or [])+[v2i.get(v) for v in (s.get("item_variation_ids") or [])]
                     parts.append({"slot":s.get("name") or "","items":sorted({_nm(i) for i in ids if i and _nm(i)})})
             u=imgs.get((d.get("image_ids") or [None])[0]) or ""
-            rows.append({"id":o["id"],"name":d.get("name") or "?","ord":ent.get("ordinal") or 0,"combo":combo,"parts":parts,
+            mods=[]                                         # the item's own modifier lists + options (13 Nov)
+            for mi in (d.get("modifier_list_info") or []):
+                if mi.get("enabled") is False: continue
+                ml=(mlists.get(mi.get("modifier_list_id")) or {}).get("modifier_list_data") or {}
+                opts=[(m.get("modifier_data") or {}).get("name") for m in (ml.get("modifiers") or []) if (m.get("modifier_data") or {}).get("name")]
+                if opts: mods.append({"list":ml.get("name") or "Options","opts":opts})
+            rows.append({"id":o["id"],"name":d.get("name") or "?","ord":ent.get("ordinal") or 0,"combo":combo,"parts":parts,"mods":mods,
                          "img":("/api/pos_img?u="+urllib.parse.quote(u,safe="")) if u else ""})
         rows.sort(key=lambda r:r["ord"])
         secs.append({"name":sname,"items":rows})

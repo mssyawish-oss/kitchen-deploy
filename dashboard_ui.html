@@ -1552,6 +1552,7 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .prodoff-silence:hover{background:rgba(255,255,255,.1);}
 /* PRODUCTS page (13 Nov 2026, test next to ITEMS): the switch laid out like the Square POS */
 #page-products{padding:0;}
+#nav-prodoff{display:none!important;}   /* old ITEMS screen retired 13 Nov: the POS-style page is ITEMS now */
 .pdp-top{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);}
 .pdp-title{font-size:var(--fs-lg);font-weight:800;white-space:nowrap;}
 .pdp-beta{font-size:11px;background:var(--amber);color:#111;border-radius:6px;padding:2px 6px;vertical-align:middle;}
@@ -1596,6 +1597,8 @@ body.view-wall .confirm-btn{min-height:60px;font-size:var(--fs-lg);}
 .pdp-pn{padding:5px 7px 22px;font-weight:800;font-size:12px;line-height:1.15;}
 .pdp-ps{position:absolute;left:7px;bottom:5px;font-size:11px;font-weight:800;color:#86efac;}
 .pdp-ps.off{color:#fca5a5;} .pdp-ps.part{color:var(--amber);}
+.pdp-mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;margin-top:6px;}
+.pdp-mgrid .pdp-li{padding:8px 10px;} .pdp-mgrid .pdp-li b{font-size:var(--fs-sm);}
 .pdp-list{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
 .pdp-li{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;cursor:pointer;}
 .pdp-li b{font-size:var(--fs-md);} .pdp-li small{display:block;color:var(--muted);font-size:11px;margin-top:2px;}
@@ -2104,7 +2107,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       </div>
     </div>
     <div class="page" id="page-products">
-      <div class="pdp-top"><div class="pdp-title">Products <span class="pdp-beta">TEST</span></div><input class="input" id="pdp-search" placeholder="Search any item&hellip;" oninput="pdpRender()"><button class="po-btn" onclick="pdpLoad(true)">Refresh</button></div>
+      <div class="pdp-top"><div class="pdp-title">Items</div><input class="input" id="pdp-search" placeholder="Search any item&hellip;" oninput="pdpRender()"><button class="po-btn" onclick="pdpLoad(true)">Refresh</button><button class="po-btn" onclick="prodOffSettings()">Settings</button></div>
       <div class="pdp-wrap"><div class="pdp-side" id="pdp-side"></div><div class="pdp-grid" id="pdp-grid"><div class="pdp-msg">Loading the menu&hellip;</div></div></div>
       <div class="pdp-bot" id="pdp-bot"></div>
     </div>
@@ -2175,7 +2178,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <button class="nav-btn" data-page="orders" onclick="navTo('orders',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l3 4v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Orders</span></div><div class="nav-badge" id="orders-badge">!</div></button>
     <button class="nav-btn" data-page="comp" onclick="openComp(this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M2 12h20"/><path d="M12 7v14"/><path d="M12 7S9.5 3.5 7.5 4.2 6.4 7 8 7Z"/><path d="M12 7s2.5-3.5 4.5-2.8S17.6 7 16 7Z"/></svg><span>Comp</span></div></button>
     <button class="nav-btn" id="nav-prodoff" style="display:none;" onclick="prodOffOpen()" aria-label="Products switched off"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9m9 5h-9m9 5h-9M5 7l1 1 2-2m-3 6 1 1 2-2m-3 6 1 1 2-2"/></svg><span>ITEMS</span></div><div class="nav-badge" id="prodoff-nav-badge" style="display:block;">!</div></button>
-    <button class="nav-btn" data-page="products" onclick="navTo('products',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>PRODUCTS</span></div></button>
+    <button class="nav-btn" id="nav-items" data-page="products" onclick="navTo('products',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>ITEMS</span></div><div class="nav-badge" id="items-nav-badge" style="display:none;">0</div></button>
     <button class="nav-btn nav-hidden" data-page="cameras" onclick="navTo('cameras',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Cameras</span></div></button>
     <button class="nav-btn nav-hidden" data-page="sales" onclick="navTo('sales',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>Sales</span></div></button>
     <button class="nav-btn nav-hidden" data-page="team" onclick="navTo('team',this)"><div class="nav-inner"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg><span>Team</span></div></button>
@@ -2225,7 +2228,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 </div>
 <div class="modal-overlay" id="prodoff-modal">
   <div class="modal" style="max-width:640px;width:96vw;">
-    <div class="modal-header"><div class="modal-title">Products switched off</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
+    <div class="modal-header"><div class="modal-title">Items settings</div><button class="modal-close" onclick="closeModal('prodoff-modal')">Close</button></div>
     <div class="po-bar">
       <label class="po-sw"><input type="checkbox" id="po-auto" onchange="poSaveAuto()"><span class="po-sl"></span></label>
       <span class="po-bar-t">Auto switch-on</span>
@@ -2233,13 +2236,13 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <button class="po-btn go" onclick="poRunAll()">Turn all on</button>
     </div>
     <!-- SEARCH ON TOP so it is always visible (never pushed off-screen after a turn-off) -->
-    <div style="margin-top:12px;font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
+    <div style="display:none"><div style="margin-top:12px;font-weight:800;color:var(--text);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">SWITCH A PRODUCT OFF</div>
     <div class="row" style="gap:8px;align-items:center;">
       <input class="input" id="po-search" placeholder="Search a product to switch OFF&hellip;" oninput="poSearch()" style="flex:1;">
       <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;cursor:pointer;" title="By default only the retail menu is searched, so switching a product OFF doesn't also switch off its catering version. Tick to search catering too.">
         <span class="po-sw sm"><input type="checkbox" id="po-inc-catering" onchange="poSearch()"><span class="po-sl"></span></span>Catering</label>
     </div>
-    <div id="po-search-results" style="margin-top:8px;max-height:38vh;overflow:auto;"></div>
+    <div id="po-search-results" style="margin-top:8px;max-height:38vh;overflow:auto;"></div></div>
     <div style="margin-top:16px;font-weight:800;color:var(--amber);font-size:var(--fs-sm);letter-spacing:.6px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">CURRENTLY SWITCHED OFF</div>
     <div id="prodoff-list" style="max-height:38vh;overflow:auto;"></div>
   </div>
@@ -8340,6 +8343,10 @@ function poFamOne(i,j){const f=_poFams[i],r=f&&f.rows[j];if(!r)return;_poSend(r.
 // ===== PRODUCTS page (13 Nov 2026, TEST next to ITEMS — Marcel: keep ITEMS, try this on the side) =====
 // Sections + tiles come from /api/pos_menu (Square BRUNOS MENU groups, POS order, item photos). On/off state and
 // switching reuse the ITEMS index (/api/product_index) and server jobs (/api/product_job), so both pages agree.
+function _navItemsSync(){const o=document.getElementById('nav-prodoff'),n=document.getElementById('nav-items'),b=document.getElementById('items-nav-badge');
+  if(!o||!n||!b)return;const ob=document.getElementById('prodoff-nav-badge');const on=o.style.display!=='none'&&ob&&ob.textContent&&ob.textContent!=='0';
+  b.style.display=on?'block':'none';if(on)b.textContent=ob.textContent;n.classList.toggle('alarming',o.classList.contains('alarming'));}
+setInterval(_navItemsSync,1000);
 let _pdpPartImg={},_pdpLim=[],_pdpUses={},_pdpMenu=null,_pdpSec=null,_pdpT=null,_pdpCur=null;
 const _PDP_NAV=[['CHICKEN & PACKS','CHICKEN & PACKS'],['SIDES & SNACKS','SIDES & SNACKS'],['BURGERS','BURGERS'],['SALADS & BAKED DISHES','SALADS & BAKED'],['KIDS MEALS','KIDS MEALS'],['DRINKS','DRINKS'],['DESSERT','DESSERT'],['MERCH & RETAIL','MERCH']];
 // "switch off everything with ..." groups (Marcel 13 Nov): offered as a choice, never done silently
@@ -8355,7 +8362,7 @@ function pdpLoad(fresh){fetch('/api/pos_menu'+(fresh?'?fresh=1':''),{cache:'no-s
 function _pdpPlain(it){return !it.catering&&!/^\s*christmas/i.test(it.name||'');}
 function _pdpFam(name){   // every index entry that is "this product": sizes, pack/box copies, the add-on
   if(!_poIdx)return [];const k=_poKey({name:name});
-  const nn=x=>String(x||'').toLowerCase().replace(/&|and/g,' ').replace(/[^a-z0-9]/g,''),full=nn(name);
+  const nn=x=>String(x||'').toLowerCase().replace(/&|\band\b/g,' ').replace(/[^a-z0-9]/g,''),full=nn(name);
   // add-ons must match the WHOLE name: the 'GREEK' salad dressing is not GREEK SALAD (13 Nov)
   return _poIdx.filter(it=>_pdpPlain(it)&&!it.combo&&_poKey(it)===k&&(it.kind!=='modifier'||nn(it.name)===full));}
 function _pdpRows(name){const rows=_poRows(_pdpFam(name));
@@ -8414,13 +8421,13 @@ function pdpTap(id){const it=_pdpFind(id);if(!it)return;
   if(!_poIdx){_poIdxLoad(()=>pdpTap(id));return;}
   if(!it.combo){pdpTapName(it.name);return;}
   _pdpPopKind={combo:id};
-  let h='<h2>'+_mEsc(it.name)+'</h2><div class="pdp-sub">This is a pack. It goes off by itself when what goes in it is off. Tap a part to switch it.</div>';
+  let h='<h2>'+_mEsc(it.name)+'</h2>';
   (it.parts||[]).forEach(p=>{h+='<div class="pdp-lbl">'+_mEsc(p.slot)+'</div><div class="pdp-pgrid">'+p.items.map(n=>{const st=_pdpState(_pdpRows(n)),im=_pdpPartImg[n];return '<div class="pdp-pt'+(st.all?' off':'')+'" data-n="'+_mEsc(n)+'" onclick="pdpTapName(this.dataset.n)"><div class="pdp-pim"'+(im?' style="background-image:url(\''+im+'\')"':'')+'></div><div class="pdp-pn">'+_mEsc(n)+'</div><b class="pdp-ps'+(st.all?' off':(st.n?' part':''))+'">'+(st.all?'OFF':(st.n?st.n+' off':'ON'))+'</b></div>';}).join('')+'</div>';});
   _pdpPopShow(h);}
 function pdpTapName(n){_pdpCur=n;_pdpPopKind={name:n};_pdpPopShow('<h2>'+_mEsc(n)+'</h2>'+_pdpPopBody(n));}
 function _pdpPopBody(name){const rows=_pdpRows(name),st=_pdpState(rows),kw=_pdpKwRows(name);
-  let h='<div class="pdp-sub">Switches on the POS, kiosk, online, Uber and DoorDash. Catering and Christmas items are never touched.</div>';
-  if(!rows.length)return h+'<div class="pdp-sub" style="color:var(--amber);">Can\'t find this item in the switch list. Tap Refresh, or use ITEMS.</div>';
+  let h='<div style="height:8px"></div>';
+  if(!rows.length)return h+'<div class="pdp-sub" style="color:var(--amber);">Not found. Tap Refresh.</div>'+_pdpModsHtml(name);
   const what=[...new Set(rows.map(r=>r.label))].join(' · ');
   if(st.all)h+='<button class="pdp-big grn" onclick="pdpAll(\'on\')">Switch ON all '+_mEsc(name)+'<small>'+_mEsc(what)+'</small></button>';
   else h+='<button class="pdp-big red" onclick="pdpAll(\'off\')">Switch off '+(rows.length>1?'ALL ':'')+_mEsc(name)+(rows.length>1?'<small>'+_mEsc(what)+'</small>':'')+'</button>'
@@ -8429,15 +8436,27 @@ function _pdpPopBody(name){const rows=_pdpRows(name),st=_pdpState(rows),kw=_pdpK
     h+=ks.all?'<button class="pdp-big grn" onclick="pdpKw(\'on\')">Switch ON all '+_mEsc(kw.k.toLowerCase())+' ('+kw.names.length+' items)<small>'+_mEsc(kw.names.join(' · '))+'</small></button>'
       :'<button class="pdp-big amb" onclick="pdpKw(\'off\')">Switch off EVERYTHING with '+_mEsc(kw.k.toLowerCase())+' ('+kw.names.length+' items)<small>'+_mEsc(kw.names.join(' · '))+'</small></button>';}
   if(rows.length>1)h+='<div class="pdp-lbl">Or one at a time</div><div class="pdp-list">'+rows.map((r,j)=>'<div class="pdp-li'+(r.off?' o':'')+'" onclick="pdpOne('+j+')"><div><b>'+_mEsc(r.label)+'</b>'+(r.sub?'<small>'+_mEsc(r.sub)+'</small>':'')+'</div><span class="pdp-sw'+(r.off?'':' on')+'">'+(r.off?'OFF':'ON')+'</span></div>').join('')+'</div>';
-  return h;}
+  return h+_pdpModsHtml(name);}
+// the item's own modifiers (cheese, bacon, sauces...), each switchable (Marcel 13 Nov). Switching one off takes it
+// off everywhere it is offered, same as ITEMS add-ons.
+function _pdpModRow(opt){if(!_poIdx)return null;const nn=x=>String(x||'').toLowerCase().replace(/&|\band\b/g,' ').replace(/[^a-z0-9]/g,'');
+  const g=_poIdx.find(it=>it.kind==='modifier'&&nn(it.name)===nn(opt));return g?_poRows([g])[0]:null;}
+function _pdpItemByName(name){for(const s of (_pdpMenu||[]))for(const i of s.items)if(i.name===name)return i;return null;}
+function _pdpModsHtml(name){const it=_pdpItemByName(name);
+  if(!it||!(it.mods||[]).length)return '';
+  return it.mods.map((m,li)=>{const seen={};const opts=m.opts.map((o,oi)=>({o:o,oi:oi,r:_pdpModRow(o)})).filter(x=>{const k=String(x.o).toUpperCase().trim();if(!x.r||seen[k]||/^(REMOVE|NO|LESS|LIGHT)\b/.test(k))return false;seen[k]=1;return true;});if(!opts.length)return '';
+    return '<div class="pdp-lbl">'+_mEsc(m.list)+'</div><div class="pdp-mgrid">'+opts.map(x=>'<div class="pdp-li'+(x.r.off?' o':'')+'" onclick="pdpMod('+li+','+x.oi+')"><b>'+_mEsc(x.o)+'</b><span class="pdp-sw'+(x.r.off?'':' on')+'">'+(x.r.off?'OFF':'ON')+'</span></div>').join('')+'</div>';}).join('');}
+function pdpMod(li,oi){const it=_pdpItemByName(_pdpCur);
+  const o=it&&it.mods&&it.mods[li]&&it.mods[li].opts[oi];const r=o&&_pdpModRow(o);if(r)_pdpGo(r.off?'on':'off',[r],o);}
 function _pdpGo(action,rows,label){rows=rows.filter(r=>action==='off'?!r.off:r.off);
-  if(!rows.length){_toast('Already '+action);return;}
+  if(!rows.length)return;
   _poSend(action,rows,label);pdpPopClose();setTimeout(pdpRender,50);
-  _toast((action==='off'?'Switching off ':'Switching on ')+label+'. The bar at the top shows progress.');}
+}
 function pdpAll(a){_pdpGo(a,_pdpRows(_pdpCur),_pdpCur);}
 function pdpKw(a){const kw=_pdpKwRows(_pdpCur);if(kw)_pdpGo(a,kw.rows,'all '+kw.k.toLowerCase());}
 function pdpOne(j){const r=_pdpRows(_pdpCur)[j];if(r)_pdpGo(r.off?'on':'off',[r],_pdpCur+' — '+r.label);}
-function prodOffOpen(){
+function prodOffOpen(){navTo('products');}
+function prodOffSettings(){
   const s=document.getElementById('po-search');if(s)s.value='';                         // open with a clean, empty search each time
   const box=document.getElementById('po-search-results');if(box)box.innerHTML='';        // and no stale results from last time
   _poFams=[];_poIdxLoad();
