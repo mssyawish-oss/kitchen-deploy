@@ -14031,7 +14031,7 @@ def _ck_send(payload):
         except Exception as e:
             last=e;time.sleep(1.5)
     _ck_log("printer failed: %s"%str(last)[:100]);return False
-def _ck_print_order(order,force=False):
+def _ck_print_order(order,force=False,dine_in=False):
     # prints any boxes not yet out; resumes after a printer failure and never repeats unless force=True
     with _ck_lock:
         oid=order.get("id");st=_ck_state()
@@ -14039,7 +14039,7 @@ def _ck_print_order(order,force=False):
         slips=_ck_slips(order)
         if not slips:
             st["printed"].append(oid);_ck_save(st);return 0
-        num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);dine=_ck_is_dine_in(order)
+        num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);dine=_ck_is_dine_in(order) or bool(dine_in)
         start=0 if force else int(st["progress"].get(oid,0));n=0
         for i,s in enumerate(slips):
             if i<start: continue
@@ -14184,10 +14184,14 @@ def api_ck_status():
                     "ready":CK["ready"],"age":int(time.time()-CK["at"]) if CK["at"] else None,"err":CK["err"],"log":CK["log"][:25],"orders":rows[-40:][::-1]})
 @app.route("/api/ck_print",methods=["POST"])
 def api_ck_print():
-    oid=str((request.get_json(silent=True) or {}).get("id") or "")
+    body=request.get_json(silent=True) or {}
+    oid=str(body.get("id") or "")
+    # Kiosk eat-in orders reach the Orders API as DELIVERY/ASAP with no dining info, so the print catcher
+    # reads EAT IN off the printed ticket and sends dine_in=true (13 Nov 2026). The manual Print button sends none.
+    _di=body.get("dine_in") is True
     for o in _slip_orders(720):
         if o.get("id")==oid:
-            return jsonify({"ok":True,"printed":_ck_print_order(o,force=True)})
+            return jsonify({"ok":True,"printed":_ck_print_order(o,force=True,dine_in=_di)})
     return jsonify({"ok":False,"error":"order not found"})
 @app.route("/api/ck_test",methods=["POST"])
 def api_ck_test():
