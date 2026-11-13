@@ -567,6 +567,7 @@ def check_probe_status(pid,temp):
             ps["last_val"]=temp; ps["last_change_at"]=_now
         if ps.get("cycle_start") is None: ps["cycle_start"]=_now   # first reading of a fresh cook = "row went on"
         if ps["peak_temp"] is None or temp>ps["peak_temp"]: ps["peak_temp"]=temp
+        _shr=None; _pk_before=ps.get("peak_temp")
         try:                                  # TRIAL pull-detector runs on every reading, shadow-only
             _shr=_shadow_step(ps.setdefault("sh",{}),temp,_now,_shadow_cfg())
             if _shr: threading.Thread(target=_shadow_credit,args=(pid,probe_names.get(pid,"Probe %d"%pid),_shr),daemon=True).start()
@@ -656,6 +657,21 @@ def check_probe_status(pid,temp):
                 _fell=(peak-temp); _rate=_fall_rate(ps)
                 if _fell>=_dropmin and _rate>=_ratemin:
                     ps["pull_pending_at"]=time.time(); ps["pull_min"]=temp
+        # MOVED STRAIGHT INTO THE NEXT ROW (Marcel 13 Nov 2026): the row is pulled and the probe goes directly
+        # into a row that is already warm, so the reading never falls below the pull line and the rule above
+        # never fires. The step detector sees it: cooked, a sharp step DOWN, then climbing in the new bird.
+        # Count it as the pull of the cooked row, then start tracking the new row. Same-bird re-seat guard:
+        # going back into the SAME cooked bird returns to about its old peak, so it must sit 5+ below it.
+        if _shr=="new" and not ps["removed"] and _pk_before and _pk_before>=count_temp and temp<=_pk_before-5:
+            _pn=probe_names.get(pid,f"Probe {pid}")
+            threading.Thread(target=_record_pull,args=(pid,_pn,temp,_pk_before,ps.get("cook_start"),ps.get("cycle_start")),daemon=True).start()
+            threading.Thread(target=_probe_credit_stock,args=(pid,_pn,temp),daemon=True).start()
+            if ps["removal_timer"]: ps["removal_timer"].cancel()
+            t=threading.Timer(0.5,trigger_timer_start,args=(pid,));t.daemon=True;ps["removal_timer"]=t;t.start()
+            _ub=datetime.now()+timedelta(minutes=settings["use_by_minutes"])
+            threading.Thread(target=print_ticket,args=(pid,_pn,_pk_before,_ub),daemon=True).start()
+            ps.update({"removed":False,"peak_temp":temp,"printed":False,"cook_start":None,"cycle_start":time.time(),
+                       "status":"idle","low_since_pull":None,"pull_pending_at":None,"pull_min":None})
 
 def _rfx_saver():
     # 'Battery saver' probe mode: owner sets the RFX probes to a 2-3 degree transmission interval in the
