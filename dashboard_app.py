@@ -9385,9 +9385,8 @@ def _noprobe_payload():
     cfg=_noprobe_cfg(); rows=NOPROBE.get("rows") or [0,0]
     alert=bool(NOPROBE["alert"]) and time.time()>=NOPROBE["snooze_until"]
     short=max(0,sum(rows)-NOPROBE["probes"])
-    if rows==[1,1] and short>=2: msg="Top 2 rows are cooking with no probe in"
-    elif rows==[1,1]: msg="Row 2 is cooking with no probe in"
-    else: msg="Row %d is cooking with no probe in"%(1 if rows[0] else 2)
+    # Marcel 14 Nov: the camera can't tell which row has the probe - one plain message
+    msg="Probe missing - make sure the top 2 rows each have a probe in"
     return {"on":bool(cfg.get("enabled")),"alert":alert,"msg":msg if alert else "","rows":NOPROBE.get("rows"),
             "probes":NOPROBE["probes"],"oven":_oven_c(),"oven_raw":OVEN_T.get("c"),
             "oven_age":(int(time.time()-OVEN_T["seen"]) if OVEN_T.get("seen") else None),"err":NOPROBE.get("err","")}
