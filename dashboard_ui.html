@@ -2017,7 +2017,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="prep-carry-on" style="width:20px;height:20px;" onchange="appData.prep_carry_on=this.checked;saveKeys(['prep_carry_on']);_toast&&_toast(this.checked?'Evening prep check on':'Evening prep check off');">Unfinished-prep check at</label>
         <input class="input" type="time" id="prep-carry-time" style="width:110px;height:34px;font-size:var(--fs-md);"
                onchange="appData.prep_carry_time=this.value||'21:00';saveKeys(['prep_carry_time']);_toast&&_toast('Evening prep check set to '+appData.prep_carry_time);">
-        <span>— pops up if anything is unticked, offers to move it to tomorrow</span>
+        
       </div>
       <div id="prep-upcoming" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;"></div>
       <div id="prep-list"></div>
@@ -2034,7 +2034,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="page" id="page-team">
       <div class="page-header"><div class="page-title">Team — Today</div><div class="row" style="gap:6px;"><button class="btn" onclick="resetTeam()">Clear shift</button></div></div>
       <div class="sec-head" style="margin:2px 2px 8px;"><span>Who's on</span></div>
-      <div style="font-size:var(--fs-sm);color:var(--muted);margin:0 2px 8px;">Tap a name to mark them on shift. Then assign each station below.</div>
       <div id="team-onshift" class="team-chips"></div>
       <div class="sec-head" style="margin:16px 2px 8px;"><span>Stations</span><button class="btn" style="font-size:var(--fs-sm);padding:3px 9px;margin-left:auto;" onclick="addStation()">+ Station</button></div>
       <div id="team-stations" class="team-grid"></div>
@@ -2114,7 +2113,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="page" id="page-orders">
       <div class="page-header"><div class="page-title">Live Orders</div><div class="row" style="gap:10px;margin-left:auto;align-items:center;"><span id="orders-count" style="font-size:var(--fs-md);color:var(--muted);"></span></div></div>
       <div id="orders-grid" class="orders-grid"></div>
-      <div id="orders-empty" class="empty-state" style="display:none;padding:40px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;">No open orders</div><div style="font-size:var(--fs-md);color:var(--muted);margin-top:6px;">Tickets appear here as they come in and clear when your staff bump them on the KDS.</div></div>
+      <div id="orders-empty" class="empty-state" style="display:none;padding:40px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;">No open orders</div></div>
     </div>
     <div class="page" id="page-catering">
       <div class="page-header"><div class="page-title">Catering Guides</div></div>
@@ -2279,7 +2278,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <input class="input" type="date" id="prep-build-date" style="width:auto;" onchange="onPrepBuildDateChange()">
       <span id="prep-build-daylbl" style="font-size:var(--fs-md);font-weight:700;color:var(--amber);"></span>
     </div>
-    <div style="font-size:var(--fs-md);color:var(--muted);margin-bottom:10px;">Tap the items staff need to prep, and set each one's priority. Tap again to unselect.</div>
     <div class="row" style="gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
       <select class="input" id="prep-saved-sel" style="flex:1;min-width:150px;"><option value="">Load a saved list…</option></select>
       <button class="btn" onclick="loadPrepSaved()">Load</button>
@@ -2294,7 +2292,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 <div class="modal-overlay" id="prep-manage-modal">
   <div class="modal" style="max-width:560px;">
     <div class="modal-header"><div class="modal-title">PREP ITEMS</div><button class="modal-close" onclick="closeModal('prep-manage-modal')">Close</button></div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:8px;">Create the prep items (with a photo) that staff can choose from each day.</div>
     <div id="prep-manage-list"></div>
     <div class="divider"></div>
     <div class="section-title">Add / edit item</div>
@@ -2447,7 +2444,7 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <button class="btn" id="dg-print-only" onclick="_dgPrint(false)">Print (don&rsquo;t save)</button>
       <button class="btn btn-primary" id="dg-print" onclick="_dgPrint(true)">Print &amp; save</button>
     </div>
-    <div class="pl2-lab" style="margin-top:16px;margin-bottom:6px;">Saved packs &mdash; tap one to load it, then Print (stamps today&rsquo;s date)</div>
+    <div class="pl2-lab" style="margin-top:16px;margin-bottom:6px;">Saved packs</div>
     <div id="dg-list" class="prep-grid" style="max-height:34vh;overflow-y:auto;"></div>
   </div>
 </div>
@@ -2527,7 +2524,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 <div class="modal-overlay" id="notes-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg> SHIFT NOTES</div><button class="modal-close" onclick="closeModal('notes-modal')">Close</button></div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:10px;">Leave a note for the next shift — low stock, equipment issues, anything to pass on.</div>
     <textarea class="input" id="note-text" rows="2" placeholder="e.g. Fryer 2 playing up — call tech" style="resize:vertical;"></textarea>
     <div class="grid-2 mt-8" style="grid-template-columns:1fr 110px;">
       <input class="input" id="note-who" placeholder="Your name (optional)">
@@ -2550,7 +2546,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <img id="rotcam-big" style="width:100%;display:block;" alt="">
       <div id="rotcam-big-msg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:var(--fs-md);text-align:center;padding:24px;"></div>
     </div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Refreshes every few seconds. Tap outside to close.</div>
   </div>
 </div>
 
@@ -2630,7 +2625,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
     <div class="row mt-8"><button class="btn" onclick="loadCookLog()">Refresh</button></div>
     <div class="divider"></div>
     <div class="section-title">Live Sales Feed (today)</div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:6px;">Every chicken order Square has counted today — cross-check against your POS. Updates live while this is open.</div>
     <div id="sales-feed-totals" style="font-size:var(--fs-md);font-family:var(--font-mono);margin-bottom:6px;">…</div>
     <div id="sales-feed-list" style="max-height:240px;overflow-y:auto;font-family:var(--font-mono);font-size:var(--fs-sm);line-height:1.7;border:1px solid var(--border);border-radius:var(--r-sm);padding:8px;"></div>
     <div class="row mt-8"><button class="btn" onclick="loadSalesFeed()">Refresh</button></div>
@@ -3142,7 +3136,6 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
 <div class="modal-overlay" id="devtodo-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">DASHBOARD PROJECT — TO-DO</div><button class="modal-close" onclick="closeModal('devtodo-modal')">Close</button></div>
-    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px;">Jobs still to do on the dashboard. Tick them off as they're done; add your own.</div>
     <div class="row" style="gap:6px;margin-bottom:14px;"><input class="input" id="devtask-new" placeholder="Add a job…" onkeydown="if(event.key==='Enter')addDevTask()"><button class="btn btn-primary" onclick="addDevTask()" style="white-space:nowrap;">+ Add</button></div>
     <div id="devtask-list"></div>
   </div>
@@ -5837,7 +5830,7 @@ function renderTimers(){
   // 4-rows-tall, columns-grow-as-needed layout of equal batch cards (owner, 10 Sep).
   const sb=document.getElementById('batch-start');
   if(sb)sb.innerHTML=`<div class="brow startrow"><span style="color:var(--muted);font-size:var(--fs-lg);line-height:1;">+</span>
-    <div class="binfo"><span>Start a batch — takes the next free number</span></div>
+    <div class="binfo"><span>Start a batch</span></div>
     ${idle?`<button class="bbtn go" onclick="startT(${timers.indexOf(idle)})">&#9658; Start</button>`:`<span style="font-size:var(--fs-sm);color:var(--muted);">all ${timers.length} running</span>`}</div>`;
   const rows=[];
   active.sort((a,b)=>(b.started_at||0)-(a.started_at||0)).forEach(t=>{
@@ -5976,7 +5969,7 @@ function rfxTest(){const el=document.getElementById('rfx-result');el.innerHTML='
     const live=probes.filter(dev=>_rfxAgeMin(dev.last_seen)!=null&&_rfxAgeMin(dev.last_seen)<10).length;
     let html='<b style="color:var(--green)">&#10003; Connected to ThermoWorks.</b> '
       +probes.length+' probe'+(probes.length===1?'':'s')+' on the account — <b style="color:'+(live?'var(--green)':'var(--muted)')+';">'+live+' sending right now</b>'
-      +'<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;">Idle probes stop transmitting to save battery — that is normal. Red = the battery was flat when it last reported.</div>';
+      +'';
     probes.forEach(dev=>{const core=(dev.core!=null)?dev.core+'°C':'—';_rfxProbes.push({serial:dev.serial,label:dev.label||dev.serial,core:core});
       const mins=_rfxAgeMin(dev.last_seen);
       const stale=(mins==null||mins>=10);
@@ -5985,7 +5978,7 @@ function rfxTest(){const el=document.getElementById('rfx-result');el.innerHTML='
       const flat=(batt!=='?'&&batt<=10);          // the only thing that needs your attention
       const ageCol=stale?(flat?'var(--red)':'var(--muted)'):'var(--green)';
       html+='<div style="margin-top:6px;padding:8px;background:var(--surface);border-radius:var(--r-sm);'+(flat?'border-left:3px solid var(--red);':'')+'"><div style="font-weight:700;">'+_mEsc(dev.label||dev.serial)+' — <span style="color:'+(stale?'var(--muted)':'var(--amber)')+';">'+core+'</span> <span style="color:'+ageCol+';font-size:var(--fs-sm);">'+(stale?'last sent ':'&#9679; live, ')+ageTxt+'</span></div>'
-        +(stale?('<div style="font-size:var(--fs-sm);color:'+(flat?'var(--red)':'var(--muted)')+';">'+(flat?'Battery was flat when it last reported — charge it in the gateway before the next cook.':'Idle (not in use) — the temperature above is its last reading, not a live one.')+'</div>'):'')
+        +(stale?('<div style="font-size:var(--fs-sm);color:'+(flat?'var(--red)':'var(--muted)')+';">'+(flat?'Flat battery — charge before next cook':'Idle')+'</div>'):'')
         +'<div style="font-size:var(--fs-xs);color:var(--muted);">serial '+_mEsc(dev.serial||'')+' · '+(dev.sensor_count||0)+' internal sensors (coldest = centre) · <span style="color:'+(flat?'var(--red)':'var(--muted)')+';">battery '+batt+'%</span> · sends every '+(dev.transmit_secs||'?')+'s</div></div>';});
     if(others.length)html+='<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Also seen (not a meat probe, skipped): '+others.map(o=>_mEsc(o.label||o.serial)).join(', ')+'</div>';
     el.style.color='var(--text)';el.innerHTML=html;_rfxBuildMap();
@@ -7634,7 +7627,7 @@ function renderPullLog(pulls){
   const b=document.getElementById('pulllog-body');if(!b)return;
   const _sold=(window._lastRot&&window._lastRot.sold_today)||0;
   const soldLine='<div class="pl-sold">Sold today: <b>'+fmtBird(_sold)+'</b> birds</div>';
-  if(!pulls.length){b.innerHTML=soldLine+'<div style="color:var(--muted);font-size:var(--fs-md);padding:18px 2px;text-align:center;">No pulls recorded yet. Each time a probe is pulled from a cooked row it will appear here.</div>';return;}
+  if(!pulls.length){b.innerHTML=soldLine+'<div style="color:var(--muted);font-size:var(--fs-md);padding:18px 2px;text-align:center;">No pulls yet.</div>';return;}
   const days={},order=[];
   pulls.slice().reverse().forEach(p=>{const k=_pullDayKey(p.ts);if(!days[k]){days[k]=[];order.push(k);}days[k].push(p);});
   const ADJ={row_add:'+1 row',row_remove:'\u22121 row',step:'quick adjust',set:'set count'};
@@ -8265,7 +8258,6 @@ function _poNeverChips(){
   return '<div style="margin-top:12px;padding:9px 12px;border:1px solid var(--amber);border-radius:10px;'
     +'background:color-mix(in srgb,var(--amber) 12%,transparent);font-size:var(--fs-sm);">'
     +'<b>&#9888; Never switches back on by itself</b>'
-    +'<div style="color:var(--muted);font-size:var(--fs-sm);margin:2px 0 6px;">Stays off until someone turns it on by hand. Should only ever be retail stock \u2014 tap to remove.</div>'
     +list.map((n,i)=>'<button class="po-btn" style="padding:3px 8px;font-size:var(--fs-sm);margin:3px 3px 0 0;" onclick="poNeverRemove('+i+')">'+_mEsc(n)+' &#10005;</button>').join('')
     +'</div>';
 }
@@ -8835,7 +8827,7 @@ function renderPrepPage(){try{_prepCarryTimeSync();}catch(e){}
   if(!items.length){
     if(badge)badge.className='nav-badge';
     _setPrepHeader(tabs,'Today’s Prep List · <span class="pdate">'+_prepFullDate(today)+'</span>');
-    box.innerHTML='<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div><div style="font-size:var(--fs-md);color:var(--muted);line-height:1.6;">Tap <b>Set list</b> at the top to choose what needs prepping (and load a saved list if you have one).<br>No items to choose from yet? Tap <b>Items</b> to create them.</div></div>';
+    box.innerHTML='<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;margin-bottom:6px;">No prep list set for today</div></div>';
     return;
   }
   const doneN=items.filter(p=>done[p.id]).length, pend=items.length-doneN;
@@ -8857,7 +8849,7 @@ function renderPrepHistory(box,tabs){
   const hist=appData.prep_history||{}, presets=appData.prep_presets||[];
   const dates=Object.keys(hist).filter(d=>(hist[d].items||[]).length).sort().reverse();
   if(dates[0]&&_prepYestAck!==dates[0]){_prepYestAck=dates[0];try{localStorage.setItem('bruno_prep_yest_ack',_prepYestAck);}catch(e){}}   // viewing = acknowledged → stop the flash
-  if(!dates.length){_setPrepHeader(tabs,'Prep History');box.innerHTML='<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:var(--fs-md);color:var(--text);font-weight:600;">No history yet</div><div style="font-size:var(--fs-md);color:var(--muted);margin-top:5px;">Completed prep days will appear here from tomorrow.</div></div>';return;}
+  if(!dates.length){_setPrepHeader(tabs,'Prep History');box.innerHTML='<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:var(--fs-md);color:var(--text);font-weight:600;">No history yet</div></div>';return;}
   if(!_prepHistDate||!hist[_prepHistDate])_prepHistDate=dates[0];
   const q=(_prepHistSearch||'').trim().toLowerCase();
   const minD=dates[dates.length-1],maxD=dates[0];
@@ -9288,7 +9280,7 @@ function _dgLoadList(){
       +'<div class="dg-tix-c" style="font-size:'+_dgTixSize(it.contents||'')+'">'+_mEsc(it.contents||'')+'</div>'
       +'<div class="dg-tix-f"><span>PACKED</span><span>BY</span></div>'
       +'<button class="dg-tix-x" onclick="event.stopPropagation();_dgDelete('+_jsq(it.id||'')+',this)" title="Remove">&times;</button></div>').join('')
-      :'<div style="color:var(--muted);font-size:var(--fs-md);padding:12px;grid-column:1/-1;">No saved packs yet &mdash; Print &amp; save one above and it&rsquo;ll appear here as a box.</div>';
+      :'<div style="color:var(--muted);font-size:var(--fs-md);padding:12px;grid-column:1/-1;">No saved packs yet.</div>';
   }).catch(()=>{el.innerHTML='<div style="color:var(--muted);font-size:var(--fs-sm);">Couldn&rsquo;t load saved packs.</div>';});
 }
 function _dgLoad(contents){const i=document.getElementById('dg-contents');if(i)i.value=contents;_dgPrev();const st=document.getElementById('dg-status');if(st){st.textContent='Loaded “'+contents+'” — pick who packed it, then Print.';st.style.color='var(--amber)';}}
@@ -9301,7 +9293,7 @@ function _dgDelete(id,btn){
 function openPrepManage(){prepClearForm();renderPrepManageList();openModal('prep-manage-modal');}
 function renderPrepManageList(){
   const el=document.getElementById('prep-manage-list');if(!el)return;const presets=appData.prep_presets||[];
-  el.innerHTML=presets.length?presets.map(p=>{const bits=[];if(p.recur)bits.push('&#8635; '+_recurLabel(p));if(p.remind)bits.push('Remind '+p.remind);const meta=bits.length?bits.join(' · '):'<span style="opacity:.6;">added by hand · priority set when added</span>';return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:var(--r-sm);object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:var(--r-sm);background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:var(--fs-md);font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:var(--fs-sm);color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" data-del="'+p.id+'" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:var(--fs-md);padding:6px 0;">No prep items yet — add your first below.</div>';
+  el.innerHTML=presets.length?presets.map(p=>{const bits=[];if(p.recur)bits.push('&#8635; '+_recurLabel(p));if(p.remind)bits.push('Remind '+p.remind);const meta=bits.length?bits.join(' · '):'';return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">'+(p.img?'<img src="/photos/'+p.img+'" style="width:44px;height:44px;border-radius:var(--r-sm);object-fit:cover;">':'<div style="width:44px;height:44px;border-radius:var(--r-sm);background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:22px;height:22px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>')+'<span style="flex:1;min-width:0;"><span style="font-size:var(--fs-md);font-weight:600;display:block;">'+_mEsc(p.name)+'</span><span style="font-size:var(--fs-sm);color:var(--muted);">'+meta+'</span></span><button class="btn" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="editPrepItem(\''+p.id+'\')">Edit</button><button class="btn btn-danger" data-del="'+p.id+'" style="padding:4px 10px;font-size:var(--fs-sm);" onclick="deletePrepItem(\''+p.id+'\')">Delete</button></div>';}).join(''):'<div style="color:var(--muted);font-size:var(--fs-md);padding:6px 0;">No prep items yet — add your first below.</div>';
 }
 function prepPickImage(input){_prepFile=(input.files&&input.files[0])||null;const n=document.getElementById('prep-img-name');if(n)n.textContent=_prepFile?_prepFile.name:'';const pv=document.getElementById('prep-img-preview');if(pv&&_prepFile){pv.innerHTML='<img src="'+URL.createObjectURL(_prepFile)+'" style="width:96px;height:72px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--border2);">';}}
 function editPrepItem(id){const p=(appData.prep_presets||[]).find(x=>x.id===id);if(!p)return;document.getElementById('prep-edit-id').value=p.id;document.getElementById('prep-name').value=p.name||'';document.getElementById('prep-remind').value=p.remind||'';document.getElementById('prep-shelf').value=p.shelf_days||'';document.getElementById('prep-labelqty').value=p.label_qty||'';document.getElementById('prep-labelname').value=p.label_name||'';document.getElementById('prep-label-auto').checked=(p.label_auto!==false);if(document.getElementById('prep-label-ask'))document.getElementById('prep-label-ask').checked=(p.label_ask===true);if(document.getElementById('prep-loud'))document.getElementById('prep-loud').checked=(p.loud===true);document.getElementById('prep-recur').value=p.recur||'daily';setPrepType(p.recur?'task':'prep');setDayPills('#prep-days',p.days);document.getElementById('prep-anchor').value=p.start_date||'';_prepDates=(p.dates||[]).slice();renderPrepDates();onPrepRecurChange();document.getElementById('prep-detail').value=p.detail||'';_prepFile=null;document.getElementById('prep-img-name').textContent='(keep current unless you pick a new one)';document.getElementById('prep-img-preview').innerHTML=p.img?'<img src="/photos/'+p.img+'" style="width:96px;height:72px;object-fit:cover;border-radius:var(--r-sm);border:1px solid var(--border2);">':'';document.getElementById('prep-save-btn').textContent='Save changes';const st=document.getElementById('prep-manage-status');if(st){st.textContent='Editing "'+(p.name||'')+'" — change it below, then tap Save changes.';st.style.color='var(--amber)';}const nm=document.getElementById('prep-name');if(nm){nm.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>{nm.focus();},250);}}
@@ -10095,8 +10087,7 @@ function _labourHTML(L){
   if(L.people&&L.people.length){
     h+='<div style="margin-top:10px;">'+L.people.map(p=>'<div style="display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-sm);padding:5px 0;border-bottom:1px solid var(--border);"><span>'+(p.open?'<span style="color:#19e36b;">●</span> ':'<span style="color:var(--muted);">○</span> ')+esc(p.name)+'</span><span style="color:var(--muted);">'+(p.hours||0)+' hrs · <b style="color:var(--text);">'+m(p.cost)+'</b></span></div>').join('')+'</div>';
   }
-  if(now.source==='board'&&now.heads>0)h+='<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">“Burn rate now” is estimated from the shift board — no one is clocked in on Square right now.</div>';
-  if((wk.cost||0)===0&&!(L.people&&L.people.length))h+='<div style="font-size:var(--fs-sm);color:var(--amber);margin-top:6px;">No Square timecards yet — staff need to clock in/out on Square POS for today/weekly cost. The live burn rate still works from the shift board + their rates.</div>';
+  if((wk.cost||0)===0&&!(L.people&&L.people.length))h+='<div style="font-size:var(--fs-sm);color:var(--amber);margin-top:6px;">No Square timecards yet.</div>';
   return h+'</div>';
 }
 function fmtNoteTime(iso){try{return new Date(iso).toLocaleString('en-AU',{weekday:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
