@@ -4034,12 +4034,17 @@ function stopOvenAlarm(){_ovenAlarm=false;_updateFlash();}
 function ackOven(){stopOvenAlarm();const t=document.getElementById('oven-tile');if(t){t._alert=false;t._since=0;}fetch('/api/oven_ack',{method:'POST'}).catch(()=>{});}
 function _ovenFmt(s){s=Math.max(0,parseInt(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 // ---- oven temp chip + "top row cooking without a probe" (server decides; screens follow) ----
-let _npAlarm=false,_npAckAt=0;
+let _npAlarm=false,_npAckAt=0,_npLabel='Put a probe in the top row';
+// Which row needs a probe (Marcel 14 Nov: the chip said "top row" while Green was already in the top row).
+// The probe goes in the top row first, so with both rows cooking and 1 probe in, row 2 is the one missing.
+function _npWhich(n){const r=n.rows||[0,0],p=n.probes||0;
+  if(r[0]&&r[1])return p>=1?'Put a probe in row 2':'Put probes in rows 1 and 2';
+  return r[1]&&!r[0]?'Put a probe in row 2':'Put a probe in the top row';}
 function handleNoprobe(n){
   const chip=document.getElementById('oven-chip');
   const fresh=n.oven_raw!=null&&n.oven_age!=null&&n.oven_age<300;
   if(chip){chip.style.display=fresh?'':'none';if(fresh)chip.textContent='Oven '+Math.round(n.oven_raw)+'°';}
-  const on=!!n.alert&&(Date.now()-_npAckAt)>600000;
+  const on=!!n.alert&&(Date.now()-_npAckAt)>600000;_npLabel=_npWhich(n);
   const bar=document.getElementById('noprobe-bar');
   if(bar){bar.style.display=on?'flex':'none';if(on)bar.innerHTML='<span>&#9888; '+_mEsc(n.msg)+'</span><button class="btn" onclick="ackNoprobe()">OK</button>';}
   if(!on){if(_npAlarm){_npAlarm=false;_updateFlash();}return;}
@@ -4633,7 +4638,7 @@ function _activeAlarmDetails(){
     if(typeof activeAlarmId!=='undefined'&&activeAlarmId)out.push({key:'service',label:'Reminder / routine due'});
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
     if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' back on the dock'});}
-    if(typeof _npAlarm!=='undefined'&&_npAlarm)out.push({key:'noprobe',label:'Put a probe in the top row'});
+    if(typeof _npAlarm!=='undefined'&&_npAlarm)out.push({key:'noprobe',label:_npLabel});
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});

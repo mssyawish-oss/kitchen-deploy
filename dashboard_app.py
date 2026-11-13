@@ -9386,7 +9386,7 @@ def _noprobe_payload():
     alert=bool(NOPROBE["alert"]) and time.time()>=NOPROBE["snooze_until"]
     short=max(0,sum(rows)-NOPROBE["probes"])
     if rows==[1,1] and short>=2: msg="Top 2 rows are cooking with no probe in"
-    elif rows==[1,1]: msg="Top 2 rows are cooking but only 1 probe is in"
+    elif rows==[1,1]: msg="Row 2 is cooking with no probe in"
     else: msg="Row %d is cooking with no probe in"%(1 if rows[0] else 2)
     return {"on":bool(cfg.get("enabled")),"alert":alert,"msg":msg if alert else "","rows":NOPROBE.get("rows"),
             "probes":NOPROBE["probes"],"oven":_oven_c(),"oven_raw":OVEN_T.get("c"),
