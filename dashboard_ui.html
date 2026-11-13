@@ -9819,10 +9819,8 @@ function checkAllReminders(){
     if((appData.packdown_checks||{})[t.id]&&appData.packdown_checks[t.id].done)return;
     const key='pack-'+t.id+'-'+dateKey;if(lastFired[key]||_ackedToday(key))return;_markFired(key);
     packdownDueDismissed[t.id]=false;
-    if(t.alarm){_taskRemind(t.id);}   // 20-second reminder card + one sound; the end-of-shift check does the nagging
-    else{const _sc=_acfg('checklist');
-      if(_sc.enabled&&!_devMuted('checklist')&&!_devPopMuted('checklist'))playChime();
-      if(_sc.popup&&!_devPopMuted('checklist'))showLockBanner('TASK DUE',t.name);}
+    // No pop-up or sound per job during the day (Marcel 13 Nov 2026) - only the tab badge. The end-of-shift
+    // check below pops up every job still not done.
     document.getElementById('packdown-badge')?.classList.add('show');
   });}catch(e){}
   try{_pdShiftsHere().forEach(sh=>{   // end of shift: unticked jobs → the regular alarm until they're all ticked
