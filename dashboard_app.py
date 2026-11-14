@@ -91,7 +91,11 @@ def save_data(data):
                     save_data._bak_at=now
                     if _data_ok(_read_data(DATA_FILE)): _durable_copy(DATA_FILE,DATA_FILE+".bak")   # never replace a good .bak with a bad file
             except Exception: pass
-            os.replace(tmp,DATA_FILE)
+            for _r in range(8):     # Windows refuses the swap while another program is reading the file
+                try: os.replace(tmp,DATA_FILE); break   # (seen 13 + 14 Nov: 27 'Access is denied') -> retry briefly
+                except PermissionError:
+                    if _r==7: raise
+                    time.sleep(0.25)
             SAVE_STATE.update({"error":"","since":0.0,"fails":0,"last_ok":now})
         except Exception as e: _fail(e)
 
