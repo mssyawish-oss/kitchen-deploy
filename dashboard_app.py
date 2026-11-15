@@ -14029,43 +14029,59 @@ def _ck_first_line(slip):
     if _ck_pack_name(slip)=="2 PCS PACK SPECIAL": return "2 PCS PACK SPECIAL"
     return short+" PACK"
 def _ck_mod_lines(li):
-    out=["("+str(m["name"]).strip().upper()+")" for m in (li.get("modifiers") or []) if (m.get("name") or "").strip()]
-    if (li.get("note") or "").strip(): out.append("(NOTE: "+li["note"].strip().upper()+")")
+    out=[str(m["name"]).strip().upper() for m in (li.get("modifiers") or []) if (m.get("name") or "").strip()]
+    if (li.get("note") or "").strip(): out.append("NOTE: "+li["note"].strip().upper())
     return out
+def _ck_stamp(order):
+    # "Nov 15, 6:00 PM" - same as Square's own prep slips
+    try:
+        dt=datetime.fromisoformat((order.get("created_at") or "").replace("Z","+00:00")).astimezone()
+        return dt.strftime("%b ")+str(dt.day)+", "+str(dt.hour%12 or 12)+dt.strftime(":%M %p")
+    except Exception: return ""
 CK_SLIP_H=352      # 44 mm of print + the 6 mm feed = every slip ~50 mm (Marcel 15 Nov); only a very long one grows
 def _ck_slip_image(number,src,tm,box,slip,dine_in):
-    # Marcel 15 Nov: one plain font, one size, all capitals, everything from the left, options in brackets under
-    # their item, kitchen names, same length every time. Eat in = black top line + black bottom edge.
+    # Marcel 15 Nov (2nd go): look like Square's own prep slips - big bold number, TAKEAWAY small under it,
+    # rule, "1x  ITEM" with its sides indented under it ("1x  CHIPS"), options in grey under their item,
+    # rule, "1 of 2" left + "Nov 15, 6:00 PM" right. Same length every time.
     from PIL import Image,ImageDraw
-    W=576;P=20;step=40;F=_ck_font(32,False)
-    im=Image.new("L",(W,1600),255);d=ImageDraw.Draw(im);y=6
-    def put(text):
+    W=576;P=36;F=_ck_font(28,False);FB=_ck_font(44,True);FS=_ck_font(20,False);step=38;GREY=110
+    X1=P+14;X2=P+64;X3=P+78;X4=P+128   # qty / name, then the same one level in for sides
+    im=Image.new("L",(W,1600),255);d=ImageDraw.Draw(im);y=4
+    def put(x,text,fill=0):
         nonlocal y
         cur=""
         for w in str(text).split():
             t=(cur+" "+w).strip()
-            if d.textlength(t,font=F)<=W-2*P or not cur: cur=t
-            else: d.text((P,y),cur,font=F,fill=0);y+=step;cur=w
-        if cur: d.text((P,y),cur,font=F,fill=0);y+=step
-    tag="EAT IN" if dine_in else "TAKEAWAY";col=255 if dine_in else 0
-    if dine_in: d.rectangle((0,y-6,W,y+step),fill=0)
+            if d.textlength(t,font=F)<=W-P-x or not cur: cur=t
+            else: d.text((x,y),cur,font=F,fill=fill);y+=step;cur=w
+        if cur: d.text((x,y),cur,font=F,fill=fill);y+=step
     name=str(number).upper()
-    while len(name)>1 and d.textlength(name,font=F)>W-3*P-d.textlength(tag,font=F): name=name[:-1]
-    d.text((P,y),name,font=F,fill=col);d.text((W-P-d.textlength(tag,font=F),y),tag,font=F,fill=col)
-    y+=step+4;d.line((P,y,W-P,y),fill=0,width=2);y+=10
+    while len(name)>1 and d.textlength(name,font=FB)>W-2*P: name=name[:-1]
+    d.text((P,y),name,font=FB,fill=0);y+=54
+    tag="EAT IN" if dine_in else "TAKEAWAY"
+    if dine_in:   # eat in still stands out: white on a black box, same place
+        tw=d.textlength(tag,font=FS);d.rectangle((P-4,y-3,P+tw+6,y+25),fill=0);d.text((P+1,y),tag,font=FS,fill=255)
+    else: d.text((P,y),tag,font=FS,fill=0)
+    y+=36;d.line((P,y,W-P,y),fill=0,width=2);y+=14
     chk=slip.get("chicken") or {}
-    put(_ck_first_line(slip))
-    for m in _ck_mod_lines(chk): put(m)
+    d.text((X1,y),"1\u00d7",font=F,fill=0);put(X2,_ck_first_line(slip))
+    for m in _ck_mod_lines(chk): put(X2,m,GREY)
+    sides=[];cnt={}
     for sd in slip.get("sides") or []:
-        put(_ck_kitchen_name(sd))
-        for m in _ck_mod_lines(sd): put(m)
-    y=max(y+6,CK_SLIP_H-step);d.line((P,y-6,W-P,y-6),fill=0,width=2)
-    d.text((P,y),(str(box)+"   "+(str(src)+" "+str(tm)).strip()).upper(),font=F,fill=0);y+=step
-    if dine_in: d.rectangle((0,y,W,y+10),fill=0);y+=10
+        k=(_ck_kitchen_name(sd),tuple(_ck_mod_lines(sd)))
+        if k in cnt: cnt[k]+=1
+        else: cnt[k]=1;sides.append(k)
+    for k in sides:
+        d.text((X3,y),"%d\u00d7"%cnt[k],font=F,fill=0);put(X4,k[0])
+        for m in k[1]: put(X4,m,GREY)
+    y=max(y+8,CK_SLIP_H-40);d.line((P,y,W-P,y),fill=0,width=2);y+=12
+    bx=str(box);bx=bx[4:] if bx.lower().startswith("box ") else bx
+    d.text((P,y),bx.lower(),font=FS,fill=0);d.text((W-P-d.textlength(str(tm),font=FS),y),str(tm),font=FS,fill=0);y+=28
     return im.crop((0,0,W,max(y,CK_SLIP_H)))
 def _ck_slip_bytes(number,src,tm,box,slip,dine_in):
     E=_SLIP_ESC;G=_SLIP_GS
-    im=_ck_slip_image(number,src,tm,box,slip,dine_in).convert("L").point(lambda v:255 if v<128 else 0).convert("1")
+    # dithered, so the grey options print lighter like Square's
+    im=_ck_slip_image(number,src,tm,box,slip,dine_in).convert("L").point(lambda v:255-v).convert("1")
     w,h=im.size;rb=(w+7)//8
     o=bytearray();o+=E+b"@"+G+b"v0\x00"+bytes((rb&255,rb>>8,h&255,h>>8))+im.tobytes()
     o+=E+b"J\x30"+G+b"\x56\x41\x00"
@@ -14088,7 +14104,7 @@ def _ck_print_order(order,force=False,dine_in=False):
         slips=_ck_slips(order)
         if not slips:
             st["printed"].append(oid);_ck_save(st);return 0
-        num=_slip_number(order);src=_slip_src(order);tm=_slip_time(order);dine=_ck_is_dine_in(order) or bool(dine_in)
+        num=_slip_number(order);src=_slip_src(order);tm=_ck_stamp(order);dine=_ck_is_dine_in(order) or bool(dine_in)
         start=0 if force else int(st["progress"].get(oid,0));n=0
         for i,s in enumerate(slips):
             if i<start: continue
