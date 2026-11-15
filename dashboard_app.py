@@ -13914,23 +13914,52 @@ def _ck_qty(li):
 def _ck_chicken_label(li):
     n=_slip_norm(li.get("name"));v=(li.get("variation_name") or "").strip()
     return n+(" "+v.upper() if v and v.lower()!="regular" else "")
+def _ck_cents(li):
+    try: return int(((li.get("base_price_money") or {}).get("amount")) or 0)*_ck_qty(li)
+    except Exception: return 0
+def _ck_whole(lines):
+    # a pack's pieces always add up to a whole-dollar pack price ($15/$20/$22/$26...), even on the kiosk where
+    # Square spreads the price over the pieces (e.g. 6.92 + 6.92 + 6.16 = 20.00)
+    t=sum(_ck_cents(x) for x in lines);return t>0 and t%100==0
 def _ck_slips(order):
     # -> [{"chicken":line,"sides":[lines],"label":str}], one per box/chicken to pack
-    lines=order.get("line_items") or [];out=[];j=0;n=len(lines)
+    # POS/online/Uber ring a pack as chicken THEN its sides. The KIOSK often rings the sides FIRST (14 Nov Ally:
+    # CHIPS, 3 PCS FRIED CHICKEN; Liam: SCALLOPED, SLAW, 1/4 BUTTERFLY, CHIPS, ONION RINGS, 1/4 BUTTERFLY).
+    # So each pack chicken takes either the sides waiting before it or the sides right after it - whichever
+    # makes a whole-dollar pack price; if that can't tell, kiosk = before, everything else = after (old rule).
+    lines=order.get("line_items") or [];out=[];n=len(lines);pend=[];j=0
+    kiosk="KIOSK" in ((order.get("source") or {}).get("name") or "").upper()
+    def emit(li,sides):
+        q=_ck_qty(li);units=[]
+        for s in sides: units+=[s]*_ck_qty(s)
+        per=(len(units)//q) if q and len(units)%q==0 else 0
+        for c in range(q):
+            out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":units[c*per:(c+1)*per] if per else (units if c==0 else [])})
     while j<n:
         li=lines[j];vid=li.get("catalog_object_id") or ""
+        if vid in CK_PACK_SIDE:
+            pend.append(li);j+=1;continue
         if vid in CK_PACK_CHICKEN:
-            k=j+1;sides=[]
-            while k<n and (lines[k].get("catalog_object_id") or "") in CK_PACK_SIDE: sides.append(lines[k]);k+=1
-            q=_ck_qty(li);units=[]
-            for s in sides: units+=[s]*_ck_qty(s)
-            per=(len(units)//q) if q and len(units)%q==0 else 0
-            for c in range(q):
-                out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":units[c*per:(c+1)*per] if per else (units if c==0 else [])})
-            j=k;continue
+            k=j+1;after=[]
+            while k<n and (lines[k].get("catalog_object_id") or "") in CK_PACK_SIDE: after.append(lines[k]);k+=1
+            before=list(pend)
+            if before and after:
+                b_ok=_ck_whole(before+[li]);a_ok=_ck_whole([li]+after)
+                use_before=(b_ok and not a_ok) or (b_ok==a_ok and kiosk)
+            else: use_before=bool(before)
+            if use_before:
+                pend=[];emit(li,before);j+=1          # the sides after it stay for the next chicken
+            else:
+                emit(li,after);j=k
+            continue
         if _slip_norm(li.get("name")) in CK_MAIN_NAMES:
             for _ in range(_ck_qty(li)): out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":[]})
         j+=1
+    if pend:   # sides with no chicken after them: give them to the last pack chicken still without sides
+        for s in reversed(out):
+            if not s["sides"] and (s["chicken"].get("catalog_object_id") or "") in CK_PACK_CHICKEN:
+                s["sides"]=pend;break
+        else: _ck_log("order %s: %d pack side(s) with no chicken to go with"%(_slip_number(order),len(pend)))
     return out
 def _ck_is_dine_in(order):
     return any((f.get("type") or "").upper() in ("IN_STORE","DINE_IN") for f in (order.get("fulfillments") or []))
@@ -13961,58 +13990,79 @@ def _ck_pack_name(slip):
         except Exception: pass
     base="1/4 CHICKEN PACK" if n.startswith("1/4") else "1/2 CHICKEN PACK" if n.startswith("1/2") else "FRIED CHICKEN PACK" if "FRIED" in n else ""
     return (base+(" %d SIDE%s"%(k,"" if k==1 else "S"))) if base else ""
+# Kitchen names for the slip (Marcel 15 Nov: "PUMPKIN & BEETROOT", not "... SALAD"). Square item kitchen_name,
+# refreshed in the background every 30 min; this fallback covers a cold start or Square being down.
+CK_KITCHEN_FALLBACK={"DDIY6UHAQXNBUWKCSNJGWSJ7":"POTATO & PUMPKIN","5SVD53XYU6R3RQ5PDQH4XZSF":"ANCIENT GRAIN",
+    "V4IHL5YFJBR6EHPVENPWRCYO":"BROCCOLI & GREENS","WAO3EJVXOVYXTJGSPMYLFIBJ":"PUMPKIN & BEETROOT","5FGD6DCZGLT5FIKA2SI6BH5D":"CHICKEN AVOCADO"}
+_CK_KN={"map":{},"at":0.0,"busy":False}
+def _ck_kitchen_refresh():
+    try:
+        m={}
+        for o in _sq_catalog_list("ITEM"):
+            d=o.get("item_data") or {};kn=(d.get("kitchen_name") or "").strip()
+            if kn:
+                for v in d.get("variations") or []: m[v.get("id")]=kn
+        if m: _CK_KN["map"]=m
+    except Exception as e: print("ck kitchen names:",str(e)[:120])
+    finally: _CK_KN["busy"]=False
+def _ck_kitchen_name(li):
+    if time.time()-_CK_KN["at"]>1800 and not _CK_KN["busy"]:
+        _CK_KN["at"]=time.time();_CK_KN["busy"]=True
+        threading.Thread(target=_ck_kitchen_refresh,daemon=True).start()
+    vid=li.get("catalog_object_id") or ""
+    return (_CK_KN["map"].get(vid) or CK_KITCHEN_FALLBACK.get(vid) or _slip_sideclean(li.get("name"))).upper()
+def _ck_chicken_short(li):
+    # "3 PCS FRIED CHICKEN" -> "3 PCS FRIED", "1/4 BBQ CHICKEN" -> "1/4 BBQ", "1/4 BUTTERFLIED CHICKEN (GF)" -> "1/4 BUTTERFLY (GF)"
+    t=_slip_norm(li.get("name"));v=(li.get("variation_name") or "").strip().upper()
+    if v in ("1/4","1/2"): t=v+" "+t                      # BBQ CHICKEN 1/4 -> 1/4 BBQ
+    elif v and v!="REGULAR": t+=" "+v
+    fried="FRIED" in t
+    t=t.replace("BUTTERFLIED","BUTTERFLY").replace("FRIED CHICKEN","").replace("CHICKEN","")
+    m=re.search(r"(\d+)\s*PCS?\b",t)
+    if m: t=m.group(1)+(" PC" if m.group(1)=="1" else " PCS")+(" FRIED" if fried else "")+" "+(t[:m.start()]+t[m.end():])
+    t=" ".join(t.split())
+    if t.startswith("WHOLE ") or " WHOLE" in t: t="WHOLE "+" ".join(t.replace("WHOLE","").split())
+    return t or _slip_norm(li.get("name"))
+def _ck_first_line(slip):
+    chk=slip.get("chicken") or {};short=_ck_chicken_short(chk)
+    if not slip.get("sides") or chk.get("catalog_object_id") not in CK_PACK_CHICKEN: return short
+    if _ck_pack_name(slip)=="2 PCS PACK SPECIAL": return "2 PCS PACK SPECIAL"
+    return short+" PACK"
+def _ck_mod_lines(li):
+    out=["("+str(m["name"]).strip().upper()+")" for m in (li.get("modifiers") or []) if (m.get("name") or "").strip()]
+    if (li.get("note") or "").strip(): out.append("(NOTE: "+li["note"].strip().upper()+")")
+    return out
+CK_SLIP_H=352      # 44 mm of print + the 6 mm feed = every slip ~50 mm (Marcel 15 Nov); only a very long one grows
 def _ck_slip_image(number,src,tm,box,slip,dine_in):
-    # Marcel 11 Nov layout: pack name big on ONE line, the chicken below with its options under it,
-    # then each side as "- SIDE" with its options under it. Plain Arial, close to Square's tickets.
+    # Marcel 15 Nov: one plain font, one size, all capitals, everything from the left, options in brackets under
+    # their item, kitchen names, same length every time. Eat in = black top line + black bottom edge.
     from PIL import Image,ImageDraw
-    W=576;P=24;im=Image.new("L",(W,2400),255);d=ImageDraw.Draw(im);y=0
-    fnum=_ck_font(64);ftype=_ck_font(30,False);fchk=_ck_font(32,False);fmod=_ck_font(27,False);ffoot=_ck_font(23,False);fband=_ck_font(60)
-    def dashes(y):                                   # thick dashed edge so dine-in slips stand out
-        for x in range(0,W,36): d.rectangle((x,y,x+22,y+9),fill=0)
-        return y+9
-    def band(y,top=True):
-        if top: y=dashes(y)+8
-        d.rectangle((0,y,W,y+90),fill=0)
-        w=d.textlength("DINE IN",font=fband);d.text(((W-w)/2,y+13),"DINE IN",font=fband,fill=255)
-        y+=90
-        if not top: y=dashes(y+8)
-        return y
-    def rule(y):
-        d.rectangle((P,y,W-P,y+2),fill=0);return y+3
-    def one_line(y,text,start=40):
-        sz=start
-        while sz>22 and d.textlength(text,font=_ck_font(sz))>W-2*P: sz-=1
-        d.text((P,y),text,font=_ck_font(sz),fill=0);return y+sz+12
-    def lines(y,text,font,x,step):
-        for line in _ck_wrap(d,text,font,W-P-x):
-            d.text((x,y),line,font=font,fill=0);y+=step
-        return y
-    def mods(y,li,x):
-        for m in (li.get("modifiers") or []):
-            if m.get("name"): y=lines(y,str(m["name"]).upper(),fmod,x,36)
-        if (li.get("note") or "").strip(): y=lines(y,"! "+li["note"].strip(),fmod,x,36)
-        return y
-    y=band(y)+16 if dine_in else 14
-    d.text((P,y),str(number),font=fnum,fill=0);y+=78
-    if not dine_in:
-        d.text((P,y),"TAKEAWAY",font=ftype,fill=0);y+=48
-    y=rule(y)+22
-    pack=_ck_pack_name(slip);chk=slip.get("chicken") or {}
-    if pack:
-        y=one_line(y,pack)+4
-        y=lines(y,slip["label"],fchk,P+20,42)
-        y=mods(y,chk,P+56)+8
-    else:
-        y=one_line(y,slip["label"])+4
-        y=mods(y,chk,P+36)+8
-    for sd in slip["sides"]:
-        y=lines(y,"- "+_slip_sideclean(sd.get("name")),fchk,P+20,42)
-        y=mods(y,sd,P+56)
-    y=rule(y+16)+12
-    d.text((P,y),box,font=ffoot,fill=0)
-    r=(str(src)+"  "+str(tm)).strip();d.text((W-P-d.textlength(r,font=ffoot),y),r,font=ffoot,fill=0);y+=40
-    if dine_in: y=band(y+6,top=False)
-    return im.crop((0,0,W,y+8))
+    W=576;P=20;step=40;F=_ck_font(32,False)
+    im=Image.new("L",(W,1600),255);d=ImageDraw.Draw(im);y=6
+    def put(text):
+        nonlocal y
+        cur=""
+        for w in str(text).split():
+            t=(cur+" "+w).strip()
+            if d.textlength(t,font=F)<=W-2*P or not cur: cur=t
+            else: d.text((P,y),cur,font=F,fill=0);y+=step;cur=w
+        if cur: d.text((P,y),cur,font=F,fill=0);y+=step
+    tag="EAT IN" if dine_in else "TAKEAWAY";col=255 if dine_in else 0
+    if dine_in: d.rectangle((0,y-6,W,y+step),fill=0)
+    name=str(number).upper()
+    while len(name)>1 and d.textlength(name,font=F)>W-3*P-d.textlength(tag,font=F): name=name[:-1]
+    d.text((P,y),name,font=F,fill=col);d.text((W-P-d.textlength(tag,font=F),y),tag,font=F,fill=col)
+    y+=step+4;d.line((P,y,W-P,y),fill=0,width=2);y+=10
+    chk=slip.get("chicken") or {}
+    put(_ck_first_line(slip))
+    for m in _ck_mod_lines(chk): put(m)
+    for sd in slip.get("sides") or []:
+        put(_ck_kitchen_name(sd))
+        for m in _ck_mod_lines(sd): put(m)
+    y=max(y+6,CK_SLIP_H-step);d.line((P,y-6,W-P,y-6),fill=0,width=2)
+    d.text((P,y),(str(box)+"   "+(str(src)+" "+str(tm)).strip()).upper(),font=F,fill=0);y+=step
+    if dine_in: d.rectangle((0,y,W,y+10),fill=0);y+=10
+    return im.crop((0,0,W,max(y,CK_SLIP_H)))
 def _ck_slip_bytes(number,src,tm,box,slip,dine_in):
     E=_SLIP_ESC;G=_SLIP_GS
     im=_ck_slip_image(number,src,tm,box,slip,dine_in).convert("L").point(lambda v:255 if v<128 else 0).convert("1")
