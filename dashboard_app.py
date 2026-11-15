@@ -100,6 +100,13 @@ def save_data(data):
         except Exception as e: _fail(e)
 
 db = load_data()
+# food-watcher history is capped at 150 entries (Marcel 15 Nov) - trim an old big log straight away, photos too
+if len(db.get("foodwatch_log") or [])>150:
+    for _o in db["foodwatch_log"][:-150]:
+        try:
+            if _o.get("img"): os.remove(os.path.join(BASE_DIR,"foodwatch_log",_o["img"]))
+        except Exception: pass
+    db["foodwatch_log"]=db["foodwatch_log"][-150:]
 probe_temps={1:None,2:None,3:None,4:None}
 probe_names={1:"Probe 1",2:"Probe 2",3:"Probe 3",4:"Probe 4"}
 probe_lock=threading.Lock()
@@ -7322,7 +7329,7 @@ FOODW_DIR=os.path.join(BASE_DIR,"foodwatch_log")
 try: os.makedirs(FOODW_DIR,exist_ok=True)
 except Exception: pass
 FOODW={"last_at":0.0,"last_err":"","checks_today":0,"day":"","displays":{}}   # display key -> {at,err,dishes:{name:{level,pend,since,note}}}
-_FOODW_KEEP=1500        # log entries kept (~2 days at 1/min with changes only + 15-min snapshots)
+_FOODW_KEEP=150         # log entries kept (a few hours). Was 1500 = ~900 KB inside the main data file on every save; Marcel 15 Nov: delete it
 _FOODW_PHOTO_EVERY=900  # also keep a photo at least this often per display (s), even with no change
 _FOODW_CROP={"salad":{"x":0.22,"y":0.30,"w":0.64,"h":0.50},   # the cabinet only (fractions of the frame)
              "hot":{"x":0.15,"y":0.30,"w":0.62,"h":0.50}}
@@ -10837,7 +10844,8 @@ _SERVER_KEYS=("device_seen","oven_k_log","noprobe","cook_guide","timers","rot_li
               # label_printer has its own endpoint (/api/label_printer). Tablets doing a bulk
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
               # printer off relay mode and silently broke label printing mid-service.
-              "label_printer")
+              "label_printer",
+              "foodwatch_log")   # written by the food watcher only; a tablet's stale copy must never put old history back
 _PIN_TRIES={}   # ip -> [timestamps of recent failures]
 @app.route("/api/pin_verify",methods=["POST"])
 def api_pin_verify():
