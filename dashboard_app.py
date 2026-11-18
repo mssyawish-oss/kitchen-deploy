@@ -13943,6 +13943,14 @@ def _ck_slips(order):
     kiosk="KIOSK" in ((order.get("source") or {}).get("name") or "").upper()
     def emit(li,sides):
         q=_ck_qty(li);units=[]
+        if q>1 and sides and all(_ck_qty(s)%q==0 for s in sides):
+            # 2x pack rung as 2x chicken, 2x pumpkin, 2x chips: each box gets 1 pumpkin + 1 chips
+            # (Aurora 18 Nov got 2 pumpkin in box 1 and 2 chips in box 2)
+            for c in range(q):
+                box=[]
+                for s in sides: box+=[s]*(_ck_qty(s)//q)
+                out.append({"chicken":li,"label":_ck_chicken_label(li),"sides":box})
+            return
         for s in sides: units+=[s]*_ck_qty(s)
         per=(len(units)//q) if q and len(units)%q==0 else 0
         for c in range(q):
