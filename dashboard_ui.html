@@ -3468,6 +3468,7 @@ const _ALARM_DEF={
  prepimportant:{label:'Important prep reminders',color:'#f97316',interval:6000,bundled:true,desc:'Prep items ticked “Play a sound” (e.g. change the fryer oil, bring the oil drum in). Sounds even though ordinary prep reminders are quiet, and repeats until the item is ticked off.'},
  ktimer:{label:'Kitchen timer finished',color:'#ff3333',interval:600,desc:'One of the Kitchen Timers on the Prep page reaches zero. Separate from the batch timers, so these can beep while batch timers stay quiet.'},
  rotstopped:{label:'Rotisserie not spinning',color:'#ef4444',interval:600,desc:'The rotisserie looks stopped.'},
+ catering:{label:'Catering order',color:'#f59e0b',interval:2000,desc:'A catering order: straight away if it is for today, otherwise 10:30am on the day it is due. Also prints it and pings the phone.'},
  orders:{label:'Orders waiting too long',color:'#3b82f6',interval:820,desc:'Online orders sitting too long.'},
  service:{label:'Reminders — tasks / prep / orders',color:'#7c5cff',interval:700,desc:'Task due, prep due, job & supplier order reminders, and scheduled routines. Two switches: Sound (the noise) and Popup (the on-screen card) — turn both off to hide these reminders completely.'},
  walkin:{label:'Customer waiting, nobody serving',color:'#22d3ee',interval:1400,desc:'A customer is at the counter and no staff are in the service area.'},
@@ -3487,7 +3488,7 @@ const _ALARM_DEF={
 const _DEF_TONE_NAME={probeAlmost:'Soft rising ping',probeReady:'Rising triple bell',probeOverdone:'Rapid high beeps',
  stock:'Gentle chime',prodoff:'Gentle bell melody',timer:'Sharp beep',ktimer:'Sharp beep',rotstopped:'Sharp beep',
  orders:'Two-tone buzz',service:'Two-tone beep',walkin:'Sharp beep'};   // what 'Default' actually plays, per alarm
-const _ALARM_ORDER=['probeAlmost','probeReady','probeOverdone','ovenstep','timer','ktimer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepimportant','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','noprobe','probeoffline'];
+const _ALARM_ORDER=['catering','probeAlmost','probeReady','probeOverdone','ovenstep','timer','ktimer','stock','prodoff','rotstopped','orders','service','checklist','preptasks','prepimportant','prepcarry','walkin','tables','packev','intables','frontdoor','display','probecharge','noprobe','probeoffline'];
 function _migrateProbeAlarms(){
   try{const ac=appData.alarm_cfg;if(!ac||!ac.probe)return;
     if(ac.probeReady||ac.probeOverdone||ac.probeAlmost)return;   // already split
@@ -4613,7 +4614,7 @@ function displayStatusPoll(){
   }).catch(()=>{});
 }
 // ── global screen-flash overlay (colour per active alarm) + per-alarm silence ──
-function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(typeof _pcAlarm!=='undefined'&&_pcAlarm)ks.add('probecharge');if(typeof _npAlarm!=='undefined'&&_npAlarm)ks.add('noprobe');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
+function _activeAlarmKeys(){const ks=new Set();Object.keys(alarms).forEach(id=>{if(alarms[id])ks.add(_keyForId(id));});Object.values(_probeAlarms).forEach(tp=>ks.add(tp==='overdone'?'probeOverdone':'probeReady'));if(_waitAlarm)ks.add('orders');if(activeAlarmId)ks.add('service');if(_walkinAlarm)ks.add('walkin');if(typeof _pcAlarm!=='undefined'&&_pcAlarm)ks.add('probecharge');if(typeof _npAlarm!=='undefined'&&_npAlarm)ks.add('noprobe');if(typeof _caterAlarm!=='undefined'&&_caterAlarm)ks.add('catering');if(_dwAlarm)ks.add('display');if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)ks.add('tables');if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)ks.add('intables');if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)ks.add('frontdoor');if(typeof _ovenAlarm!=='undefined'&&_ovenAlarm)ks.add('ovenstep');return ks;}
 // Every alarm currently sounding, in plain words, with the key needed to silence just that one.
 function _activeAlarmDetails(){
   const out=[];
@@ -4636,6 +4637,7 @@ function _activeAlarmDetails(){
     if(typeof _walkinAlarm!=='undefined'&&_walkinAlarm)out.push({key:'walkin',label:'Customer waiting — nobody serving'});
     if(typeof _pcAlarm!=='undefined'&&_pcAlarm){const _cn={1:'PINK',2:'GREEN',3:'RED',4:'YELLOW'};out.push({key:'probecharge',label:'Put '+_probeChargeOut().map(p=>_cn[p]||('probe '+p)).join(' + ')+' back on the dock'});}
     if(typeof _npAlarm!=='undefined'&&_npAlarm)out.push({key:'noprobe',label:_npLabel});
+    if(typeof _caterAlarm!=='undefined'&&_caterAlarm)out.push({key:'catering',label:'Catering order'});
     if(typeof _tablesAlarm!=='undefined'&&_tablesAlarm)out.push({key:'tables',label:'Food left on outside table'});
     if(typeof _intablesAlarm!=='undefined'&&_intablesAlarm)out.push({key:'intables',label:'Food left on inside table'});
     if(typeof _frontdoorAlarm!=='undefined'&&_frontdoorAlarm)out.push({key:'frontdoor',label:'Customer at the front door'});
@@ -4672,6 +4674,7 @@ function silenceOneAlarm(key){if(key==='probeReady'||key==='probeOverdone'||key=
   else if(key==='walkin'){if(typeof ackWalkin==='function')ackWalkin();}
   else if(key==='probecharge'){if(typeof ackProbeCharge==='function')ackProbeCharge();}
   else if(key==='noprobe'){if(typeof ackNoprobe==='function')ackNoprobe();}
+  else if(key==='catering'){_caterSilence();}
   else if(key==='tables'){if(typeof ackTables==='function')ackTables();}
   else if(key==='intables'){if(typeof ackIntables==='function')ackIntables();}
   else if(key==='frontdoor'){if(typeof ackFrontdoor==='function')ackFrontdoor();}
@@ -9010,10 +9013,22 @@ function renderOrdersPage(){
     return '<div class="ord-card'+(o.sched?' sched':'')+(big?' big':'')+'"><div class="ord-head"><span class="ord-name">'+_mEsc(o.name||'')+'</span><span class="ord-time">'+_ordAgo(o.created)+'</span></div>'+(tags.length?'<div class="ord-tags">'+tags.join('')+'</div>':'')+_ordItemsHtml(o.items,'ord-items')+'<div class="ord-foot"><span class="ord-total">$'+(o.total||0).toFixed(2)+'</span><button class="ord-print" onclick="printOrder(\''+o.id+'\',this)">Print</button></div></div>';
   }).join('');
 }
+// Catering order alarm (Marcel 20 Nov 2026): keeps sounding until someone taps Got it (or Silence on the chip).
+// The server decides WHEN (today's orders at once, earlier bookings 10:30am on the day) and prints + pings the phone.
+let _caterAlarm=false;const _caterSilenced={};
+function _caterSilence(){(_ordersData.alerts||[]).forEach(a=>{if(a.cater_alert)_caterSilenced[a.id]=true;});_caterAlarm=false;_updateFlash();}
+function _caterAlarmTick(alerts){
+  const on=alerts.some(a=>a.cater_alert&&!_caterSilenced[a.id]);
+  if(!on){if(_caterAlarm){_caterAlarm=false;_updateFlash();}return;}
+  if(_caterAlarm||!_acfg('catering').enabled||_devPopMuted('catering'))return;
+  _caterAlarm=true;
+  (function b(){if(!_caterAlarm)return;_alarmHit('catering');setTimeout(b,_acfg('catering').interval);})();
+  _updateFlash();}
 function renderOrderAlerts(){
   const ov=document.getElementById('order-alert');if(!ov)return;
-  if(typeof lockVisible==='function'&&lockVisible()){ov.classList.remove('show');return;}
   const alerts=(_ordersData.alerts||[]).filter(a=>!_orderAlertDismissed[a.id]);
+  _caterAlarmTick(alerts);
+  if(typeof lockVisible==='function'&&lockVisible()){ov.classList.remove('show');return;}
   if(!alerts.length){ov.classList.remove('show');return;}
   document.getElementById('order-alert-cards').innerHTML=alerts.map(a=>{
     const sub=[];if(a.sched&&a.due)sub.push('Due '+_ordDue(a.due));if(a.src)sub.push(_mEsc(a.src));sub.push('$'+(a.total||0).toFixed(2)+' · '+(a.icount||0)+' items');

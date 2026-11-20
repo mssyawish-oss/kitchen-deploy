@@ -1657,7 +1657,7 @@ def _kds_fetch(cfg):
     # OPEN: wide window catches scheduled catering pre-orders. COMPLETED (recent): in-store POS orders are PAID
     # (state COMPLETED) the moment they're rung up, but still sit on the KDS until bumped — so fetch those too and
     # let the fulfillment-state check below decide what's still waiting. Merge + dedupe.
-    begin_open=(datetime.now(timezone.utc)-timedelta(days=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    begin_open=(datetime.now(timezone.utc)-timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")   # catering is booked up to months ahead
     begin_done=(datetime.now(timezone.utc)-timedelta(hours=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
     allo=[]; _seen=set()
     for o in _search(["OPEN"],begin_open,8)+_search(["COMPLETED"],begin_done,8):
@@ -1671,7 +1671,7 @@ def _kds_fetch(cfg):
         oid=o.get("id")
         if not oid: continue
         if not (o.get("fulfillments")): continue   # no fulfillment = not a kitchen order (invoice / payment link) — never hits the KDS, can't be bumped; keep it off the board
-        items=[]; icount=0; birds=0.0; cater=False
+        items=[]; icount=0; birds=0.0; cater=False; _cv=_cater_var_ids()
         for li in o.get("line_items") or []:
             nm=(li.get("name") or "").strip()
             if not nm: continue
@@ -1680,7 +1680,7 @@ def _kds_fetch(cfg):
             except (TypeError,ValueError): q=1
             icount+=q
             if (nm+"|"+var) in bm: birds+=q*bm[nm+"|"+var]
-            if "CATER" in (nm+" "+var).upper(): cater=True
+            if "CATER" in (nm+" "+var).upper() or li.get("catalog_object_id") in _cv: cater=True
             mods=[m.get("name") for m in (li.get("modifiers") or []) if m.get("name")]
             it={"n":nm+((" "+var) if (var and var.lower()!="regular") else ""),"q":q}
             if mods: it["mods"]=mods
@@ -1706,6 +1706,55 @@ def _kds_fetch(cfg):
                     "picked":(bool(ff) and all(s=="COMPLETED" for s in ff)),   # courier/customer has collected it
                     "birds":round(birds,2),"cater":cater})
     return out
+# ── CATERING PRE-ORDER ALARM (Marcel 20 Nov 2026: "we don't get any surprise catering") ───────────────────
+# An order with anything from the catering menu (Square categories in _CATERING_CATS, not KIDS MEALS - those
+# are retail kids packs) gets an alarm on the dashes + a phone push + an automatic kitchen printout:
+#   ordered for the SAME day -> straight away;  ordered on an EARLIER day -> 10:30am on the day it's due
+#   (or 1 hour before it's due, if that's earlier). Fires once per order; db["cater_fired"] remembers.
+_CATER_VARS={"ids":set(),"ts":0.0,"busy":False}
+def _cater_vars_refresh():
+    try:
+        cats={o.get("id") for o in _sq_catalog_list("CATEGORY")
+              if (o.get("category_data") or {}).get("name") in (_CATERING_CATS-{"KIDS MEALS"})}
+        ids=set()
+        if cats:
+            for o in _sq_catalog_list("ITEM"):
+                idt=o.get("item_data") or {}
+                if any(c.get("id") in cats for c in (idt.get("categories") or [])):
+                    ids.update(v.get("id") for v in (idt.get("variations") or []) if v.get("id"))
+        if ids: _CATER_VARS["ids"]=ids
+        _CATER_VARS["ts"]=time.time()
+    except Exception as e:
+        print("cater_vars:",str(e)[:120]); _CATER_VARS["ts"]=time.time()-1500   # retry in 5 min
+    finally: _CATER_VARS["busy"]=False
+def _cater_var_ids():
+    if time.time()-_CATER_VARS["ts"]>1800 and not _CATER_VARS["busy"]:
+        _CATER_VARS["busy"]=True; threading.Thread(target=_cater_vars_refresh,daemon=True).start()
+    return _CATER_VARS["ids"]
+def _cater_fire_at(b):
+    """When this catering order should alarm (aware datetime), or None."""
+    cr=_parse_dt(b.get("created"))
+    if not cr: return None
+    due=_parse_dt(b.get("due")) if b.get("due") else None
+    if not due: return cr                                   # ASAP order = now
+    crl=cr.astimezone(); dl=due.astimezone()
+    if dl.date()<=crl.date(): return cr                     # ordered for today -> straight away
+    at=min(dl.replace(hour=10,minute=30,second=0,microsecond=0),dl-timedelta(minutes=60))
+    return max(at,cr)
+def _cater_fire(a):
+    when=""
+    d=_parse_dt(a.get("due")) if a.get("due") else None
+    if d: when=d.astimezone().strftime("%a %d %b %H:%M")
+    msg=("Due "+when+" - " if when else "")+"%d items, $%.2f"%(a.get("icount") or 0,a.get("total") or 0)
+    topic=((db.get("tables_watch") or {}).get("ntfy_topic") or "").strip()
+    if topic:
+        try: _ntfy_push(topic,"Catering order: "+(a.get("name") or ""),msg)
+        except Exception as e: print("cater ntfy:",str(e)[:100])
+    for _t in range(3):                                     # kitchen printout, retry if the printer is busy/asleep
+        try:
+            _print_order_ticket(dict(a,reason="CATERING ORDER")); print("catering order printed:",a.get("name")); return
+        except Exception as e:
+            print("cater print:",str(e)[:100]); time.sleep(20)
 def _orders_refresh(cfg):
     global ORDERS_LIVE
     try:
@@ -1770,17 +1819,31 @@ def _orders_refresh(cfg):
         with data_lock: db["order_alert_seen"]=[x for x in (db.get("order_alert_seen") or []) if x in live_ids]; save_data(db)
         seen=live_ids & seen
     alerts=[]
+    cseen=set(db.get("cater_seen") or [])
+    def _is_cater(b): return caterOn and b.get("cater") and (b.get("sched") or (b.get("src") or "")!="Point of Sale")
     if enabled:
         for b in open_tk:
+            if _is_cater(b):                         # catering: only at its alarm time, with its own Got it
+                if b["id"] in cseen: continue
+                fa=_cater_fire_at(b)
+                if not fa or now<fa: continue
+                du=_parse_dt(b.get("due")) if b.get("due") else None
+                if du and (now-du).total_seconds()>1800: continue   # long past its pickup - not a heads-up any more
+                a=dict(b); a["reason"]="Catering order"; a["cater_alert"]=True; alerts.append(a); continue
             if b["id"] in seen: continue
             why=[]
-            if caterOn and b.get("cater"): why.append("Catering items")
             if minB and b.get("birds",0)>=minB: why.append("%g chickens"%b["birds"])
             if schedOn and b["sched"]: why.append("Pre-order")
             if minT and b["total"]>=minT: why.append("$%d order"%int(b["total"]))
             if minI and b["icount"]>=minI: why.append("%d items"%b["icount"])
             if why:
                 a=dict(b); a["reason"]=" · ".join(why); alerts.append(a)
+    fired=dict(db.get("cater_fired") or {}); newf=[a for a in alerts if a.get("cater_alert") and a["id"] not in fired]
+    if newf or any(k not in live_ids and time.time()-v>3*86400 for k,v in fired.items()):
+        for a in newf: fired[a["id"]]=time.time()
+        fired={k:v for k,v in fired.items() if k in live_ids or time.time()-v<=3*86400}
+        with data_lock: db["cater_fired"]=fired; save_data(db)
+        for a in newf: threading.Thread(target=_cater_fire,args=(a,),daemon=True).start()
     ORDERS_LIVE={"board":tickets,"alerts":alerts,"ts":int(time.time()*1000),
                  "cfg":{"min_total":minT,"min_items":minI,"sched":schedOn,"enabled":enabled,"window":win,
                         "min_birds":minB,"cater":caterOn}}
@@ -10845,7 +10908,7 @@ _SERVER_KEYS=("device_seen","oven_k_log","noprobe","cook_guide","timers","rot_li
               # appData save kept pushing a STALE copy over it — twice on 7 Aug this flipped the
               # printer off relay mode and silently broke label printing mid-service.
               "label_printer",
-              "foodwatch_log")   # written by the food watcher only; a tablet's stale copy must never put old history back
+              "foodwatch_log","cater_fired","cater_seen")   # written by the food watcher only; a tablet's stale copy must never put old history back
 _PIN_TRIES={}   # ip -> [timestamps of recent failures]
 @app.route("/api/pin_verify",methods=["POST"])
 def api_pin_verify():
@@ -12667,8 +12730,12 @@ def api_order_ack():
     oid=str((request.get_json(silent=True) or {}).get("id","") or "")
     if oid:
         with data_lock:
-            seen=list(db.get("order_alert_seen") or [])
-            if oid not in seen: seen.append(oid); db["order_alert_seen"]=seen[-200:]; save_data(db)
+            if any(a.get("id")==oid and a.get("cater_alert") for a in (ORDERS_LIVE.get("alerts") or [])):
+                cs=list(db.get("cater_seen") or [])          # catering has its own Got it list (see _cater_fire_at)
+                if oid not in cs: cs.append(oid); db["cater_seen"]=cs[-300:]; save_data(db)
+            else:
+                seen=list(db.get("order_alert_seen") or [])
+                if oid not in seen: seen.append(oid); db["order_alert_seen"]=seen[-200:]; save_data(db)
     return jsonify({"ok":True})
 def _print_order_ticket(order):
     ESC=b"\x1b"; GS=b"\x1d"; import socket
