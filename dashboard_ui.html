@@ -528,6 +528,7 @@ body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:var(--fs-l
 .prep-sub b{color:var(--text);}
 .prep-tabs{display:flex;gap:8px;flex-wrap:wrap;}
 .prep-tab{font-size:var(--fs-md);font-weight:700;padding:7px 14px;border-radius:var(--r-sm);border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;min-width:150px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-align:center;}
+.prep-tab.prep-step{min-width:52px;padding:7px 12px;color:var(--text);}
 .prep-tab.active{background:var(--amber);border-color:var(--amber);color:#1a1205;}
 .prep-tab.warn{border-color:#ef4444;color:#fff;background:#ef4444;animation:prepFlash 1s ease-in-out infinite;}
 .ptab-badge{background:#ef4444;color:#fff;font-size:var(--fs-sm);font-weight:800;border-radius:var(--r-sm);padding:0 6px;min-width:18px;line-height:18px;text-align:center;}
@@ -5332,7 +5333,7 @@ async function refreshShared(){
   if(id==='page-stock')renderStockPage();
   else if(id==='page-packdown')renderPackdownPage();
   else if(id==='page-recipes'){const det=document.getElementById('recipe-detail');if(!det||det.style.display!=='block')renderRecipesPage();}  // don't close an open recipe
-  else if(id==='page-jobs'){_prepView='today';renderPrepPage();}
+  else if(id==='page-jobs'){_prepView='today';_prepDayOff=0;renderPrepPage();}
   else if(id==='page-service')renderServicePage();
   updateNotesBadge();
 }
@@ -7489,13 +7490,13 @@ function openDailyLog(day){
 function resetPackdown(){const shift=_pdCurShift();const lbl=shift==='day'?'Day':shift==='night'?'Night':'Kitchen';_askConfirm('Reset the '+lbl+' checklist?','Only '+lbl.toLowerCase()+' tasks are cleared (the other shift and the daily log stay).',function(){appData.packdown_checks=appData.packdown_checks||{};(appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift).forEach(t=>{delete appData.packdown_checks[t.id];packdownDueDismissed[t.id]=true;});saveKeys(['packdown_checks']);if(typeof updatePackdownBadge==='function')updatePackdownBadge();renderPackdownPage();},'Reset checklist');}
 function _packdownDailyReset(){const today=_prepToday();if(appData.packdown_reset_day===today)return;if(appData.packdown_reset_day){appData.packdown_checks={};(appData.packdown_tasks||[]).forEach(t=>packdownDueDismissed[t.id]=true);saveKeys(['packdown_checks']);}appData.packdown_reset_day=today;saveKeys(['packdown_reset_day']);const pg=document.getElementById('page-packdown');if(pg&&pg.classList.contains('active'))renderPackdownPage();}
 function _taskWkIdx(ds){const a=ds.split('-').map(Number);const x=new Date(a[0],a[1]-1,a[2]);const d=(x.getDay()+6)%7;const m=new Date(a[0],a[1]-1,a[2]-d);return Math.floor(Date.UTC(m.getFullYear(),m.getMonth(),m.getDate())/86400000/7);}
-function _taskActiveToday(t){
+function _taskActiveToday(t,ds){   // ds = 'YYYY-MM-DD' to ask about another day (Prep page look-ahead); default today
   let r=t.recur;if(!r)r=(Array.isArray(t.days)&&t.days.length)?'weekly':'daily';   // legacy: day-of-week set = weekly
-  const today=_prepToday();
+  const today=ds||_prepToday();
   const start=t.start_date||t.anchor||'';     // recurring doesn't begin before this date
   if(start&&today<start)return false;
   if(r==='daily')return true;
-  const dow=(new Date().getDay()+6)%7;
+  const dow=((ds?new Date(ds+'T12:00:00'):new Date()).getDay()+6)%7;
   if(r==='dates')return Array.isArray(t.dates)&&t.dates.includes(today);
   if(r==='weekly')return Array.isArray(t.days)&&t.days.includes(dow);
   if(r==='fortnightly'){if(!(Array.isArray(t.days)&&t.days.includes(dow)))return false;return ((_taskWkIdx(today)-_taskWkIdx(start||today))%2+2)%2===0;}
@@ -8136,6 +8137,7 @@ function _poSummary(lg){
   if(n(lg.skipped))bits.push(n(lg.skipped)+' left off');
   if(n(lg.addons))bits.push('<span style="color:var(--amber);">'+n(lg.addons)+' add-on'+(n(lg.addons)>1?'s':'')+' need the Square app</span>');
   if(n(lg.failed))bits.push('<span style="color:var(--red);">'+n(lg.failed)+' failed</span>');
+  if(n(lg.scheduled))bits.push('<span style="color:#67e8f9;">'+n(lg.scheduled)+' on a Square timer (switch back on by themselves)</span>');   // was stuck after </html> since 22 Jul and showed as text
   const t=new Date(lg.at||Date.now()).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   _poStatus(bits.length?(t+' &middot; '+bits.join(' &middot; ')):'');
 }
@@ -8753,13 +8755,13 @@ function deleteRecipe(i){const r=(appData.recipes||[])[i];requirePin('Manager Co
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
 let _prepView='today';
 let _prepYestAck=(function(){try{return localStorage.getItem('bruno_prep_yest_ack')||'';}catch(e){return '';}})();   // yesterday-date the user has already reviewed → stop the tab strobing
-function setPrepView(v){_prepView=v;renderPrepPage();}
+function setPrepView(v){_prepView=v;if(v!=='ahead')_prepDayOff=0;renderPrepPage();}
 const _PREP_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const _PREP_MONS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function _prepFullDate(ds){try{const d=new Date(ds+'T12:00:00');return _PREP_DAYS[d.getDay()]+', '+d.getDate()+' '+_PREP_MONS[d.getMonth()];}catch(e){return ds;}}
 // shared 3-column renderer; readonly=true for the Yesterday view (no tapping, marks missed items)
-function _prepColsHTML(items,done,priMap,readonly){
-  const now=nowHHMM();
+function _prepColsHTML(items,done,priMap,readonly,aheadDs){
+  const now=nowHHMM();const ahead=readonly==='ahead';
   // 3 columns: Do First (very important) | Do Today (everything else) | Daily Tasks (recurring).
   // Recurring items always live in the third column; legacy 'low' priority folds into Do Today.
   const groups={high:[],med:[],recur:[]};
@@ -8774,17 +8776,17 @@ function _prepColsHTML(items,done,priMap,readonly){
     const d=done[p.id];const _pr=priMap[p.id]||p.priority||'med';const pri=p.recur?'recur':(_pr==='high'?'high':'med');   // legacy 'low' shows as Do Today
     const img=p.img?'<img class="pc-img" src="/photos/'+p.img+'">':'';   // no picture uploaded -> show nothing, keep the card clean
     const due=!readonly&&p.remind&&!d&&now>=p.remind;
-    const rem=(!readonly&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
-    const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
-    const recMark=(!readonly&&p.recur&&!d)?'<span class="pc-remind" title="repeats automatically">&#8635;</span>':'';
+    const rem=((!readonly||ahead)&&p.remind)?('<span class="pc-remind'+(due?' due':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/></svg>'+p.remind+(due?' · due':'')+'</span>'):'';
+    const doneMeta=ahead?'':d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
+    const recMark=((!readonly||ahead)&&p.recur&&!d)?'<span class="pc-remind" title="repeats automatically">&#8635;</span>':'';
     const meta=(rem||doneMeta||recMark)?('<div class="pc-meta">'+rem+recMark+doneMeta+'</div>'):'';
-    const qtyH=readonly?'':_prepQtyHTML(p,d);
+    const qtyH=ahead?_prepQtyAhead(p,aheadDs):(readonly?'':_prepQtyHTML(p,d));
     const det=p.detail?('<div style="font-size:var(--fs-sm);color:var(--muted);line-height:1.25;margin-top:1px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+_mEsc(p.detail)+'</div>'):'';
     const pthumb=(d&&d.photo)?('<img class="pc-pthumb" src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')" title="Tap to enlarge">'):'';
-    const addBtn=(readonly&&!d)?('<button class="pc-addtoday" onclick="event.stopPropagation();addPrepToToday(\''+p.id+'\')" title="Add to today’s prep list">&#8594;</button>'):'';
-    const cls='prep-card pri-'+pri+(d?' done':(readonly?' missed':''));
+    const addBtn=(readonly&&!ahead&&!d)?('<button class="pc-addtoday" onclick="event.stopPropagation();addPrepToToday(\''+p.id+'\')" title="Add to today’s prep list">&#8594;</button>'):'';
+    const cls='prep-card pri-'+pri+(d?' done':((readonly&&!ahead)?' missed':''));
     const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
-    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+qtyH+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
+    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+qtyH+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':((readonly&&!ahead)?'✗':''))+'</div></div></div>';
   };
   const COLS=[['high','Do First','#ef4444','narrow'],['med','Do Today','#f59e0b','wide'],['recur','Daily Tasks','#a78bfa','narrow']];
   return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
@@ -8802,8 +8804,8 @@ function _prepColsHTML(items,done,priMap,readonly){
 // enter how much is LEFT OVER in the fridge → the card says how much to MAKE (or that there's enough).
 // prep_today.plan_added = ids already auto-added today (so an item someone removes isn't re-added);
 // prep_today.left = {id: leftover number}.
-function _prepWd(){return (new Date().getDay()+6)%7;}
-function _prepPlanToday(p){const pl=p&&p.plan;if(!pl)return null;const x=pl[String(_prepWd())];return x||null;}
+function _prepWd(ds){return ((ds?new Date(ds+'T12:00:00'):new Date()).getDay()+6)%7;}
+function _prepPlanToday(p,ds){const pl=p&&p.plan;if(!pl)return null;const x=pl[String(_prepWd(ds))];return x||null;}
 function _prepFmt(n){return String(Math.round(n*100)/100);}
 function _prepQtyHTML(p,d){
   const x=_prepPlanToday(p);if(!x||((x.qty===undefined||x.qty==='')&&!x.note))return '';
@@ -8824,6 +8826,35 @@ function _prepQtyHTML(p,d){
   }
   const btn=d?'':('<button class="pq-left" onclick="event.stopPropagation();setPrepLeft(\''+p.id+'\')">'+(has?'CHANGE':'LEFT OVER?')+'</button>');
   return '<div class="pc-qty">'+main+btn+note+'</div>';
+}
+function _prepQtyAhead(p,ds){
+  const x=_prepPlanToday(p,ds);if(!x||((x.qty===undefined||x.qty==='')&&!x.note))return '';
+  const unit=_mEsc(String(x.unit||'').toUpperCase());
+  const amt=(x.qty!==undefined&&x.qty!=='')?('<span class="pq-amt">'+_mEsc(isNaN(parseFloat(x.qty))?String(x.qty):_prepFmt(parseFloat(x.qty)))+' '+unit+'</span>'):'';
+  return '<div class="pc-qty">'+amt+(x.note?('<span class="pq-note">'+_mEsc(x.note)+'</span>'):'')+'</div>';
+}
+// What a future day's list will hold: its scheduled list (Set list for that date), plus the repeating daily
+// tasks due that day, plus items with a weekly amount for that weekday - the same things the morning rollover adds.
+function _prepAheadList(ds){
+  const presets=appData.prep_presets||[];const sc=(appData.prep_scheduled||{})[ds]||{};
+  const ids=(sc.items||[]).slice();
+  presets.forEach(function(p){
+    if(p.recur){if(_taskActiveToday(p,ds)&&!ids.includes(p.id))ids.push(p.id);return;}
+    if(_prepPlanToday(p,ds)&&!ids.includes(p.id))ids.push(p.id);
+  });
+  return {items:ids.map(id=>presets.find(p=>p.id===id)).filter(Boolean),pri:sc.pri||{},scheduled:!!(sc.items||[]).length};
+}
+let _prepDayOff=0,_prepAheadTimer=null;
+const _PREP_AHEAD_MAX=28;
+function prepStepDay(n){
+  if(_prepView==='history'){if(n>0){_prepView='today';_prepDayOff=0;renderPrepPage();}return;}
+  let o=(_prepView==='ahead'?_prepDayOff:0)+n;
+  if(o<0){_prepView='history';_prepDayOff=0;_prepHistDate='';renderPrepPage();return;}   // back from today = last finished day
+  if(o>_PREP_AHEAD_MAX)o=_PREP_AHEAD_MAX;
+  _prepDayOff=o;_prepView=o>0?'ahead':'today';
+  clearTimeout(_prepAheadTimer);
+  if(o>0)_prepAheadTimer=setTimeout(function(){if(_prepView==='ahead'){_prepView='today';_prepDayOff=0;renderPrepPage();}},120000);   // a screen left on a future day goes back to today after 2 min
+  renderPrepPage();
 }
 function setPrepLeft(id){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p);if(!x)return;
@@ -8896,9 +8927,19 @@ function renderPrepPage(){try{_prepCarryTimeSync();}catch(e){}
   const recent=histDates[0]?hist[histDates[0]]:null;
   const recentMissed=recent?((recent.items||[]).filter(id=>!((recent.done||{})[id])).length):0;   // most recent day's misses → badge/flash
   const _hAcked=(histDates[0]&&_prepYestAck===histDates[0]);
-  let tabs='<button class="prep-tab'+(_prepView!=='history'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>';
+  const _arrow=function(n,lbl){return '<button class="prep-tab prep-step" onclick="prepStepDay('+n+')" aria-label="'+(n<0?'Previous day':'Next day')+'">'+lbl+'</button>';};
+  let tabs=_arrow(-1,'&#9664;')+'<button class="prep-tab'+(_prepView==='today'?' active':'')+'" onclick="setPrepView(\'today\')">Today</button>'
+    +(_prepView==='ahead'?('<button class="prep-tab active">'+_prepDateLabel(_prepDateOffset(_prepDayOff))+'</button>'):'')+_arrow(1,'&#9654;');
   tabs+='<button class="prep-tab'+(_prepView==='history'?' active':'')+((_prepView!=='history'&&recentMissed&&!_hAcked)?' warn':'')+'" onclick="setPrepView(\'history\')">History'+(recentMissed?(' <span class="ptab-badge">'+recentMissed+'</span>'):'')+'</button>';
   if(_prepView==='history'){ renderPrepHistory(box,tabs); return; }
+  if(_prepView==='ahead'&&_prepDayOff>0){
+    const ds=_prepDateOffset(_prepDayOff);const a=_prepAheadList(ds);
+    _setPrepHeader(tabs,'Prep List · <span class="pdate">'+_prepFullDate(ds)+'</span> · <b>'+a.items.length+'</b> item'+(a.items.length===1?'':'s')
+      +' <button class="btn" style="margin-left:8px;vertical-align:middle;padding:4px 10px;font-size:var(--fs-sm);" onclick="openPrepBuild(\''+ds+'\')">Set list</button>');
+    box.innerHTML=a.items.length?_prepColsHTML(a.items,{},a.pri,'ahead',ds)
+      :'<div class="empty-state" style="padding:30px 18px;text-align:center;"><div style="font-size:var(--fs-lg);color:var(--text);font-weight:600;">Nothing scheduled</div></div>';
+    return;
+  }
   // ── Today view ──
   const pt=appData.prep_today||{};
   const items=((pt.items||[]).map(id=>presets.find(p=>p.id===id)).filter(Boolean));
@@ -8920,7 +8961,7 @@ function _setPrepHeader(tabsHTML,subHTML){
   const ts=document.getElementById('prep-tabs-slot');if(ts)ts.innerHTML=tabsHTML;
   const ss=document.getElementById('prep-sub-slot');if(ss)ss.innerHTML=subHTML||'';
   // "Clear list" wipes TODAY's list — hide it while reviewing History so it can't be pressed by mistake
-  const cb=document.getElementById('prep-clear-btn');if(cb)cb.style.display=(_prepView==='history')?'none':'';
+  const cb=document.getElementById('prep-clear-btn');if(cb)cb.style.display=(_prepView==='history'||_prepView==='ahead')?'none':'';
 }
 let _prepHistDate='',_prepHistSearch='';
 function _prepHistPick(d){_prepHistDate=d;_prepHistSearch='';renderPrepPage();}
@@ -10291,4 +10332,3 @@ init();
 </script>
 </body>
 </html>
-  if((lg.scheduled||[]).length)bits.push('<div style="color:#67e8f9;">On a Square timer — switch back on by themselves: '+lg.scheduled.map(_mEsc).join(', ')+'</div>');
