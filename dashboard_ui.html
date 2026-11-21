@@ -499,6 +499,13 @@ body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:var(--fs-l
 .prep-card .pc-mid{flex:1;min-width:0;}
 .prep-card .pc-name{font-size:var(--fs-md);font-weight:700;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .prep-card.done .pc-name{text-decoration:line-through;color:var(--muted);}
+.prep-card .pc-qty{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px;}
+.prep-card .pq-amt{font-family:var(--font-mono);font-size:var(--fs-lg);font-weight:800;color:var(--amber);letter-spacing:.02em;}
+.prep-card .pq-skip{color:var(--green);font-size:var(--fs-md);}
+.prep-card .pq-was{font-size:var(--fs-sm);color:var(--muted);}
+.prep-card .pq-note{font-size:var(--fs-sm);color:var(--muted);flex-basis:100%;}
+.prep-card .pq-left{margin-left:auto;font-size:var(--fs-sm);font-weight:800;letter-spacing:.04em;padding:6px 10px;border-radius:8px;border:1.5px solid var(--amber);background:transparent;color:var(--amber);cursor:pointer;}
+.prep-card.done .pq-amt{color:var(--muted);}
 .prep-card .pc-meta{display:flex;align-items:center;gap:7px;margin-top:3px;flex-wrap:wrap;}
 .pc-pri-tag{font-size:var(--fs-xs);font-weight:800;text-transform:uppercase;padding:1px 6px;border-radius:var(--r-sm);letter-spacing:.4px;}
 .pc-pri-tag.pri-high{background:rgba(239,68,68,.16);color:#ef4444;}
@@ -8768,12 +8775,13 @@ function _prepColsHTML(items,done,priMap,readonly){
     const doneMeta=d?('<span class="pc-remind" style="color:var(--green);font-weight:700;">&#10003; '+(readonly?'Done':'Prepped')+(d.time?' '+d.time:'')+'</span>'):(readonly?'<span class="pc-remind" style="color:#ef4444;font-weight:700;">✗ Not done</span>':'');
     const recMark=(!readonly&&p.recur&&!d)?'<span class="pc-remind" title="repeats automatically">&#8635;</span>':'';
     const meta=(rem||doneMeta||recMark)?('<div class="pc-meta">'+rem+recMark+doneMeta+'</div>'):'';
+    const qtyH=readonly?'':_prepQtyHTML(p,d);
     const det=p.detail?('<div style="font-size:var(--fs-sm);color:var(--muted);line-height:1.25;margin-top:1px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+_mEsc(p.detail)+'</div>'):'';
     const pthumb=(d&&d.photo)?('<img class="pc-pthumb" src="/photos/'+d.photo+'" onclick="event.stopPropagation();enlargePhoto(\''+d.photo+'\')" title="Tap to enlarge">'):'';
     const addBtn=(readonly&&!d)?('<button class="pc-addtoday" onclick="event.stopPropagation();addPrepToToday(\''+p.id+'\')" title="Add to today’s prep list">&#8594;</button>'):'';
     const cls='prep-card pri-'+pri+(d?' done':(readonly?' missed':''));
     const onclick=readonly?'':' onclick="completePrep(\''+p.id+'\')"';
-    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
+    return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+qtyH+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':(readonly?'✗':''))+'</div></div></div>';
   };
   const COLS=[['high','Do First','#ef4444','narrow'],['med','Do Today','#f59e0b','wide'],['recur','Daily Tasks','#a78bfa','narrow']];
   return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
@@ -8786,6 +8794,50 @@ function _prepColsHTML(items,done,priMap,readonly){
 }
 // recurring presets (daily / weekly / fortnightly / set dates) appear on today's list on their
 // own — no need to pick them in Set list. Data-only and idempotent; safe to call anywhere.
+// ── Weekly prep amounts (Marcel 22 Nov): a preset can carry plan = {"0":{qty,unit,note},…} keyed by weekday
+// (0=Mon … 6=Sun). That day the item lands on today's list by itself (Do Today) showing the amount, and staff can
+// enter how much is LEFT OVER in the fridge → the card says how much to MAKE (or that there's enough).
+// prep_today.plan_added = ids already auto-added today (so an item someone removes isn't re-added);
+// prep_today.left = {id: leftover number}.
+function _prepWd(){return (new Date().getDay()+6)%7;}
+function _prepPlanToday(p){const pl=p&&p.plan;if(!pl)return null;const x=pl[String(_prepWd())];return x||null;}
+function _prepFmt(n){return String(Math.round(n*100)/100);}
+function _prepQtyHTML(p,d){
+  const x=_prepPlanToday(p);if(!x||((x.qty===undefined||x.qty==='')&&!x.note))return '';
+  const unit=_mEsc(String(x.unit||'').toUpperCase());const note=x.note?('<span class="pq-note">'+_mEsc(x.note)+'</span>'):'';
+  const q=parseFloat(x.qty);const pt=appData.prep_today||{};const lf=(pt.left||{})[p.id];
+  if(isNaN(q))return '<div class="pc-qty">'+((x.qty!==undefined&&x.qty!=='')?'<span class="pq-amt">'+_mEsc(String(x.qty))+' '+unit+'</span>':'')+note+'</div>';
+  const has=(lf!==undefined&&lf!==null&&lf!=='');
+  let main='<span class="pq-amt">'+_prepFmt(q)+' '+unit+'</span>';
+  if(has){
+    const make=q-parseFloat(lf);
+    main=make>0?('<span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+unit+'</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>')
+               :('<span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>');
+  }
+  const btn=d?'':('<button class="pq-left" onclick="event.stopPropagation();setPrepLeft(\''+p.id+'\')">'+(has?'CHANGE':'LEFT OVER?')+'</button>');
+  return '<div class="pc-qty">'+main+btn+note+'</div>';
+}
+function setPrepLeft(id){
+  const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p);if(!x)return;
+  const pt=appData.prep_today||{};const cur=(pt.left||{})[id];
+  _askPrompt('How many '+(x.unit||'')+' left over?',(cur==null?'':cur),function(v){
+    v=String(v==null?'':v).trim();const t=appData.prep_today;if(!t)return;t.left=t.left||{};
+    if(v===''){delete t.left[id];}else{const n=parseFloat(v);if(isNaN(n)||n<0){_askAlert('Numbers only','Type how many are left, e.g. 5');return;}t.left[id]=n;}
+    saveKeys(['prep_today']);renderPrepPage();
+  },{numeric:true,placeholder:'0',yesLabel:'Save',body:(p.name||'')+' – today needs '+_prepFmt(parseFloat(x.qty))+' '+(x.unit||'')+'. Leave blank to clear.'});
+}
+function _mergePlanPrep(){
+  const today=_prepToday();const pt=appData.prep_today;if(!pt||(pt.date&&pt.date!==today))return false;
+  let changed=false;
+  (appData.prep_presets||[]).forEach(p=>{
+    if(p.recur||!_prepPlanToday(p))return;
+    pt.plan_added=pt.plan_added||[];if(pt.plan_added.includes(p.id))return;
+    if(!pt.date){pt.date=today;pt.done=pt.done||{};}
+    pt.items=pt.items||[];if(!pt.items.includes(p.id))pt.items.push(p.id);
+    pt.plan_added.push(p.id);changed=true;
+  });
+  return changed;
+}
 function _mergeRecurringPrep(){
   const today=_prepToday();appData.prep_today=appData.prep_today||{};const pt=appData.prep_today;
   if(pt.date&&pt.date!==today)return;   // day is rolling over — let _promoteScheduledPrep run first
@@ -8797,6 +8849,7 @@ function _mergeRecurringPrep(){
     pt.items=pt.items||[];
     if(!pt.items.includes(p.id)){pt.items.push(p.id);changed=true;}
   });
+  if(_mergePlanPrep())changed=true;
   if(changed)saveKeys(['prep_today']);
 }
 // One-time migration: the old Routines become recurring prep items (same names, times and
