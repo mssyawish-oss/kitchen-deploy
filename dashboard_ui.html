@@ -501,6 +501,7 @@ body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:var(--fs-l
 .prep-card.done .pc-name{text-decoration:line-through;color:var(--muted);}
 .prep-card .pc-qty{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px;}
 .prep-card .pq-amt{font-family:var(--font-mono);font-size:var(--fs-lg);font-weight:800;color:var(--amber);letter-spacing:.02em;}
+.prep-card .pq-sug{flex-basis:100%;font-size:var(--fs-xs,11px);font-weight:800;letter-spacing:.06em;color:#ef4444;}
 .prep-card .pq-skip{color:var(--green);font-size:var(--fs-md);}
 .prep-card .pq-was{font-size:var(--fs-sm);color:var(--muted);}
 .prep-card .pq-note{font-size:var(--fs-sm);color:var(--muted);flex-basis:100%;}
@@ -8812,12 +8813,12 @@ function _prepQtyHTML(p,d){
   if(has&&parseFloat(x.per)>0){   // batch item: staff count FINISHED product (e.g. trays of mac & cheese), per = finished units per batch
     const per=parseFloat(x.per),lv=parseFloat(lf);const make=Math.max(0,Math.ceil(q-lv/per-1e-9));
     const was='<span class="pq-was">'+_prepFmt(lv)+' '+_mEsc(x.count||'')+' already made</span>';
-    main=make>0?('<span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+(make===1?unit.replace(/(CH|SH|X)ES$/,'$1').replace(/([^S])S$/,'$1'):unit)+'</span>'+was)
-               :('<span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span>'+was);
+    main=make>0?('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+(make===1?unit.replace(/(CH|SH|X)ES$/,'$1').replace(/([^S])S$/,'$1'):unit)+'</span>'+was)
+               :('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span>'+was);
   }else if(has){
     const make=q-parseFloat(lf);
-    main=make>0?('<span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+unit+'</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>')
-               :('<span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>');
+    main=make>0?('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+unit+'</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>')
+               :('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>');
   }
   const btn=d?'':('<button class="pq-left" onclick="event.stopPropagation();setPrepLeft(\''+p.id+'\')">'+(has?'CHANGE':'LEFT OVER?')+'</button>');
   return '<div class="pc-qty">'+main+btn+note+'</div>';
