@@ -8809,7 +8809,12 @@ function _prepQtyHTML(p,d){
   if(isNaN(q))return '<div class="pc-qty">'+((x.qty!==undefined&&x.qty!=='')?'<span class="pq-amt">'+_mEsc(String(x.qty))+' '+unit+'</span>':'')+note+'</div>';
   const has=(lf!==undefined&&lf!==null&&lf!=='');
   let main='<span class="pq-amt">'+_prepFmt(q)+' '+unit+'</span>';
-  if(has){
+  if(has&&parseFloat(x.per)>0){   // batch item: staff count FINISHED product (e.g. trays of mac & cheese), per = finished units per batch
+    const per=parseFloat(x.per),lv=parseFloat(lf);const make=Math.max(0,Math.ceil(q-lv/per-1e-9));
+    const was='<span class="pq-was">'+_prepFmt(lv)+' '+_mEsc(x.count||'')+' already made</span>';
+    main=make>0?('<span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+(make===1?unit.replace(/(CH|SH|X)ES$/,'$1').replace(/([^S])S$/,'$1'):unit)+'</span>'+was)
+               :('<span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span>'+was);
+  }else if(has){
     const make=q-parseFloat(lf);
     main=make>0?('<span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+unit+'</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>')
                :('<span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>');
@@ -8820,11 +8825,15 @@ function _prepQtyHTML(p,d){
 function setPrepLeft(id){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p);if(!x)return;
   const pt=appData.prep_today||{};const cur=(pt.left||{})[id];
-  _askPrompt('How many '+(x.unit||'')+' left over?',(cur==null?'':cur),function(v){
+  const per=parseFloat(x.per)>0;
+  const title=per?('How many '+(x.count||'')+' are already in the fridge?'):('How many '+(x.unit||'')+' left over?');
+  const body=per?((p.name||'')+' – '+_prepFmt(parseFloat(x.qty))+' '+(x.unit||'')+' = '+_prepFmt(parseFloat(x.qty)*parseFloat(x.per))+' '+(x.count||'')+'. Leave blank to clear.')
+                 :((p.name||'')+' – today needs '+_prepFmt(parseFloat(x.qty))+' '+(x.unit||'')+'. Leave blank to clear.');
+  _askPrompt(title,(cur==null?'':cur),function(v){
     v=String(v==null?'':v).trim();const t=appData.prep_today;if(!t)return;t.left=t.left||{};
     if(v===''){delete t.left[id];}else{const n=parseFloat(v);if(isNaN(n)||n<0){_askAlert('Numbers only','Type how many are left, e.g. 5');return;}t.left[id]=n;}
     saveKeys(['prep_today']);renderPrepPage();
-  },{numeric:true,placeholder:'0',yesLabel:'Save',body:(p.name||'')+' – today needs '+_prepFmt(parseFloat(x.qty))+' '+(x.unit||'')+'. Leave blank to clear.'});
+  },{numeric:true,placeholder:'0',yesLabel:'Save',body:body});
 }
 function _mergePlanPrep(){
   const today=_prepToday();const pt=appData.prep_today;if(!pt||(pt.date&&pt.date!==today))return false;
