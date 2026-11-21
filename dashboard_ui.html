@@ -7413,13 +7413,15 @@ function _taskRemind(taskId){
   clearTimeout(_trTimer);_trTimer=setTimeout(_trHide,20000);
 }
 // End of shift: any job still unticked → the regular alarm (repeats) with the list, each job with its own
-// Done, plus Silence 5 / 10 min. Comes back until every job is ticked. 21:10 = before the screens sleep at 21:15.
-const _PD_END={day:'15:45',night:'21:10',kitchen:'21:13'};   // kitchen close jobs run 21:00–21:11   // day shift ends 4pm, night 9pm (owner, 11 Nov 2026)
+// Done, plus Silence 5 / 10 min. Comes back until every job is ticked. Night 21:10 = before the screens sleep at 21:15.
+// Kitchen list checks at 22:00 (Marcel 22 Nov 2026) - the dash keeps running overnight, and the alarm wakes the screen.
+const _PD_END={day:'15:45',night:'21:10',kitchen:'22:00'};   // day shift ends 4pm, night 9pm (owner, 11 Nov 2026)
 // one-off "this list is already done today" (owner, 11 Nov 2026): appData.pd_skip_day={'YYYY-MM-DD':['day']} — no reminders, no end alarm
 function _pdSkipToday(shift){const s=(appData.pd_skip_day||{})[_prepToday()];return Array.isArray(s)&&s.includes(shift);}
 function _pdOpen(shift){const ch=appData.packdown_checks||{};return (appData.packdown_tasks||[]).filter(t=>(t.shift||'day')===shift&&!t.notbusy&&_taskActiveToday(t)&&!(ch[t.id]||{}).done);}
 function _endCheckPop(shift){
   if(!_pdOpen(shift).length)return;
+  try{if(window.fully&&typeof fully.turnScreenOn==='function')fully.turnScreenOn();}catch(e){}   // wake a sleeping tablet (Fully Kiosk)
   triggerAlarmKey('checklist','Jobs not done','',null,null,{task:'__end:'+shift});
   _endCheckRender(shift);
 }
