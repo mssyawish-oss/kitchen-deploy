@@ -8858,11 +8858,11 @@ function prepStepDay(n){
   renderPrepPage();
 }
 // Change how much to prep (Marcel 23 Nov): tap the amount on a card. It changes the standard amount for that
-// weekday, so every week that day shows the new number. Manager/Admin PIN, like Settings.
+// weekday, so every week that day shows the new number. No PIN (Marcel 23 Nov).
 function setPrepAmount(id,ds){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p,ds);if(!x)return;
   const wd=_prepWd(ds);const day=_PREP_DAYS[(wd+1)%7];
-  requirePin('Manager PIN','Change the prep amount',function(){
+  (function(){   // no PIN (Marcel 23 Nov)
     _askPrompt('How many '+(x.unit||'')+' every '+day+'?',(x.qty==null?'':String(x.qty)),function(v){
       v=String(v==null?'':v).trim();const n=parseFloat(v);
       if(v===''||isNaN(n)||n<0){_askAlert('Numbers only','Type the amount, e.g. 4');return;}
@@ -8870,7 +8870,7 @@ function setPrepAmount(id,ds){
       pr.plan[String(wd)].qty=n;saveKeys(['prep_presets']);renderPrepPage();
       if(typeof _toast==='function')_toast((pr.name||'')+': '+_prepFmt(n)+' '+(x.unit||'')+' every '+day);
     },{numeric:true,placeholder:'0',yesLabel:'Save',body:(p.name||'')+' – now '+_prepFmt(parseFloat(x.qty)||0)+' '+(x.unit||'')+' on '+day+'s.'});
-  },SETTINGS_ROLES);
+  })();
 }
 function setPrepLeft(id){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p);if(!x)return;
