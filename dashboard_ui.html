@@ -5334,7 +5334,7 @@ async function refreshShared(){
   if(id==='page-stock')renderStockPage();
   else if(id==='page-packdown')renderPackdownPage();
   else if(id==='page-recipes'){const det=document.getElementById('recipe-detail');if(!det||det.style.display!=='block')renderRecipesPage();}  // don't close an open recipe
-  else if(id==='page-jobs'){_prepView='today';_prepDayOff=0;renderPrepPage();}
+  else if(id==='page-jobs')renderPrepPage();   // keep the day being looked at (a future day / History) - the 2-min timer brings a future day back to Today (Marcel 23 Nov)
   else if(id==='page-service')renderServicePage();
   updateNotesBadge();
 }
@@ -8756,7 +8756,9 @@ function deleteRecipe(i){const r=(appData.recipes||[])[i];requirePin('Manager Co
 function _prepToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}   // LOCAL date — prep list rolls over at local midnight, not UTC
 let _prepView='today';
 let _prepYestAck=(function(){try{return localStorage.getItem('bruno_prep_yest_ack')||'';}catch(e){return '';}})();   // yesterday-date the user has already reviewed → stop the tab strobing
-function setPrepView(v){_prepView=v;if(v!=='ahead')_prepDayOff=0;renderPrepPage();}
+function setPrepView(v){_prepView=v;if(v!=='ahead')_prepDayOff=0;_prepArmBack();renderPrepPage();}
+// a screen left on a future day or History goes back to Today after 2 min (data refreshes no longer reset it)
+function _prepArmBack(){clearTimeout(_prepAheadTimer);if(_prepView!=='today')_prepAheadTimer=setTimeout(function(){if(_prepView!=='today'){_prepView='today';_prepDayOff=0;renderPrepPage();}},120000);}
 const _PREP_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const _PREP_MONS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function _prepFullDate(ds){try{const d=new Date(ds+'T12:00:00');return _PREP_DAYS[d.getDay()]+', '+d.getDate()+' '+_PREP_MONS[d.getMonth()];}catch(e){return ds;}}
@@ -8851,11 +8853,10 @@ const _PREP_AHEAD_MAX=28;
 function prepStepDay(n){
   if(_prepView==='history'){if(n>0){_prepView='today';_prepDayOff=0;renderPrepPage();}return;}
   let o=(_prepView==='ahead'?_prepDayOff:0)+n;
-  if(o<0){_prepView='history';_prepDayOff=0;_prepHistDate='';renderPrepPage();return;}   // back from today = last finished day
+  if(o<0){_prepView='history';_prepDayOff=0;_prepHistDate='';_prepArmBack();renderPrepPage();return;}   // back from today = last finished day
   if(o>_PREP_AHEAD_MAX)o=_PREP_AHEAD_MAX;
   _prepDayOff=o;_prepView=o>0?'ahead':'today';
-  clearTimeout(_prepAheadTimer);
-  if(o>0)_prepAheadTimer=setTimeout(function(){if(_prepView==='ahead'){_prepView='today';_prepDayOff=0;renderPrepPage();}},120000);   // a screen left on a future day goes back to today after 2 min
+  _prepArmBack();   // 2 min on a future day, then back to Today (restarts with each tap)
   renderPrepPage();
 }
 // Change how much to prep (Marcel 23 Nov): tap the amount on a card. It changes the standard amount for that
