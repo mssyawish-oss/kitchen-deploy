@@ -588,7 +588,7 @@ body.view-wall .prep-col-body .prep-card .pc-name{font-size:var(--fs-lg);}
 body.view-wall .prep-col-body .prep-card .pc-check{width:34px;height:34px;}
 .prep-col-body .prep-col-empty{grid-column:1/-1;}
 @media(max-width:560px){.prep-col--wide .prep-col-body{grid-template-columns:1fr;}}
-.prep-readonly .prep-col-body{grid-template-columns:1fr!important;}  /* History/review view → full-width rows */
+.prep-readonly:not(.prep-ahead) .prep-col-body{grid-template-columns:1fr!important;}  /* History/review view → full-width rows; a future day keeps today's 2-up layout (Marcel 22 Nov) */
 /* Prep History tab: date picker + search + recent-day chips */
 .prep-hist-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
 .prep-hist-lab{font-size:var(--fs-md);color:var(--muted);display:flex;align-items:center;gap:7px;}
@@ -8789,7 +8789,7 @@ function _prepColsHTML(items,done,priMap,readonly,aheadDs){
     return '<div class="'+cls+'"'+onclick+'><div class="pc-row">'+img+'<div class="pc-mid"><div class="pc-name">'+_mEsc(p.name)+'</div>'+qtyH+det+meta+'</div>'+pthumb+addBtn+'<div class="pc-check">'+(d?'&#10003;':((readonly&&!ahead)?'✗':''))+'</div></div></div>';
   };
   const COLS=[['high','Do First','#ef4444','narrow'],['med','Do Today','#f59e0b','wide'],['recur','Daily Tasks','#a78bfa','narrow']];
-  return '<div class="prep-cols'+(readonly?' prep-readonly':'')+'">'+COLS.map(function(c){
+  return '<div class="prep-cols'+(readonly?' prep-readonly':'')+(ahead?' prep-ahead':'')+'">'+COLS.map(function(c){
     const key=c[0],label=c[1],col=c[2];const arr=groups[key];
     const dC=arr.filter(p=>done[p.id]).length;
     const head='<div class="prep-col-head" style="color:'+col+';border-color:'+col+';"><span>'+label+'</span><span class="pcq">'+dC+'/'+arr.length+'</span></div>';
