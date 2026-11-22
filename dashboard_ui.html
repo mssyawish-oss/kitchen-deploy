@@ -500,6 +500,7 @@ body.view-wall .t2-start,body.view-wall .t2-end{height:56px;font-size:var(--fs-l
 .prep-card .pc-name{font-size:var(--fs-md);font-weight:700;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .prep-card.done .pc-name{text-decoration:line-through;color:var(--muted);}
 .prep-card .pc-qty{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px;}
+.prep-card .pq-tap{cursor:pointer;border-bottom:2px dashed currentColor;}
 .prep-card .pq-amt{font-family:var(--font-mono);font-size:var(--fs-lg);font-weight:800;color:var(--amber);letter-spacing:.02em;}
 .prep-card .pq-sug{flex-basis:100%;font-size:var(--fs-xs,11px);font-weight:800;letter-spacing:.06em;color:#ef4444;}
 .prep-card .pq-skip{color:var(--green);font-size:var(--fs-md);}
@@ -8813,7 +8814,7 @@ function _prepQtyHTML(p,d){
   const q=parseFloat(x.qty);const pt=appData.prep_today||{};const lf=(pt.left||{})[p.id];
   if(isNaN(q))return '<div class="pc-qty">'+((x.qty!==undefined&&x.qty!=='')?'<span class="pq-amt">'+_mEsc(String(x.qty))+' '+unit+'</span>':'')+note+'</div>';
   const has=(lf!==undefined&&lf!==null&&lf!=='');
-  let main='<span class="pq-amt">'+_prepFmt(q)+' '+unit+'</span>';
+  let main='<span class="pq-amt pq-tap" onclick="event.stopPropagation();setPrepAmount(\''+p.id+'\')">'+_prepFmt(q)+' '+unit+' &#9998;</span>';
   if(has&&parseFloat(x.per)>0){   // batch item: staff count FINISHED product (e.g. trays of mac & cheese), per = finished units per batch
     const per=parseFloat(x.per),lv=parseFloat(lf);const make=Math.max(0,Math.ceil(q-lv/per-1e-9));
     const was='<span class="pq-was">'+_prepFmt(lv)+' '+_mEsc(x.count||'')+' already made</span>';
@@ -8830,7 +8831,7 @@ function _prepQtyHTML(p,d){
 function _prepQtyAhead(p,ds){
   const x=_prepPlanToday(p,ds);if(!x||((x.qty===undefined||x.qty==='')&&!x.note))return '';
   const unit=_mEsc(String(x.unit||'').toUpperCase());
-  const amt=(x.qty!==undefined&&x.qty!=='')?('<span class="pq-amt">'+_mEsc(isNaN(parseFloat(x.qty))?String(x.qty):_prepFmt(parseFloat(x.qty)))+' '+unit+'</span>'):'';
+  const amt=(x.qty!==undefined&&x.qty!=='')?('<span class="pq-amt pq-tap" onclick="event.stopPropagation();setPrepAmount(\''+p.id+'\',\''+ds+'\')">'+_mEsc(isNaN(parseFloat(x.qty))?String(x.qty):_prepFmt(parseFloat(x.qty)))+' '+unit+' &#9998;</span>'):'';
   return '<div class="pc-qty">'+amt+(x.note?('<span class="pq-note">'+_mEsc(x.note)+'</span>'):'')+'</div>';
 }
 // What a future day's list will hold: its scheduled list (Set list for that date), plus the repeating daily
@@ -8855,6 +8856,21 @@ function prepStepDay(n){
   clearTimeout(_prepAheadTimer);
   if(o>0)_prepAheadTimer=setTimeout(function(){if(_prepView==='ahead'){_prepView='today';_prepDayOff=0;renderPrepPage();}},120000);   // a screen left on a future day goes back to today after 2 min
   renderPrepPage();
+}
+// Change how much to prep (Marcel 23 Nov): tap the amount on a card. It changes the standard amount for that
+// weekday, so every week that day shows the new number. Manager/Admin PIN, like Settings.
+function setPrepAmount(id,ds){
+  const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p,ds);if(!x)return;
+  const wd=_prepWd(ds);const day=_PREP_DAYS[(wd+1)%7];
+  requirePin('Manager PIN','Change the prep amount',function(){
+    _askPrompt('How many '+(x.unit||'')+' every '+day+'?',(x.qty==null?'':String(x.qty)),function(v){
+      v=String(v==null?'':v).trim();const n=parseFloat(v);
+      if(v===''||isNaN(n)||n<0){_askAlert('Numbers only','Type the amount, e.g. 4');return;}
+      const pr=(appData.prep_presets||[]).find(y=>y.id===id);if(!pr||!pr.plan||!pr.plan[String(wd)])return;
+      pr.plan[String(wd)].qty=n;saveKeys(['prep_presets']);renderPrepPage();
+      if(typeof _toast==='function')_toast((pr.name||'')+': '+_prepFmt(n)+' '+(x.unit||'')+' every '+day);
+    },{numeric:true,placeholder:'0',yesLabel:'Save',body:(p.name||'')+' – now '+_prepFmt(parseFloat(x.qty)||0)+' '+(x.unit||'')+' on '+day+'s.'});
+  },SETTINGS_ROLES);
 }
 function setPrepLeft(id){
   const p=(appData.prep_presets||[]).find(x=>x.id===id);const x=_prepPlanToday(p);if(!x)return;
