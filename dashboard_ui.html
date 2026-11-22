@@ -8808,12 +8808,13 @@ function _prepColsHTML(items,done,priMap,readonly,aheadDs){
 function _prepWd(ds){return ((ds?new Date(ds+'T12:00:00'):new Date()).getDay()+6)%7;}
 function _prepPlanToday(p,ds){const pl=p&&p.plan;if(!pl)return null;const x=pl[String(_prepWd(ds))];return x||null;}
 function _prepFmt(n){return String(Math.round(n*100)/100);}
+const _PREP_LEFT_ON=false;   // LEFT OVER? button + MAKE X suggestions hidden for now (Marcel 23 Nov: confusing, not set up right). true = back on.
 function _prepQtyHTML(p,d){
   const x=_prepPlanToday(p);if(!x||((x.qty===undefined||x.qty==='')&&!x.note))return '';
   const unit=_mEsc(String(x.unit||'').toUpperCase());const note=x.note?('<span class="pq-note">'+_mEsc(x.note)+'</span>'):'';
   const q=parseFloat(x.qty);const pt=appData.prep_today||{};const lf=(pt.left||{})[p.id];
   if(isNaN(q))return '<div class="pc-qty">'+((x.qty!==undefined&&x.qty!=='')?'<span class="pq-amt">'+_mEsc(String(x.qty))+' '+unit+'</span>':'')+note+'</div>';
-  const has=(lf!==undefined&&lf!==null&&lf!=='');
+  const has=_PREP_LEFT_ON&&(lf!==undefined&&lf!==null&&lf!=='');
   let main='<span class="pq-amt pq-tap" onclick="event.stopPropagation();setPrepAmount(\''+p.id+'\')">'+_prepFmt(q)+' '+unit+' &#9998;</span>';
   if(has&&parseFloat(x.per)>0){   // batch item: staff count FINISHED product (e.g. trays of mac & cheese), per = finished units per batch
     const per=parseFloat(x.per),lv=parseFloat(lf);const make=Math.max(0,Math.ceil(q-lv/per-1e-9));
@@ -8825,7 +8826,7 @@ function _prepQtyHTML(p,d){
     main=make>0?('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-make">MAKE '+_prepFmt(make)+' '+unit+'</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>')
                :('<span class="pq-sug">SUGGESTED – CONFIRM FIRST</span><span class="pq-amt pq-skip">ENOUGH LEFT – NO PREP</span><span class="pq-was">'+_prepFmt(parseFloat(lf))+' left of '+_prepFmt(q)+'</span>');
   }
-  const btn=d?'':('<button class="pq-left" onclick="event.stopPropagation();setPrepLeft(\''+p.id+'\')">'+(has?'CHANGE':'LEFT OVER?')+'</button>');
+  const btn=(d||!_PREP_LEFT_ON)?'':('<button class="pq-left" onclick="event.stopPropagation();setPrepLeft(\''+p.id+'\')">'+(has?'CHANGE':'LEFT OVER?')+'</button>');
   return '<div class="pc-qty">'+main+btn+note+'</div>';
 }
 function _prepQtyAhead(p,ds){
