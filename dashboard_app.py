@@ -5383,7 +5383,7 @@ def _pl_regex_cogs(text,title):
     for pat,name in ((r'baiada','Baiada Poultry'),(r'melbourne meat|meat merchant','Triple M (Melbourne Meat Merchant)'),
                      (r"chef.?s pantr|prepfresh","Chef's Pantry"),(r'maddens lane|joe tea','Maddens Lane drinks'),(r'fruit talk|fruittalk','Fruit Talk produce'),(r'fresho','Fresho produce'),
                      (r'asahi','Asahi drinks'),(r'united food|unitedfoodservice|zoghaib','United Foodservice'),
-                     (r'g\s*&\s*w|gnwpackaging','G & W Packaging'),(r'cfm','CFM cooking oil'),(r'fiesta food','Fiesta Foods'),
+                     (r'g\s*&\s*w|gnwpackaging','G & W Packaging'),(r'cfm','CFM cooking oil'),
                      (r'feel good foods','Feel Good Foods'),(r'melbourne chilli|hot honey','Melbourne Chilli'),(r'russel',"Russel's Poultry")):
         if re.search(pat,T,re.I): vendor=name; break
     if not vendor: return None
@@ -5626,12 +5626,70 @@ def _pl_utilities():
     _PL_UTIL["data"]=out; _PL_UTIL["ts"]=time.time()
     return out
 
-# Weekly allowance (incl GST) for purchases that never arrive as a PDF invoice. From the CommBank + Amex
-# feeds 11 Aug - 22 Nov 2026 (14.7 weeks): Aldi, Costco (DoorDash), Fiesta Foods, Brayco, Chef's Hat, Woolworths,
-# Maddens Lane, Melbourne Chilli, Vinay Kumar, Young St, Hospeco, Coles, Tasman Butchers... = $13,361 -> $908/wk;
-# G&W paid $13,656 vs $8,153 of G&W invoices in Drive -> $374/wk of paper invoices. books_fin.noinv_weekly overrides.
-_PL_NOINV_DEFAULT=[["Suppliers with no invoice (Aldi, Costco, Fiesta, Brayco, Chef's Hat, Woolworths) - weekly average",840.0],
-                   ["G & W paper invoices not in Drive - weekly average",374.0]]
+# ── REAL BANK FEED (23 Nov, Marcel: "no guesses, real numbers") ──
+# PocketSmith holds the CommBank business account + both Amex cards, sorted into "Biz – ..." categories
+# (C:\Users\User\BrunosServer\pocketsmith-sort, re-sorted every Monday 6am). The weekly/monthly report takes from it:
+#   purchases with no PDF invoice (Aldi, Costco, Fiesta, Brayco, Chef's Hat, Woolworths...) = what was actually paid
+#   variable bills (EatClub debit, Rays Cleaning, repairs & equipment) = what was actually paid that week
+#   rubbish (JJ Richards) and rates/water = the actual bills of the last 26 weeks, spread per week
+# Key: db["pocketsmith_key"] or the Desktop file Marcel created. No key / feed down -> error shown, nothing guessed.
+_PS_KEYFILE=r"C:\Users\User\Desktop\pocketsmith_key.txt"; _PS_USER=957978; _PS_CACHE={}
+_PS_BIZ_ACCTS=("Business Transaction Account","American Express Qantas Business Rewards Card","American Express Platinum Business Card")
+# suppliers whose invoices are read from Drive -> never also counted from the bank (no double counting)
+_PS_INV_SUPPLIERS=re.compile(r"ZOGHAIB|UNITED FOOD|BAIADA|RUSSEL|FRUIT TALK|FRESHO|MELBOURNE MEAT|CHEF.?S PANTRY|PREPFRESH|\bCFM\b|ASAHI|MADDENS|FEEL ?GOOD|MELBOURNE CHILLI|G AND W|G & W|GNW",re.I)
+def _ps_key():
+    k=(db.get("pocketsmith_key") or "").strip()
+    if not k:
+        try: k=open(_PS_KEYFILE,encoding="utf-8-sig").read().strip()
+        except Exception: k=""
+    return k
+def _ps_tx(d0,d1):
+    ck=(d0.isoformat(),d1.isoformat()); hit=_PS_CACHE.get(ck)
+    if hit and time.time()-hit[0]<600: return hit[1]
+    k=_ps_key()
+    if not k: raise RuntimeError("no PocketSmith key")
+    out=[]; page=1
+    while page<40:
+        u="https://api.pocketsmith.com/v2/users/%d/transactions?start_date=%s&end_date=%s&per_page=100&page=%d"%(_PS_USER,d0.isoformat(),d1.isoformat(),page)
+        req=urllib.request.Request(u,headers={"X-Developer-Key":k,"Accept":"application/json"})
+        with urllib.request.urlopen(req,timeout=40,context=SSL_CTX) as r:
+            d=json.loads(r.read().decode()); link=r.headers.get("Link","") or ""
+        out+=d
+        if 'rel="next"' not in link or not d: break
+        page+=1
+    out=[t for t in out if ((t.get("transaction_account") or {}).get("name") in _PS_BIZ_ACCTS)]
+    _PS_CACHE[ck]=(time.time(),out)
+    return out
+def _ps_short(p):
+    p=re.sub(r",.*|\s{2,}.*|\*.*$","",str(p or "")).strip()
+    return re.sub(r"^(Direct Debit \d+ |Transfer To |Transfer to )","",p)[:42] or "?"
+def _pl_bank(d0,d1):
+    # what was really paid from the business bank + Amex between d0 and d1
+    tx=_ps_tx(d0,d1)
+    pur={}; bills={}
+    for t in tx:
+        amt=-float(t.get("amount") or 0)            # spending positive
+        cat=((t.get("category") or {}).get("title") or ""); pay=str(t.get("payee") or ""); P=pay.upper()
+        if re.search(r"RAYS CLEAN",P): bills.setdefault("Rays Cleaning",[]).append(amt); continue
+        if re.search(r"EATCLUB",P) and amt>0: bills.setdefault("EatClub (weekly debit)",[]).append(amt); continue
+        if cat=="Biz – Equipment & Repairs": bills.setdefault("Repairs & equipment: "+_ps_short(pay),[]).append(amt); continue
+        if cat in ("Biz – Food & Produce","Biz – Drinks","Biz – Packaging & Cleaning"):
+            if _PS_INV_SUPPLIERS.search(P) or re.search(r"RICHARDS",P): continue
+            pur.setdefault(_ps_short(pay),[]).append(amt)
+    f=lambda m:sorted([{"vendor":k,"amt":round(sum(v),2),"n":len(v)} for k,v in m.items() if abs(sum(v))>=0.005],key=lambda x:-x["amt"])
+    return {"purchases":f(pur),"bills":f(bills)}
+def _pl_bank_fixed(ref_end,days):
+    # rubbish + rates/water: the ACTUAL bills paid in the 26 weeks before the period, spread per day
+    d1=ref_end; d0=d1-timedelta(days=182); tx=_ps_tx(d0,d1); rub=rat=0.0
+    for t in tx:
+        a=-float(t.get("amount") or 0); P=str(t.get("payee") or "").upper()
+        if a<=0: continue
+        if re.search(r"J\.?\s?J\.? RICHARDS",P): rub+=a
+        elif re.search(r"KINGSTON C|SE WATER|SOUTH EAST WATER",P) or (re.search(r"EST8",P) and re.search(r"RATES|WATER|SEW",P)): rat+=a
+    return [{"name":"Rubbish - JJ Richards (actual bills, last 26 wks: %s)"%_pl_money(rub),"amt":round(rub/182*days,2)},
+            {"name":"Rates & water (actual bills, last 26 wks: %s)"%_pl_money(rat),"amt":round(rat/182*days,2)}]
+_PL_OH_V2=[["Point of sale",74.31],["loans",419.23],["Rent",1829.31],["Acounting",177.69],["Electricty",600],["Gas",235],
+           ["Phone",13.85],["xero",37.38],["internet",22.85],["insurance",344.41],["gst",2000]]
 def _pl_compute(kind,ref=None):
     # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
     today=datetime.now().date()
@@ -5709,16 +5767,16 @@ def _pl_compute(kind,ref=None):
         # 23 Nov (Marcel): weekly/monthly food cost = what was actually BOUGHT in the period (supplier invoices dated
         # in it) + an allowance for suppliers that never send a PDF invoice (supermarkets, cash-and-carry, G&W paper
         # invoices), from the bank/Amex averages. The recipe figure is kept underneath as a check, not the profit line.
-        ni=(db.get("books_fin") or {}).get("noinv_weekly")
-        if not isinstance(ni,list): ni=_PL_NOINV_DEFAULT
         nrows=[]
-        for it in ni:
-            try: nrows.append({"vendor":str(it[0]),"amt":round(float(it[1])*days/7.0,2),"est":True})
-            except Exception: pass
+        try:
+            bk=_pl_bank(d0,d1); R["bank"]=bk
+            for r in bk["purchases"]: nrows.append({"vendor":"%s (paid, no invoice%s)"%(r["vendor"],", x%d"%r["n"] if r["n"]>1 else ""),"amt":r["amt"],"bank":True})
+        except Exception as e:
+            R["bank"]=None; R["errors"].append("Bank feed (PocketSmith) unavailable - purchases without an invoice are NOT included: "+str(e)[:120])
         crow=list(rows_c)+nrows
         R["cogs"]={"total":round(R["purchases"]["total"]+sum(r["amt"] for r in nrows),2),"method":"purchases","count":len(inp),"scan":bst,"rows":crow}
         R["purchases"]["skipped"]=[x for x in (bst.get("skipped_files") or []) if R["start"]<=x["date"]<=R["end"]]
-        R["notes"].append("Purchases = supplier invoices and credit notes dated in this period (from the Drive invoices folder) plus a weekly allowance for suppliers that never send an invoice (%s)."%_pl_money(sum(r["amt"] for r in nrows)))
+        R["notes"].append("Purchases = supplier invoices and credit notes dated in this period (Drive invoices folder) plus what was actually paid from the business bank/Amex to suppliers that don't send invoices (%s, from PocketSmith). G&W paper invoices that never reach Drive are not counted - ask G&W to email them."%_pl_money(sum(r["amt"] for r in nrows)))
     elif rc.get("ok") and rc.get("coverage",0)>=0.5:
         R["cogs"]={"total":rc["total"],"method":"recipes","recipe":rc,"count":len(rc["rows"]),"scan":bst,
                    "rows":[{"vendor":"%g x %s @ %s"%(r["qty"],r["item"],_pl_money(r["unit"])),"amt":r["cost"]} for r in rc["rows"][:14]]}
@@ -5749,6 +5807,7 @@ def _pl_compute(kind,ref=None):
     if w.get("open_shifts"): R["notes"].append("%d shift(s) still clocked in (not counted until clocked out)."%w["open_shifts"])
     # ── OVERHEADS (weekly figures, prorated by days) ──
     bf=(db.get("books_fin") or {}); fo=(bf.get("fixed_oh") or [])
+    if bf.get("oh_ver")!=2 and kind in ("weekly","monthly"): fo=_PL_OH_V2   # 23 Nov: consulting $0, rent $7,927/mo; rubbish/rates/EatClub/repairs/cleaning from the bank feed
     try: util=_pl_utilities()
     except Exception: util={}
     # GST: what Square recorded on this period's sales, less the credits you claim on purchases. The credit share is
@@ -5771,6 +5830,11 @@ def _pl_compute(kind,ref=None):
     if gst_real and rc.get("notax"):
         nt=sum(rc["notax"].values())
         if nt>0: R["notes"].append("Square recorded NO GST on %s of sales (%s). If those items are taxable, the GST owed is about %s more - worth checking with your accountant."%(_pl_money(nt),", ".join("%s %s"%(k,_pl_money(v)) for k,v in sorted(rc["notax"].items(),key=lambda x:-x[1])),_pl_money(nt/11.0)))
+    if kind in ("weekly","monthly"):
+        try:
+            rows+=_pl_bank_fixed(d0-timedelta(days=1),days)
+            for r in ((R.get("bank") or {}).get("bills") or []): rows.append({"name":r["vendor"]+(" (x%d)"%r["n"] if r["n"]>1 else "")+" - paid","amt":r["amt"]})
+        except Exception as e: R["errors"].append("Bank feed (PocketSmith) - rubbish/rates not included: "+str(e)[:120])
     if man["other"]: rows.append({"name":"Manual entries (Books page)","amt":man["other"]})
     R["overheads"]={"total":round(sum(r["amt"] for r in rows),2),"rows":rows}
     # ── PROFIT ──
@@ -5833,7 +5897,7 @@ def _pl_html(R):
     for r in L["rows"][:14]: H.append(row(r["name"],_pl_money(r["amt"]),"%.1f h"%r["hours"],ind=True))
     H.append(row("Staff wages",_pl_money(L["wages"]),_pl_pct(L["wages"],tot),ind=True))
     H.append(row("Super (12%)",_pl_money(L["super"]),"",ind=True))
-    if L["owner"]: H.append(row("Owner drawings (Mark)",_pl_money(L["owner"]),"",ind=True))
+    if L["owner"]: H.append(row("Mark (subcontractor, no super)",_pl_money(L["owner"]),"",ind=True))
     if L.get("manual"): H.append(row("Manual wage entries (Books page)",_pl_money(L["manual"]),"",ind=True))
     H.append(row("Total labour",_pl_money(L["total"]),_pl_pct(L["total"],tot),bold=True))
     H.append(head("BILLS & OVERHEADS (prorated %d day%s)"%(R["days"],"" if R["days"]==1 else "s")))
