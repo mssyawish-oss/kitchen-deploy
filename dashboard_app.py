@@ -5608,6 +5608,12 @@ def _pl_utilities():
     _PL_UTIL["data"]=out; _PL_UTIL["ts"]=time.time()
     return out
 
+# Weekly allowance (incl GST) for purchases that never arrive as a PDF invoice. From the CommBank + Amex
+# feeds 11 Aug - 22 Nov 2026 (14.7 weeks): Aldi, Costco (DoorDash), Fiesta Foods, Brayco, Chef's Hat, Woolworths,
+# Maddens Lane, Melbourne Chilli, Vinay Kumar, Young St, Hospeco, Coles, Tasman Butchers... = $13,361 -> $908/wk;
+# G&W paid $13,656 vs $8,153 of G&W invoices in Drive -> $374/wk of paper invoices. books_fin.noinv_weekly overrides.
+_PL_NOINV_DEFAULT=[["Suppliers with no invoice (Aldi, Costco, Fiesta, Brayco, Chef's Hat...) - weekly average",908.0],
+                   ["G & W paper invoices not in Drive - weekly average",374.0]]
 def _pl_compute(kind,ref=None):
     # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
     today=datetime.now().date()
@@ -5681,7 +5687,24 @@ def _pl_compute(kind,ref=None):
     R["purchases"]={"total":round(sum(byv.values())+man["cogs"],2),"rows":rows_c,"count":len(inp),"scan":bst}
     try: rc=_pl_recipe_cogs(d0,d1)
     except Exception as e: rc={"ok":False,"error":str(e)[:150]}
-    if rc.get("ok") and rc.get("coverage",0)>=0.5:
+    if kind in ("weekly","monthly"):
+        # 23 Nov (Marcel): weekly/monthly food cost = what was actually BOUGHT in the period (supplier invoices dated
+        # in it) + an allowance for suppliers that never send a PDF invoice (supermarkets, cash-and-carry, G&W paper
+        # invoices), from the bank/Amex averages. The recipe figure is kept underneath as a check, not the profit line.
+        ni=(db.get("books_fin") or {}).get("noinv_weekly")
+        if not isinstance(ni,list): ni=_PL_NOINV_DEFAULT
+        nrows=[]
+        for it in ni:
+            try: nrows.append({"vendor":str(it[0]),"amt":round(float(it[1])*days/7.0,2),"est":True})
+            except Exception: pass
+        crow=list(rows_c)+nrows
+        R["cogs"]={"total":round(R["purchases"]["total"]+sum(r["amt"] for r in nrows),2),"method":"purchases","count":len(inp),"scan":bst,
+                   "rows":crow,"recipe":(rc if rc.get("ok") else {}),"recipe_total":(rc.get("total") if rc.get("ok") else None),
+                   "recipe_coverage":(rc.get("coverage") if rc.get("ok") else None)}
+        R["notes"].append("Cost of goods = supplier invoices dated in this period (from the Drive invoices folder) plus a weekly allowance for suppliers with no invoice (%s). The recipe figure is shown only as a check."%_pl_money(sum(r["amt"] for r in nrows)))
+        if rc.get("ok"):
+            R["notes"].append("Recipe check: items sold x recipe cost = %s (%.0f%% of item sales costed). A big gap between purchases and this figure means waste, stock build-up, price rises or missing recipe costs."%(_pl_money(rc["total"]),rc.get("coverage",0)*100))
+    elif rc.get("ok") and rc.get("coverage",0)>=0.5:
         R["cogs"]={"total":rc["total"],"method":"recipes","recipe":rc,"count":len(rc["rows"]),"scan":bst,
                    "rows":[{"vendor":"%g x %s @ %s"%(r["qty"],r["item"],_pl_money(r["unit"])),"amt":r["cost"]} for r in rc["rows"][:14]]}
         if rc["mods_total"]: R["cogs"]["rows"].append({"vendor":"Sauces / pack sides / add-ons (%d kinds)"%len(rc["mods"]),"amt":rc["mods_total"]})
@@ -5769,10 +5792,12 @@ def _pl_html(R):
        row("DoorDash ("+S.get("doordash_label","")+")",_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True)]
     if S.get("manual"): H.append(row("Manual income entries (Books page)",_pl_money(S["manual"]),"",ind=True))
     H+=[row("Total sales",_pl_money(tot),"",bold=True),
-       head("COST OF GOODS SOLD"+(" (from your recipes)" if C.get("method")=="recipes" else " (from supplier invoices)" if C.get("method")=="invoices" else " (estimate)"))]
+       head("COST OF GOODS SOLD"+(" (from your recipes)" if C.get("method")=="recipes" else " (what you bought - supplier invoices)" if C.get("method") in ("invoices","purchases") else " (estimate)"))]
     for r in C["rows"][:16]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
     if not C["rows"]: H.append(row("Nothing sold / no costs in this period","$0.00","",ind=True))
     H.append(row("Total cost of goods sold",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
+    if C.get("recipe_total") is not None:
+        H.append(row("Check: recipe cost of items sold (%.0f%% costed)"%((C.get("recipe_coverage") or 0)*100),_pl_money(C["recipe_total"]),_pl_pct(C["recipe_total"],tot)+" of sales",ind=True))
     rc=C.get("recipe") or {}
     if rc.get("unmatched"):
         H.append(head("NOT COSTED - sold but no recipe cost yet (add these to the cost list)"))
@@ -5780,7 +5805,7 @@ def _pl_html(R):
         if len(rc["unmatched"])>14: H.append(row("... and %d more"%(len(rc["unmatched"])-14),"","",ind=True))
     if rc: H.append('<tr><td colspan="3" style="padding:4px 8px;font-size:11px;color:#888;">Recipe coverage: %.0f%% of item sales costed (%s of %s) - %d orders.</td></tr>'%(rc.get("coverage",0)*100,_pl_money(rc.get("costed_sales",0)),_pl_money(rc.get("sales_seen",0)),rc.get("orders",0)))
     P_=R.get("purchases") or {}
-    if P_.get("rows") or P_.get("total"):
+    if (P_.get("rows") or P_.get("total")) and C.get("method")!="purchases":
         H.append(head("SUPPLIER INVOICES RECEIVED (what you bought this period - reference, not the profit line)"))
         for r in (P_.get("rows") or [])[:12]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
         H.append(row("Total invoices received",_pl_money(P_.get("total",0)),"",bold=True))
@@ -5825,7 +5850,7 @@ def _pl_text(R):
     S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]
     Ls=["BRUNO'S — %s PROFIT REPORT — %s"%(R["kind"].upper(),R["label"]),"",
         "SALES            %s"%_pl_money(S["total"]),"  card %s · cash %s · uber %s%s · doordash %s%s"%(_pl_money(S["card"]),_pl_money(S["cash"]),_pl_money(S["uber"])," (real)" if S["uber_real"] else " (est)",_pl_money(S["doordash"])," (real)" if S["doordash_real"] else " (est)"),
-        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),{"recipes":"from recipes x items sold","invoices":"supplier invoices","ratio":"4-week ratio estimate"}.get(C.get("method"),"")),
+        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),{"recipes":"from recipes x items sold","invoices":"supplier invoices","purchases":"supplier invoices + no-invoice allowance","ratio":"4-week ratio estimate"}.get(C.get("method"),"")),
         "INVOICES RECV'D  %s"%_pl_money((R.get("purchases") or {}).get("total",0)),
         "LABOUR           %s  (wages %s + super %s + owner %s)"%(_pl_money(L["total"]),_pl_money(L["wages"]),_pl_money(L["super"]),_pl_money(L["owner"])),
         "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
