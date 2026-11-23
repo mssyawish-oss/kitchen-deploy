@@ -175,7 +175,7 @@
   <div class="books-col">
   <div class="card summary hero">
     <div class="row"><span>Total sales</span><span class="v pos2" id="plSales">$0</span></div>
-    <div class="row"><span>Cost of goods sold<span class="pct" id="plCogsPct"></span></span><span class="v neg2" id="plCogs">$0</span></div>
+    <div class="row"><span>Purchases (supplier invoices)<span class="pct" id="plCogsPct"></span></span><span class="v neg2" id="plCogs">$0</span></div>
     <div class="row tot"><span>Gross profit</span><span class="v" id="plGross">$0</span></div>
     <div class="row"><span>Wages + super<span class="pct" id="plLabPct"></span></span><span class="v neg2" id="plLabour">$0</span></div>
     <div class="row"><span>Other expenses</span><span class="v neg2" id="plOther">$0</span></div>
@@ -183,9 +183,9 @@
   </div>
 
   <div class="card" id="cglCard">
-    <h2><span>Cost of goods &amp; labour</span></h2>
+    <h2><span>Purchases &amp; labour</span></h2>
     <div class="summary">
-      <div class="row"><span>Total COGS<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
+      <div class="row"><span>Total purchases<span class="pct" id="cgPct"></span></span><span class="v neg2" id="cgTot">$0</span></div>
       <div class="row"><span>Total wages<span class="pct" id="wgPct"></span></span><span class="v neg2" id="wgTot">$0</span></div>
       <div class="row"><span>Labour incl. super<span class="pct" id="labPct"></span></span><span class="v neg2" id="labTot">$0</span></div>
     </div>
@@ -825,7 +825,7 @@ function renderKpis(c){
   const cp=pc(c.cogs), lp=pc(c.labour), op=pc(c.other), np=pc(c.net);
   el.innerHTML=
     '<div class="kpi"><div class="k">Sales</div><div class="v">'+fmt(c.sales)+'</div><div class="s">'+chip(c.sales,p.sales,true)+'</div></div>'+
-    '<div class="kpi"><div class="k">Cost of goods</div><div class="v">'+fmt(c.cogs)+'</div><div class="s"><b style="color:#0f172a">'+cp+'%</b> of sales '+ptChip(cp,p.cogs,p.sales,true)+'</div>'+bar(cp/40*100,cp>35?'#ef4444':'#f59e0b')+'</div>'+
+    '<div class="kpi"><div class="k">Purchases</div><div class="v">'+fmt(c.cogs)+'</div><div class="s"><b style="color:#0f172a">'+cp+'%</b> of sales '+ptChip(cp,p.cogs,p.sales,true)+'</div>'+bar(cp/40*100,cp>35?'#ef4444':'#f59e0b')+'</div>'+
     '<div class="kpi"><div class="k">Labour (incl. super)</div><div class="v">'+fmt(c.labour)+'</div><div class="s"><b style="color:#0f172a">'+lp+'%</b> of sales '+ptChip(lp,p.wages,p.sales,true)+'</div>'+bar(lp/40*100,lp>30?'#ef4444':'#3b82f6')+'</div>'+
     '<div class="kpi"><div class="k">Bills &amp; overheads</div><div class="v">'+fmt(c.other)+'</div><div class="s"><b style="color:#0f172a">'+op+'%</b> of sales</div>'+bar(op/40*100,'#8b5cf6')+'</div>'+
     '<div class="kpi big"><div class="k">Net profit</div><div class="v" style="color:'+(c.net>=0?'#4ade80':'#f87171')+'">'+fmt(c.net)+'</div><div class="s"><span><b style="color:#fff">'+np+'%</b> margin</span>'+chip(c.net,p.net,true)+'</div></div>';
@@ -871,7 +871,7 @@ function renderReport(){
   if(_reportFor===k && document.getElementById('reportFrame')) return;
   _reportFor=k;
   const unfinished=Date.now()<sun.getTime()+86400000;
-  rv.innerHTML='<div class="rhead"><span class="t">Weekly profit report · '+lbl+'</span><span class="h">'+(unfinished?'This week isn\'t finished yet, so it shows the days so far. ':'')+'Same report as the Monday email: cost of goods from your recipes, real payouts, real GST and AGL bills.</span>'+
+  rv.innerHTML='<div class="rhead"><span class="t">Weekly profit report · '+lbl+'</span><span class="h">'+(unfinished?'This week isn\'t finished yet, so it shows the days so far. ':'')+'Same report as the Monday email: purchases from your supplier invoices, real payouts, real GST and AGL bills.</span>'+
     '<button class="ghost" style="margin-left:auto" onclick="_reportFor=\'\';renderReport()">⟳ Refresh</button></div>'+
     '<div id="reportLoading">Building the report for '+lbl+'… (about 20–40 seconds)</div>'+
     '<iframe id="reportFrame" style="display:none" title="Weekly profit report"></iframe>';

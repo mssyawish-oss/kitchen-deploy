@@ -5099,7 +5099,7 @@ _PL_DD_Q='in:anywhere (from:accounts@doordash.com OR from:no-reply@doordash.com)
 _PL_BRAND=re.compile(r'bruno',re.I)
 _PL_BILLS_FOLDER='1TGv7vMgRPIp9zKSZO-63eX4xiEjgda_t'
 _PL_JUNK=re.compile(r'statement|strateg|resume|parking|certificate|balance|direct debit|\bddr\b|credit application|annual|signing|\bica\b|quote|booking|cashflow|my-receipt',re.I)
-_PL_BILLCACHE_VER='s1'
+_PL_BILLCACHE_VER='s2'   # s2 (23 Nov): new suppliers + credit notes -> re-read every file not already booked
 _PL_MON={'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
 _PL_DEFAULTS={"daily_enabled":True,"daily_time":"23:30","weekly_enabled":True,"weekly_day":"mon","weekly_time":"07:00",
               "monthly_enabled":True,"monthly_time":"07:00","to":""}
@@ -5376,9 +5376,12 @@ def _pl_inv_date(T):
 def _pl_regex_cogs(text,title):
     # Deterministic supplier invoice parse — port of regexCogs (known vendor + real total, traps avoided).
     T=(text or "")+" "+(title or "")
-    if re.search(r'customer statement|account summary|balance brought forward|opening balance|\baged\b|remittance advice|credit application|direct debit request|credit note|cradj',T,re.I): return None
+    if re.search(r'customer statement|account summary|balance brought forward|opening balance|\baged\b|credit application|direct debit request|\bstatement from\b|statement for|amount enclosed|this is not an invoice|indicative total',T,re.I): return None
+    if re.search(r'remittance advice',T,re.I) and not re.search(r'tax invoice',T,re.I): return None   # Feel Good invoices carry a remittance slip
+    credit=bool(re.search(r'credit note|cradj|\(credit\)|credit no\.',T,re.I))
     vendor=None
-    for pat,name in ((r'baiada','Baiada Poultry'),(r'fruit talk|fruittalk','Fruit Talk produce'),(r'fresho','Fresho produce'),
+    for pat,name in ((r'baiada','Baiada Poultry'),(r'melbourne meat|meat merchant','Triple M (Melbourne Meat Merchant)'),
+                     (r"chef.?s pantr|prepfresh","Chef's Pantry"),(r'maddens lane|joe tea','Maddens Lane drinks'),(r'fruit talk|fruittalk','Fruit Talk produce'),(r'fresho','Fresho produce'),
                      (r'asahi','Asahi drinks'),(r'united food|unitedfoodservice|zoghaib','United Foodservice'),
                      (r'g\s*&\s*w|gnwpackaging','G & W Packaging'),(r'cfm','CFM cooking oil'),(r'fiesta food','Fiesta Foods'),
                      (r'feel good foods','Feel Good Foods'),(r'melbourne chilli|hot honey','Melbourne Chilli'),(r'russel',"Russel's Poultry")):
@@ -5392,22 +5395,34 @@ def _pl_regex_cogs(text,title):
     am=re.search(r'AUD\s+Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})',T,re.I)
     if am: amt=float(am.group(5).replace(",",""))
     if not amt>0:
-        for pat in (r'TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})',r'Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})',
+        for pat in (r'GST Inclusive Total\s*\$?\s*([\d,]+\.\d{2})',r'Total\s+Amount Due\s*[\d,.]+\s+[\d,.]+\s+[\d,.]+\s+([\d,]+\.\d{2})',
+                    r'Total\s*\(\s*incl\.?\s*GST\s*\)\s*-?\$?\s*([\d,]+\.\d{2})',r'Remaining Credit\s*([\d,]+\.\d{2})',r'TAX INVOICE TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})',r'Total\s*\(\s*incl\.?\s*GST\s*\)\s*\$?\s*([\d,]+\.\d{2})',
                     r'Total\s*incl\.?\s*GST\s*\$?\s*([\d,]+\.\d{2})',r'Invoice Total\s*\$?\s*([\d,]+\.\d{2})',r'Total Amount Due\s*\$?\s*([\d,]+\.\d{2})',
                     r'Amount Due\s*(?:AUD)?\s*\$?\s*([\d,]+\.\d{2})',r'Balance Due\s*\$?\s*([\d,]+\.\d{2})',r'TOTAL\s*\(AUD\)\s*\$?\s*([\d,]+\.\d{2})',
-                    r'TOTAL\s*AUD\s*\$?\s*([\d,]+\.\d{2})'):
+                    r'TOTAL\s*AUD\s*\$?\s*([\d,]+\.\d{2})',r'\bTotal\s*\$([\d,]+\.\d{2})'):
             m=re.search(pat,T,re.I)
             if m: amt=float(m.group(1).replace(",","")); break
     if not amt>0: return None
-    im=re.search(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])',T)
-    return {"type":"cogs","vendor":vendor,"amt":round(amt,2),"invoiceNo":(im.group(1) if im else ""),"invoiceDate":_pl_inv_date(text or "")}
+    im=re.search(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|SC\d{5,6}|CN-\d+|F\d{6,8}|INV-\d+|BC\d{6}|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])',T)
+    inv=im.group(1) if im else ""
+    if vendor=="Feel Good Foods" and not inv:
+        fm=re.search(r'Invoice #\s*(\d{4,})',T)
+        if fm: inv="FGF"+fm.group(1)
+    if vendor=="Chef's Pantry":
+        cm=re.search(r'Invoice No\.\s*(\d{5})\b',T) or re.search(r'BRUCHISH\s+(\d{5})\b',T)
+        if cm: inv=cm.group(1)
+    if credit: amt=-abs(amt); inv=("CR-"+inv) if inv else ""
+    return {"type":"cogs","vendor":vendor,"amt":round(amt,2),"invoiceNo":inv,"invoiceDate":_pl_inv_date(text or ""),"credit":credit}
 
 _PL_INV_RE=re.compile(r'(?<![0-9A-Za-z])(U\d{6}|SI\d{6}|F\d{6,8}|INV-\d+|BCS\d+|90(?:18|19)\d{6}|7[2-9]\d{4})(?![0-9])')
 def _pl_scan_bills(max_seconds=420):
     # Every PDF in the Drive invoices folder -> verdict cached by fileId in db['books_billcache'] (a file's
     # content never changes, so each file is read ONCE; skips are cached too, read errors are not).
     cache=dict(db.get("books_billcache") or {})
-    if cache.get("ver")!=_PL_BILLCACHE_VER: cache={"ver":_PL_BILLCACHE_VER,"v":{}}
+    if cache.get("ver")!=_PL_BILLCACHE_VER:
+        # keep confident supplier hits, re-read everything else (skips, and Fresho invoices that may be Triple M)
+        keep={k:v for k,v in (cache.get("v") or {}).items() if isinstance(v,dict) and v.get("type")=="cogs" and v.get("vendor")!="Fresho produce"}
+        cache={"ver":_PL_BILLCACHE_VER,"v":keep}
     verdicts=dict(cache.get("v") or {})
     files=[]; tok=None
     for _ in range(15):
@@ -5439,6 +5454,9 @@ def _pl_scan_bills(max_seconds=420):
         try:
             with data_lock: db["books_billcache"]=cache; save_data(db)
         except Exception: pass
+    stats["skipped_files"]=[{"title":f.get("title",""),"date":(f.get("createdTime") or "")[:10],"why":(verdicts.get(f.get("id")) or {}).get("type","skip")}
+                            for f in pdfs if (verdicts.get(f.get("id")) or {}).get("type") in ("skip","unreadable")
+                            and not re.search(r'^PO#|X3PRD|^FreshoCredit|^Sales CRAdj',f.get("title") or "")]   # order copies / Baiada statements = noise
     booked=[]; seen=set(); stats["dupes"]=0
     for f in sorted(pdfs,key=lambda f:f.get("createdTime") or ""):   # oldest first: the original copy wins
         v=verdicts.get(f.get("id"))
@@ -5612,7 +5630,7 @@ def _pl_utilities():
 # feeds 11 Aug - 22 Nov 2026 (14.7 weeks): Aldi, Costco (DoorDash), Fiesta Foods, Brayco, Chef's Hat, Woolworths,
 # Maddens Lane, Melbourne Chilli, Vinay Kumar, Young St, Hospeco, Coles, Tasman Butchers... = $13,361 -> $908/wk;
 # G&W paid $13,656 vs $8,153 of G&W invoices in Drive -> $374/wk of paper invoices. books_fin.noinv_weekly overrides.
-_PL_NOINV_DEFAULT=[["Suppliers with no invoice (Aldi, Costco, Fiesta, Brayco, Chef's Hat...) - weekly average",908.0],
+_PL_NOINV_DEFAULT=[["Suppliers with no invoice (Aldi, Costco, Fiesta, Brayco, Chef's Hat, Woolworths) - weekly average",840.0],
                    ["G & W paper invoices not in Drive - weekly average",374.0]]
 def _pl_compute(kind,ref=None):
     # kind: daily (that day; today so far if today) | weekly (last complete Mon-Sun) | monthly (last month).
@@ -5698,12 +5716,9 @@ def _pl_compute(kind,ref=None):
             try: nrows.append({"vendor":str(it[0]),"amt":round(float(it[1])*days/7.0,2),"est":True})
             except Exception: pass
         crow=list(rows_c)+nrows
-        R["cogs"]={"total":round(R["purchases"]["total"]+sum(r["amt"] for r in nrows),2),"method":"purchases","count":len(inp),"scan":bst,
-                   "rows":crow,"recipe":(rc if rc.get("ok") else {}),"recipe_total":(rc.get("total") if rc.get("ok") else None),
-                   "recipe_coverage":(rc.get("coverage") if rc.get("ok") else None)}
-        R["notes"].append("Cost of goods = supplier invoices dated in this period (from the Drive invoices folder) plus a weekly allowance for suppliers with no invoice (%s). The recipe figure is shown only as a check."%_pl_money(sum(r["amt"] for r in nrows)))
-        if rc.get("ok"):
-            R["notes"].append("Recipe check: items sold x recipe cost = %s (%.0f%% of item sales costed). A big gap between purchases and this figure means waste, stock build-up, price rises or missing recipe costs."%(_pl_money(rc["total"]),rc.get("coverage",0)*100))
+        R["cogs"]={"total":round(R["purchases"]["total"]+sum(r["amt"] for r in nrows),2),"method":"purchases","count":len(inp),"scan":bst,"rows":crow}
+        R["purchases"]["skipped"]=[x for x in (bst.get("skipped_files") or []) if R["start"]<=x["date"]<=R["end"]]
+        R["notes"].append("Purchases = supplier invoices and credit notes dated in this period (from the Drive invoices folder) plus a weekly allowance for suppliers that never send an invoice (%s)."%_pl_money(sum(r["amt"] for r in nrows)))
     elif rc.get("ok") and rc.get("coverage",0)>=0.5:
         R["cogs"]={"total":rc["total"],"method":"recipes","recipe":rc,"count":len(rc["rows"]),"scan":bst,
                    "rows":[{"vendor":"%g x %s @ %s"%(r["qty"],r["item"],_pl_money(r["unit"])),"amt":r["cost"]} for r in rc["rows"][:14]]}
@@ -5792,10 +5807,15 @@ def _pl_html(R):
        row("DoorDash ("+S.get("doordash_label","")+")",_pl_money(S["doordash"]),"%d orders"%S["doordash_orders"],ind=True)]
     if S.get("manual"): H.append(row("Manual income entries (Books page)",_pl_money(S["manual"]),"",ind=True))
     H+=[row("Total sales",_pl_money(tot),"",bold=True),
-       head("COST OF GOODS SOLD"+(" (from your recipes)" if C.get("method")=="recipes" else " (what you bought - supplier invoices)" if C.get("method") in ("invoices","purchases") else " (estimate)"))]
-    for r in C["rows"][:16]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
+       head("PURCHASES (what you bought - supplier invoices)" if C.get("method")=="purchases" else "COST OF GOODS SOLD"+(" (from your recipes)" if C.get("method")=="recipes" else " (what you bought - supplier invoices)" if C.get("method")=="invoices" else " (estimate)"))]
+    for r in C["rows"][:20]: H.append(row(r["vendor"],_pl_money(r["amt"]),"",ind=True))
     if not C["rows"]: H.append(row("Nothing sold / no costs in this period","$0.00","",ind=True))
-    H.append(row("Total cost of goods sold",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
+    H.append(row("Total purchases" if C.get("method")=="purchases" else "Total cost of goods sold",_pl_money(C["total"]),_pl_pct(C["total"],tot)+" of sales",bold=True))
+    sk=(R.get("purchases") or {}).get("skipped") or []
+    if sk:
+        H.append(head("NOT COUNTED - other PDFs in the invoices folder this period (bills, quotes, unknown suppliers) - check none are food/packaging"))
+        for x in sk[:25]: H.append(row(x["title"]+(" (scanned - no text)" if x["why"]=="unreadable" else ""),x["date"],"",ind=True))
+        if len(sk)>25: H.append(row("... and %d more"%(len(sk)-25),"","",ind=True))
     if C.get("recipe_total") is not None:
         H.append(row("Check: recipe cost of items sold (%.0f%% costed)"%((C.get("recipe_coverage") or 0)*100),_pl_money(C["recipe_total"]),_pl_pct(C["recipe_total"],tot)+" of sales",ind=True))
     rc=C.get("recipe") or {}
@@ -5827,7 +5847,7 @@ def _pl_html(R):
                          "DoorDash "+_pl_money(r["dd"])+(" real" if r["dd_real"] else " EST"),ind=True))
         if S.get("statement"): H.append(row("Uber monthly statement used for the Uber total",_pl_money(S["statement"]["net"]),"",ind=True))
     H.append(head("PROFIT"))
-    H.append(row("Gross profit (sales − cost of goods)",_pl_money(P["gross"]),_pl_pct(P["gross"],tot)))
+    H.append(row("Gross profit (sales − purchases)" if C.get("method")=="purchases" else "Gross profit (sales − cost of goods)",_pl_money(P["gross"]),_pl_pct(P["gross"],tot)))
     H.append('<tr><td style="padding:8px;font-weight:800;font-size:16px;">NET PROFIT — what\'s left</td><td style="padding:8px;text-align:right;font-weight:800;font-size:16px;color:%s;">%s</td><td style="padding:8px;text-align:right;color:#888;">%.1f%%</td></tr>'%(netcol,_pl_money(P["net"]),P["margin"]))
     H.append('</table>')
     if R["notes"] or R["errors"]:
@@ -5850,7 +5870,7 @@ def _pl_text(R):
     S=R["sales"]; C=R["cogs"]; L=R["labour"]; O=R["overheads"]; P=R["profit"]
     Ls=["BRUNO'S — %s PROFIT REPORT — %s"%(R["kind"].upper(),R["label"]),"",
         "SALES            %s"%_pl_money(S["total"]),"  card %s · cash %s · uber %s%s · doordash %s%s"%(_pl_money(S["card"]),_pl_money(S["cash"]),_pl_money(S["uber"])," (real)" if S["uber_real"] else " (est)",_pl_money(S["doordash"])," (real)" if S["doordash_real"] else " (est)"),
-        "COST OF GOODS    %s  (%s)"%(_pl_money(C["total"]),{"recipes":"from recipes x items sold","invoices":"supplier invoices","purchases":"supplier invoices + no-invoice allowance","ratio":"4-week ratio estimate"}.get(C.get("method"),"")),
+        ("PURCHASES        %s  (%s)" if C.get("method")=="purchases" else "COST OF GOODS    %s  (%s)")%(_pl_money(C["total"]),{"recipes":"from recipes x items sold","invoices":"supplier invoices","purchases":"supplier invoices + no-invoice allowance","ratio":"4-week ratio estimate"}.get(C.get("method"),"")),
         "INVOICES RECV'D  %s"%_pl_money((R.get("purchases") or {}).get("total",0)),
         "LABOUR           %s  (wages %s + super %s + owner %s)"%(_pl_money(L["total"]),_pl_money(L["wages"]),_pl_money(L["super"]),_pl_money(L["owner"])),
         "BILLS/OVERHEADS  %s"%_pl_money(O["total"]),"",
