@@ -6022,6 +6022,7 @@ def api_pl_config():
     c["last_note"]=("Last sent: "+" · ".join(bits)) if bits else "Nothing sent yet — use a Send button to try one now."
     return jsonify(c)
 
+_PL_JSON_CACHE={}
 @app.route("/api/pl_send",methods=["GET","POST"])
 def api_pl_send():
     d=(request.get_json(silent=True) or {}) if request.method=="POST" else {}
@@ -6039,6 +6040,17 @@ def api_pl_send():
         except Exception: ref=None
     if request.method=="GET":
         if not request.args.get("preview"): return jsonify({"ok":False,"error":"POST to send; add ?preview=1 to view"})
+        if request.args.get("json"):
+            # the Books page week cards show exactly the report's totals (24 Nov, Marcel: page must match the report)
+            ck=(kind,str(ref)); hit=_PL_JSON_CACHE.get(ck)
+            if hit and time.time()-hit[0]<900 and not request.args.get("fresh"): return jsonify(hit[1])
+            with _pl_lock: R=_pl_compute(kind,ref)
+            out={"ok":True,"label":R["label"],"start":R["start"],"end":R["end"],"sales":R["sales"]["total"],"purchases":R["cogs"]["total"],
+                 "wages":round(R["labour"]["wages"]+R["labour"].get("manual",0),2),"super":R["labour"]["super"],"mark":R["labour"]["owner"],
+                 "labour":R["labour"]["total"],"bills":R["overheads"]["total"],"gross":R["profit"]["gross"],"net":R["profit"]["net"],
+                 "errors":list(R.get("errors") or [])}
+            _PL_JSON_CACHE[ck]=(time.time(),out)
+            return jsonify(out)
         with _pl_lock: R=_pl_compute(kind,ref)
         return Response(_pl_html(R),mimetype="text/html")
     return jsonify(_pl_send(kind,(d.get("to") or "").strip() or None,ref))

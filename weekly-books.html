@@ -180,6 +180,7 @@
     <div class="row"><span>Wages + super<span class="pct" id="plLabPct"></span></span><span class="v neg2" id="plLabour">$0</span></div>
     <div class="row"><span>Other expenses</span><span class="v neg2" id="plOther">$0</span></div>
     <div class="row tot"><span>Net profit</span><span class="v net" id="plNet">$0</span></div>
+    <div id="plSrc" style="font-size:11.5px;color:#64748b;margin-top:6px"></div>
   </div>
 
   <div class="card" id="cglCard">
@@ -811,6 +812,42 @@ function renderTotals(){
   setSigned2('plNet',net);
   renderKpis({sales:sales,cogs:cogs,labour:labour,other:other,net:net});
   renderTrend();
+  applyReport();
+}
+// ── finished weeks: the top cards show EXACTLY the weekly report's numbers (invoices + real bank feed),
+//    not the page's own sums, so the page and the Monday report always agree (24 Nov) ──
+const RPT={};
+function showReport(r){
+  const pct=v=>r.sales?(v/r.sales*100).toFixed(1)+'%':'';
+  document.getElementById('plSales').textContent=fmt(r.sales);
+  document.getElementById('plCogs').textContent='-'+fmt(r.purchases);
+  document.getElementById('plCogsPct').textContent=pct(r.purchases);
+  setSigned2('plGross',r.gross);
+  document.getElementById('plLabour').textContent='-'+fmt(r.labour);
+  document.getElementById('plLabPct').textContent=pct(r.labour);
+  document.getElementById('plOther').textContent='-'+fmt(r.bills);
+  setSigned2('plNet',r.net);
+  document.getElementById('cgTot').textContent='-'+fmt(r.purchases);
+  document.getElementById('cgPct').textContent=pct(r.purchases);
+  document.getElementById('wgTot').textContent='-'+fmt(r.wages+r.mark);
+  document.getElementById('wgPct').textContent=pct(r.wages+r.mark);
+  document.getElementById('labTot').textContent='-'+fmt(r.labour);
+  document.getElementById('labPct').textContent=pct(r.labour);
+  renderKpis({sales:r.sales,cogs:r.purchases,labour:r.labour,other:r.bills,net:r.net});
+  document.getElementById('plSrc').innerHTML='✓ Same numbers as the weekly report (supplier invoices + real bank feed). Tap <b>Weekly report</b> for the line-by-line.'+(r.errors&&r.errors.length?'<br><span style="color:#b45309">⚠ '+r.errors.join(' · ')+'</span>':'');
+}
+function applyReport(){
+  const src=document.getElementById('plSrc'); if(!src) return;
+  const k=curKey(), sun=addDays(parseISO(k),6);
+  if(Date.now()<sun.getTime()+86400000){ src.textContent='This week isn\'t finished - figures so far from this page. The report numbers show once the week ends.'; return; }
+  if(RPT[k]){ showReport(RPT[k]); return; }
+  src.textContent='Loading the weekly report numbers… (up to 40 seconds)';
+  if(RPT['_busy_'+k]) return; RPT['_busy_'+k]=1;
+  fetch('/api/pl_send?kind=weekly&preview=1&json=1&date='+k,{cache:'no-store'}).then(r=>r.json()).then(r=>{
+    delete RPT['_busy_'+k];
+    if(!r||!r.ok){ src.textContent='Couldn\'t load the report numbers - showing this page\'s own sums.'; return; }
+    RPT[k]=r; if(curKey()===k && viewMode==='week') showReport(r);
+  }).catch(()=>{ delete RPT['_busy_'+k]; if(curKey()===k) src.textContent='Couldn\'t load the report numbers - showing this page\'s own sums.'; });
 }
 // ── KPI cards: the five numbers that matter, each compared with the week before ──
 function renderKpis(c){
