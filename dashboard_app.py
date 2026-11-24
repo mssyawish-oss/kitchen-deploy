@@ -11291,7 +11291,7 @@ def _recipe_tag_parts(r):
         if not seen_head and not l.startswith(("-","•","*")): continue   # no heading: take bullets before METHOD
         items.append(re.sub(r"^[-•*]\s*","",l))
     return (r.get("name") or "Recipe"),yld,[i for i in items if i],is_new
-def _render_recipe_png(name,yld,items,is_new=False):
+def _render_recipe_png(name,yld,items,is_new=False,xl=False):
     """Small RECIPE tag — name in the black header, batch/yield line, then the ingredients only
     (2 columns once the list is long). Height follows the list so short recipes use less paper."""
     from PIL import Image,ImageDraw,ImageFont
@@ -11315,23 +11315,24 @@ def _render_recipe_png(name,yld,items,is_new=False):
         if cur: out.append(cur)
         return out[:maxlines]
     items=items or ["(no ingredients listed)"]
-    cols=2 if len(items)>4 else 1
+    cols=1                                                     # one big column - easy to read (Marcel 25 Nov: text was too small)
     colw=(W-2*M-(GAP if cols==2 else 0))//cols-16              # 16 = bullet indent
-    sz=31 if cols==1 else 27
-    fi=fnt(sz,False); lh=int(sz*1.22)
-    blocks=[wrap(it,fi,colw,4) or [""] for it in items]
+    sz=58 if xl else 44                                        # xl = 'Extra large' option on the print popup
+    fi=fnt(sz,True); lh=int(sz*1.22)
+    blocks=[wrap(it,fi,colw,6) or [""] for it in items]
     per=(len(blocks)+cols-1)//cols
     colsets=[blocks[i*per:(i+1)*per] for i in range(cols)]
     body_h=max(sum(len(b) for b in cs)*lh+(len(cs)-1)*4 for cs in colsets if cs)
-    hb=56; fy=fnt(26,False); ylines=wrap(yld,fy,W-2*M,2) if yld else []
+    hb=84 if xl else 72; fy=fnt(40 if xl else 34,False); ylines=wrap(yld,fy,W-2*M,3) if yld else []
     if ylines and " ".join(ylines)!=" ".join(yld.split()): ylines[-1]=ylines[-1].rsplit(" ",1)[0]+" …"   # cut-off yield: show it
-    yh=(len(ylines)*31+10) if ylines else 0
+    ylh=48 if xl else 41
+    yh=(len(ylines)*ylh+10) if ylines else 0
     nh=48 if is_new else 0                                    # '*** NEW RECIPE ***' band under the header
     H=hb+nh+8+yh+body_h+16
     img=Image.new("L",(W,H),255); dr=ImageDraw.Draw(img)
     dr.rectangle([0,0,W,hb],fill=0)
     up=(name or "Recipe").upper()
-    for s2 in (34,30,27,24,21,18):
+    for s2 in ((56,) if xl else ())+(46,42,38,34,30,27,24,21,18):
         fh=fnt(s2,True)
         if dr.textlength(up,font=fh)<=W-2*M: break
     dr.text(((W-dr.textlength(up,font=fh))//2,(hb-fh.size)//2-2),up,font=fh,fill=255)
@@ -11341,14 +11342,14 @@ def _render_recipe_png(name,yld,items,is_new=False):
         dr.rectangle([M,y-2,W-M,y+nh-8],outline=0,width=3)
         dr.text(((W-dr.textlength(t,font=fn))//2,y+(nh-8-fn.size)//2-4),t,font=fn,fill=0); y+=nh
     for yl in ylines:
-        dr.text((M,y),yl,font=fy,fill=0); y+=31
+        dr.text((M,y),yl,font=fy,fill=0); y+=ylh
     if ylines:
         y+=2; dr.line([M,y,W-M,y],fill=0,width=2); y+=8
     x0=M
     for cs in colsets:
         yy=y
         for b in cs:
-            dr.ellipse([x0+2,yy+lh//2-5,x0+10,yy+lh//2+3],fill=0)
+            dr.ellipse([x0+1,yy+lh//2-7,x0+11,yy+lh//2+3],fill=0)
             for ln in b:
                 dr.text((x0+16,yy),ln,font=fi,fill=0); yy+=lh
             yy+=4
@@ -12200,7 +12201,7 @@ def _recipe_by_id(rid):
 def api_recipe_tag_preview():
     r=_recipe_by_id(request.args.get("id",""))
     if not r: return ("Recipe not found",404)
-    img=_render_recipe_png(*_recipe_tag_parts(r))
+    img=_render_recipe_png(*_recipe_tag_parts(r),xl=request.args.get("size")=="xl")
     import io as _io
     buf=_io.BytesIO(); img.convert("L").save(buf,format="PNG")
     return Response(buf.getvalue(),mimetype="image/png",headers={"Cache-Control":"no-store"})
@@ -12212,7 +12213,7 @@ def api_recipe_tag_print():
     if not r: return jsonify({"ok":False,"error":"Recipe not found"})
     try: qty=max(1,min(10,int(d.get("qty",1))))
     except (TypeError,ValueError): qty=1
-    try: img=_render_recipe_png(*_recipe_tag_parts(r))
+    try: img=_render_recipe_png(*_recipe_tag_parts(r),xl=d.get("size")=="xl")
     except Exception as e: return jsonify({"ok":False,"error":"render: %s"%e})
     printed=0; note=""
     for _ in range(qty):

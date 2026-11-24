@@ -2486,6 +2486,10 @@ body.style-v2 .tag{border-radius:999px;padding:3px 10px;}
       <span class="pl2-lab">Tags</span>
       <div class="pl2-qty"><button onclick="_rtStep(-1)">&minus;</button><span id="rt-qty">1</span><button onclick="_rtStep(1)">+</button></div>
     </div>
+    <div class="pl2-row">
+      <span class="pl2-lab">Size</span>
+      <div style="display:flex;gap:8px;"><button class="btn rt-size" id="rt-size-n" onclick="_rtSetSize('')">Large</button><button class="btn rt-size" id="rt-size-xl" onclick="_rtSetSize('xl')">Extra large</button></div>
+    </div>
     <div class="pl2-status" id="rt-status"></div>
     <div class="pl2-actions">
       <button class="btn" onclick="closeModal('recipetag-modal')">Close</button>
@@ -8725,21 +8729,24 @@ function renderRecipeDetail(){
     +'<div class="rcp-d-body">'+body+'</div>';
 }
 // small ingredients-only recipe tag (no method) — rendered + printed by the server from the saved recipe
-let _rtId=null,_rtQty=1;
+let _rtId=null,_rtQty=1,_rtSize='';
+function _rtSetSize(v){_rtSize=v;const g=i=>document.getElementById(i);
+  [['rt-size-n',''],['rt-size-xl','xl']].forEach(function(a){const b=g(a[0]);if(b){const on=a[1]===_rtSize;b.style.background=on?'var(--amber)':'';b.style.color=on?'#000':'';}});
+  const el=g('rt-prev');if(!el||!_rtId)return;
+  el.innerHTML='<span class="pl2-prev-wait">Loading preview&hellip;</span>';
+  const im=new Image();im.onload=()=>{el.innerHTML='';el.appendChild(im);};im.onerror=()=>{el.innerHTML='<span class="pl2-prev-wait">Preview unavailable</span>';};
+  im.alt='Recipe tag preview';im.src='/api/recipe_tag_preview?id='+encodeURIComponent(_rtId)+(_rtSize?'&size='+_rtSize:'')+'&_='+Date.now();}
 function openRecipeTag(id){const r=(appData.recipes||[]).find(x=>x.id===id);if(!r)return;_rtId=id;_rtQty=1;
   const g=i=>document.getElementById(i);
   if(g('rt-title'))g('rt-title').textContent=(r.name||'Recipe')+' — recipe tag';
   if(g('rt-qty'))g('rt-qty').textContent='1'; if(g('rt-status'))g('rt-status').textContent='';
-  const el=g('rt-prev');
-  if(el){el.innerHTML='<span class="pl2-prev-wait">Loading preview&hellip;</span>';
-    const im=new Image();im.onload=()=>{el.innerHTML='';el.appendChild(im);};im.onerror=()=>{el.innerHTML='<span class="pl2-prev-wait">Preview unavailable</span>';};
-    im.alt='Recipe tag preview';im.src='/api/recipe_tag_preview?id='+encodeURIComponent(id)+'&_='+Date.now();}
+  _rtSetSize(_rtSize);   // keeps the last size picked
   openModal('recipetag-modal');}
 function _rtStep(d){_rtQty=Math.max(1,Math.min(10,_rtQty+d));const q=document.getElementById('rt-qty');if(q)q.textContent=_rtQty;}
 function _rtPrint(){
   const st=document.getElementById('rt-status'),btn=document.getElementById('rt-print');
   if(btn)btn.disabled=true; if(st){st.textContent='Sending '+_rtQty+' tag'+(_rtQty>1?'s':'')+'…';st.style.color='var(--muted)';}
-  fetch('/api/recipe_tag_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:_rtId,qty:_rtQty})}).then(r=>r.json()).then(d=>{
+  fetch('/api/recipe_tag_print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:_rtId,qty:_rtQty,size:_rtSize})}).then(r=>r.json()).then(d=>{
     if(btn)btn.disabled=false;
     if(d.ok&&d.printed){_toast('✓ '+_rtQty+' recipe tag'+(_rtQty>1?'s':'')+' printed');closeModal('recipetag-modal');}
     else{if(st){st.textContent='Print failed — '+(d.error||d.note||'the printer didn’t confirm.');st.style.color='var(--red)';}}
