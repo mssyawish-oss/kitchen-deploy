@@ -2423,19 +2423,21 @@ def _kds_instore_orders():
     kcfg=_kds_cfg()
     if not kcfg.get("enabled"): return [],[]
     scfg=_status_cfg(); nows=time.time()
-    def _isPOS(src):
+    def _isPOS(src,name=""):
         s=(src or "").lower()
-        return ("point of sale" in s) or s=="pos" or ("in store" in s) or ("in-store" in s)
+        if re.fullmatch(r'#?\d+',(name or "").strip()): return True   # in-store tickets show a plain order number (27 Nov: AI gave the staff name as the source, so they were dropped)
+        if any(w in s for w in ("online","kiosk","uber","door","deliveroo","menulog")): return False
+        return bool(s)   # 'Point of Sale' or a staff member's name = register order
     def _disp(name):
         n=(name or "").strip()
         return ("Order #"+n.lstrip('#')) if re.fullmatch(r'#?\d+',n) else n
     inprog=[]; ready=[]
     for k,e in (KDS_SCREEN.get("open") or {}).items():
-        if e.get("gone") or not _isPOS(e.get("source")): continue
+        if e.get("gone") or not _isPOS(e.get("source"),e.get("name")): continue
         inprog.append({"id":"kds-"+k,"name":_disp(e.get("name")),"number":"",
                        "source":"Point of Sale","created":int(e.get("first",nows)*1000)})
     for k,b in (KDS_SCREEN.get("bumped") or {}).items():
-        if not _isPOS(b.get("source")): continue
+        if not _isPOS(b.get("source"),b.get("name")): continue
         if (nows-b.get("ts",0))<scfg["ready_min"]*60:
             ready.append({"id":"kds-"+k,"name":_disp(b.get("name")),"number":"",
                           "source":"Point of Sale","created":int(b.get("first",nows)*1000),"_r":b.get("ts",0)})
