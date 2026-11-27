@@ -2284,13 +2284,23 @@ def _mjpeg_grab(url,timeout=8):
 def _kds_frame(cfg):
     url=(cfg.get("url") or "").rstrip("/")
     if not url: return None,"no url"
-    # 1) native MJPEG grab first (no ffmpeg dependency) — Screen Stream serves /stream.mjpeg
-    jpeg,err=_mjpeg_grab(url+"/stream.mjpeg")
-    if jpeg and jpeg[:2]==b"\xff\xd8": return jpeg,None
-    last=err or ""
+    # 1) native grab first (no ffmpeg). Newer Screen Stream (Nov 2026 update) serves /jpeg (one picture)
+    #    and /mjpeg; older versions served /stream.mjpeg (now 404) - try the new ones first.
+    last=""
+    try:
+        req=urllib.request.Request(url+"/jpeg?requestSequence=%d"%int(time.time()),headers={"User-Agent":"brunos-kds"})
+        with urllib.request.urlopen(req,timeout=6) as r:
+            if "multipart" not in (r.headers.get("Content-Type") or ""):
+                b=r.read(6000000)
+                if b[:2]==b"\xff\xd8": return b,None
+    except Exception as ex: last=str(ex)[:160]
+    for path in ("/mjpeg","/stream.mjpeg"):
+        jpeg,err=_mjpeg_grab(url+path)
+        if jpeg and jpeg[:2]==b"\xff\xd8": return jpeg,None
+        last=err or last
     # 2) fall back to ffmpeg if present (also handles a plain "/" snapshot)
     import subprocess
-    for u in (url+"/stream.mjpeg", url+"/"):
+    for u in (url+"/mjpeg", url+"/stream.mjpeg"):
         try:
             p=subprocess.run([_ffmpeg_bin(),"-nostdin","-i",u,"-frames:v","1","-q:v","4","-f","image2","-"],
                              capture_output=True,timeout=15)
